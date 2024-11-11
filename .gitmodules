@@ -1,0 +1,15 @@
+[submodule "libs/kurlyk"]
+	path = libs/kurlyk
+	url = https://github.com/NewYaroslav/kurlyk.git
+[submodule "libs/asio"]
+	path = libs/asio
+	url = https://github.com/chriskohlhoff/asio.git
+[submodule "libs/openssl-win64-v3.4.0"]
+	path = libs/openssl-win64-v3.4.0
+	url = https://github.com/NewYaroslav/openssl-win64-v3.4.0.git
+[submodule "libs/curl-8.11.0_1-win64-mingw"]
+	path = libs/curl-8.11.0_1-win64-mingw
+	url = https://github.com/NewYaroslav/curl-8.11.0_1-win64-mingw.git
+[submodule "libs/log-it-cpp"]
+	path = libs/log-it-cpp
+	url = https://github.com/NewYaroslav/log-it-cpp.git
