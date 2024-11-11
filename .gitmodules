@@ -13,3 +13,6 @@
 [submodule "libs/log-it-cpp"]
 	path = libs/log-it-cpp
 	url = https://github.com/NewYaroslav/log-it-cpp.git
+[submodule "libs/Simple-WebSocket-Server"]
+	path = libs/Simple-WebSocket-Server
+	url = https://gitlab.com/eidheim/Simple-WebSocket-Server.git
