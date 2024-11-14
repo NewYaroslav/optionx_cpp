@@ -30,9 +30,9 @@ namespace optionx {
         CurrencyType currency   = CurrencyType::UNKNOWN;///< Account currency, if supported.
         double      amount      = 0.0;                  ///< Trade amount.
         double      refund      = 0.0;                  ///< Refund percentage (from 0 to 1.0).
-        double      min_payout  = 0.0;                  ///< Minimum payout percentage, if supported.
-        int64_t     duration    = 0;                    ///< Option duration in milliseconds.
-        int64_t     expiry_time = 0;                    ///< Expiration timestamp (Unix, ms).
+        double      min_payout  = 0.0;                  ///< Minimum payout percentage, if supported (from 0 to 1.0).
+        int64_t     duration    = 0;                    ///< Option duration in seconds.
+        int64_t     expiry_time = 0;                    ///< Expiration timestamp (Unix, seconds).
 
         using callback_t = std::function<void(std::unique_ptr<TradeRequest>, std::unique_ptr<TradeResult>)>;
 

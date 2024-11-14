@@ -94,53 +94,73 @@ namespace optionx {
 
     /** \brief Тип информации об аккаунте
      */
+
+    /// \enum AccountInfoType
+    /// \brief Defines the types of account information that can be requested.
     enum class AccountInfoType {
-        UNKNOWN = 0,
-        PARTNER_ID,             /// ID партнера (строка)
-        USER_ID,                /// ID юзера (строка)
-        BALANCE,                /// Баланс
-        BONUS,                  /// Бонус
-        CONNECTION_STATUS,      /// Состояние подключения
-        VIP_STATUS,             /// Вип статус аккаунта
-        BROKER,                 /// Тип брокера
-        ACCOUNT_TYPE,           /// Тип аккаунта
-        CURRENCY,               /// Валюта аккаунта
-        OPEN_ORDERS,            /// Количество открытых ордеров
-        MAX_ORDERS,             /// Максимальное количество открытых ордеров
-        PAYOUT,                 /// Процент выплаты
-        MIN_AMOUNT,             /// Минимальный размер сделки
-        MAX_AMOUNT,             /// Максимальный размер сделки
-        MAX_REFUND,             /// Максимальный процент возврата
-        MIN_DURATION,           /// Минимальная продолжительность опциона
-        MAX_DURATION,           /// Максимальная продолжительность опциона
-        START_TIME,             /// Начало торгового дня
-        END_TIME                /// Конец торгового дня
+        UNKNOWN = 0,              ///< Unknown type
+        PARTNER_ID,               ///< Partner ID (string)
+        USER_ID,                  ///< User ID (string)
+        BALANCE,                  ///< Account balance
+        BONUS,                    ///< Account bonus amount
+        CONNECTION_STATUS,        ///< Connection status (connected or disconnected)
+        VIP_STATUS,               ///< VIP status of the account
+        API_TYPE,                 ///< Broker type
+        ACCOUNT_TYPE,             ///< Account type (e.g., DEMO, REAL)
+        CURRENCY,                 ///< Account currency (e.g., USD, EUR)
+        OPEN_ORDERS,              ///< Number of currently open orders
+        MAX_ORDERS,               ///< Maximum allowable open orders
+        PAYOUT,                   ///< Payout percentage
+        MIN_AMOUNT,               ///< Minimum trade amount
+        MAX_AMOUNT,               ///< Maximum trade amount
+        MAX_REFUND,               ///< Maximum refund percentage
+        MIN_DURATION,             ///< Minimum option duration
+        MAX_DURATION,             ///< Maximum option duration
+        START_TIME,               ///< Start time of the trading day (in seconds from midnight)
+        END_TIME,                 ///< End time of the trading day (in seconds from midnight)
+        ORDER_QUEUE_TIMEOUT,      ///< Timeout for pending orders in the queue
+        ORDER_INTERVAL_MS,        ///< Minimum time interval between consecutive orders, in milliseconds
+        SYMBOL_AVAILABILITY,      ///< Availability of a symbol for trading
+        OPTION_TYPE_AVAILABILITY, ///< Availability of an OptionType for trading
+        ORDER_TYPE_AVAILABILITY,  ///< Availability of an OrderType for trading
+        ACCOUNT_TYPE_AVAILABILITY,///< Availability of an AccountType
+        CURRENCY_AVAILABILITY,    ///< Availability of a CurrencyType for the account
+        ORDER_LIMIT_NOT_EXCEEDED, ///< Check if the number of open orders is below the maximum limit
+        AMOUNT_BELOW_MAX,         ///< Check if the trade amount does not exceed the maximum allowed amount
+        AMOUNT_ABOVE_MIN,         ///< Check if the trade amount meets the minimum required amount
+        REFUND_BELOW_MAX,         ///< Check if the refund percentage is within the maximum limit
+        REFUND_ABOVE_MIN,         ///< Check if the refund percentage meets the minimum required
+        DURATION_AVAILABLE,       ///< Check if the expiration duration is within available limits
+        EXPIRATION_DATE_AVAILABLE,///< Check if the expiration date is within allowable range
+        PAYOUT_ABOVE_MIN,         ///< Check if the payout percentage meets the minimum threshold required
+        AMOUNT_BELOW_BALANCE      ///< Check if the trade amount is below the account balance
     };
 
-    /** \brief Типы ошибок
-     */
+    /// \enum OrderErrorCode
+    /// \brief Represents error codes for order validation and processing.
     enum class OrderErrorCode {
-        SUCCESS = 0,
-        INVALID_SYMBOL,
-        INVALID_OPTION,
-        INVALID_ORDER,
-        INVALID_ACCOUNT,
-        INVALID_CURRENCY,
-        AMOUNT_TOO_LOW,
-        AMOUNT_TOO_HIGH,
-        REFUND_TOO_LOW,
-        REFUND_TOO_HIGH,
-        PAYOUT_TOO_LOW,
-        INVALID_DURATION,
-        INVALID_EXPIRY_TIME,
-        LIMIT_OPEN_ORDERS,
-        INVALID_REQUEST,
-        LONG_QUEUE_WAIT,
-        LONG_RESPONSE_WAIT,
-        NO_CONNECTION,
-        CLIENT_FORCED_CLOSE,
-        PARSER_ERROR,
-        CANCELED_TRADE
+        SUCCESS = 0,                  ///< No error, operation successful.
+        INVALID_SYMBOL,               ///< Invalid symbol for trading.
+        INVALID_OPTION,               ///< Invalid option type.
+        INVALID_ORDER,                ///< Invalid order type.
+        INVALID_ACCOUNT,              ///< Invalid account type.
+        INVALID_CURRENCY,             ///< Invalid currency type.
+        AMOUNT_TOO_LOW,               ///< Trade amount is below the minimum allowed.
+        AMOUNT_TOO_HIGH,              ///< Trade amount exceeds the maximum allowed.
+        REFUND_TOO_LOW,               ///< Refund percentage is below the minimum required.
+        REFUND_TOO_HIGH,              ///< Refund percentage exceeds the maximum allowed.
+        PAYOUT_TOO_LOW,               ///< Payout percentage is below the minimum threshold.
+        INVALID_DURATION,             ///< Duration is invalid or not supported.
+        INVALID_EXPIRY_TIME,          ///< Expiry time is invalid or out of range.
+        LIMIT_OPEN_ORDERS,            ///< Open order limit has been reached.
+        INVALID_REQUEST,              ///< General invalid request.
+        LONG_QUEUE_WAIT,              ///< Order waited too long in the queue.
+        LONG_RESPONSE_WAIT,           ///< Long wait for server response.
+        NO_CONNECTION,                ///< No network connection.
+        CLIENT_FORCED_CLOSE,          ///< Client closed forcibly.
+        PARSER_ERROR,                 ///< Parsing error occurred.
+        CANCELED_TRADE,               ///< Trade was canceled by user or system.
+        INSUFFICIENT_BALANCE          ///< Trade amount exceeds available account balance.
     };
 
     /** \brief Тип системы мани-менеджмента
@@ -296,8 +316,11 @@ namespace optionx {
         return data_mode_0[static_cast<size_t>(value)];
     };
 
+    /// \brief Converts an OrderErrorCode value to its corresponding string representation.
+    /// \param value The error code to convert.
+    /// \return A string representation of the provided error code.
     inline const std::string &to_str(const OrderErrorCode value) noexcept {
-        static const std::vector<std::string> data_mode_0 = {
+        static const std::vector<std::string> str_data = {
             "Success",
             "Invalid symbol",
             "Invalid option type",
@@ -318,9 +341,10 @@ namespace optionx {
             "No network connection",
             "Forced client shutdown",
             "Parser error",
-            "Canceled"
+            "Canceled",
+            "Insufficient balance"
         };
-        return data_mode_0[static_cast<size_t>(value)];
+        return str_data[static_cast<size_t>(value)];
     };
 
     inline const std::string &to_str(const MmSystemType value) noexcept {

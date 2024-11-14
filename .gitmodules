@@ -19,3 +19,6 @@
 [submodule "libs/json"]
 	path = libs/json
 	url = https://github.com/nlohmann/json.git
+[submodule "libs/time-shield-cpp"]
+	path = libs/time-shield-cpp
+	url = https://github.com/NewYaroslav/time-shield-cpp.git
