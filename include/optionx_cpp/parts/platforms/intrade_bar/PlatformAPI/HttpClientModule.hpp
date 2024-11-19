@@ -141,6 +141,12 @@ namespace intrade_bar {
                 modules::ConnectRequestEvent::callback_t connect_callback) {
         }
 
+        void validate_email_pass(
+                std::shared_ptr<AuthData> auth_data,
+                modules::ConnectRequestEvent::callback_t connect_callback) {
+
+        }
+
         void request_main_page(
                 std::shared_ptr<AuthData> auth_data,
                 modules::ConnectRequestEvent::callback_t connect_callback);
@@ -230,7 +236,8 @@ namespace intrade_bar {
             break;
         case AuthMethod::EMAIL_PASSWORD:
             // Process authentication via email and password
-            request_main_page(std::make_shared<AuthData>(*m_auth_data.get()), event.callback);
+            //request_main_page(std::make_shared<AuthData>(*m_auth_data.get()), event.callback);
+            validate_email_pass(std::make_shared<AuthData>(*m_auth_data.get()), event.callback);
             break;
         case AuthMethod::USER_TOKEN:
             // Validate user authentication token

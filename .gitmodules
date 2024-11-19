@@ -28,3 +28,6 @@
 [submodule "libs/sqlite-containers"]
 	path = libs/sqlite-containers
 	url = https://github.com/NewYaroslav/sqlite-containers.git
+[submodule "libs/AES"]
+	path = libs/AES
+	url = https://github.com/SergeyBel/AES.git
