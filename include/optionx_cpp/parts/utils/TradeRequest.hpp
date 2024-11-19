@@ -24,9 +24,10 @@ namespace optionx {
         std::string comment;                            ///< Optional trade comment.
         std::string unique_hash;                        ///< Unique request hash for tracking.
         int64_t     unique_id   = 0;                    ///< Unique request ID for tracking.
-        OptionType  option      = OptionType::UNKNOWN;  ///< Option type.
-        OrderType   order       = OrderType::UNKNOWN;   ///< Order type (buy/sell).
-        AccountType account     = AccountType::UNKNOWN; ///< Account type, if supported.
+        int64_t     account_id  = 0;                    ///< Identifier for the account.
+        OptionType  option_type = OptionType::UNKNOWN;  ///< Option type.
+        OrderType   order_type  = OrderType::UNKNOWN;   ///< Order type (buy/sell).
+        AccountType account_type = AccountType::UNKNOWN;///< Account type, if supported.
         CurrencyType currency   = CurrencyType::UNKNOWN;///< Account currency, if supported.
         double      amount      = 0.0;                  ///< Trade amount.
         double      refund      = 0.0;                  ///< Refund percentage (from 0 to 1.0).
@@ -68,9 +69,9 @@ namespace optionx {
                 j["comment"]        = comment;
                 j["unique_hash"]    = unique_hash;
                 j["unique_id"]      = unique_id;
-                j["option"]         = to_str(option);
-                j["order"]          = to_str(order);
-                j["account"]        = to_str(account);
+                j["option_type"]    = to_str(option_type);
+                j["order_type"]     = to_str(order_type);
+                j["account_type"]   = to_str(account_type);
                 j["currency"]       = to_str(currency);
                 j["amount"]         = amount;
                 j["refund"]         = refund;
@@ -94,14 +95,14 @@ namespace optionx {
                 if (j.contains("unique_hash"))  unique_hash = j["unique_hash"];
                 if (j.contains("unique_id"))    unique_id   = j["unique_id"];
 
-                if (!to_enum(to_upper_case(j["option"].get<std::string>()), option)) {
+                if (!to_enum(to_upper_case(j["option_type"].get<std::string>()), option_type)) {
                     return false;
                 }
-                if (!to_enum(to_upper_case(j["order"].get<std::string>()), order)) {
+                if (!to_enum(to_upper_case(j["order_type"].get<std::string>()), order_type)) {
                     return false;
                 }
-                if (j.contains("account")) {
-                    if (!to_enum(to_upper_case(j["account"].get<std::string>()), account)) {
+                if (j.contains("account_type")) {
+                    if (!to_enum(to_upper_case(j["account_type"].get<std::string>()), account_type)) {
                         return false;
                     }
                 }
@@ -123,9 +124,9 @@ namespace optionx {
         /// \return Unique pointer to a new trade result instance.
         virtual std::unique_ptr<TradeResult> create_trade_result_unique() const {
             std::unique_ptr<TradeResult> result = std::make_unique<TradeResult>();
-            result->account     = account;
-            result->currency    = currency;
-            result->amount      = amount;
+            result->account_type = account_type;
+            result->currency     = currency;
+            result->amount       = amount;
             return result;
         }
 
@@ -133,9 +134,9 @@ namespace optionx {
         /// \return Shared pointer to a new trade result instance.
         virtual std::shared_ptr<TradeResult> create_trade_result_shared() const {
             std::shared_ptr<TradeResult> result = std::make_shared<TradeResult>();
-            result->account     = account;
-            result->currency    = currency;
-            result->amount      = amount;
+            result->account_type = account_type;
+            result->currency     = currency;
+            result->amount       = amount;
             return result;
         }
 

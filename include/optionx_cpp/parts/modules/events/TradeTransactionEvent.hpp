@@ -6,7 +6,8 @@
 /// \brief Defines the TradeTransactionEvent class used for handling trade transaction events.
 
 #include "../../pubsub/Event.hpp"
-#include <memory>
+#include "../../utils/TradeRequest.hpp"
+#include "../../utils/TradeResult.hpp"
 
 namespace optionx {
 namespace modules {
@@ -15,8 +16,8 @@ namespace modules {
     /// \brief Represents an event containing information about a trade transaction.
     class TradeTransactionEvent : public Event {
     public:
-        std::shared_ptr<BaseTradeRequest> request;  ///< Shared pointer to the trade request details.
-        std::shared_ptr<BaseTradeResult> result;    ///< Shared pointer to the trade result details.
+        std::shared_ptr<TradeRequest> request;  ///< Shared pointer to the trade request details.
+        std::shared_ptr<TradeResult> result;    ///< Shared pointer to the trade result details.
 
         /// \brief Constructs a TradeTransactionEvent with a trade request and API type.
         /// \param trade_request A unique pointer to the trade request that initializes the event.

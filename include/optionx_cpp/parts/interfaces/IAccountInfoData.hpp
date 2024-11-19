@@ -51,10 +51,10 @@ namespace optionx {
         /// \param option OptionType for which availability is checked.
         /// \param timestamp Timestamp to use for the request (optional).
         template<class T>
-        const T get_account_info(OptionType option, int64_t timestamp = 0) {
+        const T get_account_info(OptionType option_type, int64_t timestamp = 0) {
             AccountInfoRequest request;
             request.type = AccountInfoType::OPTION_TYPE_AVAILABILITY;
-            request.option = option;
+            request.option_type = option_type;
             request.timestamp = timestamp;
             return get_account_info<T>(request);
         }
@@ -63,10 +63,10 @@ namespace optionx {
         /// \param order OrderType for which availability is checked.
         /// \param timestamp Timestamp to use for the request (optional).
         template<class T>
-        const T get_account_info(OrderType order, int64_t timestamp = 0) {
+        const T get_account_info(OrderType order_type, int64_t timestamp = 0) {
             AccountInfoRequest request;
             request.type = AccountInfoType::ORDER_TYPE_AVAILABILITY;
-            request.order = order;
+            request.order_type = order_type;
             request.timestamp = timestamp;
             return get_account_info<T>(request);
         }
@@ -75,10 +75,10 @@ namespace optionx {
         /// \param account AccountType for which availability is checked.
         /// \param timestamp Timestamp to use for the request (optional).
         template<class T>
-        const T get_account_info(AccountType account, int64_t timestamp = 0) {
+        const T get_account_info(AccountType account_type, int64_t timestamp = 0) {
             AccountInfoRequest request;
             request.type = AccountInfoType::ACCOUNT_TYPE_AVAILABILITY;
-            request.account = account;
+            request.account_type = account_type;
             request.timestamp = timestamp;
             return get_account_info<T>(request);
         }
@@ -108,7 +108,7 @@ namespace optionx {
 
         /// \brief Retrieves the API type associated with this account data.
         /// \return The type of API used.
-        virtual ApiType api_type() const {
+        virtual const ApiType api_type() const {
             return ApiType::UNKNOWN;
         }
 
@@ -146,7 +146,7 @@ namespace optionx {
 
     /// \brief Template specialization for retrieving boolean account information.
     template<>
-    bool IAccountInfoData::get_account_info<bool>(const AccountInfoRequest& request) {
+    const bool IAccountInfoData::get_account_info<bool>(const AccountInfoRequest& request) {
         return get_account_info_bool(request);
     }
 
@@ -201,7 +201,7 @@ namespace optionx {
     /// \brief Default template specialization for unsupported types.
     /// This ensures compile-time error for unsupported types used with get_account_info.
     template<class T>
-    T IAccountInfoData::get_account_info(const AccountInfoRequest& request) {
+    const T IAccountInfoData::get_account_info(const AccountInfoRequest& request) {
         static_assert(sizeof(T) == 0, "Unsupported type for get_account_info");
         return T();
     }

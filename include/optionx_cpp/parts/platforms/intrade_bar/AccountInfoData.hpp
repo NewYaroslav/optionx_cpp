@@ -23,7 +23,7 @@ namespace intrade_bar {
         CurrencyType    currency        = CurrencyType::UNKNOWN;    ///< Account currency
         AccountType     account_type    = AccountType::UNKNOWN;     ///< Account type (DEMO or REAL)
         bool            connect         = false;                    ///< Connection status
-        int64_t         open_orders     = 0;                        ///< Number of open orders for the account
+        int64_t         open_trades     = 0;                        ///< Number of open trades for the account
 
         // --- Limits ----------------------------------------------------------
 
@@ -39,9 +39,10 @@ namespace intrade_bar {
         int64_t min_duration            = 60;                       ///< Minimum binary option duration (in seconds)
         int64_t min_btc_duration        = 300;                      ///< Minimum duration for BTCUSDT (in seconds)
         int64_t max_duration            = 30000;                    ///< Maximum duration (in seconds)
-        int64_t max_orders              = 5;                        ///< Maximum number of trades
-        int64_t max_limit_orders        = 2;                        ///< Maximum number of trades during restricted periods
+        int64_t max_trades              = 5;                        ///< Maximum number of trades
+        int64_t max_limit_trades        = 2;                        ///< Maximum number of trades during restricted periods
         int64_t order_queue_timeout     = 10;                       ///< Timeout for pending orders in the queue
+        int64_t responce_timeout        = 10;                       ///< Timeout for server response related to opening or closing a trade
         int64_t order_interval_ms       = 1000;                     ///< Minimum time interval required between consecutive orders
 
         // Trading time for BTCUSDT
@@ -92,17 +93,17 @@ namespace intrade_bar {
                 return (symbols.find(request.symbol) != symbols.end());
             }
             case AccountInfoType::OPTION_TYPE_AVAILABILITY:
-                if (request.option == OptionType::CLASSIC &&
+                if (request.option_type == OptionType::CLASSIC &&
                     (request.symbol == "BTCUSDT" || request.symbol == "BTCUSD")) return false;
-                return (request.option == OptionType::CLASSIC || request.option == OptionType::SPRINT);
+                return (request.option_type == OptionType::CLASSIC || request.option_type == OptionType::SPRINT);
             case AccountInfoType::ORDER_TYPE_AVAILABILITY:
-                return (request.order == OrderType::BUY || request.order == OrderType::SELL);
+                return (request.order_type == OrderType::BUY || request.order_type == OrderType::SELL);
             case AccountInfoType::ACCOUNT_TYPE_AVAILABILITY:
                 return (account_type != AccountType::UNKNOWN && request.account_type == account_type);
             case AccountInfoType::CURRENCY_AVAILABILITY:
                 return (currency != CurrencyType::UNKNOWN && request.currency == currency);
-            case AccountInfoType::ORDER_LIMIT_NOT_EXCEEDED:
-                return (open_orders < max_orders);
+            case AccountInfoType::TRADE_LIMIT_NOT_EXCEEDED:
+                return (open_trades < max_trades);
             case AccountInfoType::AMOUNT_BELOW_MAX:
                 return request.amount <= get_max_amount(request);
             case AccountInfoType::AMOUNT_ABOVE_MIN:
@@ -112,13 +113,13 @@ namespace intrade_bar {
             case AccountInfoType::REFUND_ABOVE_MIN:
                 return true;
             case AccountInfoType::DURATION_AVAILABLE: {
-                if (request.option == OptionType::CLASSIC) return true;
-                const int64_t min_duration = (request.symbol == "BTCUSD" || request.symbol == "BTCUSDT") ? min_btc_duration : min_duration;
-                const int64_t max_duration = std::min(time_shield::start_of_min(end_time - time_shield::sec_of_day(request.timestamp)), max_duration);
-                return (request.duration >= min_duration && request.duration <= max_duration);
+                if (request.option_type == OptionType::CLASSIC) return true;
+                const int64_t req_min_duration = (request.symbol == "BTCUSD" || request.symbol == "BTCUSDT") ? min_btc_duration : min_duration;
+                const int64_t req_max_duration = std::min(time_shield::start_of_min(end_time - time_shield::sec_of_day(request.timestamp)), max_duration);
+                return (request.duration >= req_min_duration && request.duration <= req_max_duration);
             }
             case AccountInfoType::EXPIRATION_DATE_AVAILABLE: {
-                if (request.option == OptionType::SPRINT) return true;
+                if (request.option_type == OptionType::SPRINT) return true;
                 const int64_t sec_of_day = time_shield::sec_of_day(request.expiry_time);
                 if (sec_of_day < start_time || sec_of_day > end_time) return false;
                 if (sec_of_day % (5 * time_shield::SEC_PER_MIN) != 0) return false;
@@ -146,9 +147,9 @@ namespace intrade_bar {
                 case AccountInfoType::API_TYPE: return static_cast<int64_t>(api_type());
                 case AccountInfoType::ACCOUNT_TYPE: return static_cast<int64_t>(account_type);
                 case AccountInfoType::CURRENCY: return static_cast<int64_t>(currency);
-                case AccountInfoType::OPEN_ORDERS: return open_orders;
-                case AccountInfoType::MAX_ORDERS:
-                    return check_amount_limits(time_shield::sec_of_day(request.timestamp)) ? max_limit_orders : max_orders;
+                case AccountInfoType::OPEN_TRADES: return open_trades;
+                case AccountInfoType::MAX_TRADES:
+                    return check_amount_limits(time_shield::sec_of_day(request.timestamp)) ? max_limit_trades : max_trades;
                 case AccountInfoType::PAYOUT:
                     return static_cast<int64_t>(get_payout(request) * 100.0);
                 case AccountInfoType::MIN_AMOUNT: return static_cast<int64_t>(get_min_amount(request));
@@ -160,6 +161,7 @@ namespace intrade_bar {
                 case AccountInfoType::START_TIME: return time_shield::start_of_day(request.timestamp) + start_time;
                 case AccountInfoType::END_TIME: return time_shield::start_of_day(request.timestamp) + end_time;
                 case AccountInfoType::ORDER_QUEUE_TIMEOUT: return order_queue_timeout;
+                case AccountInfoType::RESPONSE_TIMEOUT: return responce_timeout;
                 case AccountInfoType::ORDER_INTERVAL_MS: return order_interval_ms;
                 default: break;
             }
@@ -285,7 +287,7 @@ namespace intrade_bar {
 
             const int64_t sec_of_day = time_shield::sec_of_day(request.timestamp);
             if (request.symbol == "BTCUSDT" || request.symbol == "BTCUSD") {
-                if (request.option == OptionType::CLASSIC ||
+                if (request.option_type == OptionType::CLASSIC ||
                     request.duration < min_btc_duration ||
                     request.duration > max_duration) {
                     return 0.0;
@@ -305,13 +307,13 @@ namespace intrade_bar {
             }
 
 
-            if (ztime::is_day_off(request.timestamp) ||
+            if (time_shield::is_day_off(request.timestamp) ||
                 sec_of_day < start_time ||
                 sec_of_day >= end_time) {
                 return 0.0;
             }
 
-            if (request.option == OptionType::SPRINT) {
+            if (request.option_type == OptionType::SPRINT) {
                 if (request.duration < time_shield::SEC_PER_MIN ||
                     request.duration == (2 * time_shield::SEC_PER_MIN) ||
                     (request.duration % time_shield::SEC_PER_MIN) != 0 ||
@@ -333,7 +335,7 @@ namespace intrade_bar {
                 }
                 return 0.6;
             } else
-            if (request.option == OptionType::CLASSIC) {
+            if (request.option_type == OptionType::CLASSIC) {
                 if (request.duration > time_shield::SEC_PER_YEAR) {
                     const int64_t expiration = get_classic_bo_expiration(request.timestamp, request.duration);
                     if (expiration == 0) return 0.0;
@@ -344,7 +346,7 @@ namespace intrade_bar {
                     if (timestamp > (time_shield::start_of_day(timestamp) + end_time)) return 0.0;
                 }
                 if (sec_of_day < start_time || sec_of_day >= end_time) return 0.0;
-                if (!check_payout_limits(second_day)) {
+                if (!check_payout_limits(sec_of_day)) {
                     if ((request.currency == CurrencyType::USD && request.amount >= high_payout_usd_amount)||
                         (request.currency == CurrencyType::RUB && request.amount >= high_payout_rub_amount)) {
                         return 0.85;
@@ -363,7 +365,7 @@ namespace intrade_bar {
         /// \param timestamp The current timestamp in seconds.
         /// \param closing_timestamp The intended closing timestamp.
         /// \return Expiration time in seconds, or 0 if invalid.
-        int64_t get_classic_bo_expiration(int64_t timestamp, int64_t closing_timestamp) noexcept {
+        int64_t get_classic_bo_expiration(int64_t timestamp, int64_t closing_timestamp) const {
             const int64_t min_exp = 5 * time_shield::SEC_PER_MIN;
             if ((closing_timestamp % min_exp) != 0) return 0;
             const int64_t diff = closing_timestamp - timestamp;
@@ -376,7 +378,7 @@ namespace intrade_bar {
         /// \param timestamp The initial timestamp in seconds.
         /// \param expiration Expiration time in minutes.
         /// \return Closing timestamp, or 0 if invalid.
-        int64_t get_classic_bo_closing_timestamp(int64_t timestamp, int64_t expiration) noexcept {
+        int64_t get_classic_bo_closing_timestamp(int64_t timestamp, int64_t expiration) const {
             if ((expiration % 5) != 0 || expiration < 5) return 0;
             const int64_t timestamp_future = timestamp + (expiration + 3) * time_shield::SEC_PER_MIN;
             return (timestamp_future - timestamp_future % (5 * time_shield::SEC_PER_MIN));

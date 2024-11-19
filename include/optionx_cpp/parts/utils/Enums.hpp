@@ -5,10 +5,12 @@
 /// \file Enums.hpp
 /// \brief
 
+#include <kurlyk.hpp>
+#include "StringUtils.hpp"
+#include <stdexcept>
+
 namespace optionx {
 
-    /** \brief Типы API
-     */
     enum class ApiType {
         UNKNOWN = 0,
         SIMULATOR,
@@ -17,8 +19,6 @@ namespace optionx {
         REST_API,
     };
 
-    /** \brief Тип опциона
-     */
     enum class OptionType {
         UNKNOWN = 0,
         SPRINT  = 1,
@@ -78,18 +78,21 @@ namespace optionx {
 
     /** \brief Статус ордера
      */
+
+    /// \enum OrderState
+    /// \brief Represents the state of a trade order during its lifecycle.
     enum class OrderState {
-        UNKNOWN = 0,
-        CANCELED_TRADE,
-        WAITING_OPEN,
-        OPEN_SUCCESS,
-        OPEN_ERROR,
-        WAITING_CLOSE,
-        CHECK_ERROR,
-        WIN,
-        LOSS,
-        STANDOFF,
-        REFUND
+        UNKNOWN = 0,    ///< The state of the trade order is unknown.
+        CANCELED_TRADE, ///< The trade was canceled.
+        WAITING_OPEN,   ///< The trade is waiting to be opened.
+        OPEN_SUCCESS,   ///< The trade was successfully opened.
+        OPEN_ERROR,     ///< An error occurred while opening the trade.
+        WAITING_CLOSE,  ///< The trade is waiting to be closed.
+        CHECK_ERROR,    ///< An error occurred while checking the trade result.
+        WIN,            ///< The trade ended with a win.
+        LOSS,           ///< The trade ended with a loss.
+        STANDOFF,       ///< The trade ended in a standoff (draw).
+        REFUND          ///< The trade was refunded (partial or full).
     };
 
     /** \brief Тип информации об аккаунте
@@ -108,8 +111,8 @@ namespace optionx {
         API_TYPE,                 ///< Broker type
         ACCOUNT_TYPE,             ///< Account type (e.g., DEMO, REAL)
         CURRENCY,                 ///< Account currency (e.g., USD, EUR)
-        OPEN_ORDERS,              ///< Number of currently open orders
-        MAX_ORDERS,               ///< Maximum allowable open orders
+        OPEN_TRADES,              ///< Number of currently open trades
+        MAX_TRADES,               ///< Maximum allowable open trades
         PAYOUT,                   ///< Payout percentage
         MIN_AMOUNT,               ///< Minimum trade amount
         MAX_AMOUNT,               ///< Maximum trade amount
@@ -119,13 +122,14 @@ namespace optionx {
         START_TIME,               ///< Start time of the trading day (in seconds from midnight)
         END_TIME,                 ///< End time of the trading day (in seconds from midnight)
         ORDER_QUEUE_TIMEOUT,      ///< Timeout for pending orders in the queue
+        RESPONSE_TIMEOUT,         ///< Timeout for server response related to opening or closing a trade
         ORDER_INTERVAL_MS,        ///< Minimum time interval between consecutive orders, in milliseconds
         SYMBOL_AVAILABILITY,      ///< Availability of a symbol for trading
         OPTION_TYPE_AVAILABILITY, ///< Availability of an OptionType for trading
         ORDER_TYPE_AVAILABILITY,  ///< Availability of an OrderType for trading
         ACCOUNT_TYPE_AVAILABILITY,///< Availability of an AccountType
         CURRENCY_AVAILABILITY,    ///< Availability of a CurrencyType for the account
-        ORDER_LIMIT_NOT_EXCEEDED, ///< Check if the number of open orders is below the maximum limit
+        TRADE_LIMIT_NOT_EXCEEDED, ///< Check if the number of open trades is below the maximum limit
         AMOUNT_BELOW_MAX,         ///< Check if the trade amount does not exceed the maximum allowed amount
         AMOUNT_ABOVE_MIN,         ///< Check if the trade amount meets the minimum required amount
         REFUND_BELOW_MAX,         ///< Check if the refund percentage is within the maximum limit
@@ -152,7 +156,7 @@ namespace optionx {
         PAYOUT_TOO_LOW,               ///< Payout percentage is below the minimum threshold.
         INVALID_DURATION,             ///< Duration is invalid or not supported.
         INVALID_EXPIRY_TIME,          ///< Expiry time is invalid or out of range.
-        LIMIT_OPEN_ORDERS,            ///< Open order limit has been reached.
+        LIMIT_OPEN_TRADES,            ///< Open trades limit has been reached.
         INVALID_REQUEST,              ///< General invalid request.
         LONG_QUEUE_WAIT,              ///< Order waited too long in the queue.
         LONG_RESPONSE_WAIT,           ///< Long wait for server response.
@@ -342,7 +346,8 @@ namespace optionx {
             "Forced client shutdown",
             "Parser error",
             "Canceled",
-            "Insufficient balance"
+            "Insufficient balance",
+            "Server responded with an error",
         };
         return str_data[static_cast<size_t>(value)];
     };
@@ -382,44 +387,52 @@ namespace optionx {
         return data_mode_0[static_cast<size_t>(value)];
     };
 
+    /// \brief Converts a ProxyType enum value to its string representation.
+    /// \param value The ProxyType enum value to convert.
+    /// \return String representation of the ProxyType value.
+    inline const std::string &to_str(const kurlyk::ProxyType value) noexcept {
+        static const std::vector<std::string> proxy_type_strings = {
+            "HTTP",
+            "HTTPS",
+            "HTTP_1_0",
+            "SOCKS4",
+            "SOCKS4A",
+            "SOCKS5",
+            "SOCKS5_HOSTNAME"
+        };
+        return proxy_type_strings[static_cast<size_t>(value)];
+    }
+
     //--------------------------------------------------------------------------
 
+    template <typename EnumType>
+    EnumType to_enum(const std::string &str);
+
     inline const bool to_enum(const std::string &str, ApiType &value) noexcept {
-        static const std::map<std::string, ApiType> data_mode_0 =    {
+        static const std::map<std::string, ApiType> data =    {
             {"UNKNOWN",                 ApiType::UNKNOWN,     },
             {"SIMULATOR",               ApiType::SIMULATOR,   },
             {"CLICKER",                 ApiType::CLICKER,     },
             {"INTRADE_BAR",             ApiType::INTRADE_BAR, },
             {"REST_API",                ApiType::REST_API,    },
         };
-        auto it_mode_0 = data_mode_0.find(str);
-        if (it_mode_0 != data_mode_0.end()) {
-            value = it_mode_0->second;
+        auto it = data.find(to_upper_case(str));
+        if (it != data.end()) {
+            value = it->second;
             return true;
         }
         return false;
     }
 
     inline const bool to_enum(const std::string &str, OptionType &value) noexcept {
-        static const std::map<std::string,OptionType> data_mode_0 = {
+        static const std::map<std::string,OptionType> data = {
             {"UNKNOWN", OptionType::UNKNOWN},
             {"SPRINT", OptionType::SPRINT},
             {"CLASSIC", OptionType::CLASSIC}
         };
-        static const std::map<std::string,OptionType> data_mode_1 = {
-            {"UNKNOWN", OptionType::UNKNOWN},
-            {"sprint", OptionType::SPRINT},
-            {"classic", OptionType::CLASSIC}
-        };
-        auto it_mode_0 = data_mode_0.find(str);
-        if (it_mode_0 != data_mode_0.end()) {
-            value = it_mode_0->second;
-            return true;
-        }
-
-        auto it_mode_1 = data_mode_1.find(str);
-        if (it_mode_1 != data_mode_1.end()) {
-            value = it_mode_1->second;
+        auto it = data.find(to_upper_case(str));
+        if (it != data.end()) {
+            value = it->second;
             return true;
         }
         return false;
@@ -433,72 +446,59 @@ namespace optionx {
         };
         static const std::map<std::string,OrderType> data_mode_1 = {
             {"UNKNOWN", OrderType::UNKNOWN},
-            {"buy", OrderType::BUY},
-            {"sell", OrderType::SELL}
-        };
-        static const std::map<std::string,OrderType> data_mode_2 = {
-            {"UNKNOWN", OrderType::UNKNOWN},
             {"UP", OrderType::BUY},
             {"DN", OrderType::SELL}
         };
-        static const std::map<std::string,OrderType> data_mode_3 = {
-            {"UNKNOWN", OrderType::UNKNOWN},
-            {"up", OrderType::BUY},
-            {"dn", OrderType::SELL}
-        };
-        auto it_mode_0 = data_mode_0.find(str);
+
+        std::string upper_str = to_upper_case(str);
+        auto it_mode_0 = data_mode_0.find(upper_str);
         if (it_mode_0 != data_mode_0.end()) {
             value = it_mode_0->second;
             return true;
         }
 
-        auto it_mode_1 = data_mode_1.find(str);
+        auto it_mode_1 = data_mode_1.find(upper_str);
         if (it_mode_1 != data_mode_1.end()) {
             value = it_mode_1->second;
             return true;
         }
 
-        auto it_mode_2 = data_mode_2.find(str);
-        if (it_mode_2 != data_mode_2.end()) {
-            value = it_mode_2->second;
-            return true;
-        }
-
-        auto it_mode_3 = data_mode_3.find(str);
-        if (it_mode_3 != data_mode_3.end()) {
-            value = it_mode_3->second;
-            return true;
-        }
         return false;
     }
 
     inline const bool to_enum(const std::string &str, AccountType &value) noexcept {
-        static const std::map<std::string,AccountType> data_mode_0 = {
+        static const std::map<std::string, AccountType> account_type_map = {
             {"UNKNOWN", AccountType::UNKNOWN},
             {"DEMO", AccountType::DEMO},
             {"REAL", AccountType::REAL}
         };
-        static const std::map<std::string,AccountType> data_mode_1 = {
-            {"UNKNOWN", AccountType::UNKNOWN},
-            {"Demo", AccountType::DEMO},
-            {"Real", AccountType::REAL}
-        };
-        auto it_mode_0 = data_mode_0.find(str);
-        if (it_mode_0 != data_mode_0.end()) {
-            value = it_mode_0->second;
-            return true;
-        }
 
-        auto it_mode_1 = data_mode_1.find(str);
-        if (it_mode_1 != data_mode_1.end()) {
-            value = it_mode_1->second;
+        auto it = account_type_map.find(to_upper_case(str));
+        if (it != account_type_map.end()) {
+            value = it->second;
             return true;
         }
         return false;
     }
 
+    template <>
+    inline AccountType to_enum<AccountType>(const std::string &str) {
+        static const std::map<std::string, AccountType> account_type_map = {
+            {"UNKNOWN", AccountType::UNKNOWN},
+            {"DEMO", AccountType::DEMO},
+            {"REAL", AccountType::REAL}
+        };
+
+        auto it = account_type_map.find(to_upper_case(str));
+        if (it != account_type_map.end()) {
+            return it->second;
+        }
+
+        throw std::invalid_argument("Invalid AccountType string: " + str);
+    }
+
     inline const bool to_enum(const std::string &str, CurrencyType &value) noexcept {
-        static const std::map<std::string,CurrencyType> data_mode_0 = {
+        static const std::map<std::string, CurrencyType> currency_type_map = {
             {"UNKNOWN", CurrencyType::UNKNOWN},
             {"USD",     CurrencyType::USD},
             {"EUR",     CurrencyType::EUR},
@@ -511,31 +511,37 @@ namespace optionx {
             {"UAH",     CurrencyType::UAH},
             {"KZT",     CurrencyType::KZT}
         };
-        static const std::map<std::string,CurrencyType> data_mode_1 = {
-            {"UNKNOWN", CurrencyType::UNKNOWN},
-            {"usd",     CurrencyType::USD},
-            {"eur",     CurrencyType::EUR},
-            {"gbp",     CurrencyType::GBP},
-            {"btc",     CurrencyType::BTC},
-            {"eth",     CurrencyType::ETH},
-            {"usdt",    CurrencyType::USDT},
-            {"usdc",    CurrencyType::USDC},
-            {"rub",     CurrencyType::RUB},
-            {"uah",     CurrencyType::UAH},
-            {"kzt",     CurrencyType::KZT}
-        };
-        auto it_mode_0 = data_mode_0.find(str);
-        if (it_mode_0 != data_mode_0.end()) {
-            value = it_mode_0->second;
-            return true;
-        }
 
-        auto it_mode_1 = data_mode_1.find(str);
-        if (it_mode_1 != data_mode_1.end()) {
-            value = it_mode_1->second;
+        auto it = currency_type_map.find(to_upper_case(str));
+        if (it != currency_type_map.end()) {
+            value = it->second;
             return true;
         }
         return false;
+    }
+
+    template <>
+    inline CurrencyType to_enum<CurrencyType>(const std::string &str) {
+        static const std::map<std::string, CurrencyType> currency_type_map = {
+            {"UNKNOWN", CurrencyType::UNKNOWN},
+            {"USD",     CurrencyType::USD},
+            {"EUR",     CurrencyType::EUR},
+            {"GBP",     CurrencyType::GBP},
+            {"BTC",     CurrencyType::BTC},
+            {"ETH",     CurrencyType::ETH},
+            {"USDT",    CurrencyType::USDT},
+            {"USDC",    CurrencyType::USDC},
+            {"RUB",     CurrencyType::RUB},
+            {"UAH",     CurrencyType::UAH},
+            {"KZT",     CurrencyType::KZT}
+        };
+
+        auto it = currency_type_map.find(to_upper_case(str));
+        if (it != currency_type_map.end()) {
+            return it->second;
+        }
+
+        throw std::invalid_argument("Invalid CurrencyType string: " + str);
     }
 
     inline const bool to_enum(const std::string &str, OrderState &value) noexcept {
@@ -551,7 +557,7 @@ namespace optionx {
             {"STANDOFF",                OrderState::STANDOFF,       },
             {"REFUND",                  OrderState::REFUND,         }
         };
-        auto it_mode_0 = data_mode_0.find(str);
+        auto it_mode_0 = data_mode_0.find(to_upper_case(str));
         if (it_mode_0 != data_mode_0.end()) {
             value = it_mode_0->second;
             return true;
@@ -578,12 +584,36 @@ namespace optionx {
             {"SKU_SYMBOL",             MmSystemType::SKU_SYMBOL,            },
             {"SKU_BAR",                MmSystemType::SKU_BAR                }
         };
-        auto it_mode_0 = data_mode_0.find(str);
+        auto it_mode_0 = data_mode_0.find(to_upper_case(str));
         if (it_mode_0 != data_mode_0.end()) {
             value = it_mode_0->second;
             return true;
         }
         return false;
+    }
+
+    /// \brief Converts a string to its corresponding ProxyType enum value.
+    /// \param str The string representation of the ProxyType value.
+    /// \return The ProxyType enum value corresponding to the string.
+    /// \throws std::invalid_argument if the string does not match any ProxyType value.
+    template <>
+    inline kurlyk::ProxyType to_enum<kurlyk::ProxyType>(const std::string &str) {
+        static const std::map<std::string, kurlyk::ProxyType> proxy_type_map = {
+            {"HTTP", kurlyk::ProxyType::HTTP},
+            {"HTTPS", kurlyk::ProxyType::HTTPS},
+            {"HTTP_1_0", kurlyk::ProxyType::HTTP_1_0},
+            {"SOCKS4", kurlyk::ProxyType::SOCKS4},
+            {"SOCKS4A", kurlyk::ProxyType::SOCKS4A},
+            {"SOCKS5", kurlyk::ProxyType::SOCKS5},
+            {"SOCKS5_HOSTNAME", kurlyk::ProxyType::SOCKS5_HOSTNAME}
+        };
+
+        auto it = proxy_type_map.find(to_upper_case(str));
+        if (it != proxy_type_map.end()) {
+            return it->second;
+        }
+
+        throw std::invalid_argument("Invalid ProxyType string: " + str);
     }
 
 }; // namespace optionx

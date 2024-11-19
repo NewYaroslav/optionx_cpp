@@ -18,10 +18,11 @@ namespace optionx {
         double          amount      = 0.0;                      ///< Option amount.
         double          refund      = 0.0;                      ///< Refund percentage (0 to 1.0).
         double          min_payout  = 0.0;                      ///< Minimum payout percentage, if supported (from 0 to 1.0).
+        int64_t         account_id  = 0;                        ///< Identifier for the account.
         AccountType     account_type = AccountType::UNKNOWN;    ///< Account type, if supported.
         CurrencyType    currency    = CurrencyType::UNKNOWN;    ///< Account currency, if supported.
-        OptionType      option      = OptionType::UNKNOWN;      ///< Option type.
-        OrderType       order       = OrderType::UNKNOWN;       ///< Order type.
+        OptionType      option_type = OptionType::UNKNOWN;      ///< Option type.
+        OrderType       order_type  = OrderType::UNKNOWN;       ///< Order type.
         int             duration    = 0;                        ///< Option duration.
         int64_t         expiry_time = 0;                        ///< Expiration timestamp (Unix, sec).
         int64_t         timestamp   = 0;                        ///< General timestamp (Unix, sec).
@@ -35,10 +36,11 @@ namespace optionx {
             amount      = request.amount;
             refund      = request.refund;
             min_payout  = request.min_payout;
+            account_id = request.account_id;
             account_type = request.account_type;
             currency    = request.currency;
-            option      = request.option;
-            order       = request.order;
+            option_type = request.option_type;
+            order_type  = request.order_type;
             duration    = request.duration;
             expiry_time = request.expiry_time;
         }
@@ -53,10 +55,11 @@ namespace optionx {
                 amount      = request->amount;
                 refund      = request->refund;
                 min_payout  = request->min_payout;
+                account_id  = request->account_id;
                 account_type = request->account_type;
                 currency    = request->currency;
-                option      = request->option;
-                order       = request->order;
+                option_type = request->option_type;
+                order_type  = request->order_type;
                 duration    = request->duration;
                 expiry_time = request->expiry_time;
             }

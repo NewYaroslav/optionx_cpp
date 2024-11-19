@@ -118,13 +118,13 @@ namespace optionx {
 
     /// \brief Extracts a substring from the source string following a delimiter.
     /// \param source Source string.
-    /// \param div_beg Starting delimiter.
+    /// \param delimiter Starting delimiter.
     /// \param out Output substring.
     /// \return Position of the delimiter in the source string.
-    std::size_t get_string_fragment(const std::string &source, const std::string &div_beg, std::string &out) {
-        std::size_t beg_pos = source.find(div_beg);
+    std::size_t extract_after(const std::string &source, const std::string &delimiter, std::string &out) {
+        std::size_t beg_pos = source.find(delimiter);
         if (beg_pos != std::string::npos) {
-            out = source.substr(beg_pos + div_beg.size());
+            out = source.substr(beg_pos + delimiter.size());
             return beg_pos;
         }
         return std::string::npos;
@@ -132,23 +132,23 @@ namespace optionx {
 
     /// \brief Extracts a substring from the source string between two delimiters.
     /// \param source Source string.
-    /// \param div_beg Starting delimiter.
-    /// \param div_end Ending delimiter.
+    /// \param start_delimiter Starting delimiter.
+    /// \param end_delimiter Ending delimiter.
     /// \param out Output substring.
     /// \param start_pos Starting position for search.
     /// \return Position of the ending delimiter in the source string.
-    std::size_t get_string_fragment(
+    std::size_t extract_between(
         const std::string &source,
-        const std::string &div_beg,
-        const std::string &div_end,
+        const std::string &start_delimiter,
+        const std::string &end_delimiter,
         std::string &out,
         std::size_t start_pos = 0) {
 
-        std::size_t beg_pos = source.find(div_beg, start_pos);
+        std::size_t beg_pos = source.find(start_delimiter, start_pos);
         if (beg_pos != std::string::npos) {
-            std::size_t end_pos = source.find(div_end, beg_pos + div_beg.size());
+            std::size_t end_pos = source.find(end_delimiter, beg_pos + start_delimiter.size());
             if (end_pos != std::string::npos) {
-                out = source.substr(beg_pos + div_beg.size(), end_pos - beg_pos - div_beg.size());
+                out = source.substr(beg_pos + start_delimiter.size(), end_pos - beg_pos - start_delimiter.size());
                 return end_pos;
             }
         }
