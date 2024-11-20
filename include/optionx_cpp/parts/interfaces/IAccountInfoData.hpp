@@ -100,7 +100,7 @@ namespace optionx {
         /// \param trade_request Shared pointer to a TradeRequest instance.
         /// \param timestamp Timestamp to use for the request (optional).
         template<class T>
-        const T get_account_info(AccountInfoType info_type, std::shared_ptr<TradeRequest>& trade_request, int64_t timestamp = 0) {
+        const T get_account_info(AccountInfoType info_type, const std::shared_ptr<TradeRequest>& trade_request, int64_t timestamp = 0) {
             AccountInfoRequest request(trade_request, info_type);
             request.timestamp = timestamp;
             return get_account_info<T>(request);

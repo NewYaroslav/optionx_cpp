@@ -162,7 +162,7 @@ namespace optionx {
         LONG_RESPONSE_WAIT,           ///< Long wait for server response.
         NO_CONNECTION,                ///< No network connection.
         CLIENT_FORCED_CLOSE,          ///< Client closed forcibly.
-        PARSER_ERROR,                 ///< Parsing error occurred.
+        PARSING_ERROR,                ///< Parsing error occurred.
         CANCELED_TRADE,               ///< Trade was canceled by user or system.
         INSUFFICIENT_BALANCE          ///< Trade amount exceeds available account balance.
     };

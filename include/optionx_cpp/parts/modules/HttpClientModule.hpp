@@ -15,9 +15,15 @@
 #include "events/TradeRequestEvent.hpp"
 #include "events/TradeStatusEvent.hpp"
 #include "events/ConnectRequestEvent.hpp"
+#include "events/ConnectionStatusEvent.hpp"
+#include "events/PriceUpdateEvent.hpp"
 #include <kurlyk.hpp>
 #include <log-it/LogIt.hpp>
 #include <array>
+
+#ifndef OPTIONX_TIMESTAMP_MS
+#define OPTIONX_TIMESTAMP_MS time_shield::timestamp_ms()
+#endif
 
 namespace optionx {
 namespace modules {
@@ -29,12 +35,13 @@ namespace modules {
         /// \enum RateLimitType
         /// \brief Defines the types of rate limits for HTTP requests.
         enum class RateLimitType : size_t {
-            GENERAL,                ///< Genreal limit for all requests.
-            OPEN_TRADE,             ///< Limit for trade opening requests.
+            GENERAL,                ///< General limit for all requests.
+            TRADE_EXECUTION,        ///< Limit for trade opening requests.
             TRADE_RESULT,           ///< Limit for trade result requests.
             BALANCE,                ///< Limit for balance requests.
             ACCOUNT_INFO,           ///< Limit for account information requests.
             ACCOUNT_SETTINGS,       ///< Limit for account type or currency change requests.
+            TICK_DATA,              ///< Limit for tick data requests.
             COUNT                   ///< Total number of rate limit types.
         };
 

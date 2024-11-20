@@ -84,14 +84,14 @@ namespace optionx {
         /// \brief Constructs AccountInfoRequest from a unique pointer to TradeRequest.
         /// \param request Unique pointer to the trade request containing initial data.
         /// \param info_type The type of account information to request.
-        AccountInfoRequest(std::unique_ptr<TradeRequest>& request, AccountInfoType info_type = AccountInfoType::UNKNOWN) {
+        AccountInfoRequest(const std::unique_ptr<TradeRequest>& request, AccountInfoType info_type = AccountInfoType::UNKNOWN) {
             set_data(request.get(), info_type);
         }
 
         /// \brief Constructs AccountInfoRequest from a shared pointer to TradeRequest.
         /// \param request Shared pointer to the trade request containing initial data.
         /// \param info_type The type of account information to request.
-        AccountInfoRequest(std::shared_ptr<TradeRequest>& request, AccountInfoType info_type = AccountInfoType::UNKNOWN) {
+        AccountInfoRequest(const std::shared_ptr<TradeRequest>& request, AccountInfoType info_type = AccountInfoType::UNKNOWN) {
             set_data(request.get(), info_type);
         }
 

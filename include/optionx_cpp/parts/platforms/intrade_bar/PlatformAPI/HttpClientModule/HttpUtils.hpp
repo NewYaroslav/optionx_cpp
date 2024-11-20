@@ -139,6 +139,16 @@ namespace intrade_bar {
         return true;
     }
 
+    std::string normalize_symbol_name(std::string symbol) {
+        for (;;) {
+            auto it_str = symbol.find('/');
+            if(it_str != std::string::npos) symbol.erase(it_str, 1);
+            else break;
+        }
+        if (symbol == "BTCUSD") return "BTCUSDT";
+        return symbol;
+    }
+
 } // namespace intrade_bar
 } // namespace platforms
 } // namespace optionx

@@ -11,6 +11,7 @@
 #include "events/AccountInfoEvent.hpp"
 #include "events/BalanceRequestEvent.hpp"
 #include "events/TradeStatusEvent.hpp"
+#include "events/PriceUpdateEvent.hpp"
 #include <chrono>
 #include <list>
 #include <mutex>
@@ -38,6 +39,9 @@ namespace modules {
         void on_event(const std::shared_ptr<Event>& event) override {
             if (auto msg = std::dynamic_pointer_cast<AuthDataEvent>(event)) {
                 handle_event(*msg);
+            } else
+            if (auto msg = std::dynamic_pointer_cast<PriceUpdateEvent>(event)) {
+                handle_event(*msg);
             }
         }
 
@@ -45,6 +49,9 @@ namespace modules {
         /// \param event The event received, passed as a raw pointer.
         void on_event(const Event* const event) override {
             if (const auto* msg = dynamic_cast<const AuthDataEvent*>(event)) {
+                handle_event(*msg);
+            } else
+            if (const auto* msg = dynamic_cast<const PriceUpdateEvent*>(event)) {
                 handle_event(*msg);
             }
         }
@@ -77,6 +84,34 @@ namespace modules {
         /// \param event The authorization data event.
         virtual void handle_event(const AuthDataEvent& event) = 0;
 
+        /// \brief Processes the current state of the transaction based on order type and prices.
+        /// \param result Shared pointer to the transaction result.
+        /// \param request Shared pointer to the order request.
+        /// \param tick The tick information associated with the symbol.
+        /// \return The new order state.
+        virtual OrderState process_current_state(const std::shared_ptr<OrderResult>& result,
+                                                 const std::shared_ptr<OrderRequest>& request,
+                                                 const TickInfo& tick) const {
+            if (!result->open_price) {
+                return OrderState::STANDOFF;
+            }
+
+            double open_close_price = tick.get_average_price();
+            if (request->order_type == OrderType::BUY) {
+                if (open_close_price > result->open_price) return OrderState::WIN;
+                if (open_close_price < result->open_price) return OrderState::LOSS;
+                return OrderState::STANDOFF;
+            }
+
+            if (request->order_type == OrderType::SELL) {
+                if (open_close_price < result->open_price) return OrderState::WIN;
+                if (open_close_price > result->open_price) return OrderState::LOSS;
+                return OrderState::STANDOFF;
+            }
+
+            return OrderState::STANDOFF;
+        }
+
         /// \brief Retrieves the API type of the account.
         /// \return ApiType of the account.
         virtual ApiType get_api_type() = 0;
@@ -94,6 +129,21 @@ namespace modules {
         int64_t                             m_open_trades = 0;              ///< Number of currently tracked open trades (confirmed + pending).
         mutable std::mutex                  m_trade_result_mutex;           ///<
         trade_result_callback_t             m_trade_result_callback;        ///<
+
+        void handle_event(const PriceUpdateEvent& event) {
+            for (auto& transaction : m_open_transactions) {
+                auto& request = transaction->request;
+                auto& result = transaction->result;
+                if (result->state != OrderState::OPEN_SUCCESS) continue;
+
+                auto tick = event.get_tick_by_symbol(request->symbol);
+                if (!tick.is_initialized()) continue;
+
+                result->open_close = tick.get_average_price();
+                result->current_state = process_current_state(result, request, tick);
+                invoke_callback(transaction);
+            }
+        }
 
         /// \brief Processes all pending trade transactions.
         void process_pending_orders();
@@ -249,7 +299,7 @@ namespace modules {
                 result->state       = result->current_state = OrderState::WAITING_OPEN;
                 result->send_date   = OPTIONX_TIMESTAMP_MS;
                 result->balance     = get_account_info(AccountInfoType::BALANCE, request);
-                result->payout      = get_account_info(AccountInfoType::PAYOUT, request, result->send_date);
+                result->payout      = get_account_info(AccountInfoType::PAYOUT, request, time_shield::ms_to_sec(result->open_date));
 
                 TradeRequestEvent trade_request_event(request, result);
                 notify(trade_request_event);
@@ -287,9 +337,9 @@ namespace modules {
             // Calculate close date based on the option type
             const int64_t close_date = result->close_date > 0 ?
                 result->close_date : (request->option == OptionType::SPRINT ?
-                (result->open_date > 0 ? (result->open_date + request->duration) :
-                (result->send_date + request->duration)) : (request->option == OptionType::CLASSIC ?
-                request->expiry_time : 0));
+                (result->open_date > 0 ? (result->open_date + time_shield::sec_to_ms(request->duration)) :
+                (result->send_date + time_shield::sec_to_ms(request->duration))) : (request->option == OptionType::CLASSIC ?
+                time_shield::sec_to_ms(request->expiry_time) : 0));
 
             // Handle invalid close date
             if (close_date == 0) {
@@ -303,7 +353,7 @@ namespace modules {
             }
 
             // Get the maximum allowed time for response
-            const int64_t max_date = get_account_info(AccountInfoType::RESPONSE_TIMEOUT) + close_date;
+            const int64_t max_date = time_shield::sec_to_ms(get_account_info<int64_t>(AccountInfoType::RESPONSE_TIMEOUT)) + close_date;
 
             // If it's not time to close the option yet, skip
             if (timestamp < close_date) {
@@ -357,7 +407,7 @@ namespace modules {
     void OrderManagerModule::process_calceled_transactions(std::list<transaction_t>& calceled_transactions) {
         const int64_t timestamp = OPTIONX_TIMESTAMP_MS;
         for (auto &transaction : calceled_transactions) {
-            finalize_transaction_with_open_error(transaction, OrderErrorCode::LONG_QUEUE_WAIT, timestamp);
+            finalize_transaction_with_error(transaction, OrderErrorCode::LONG_QUEUE_WAIT, OrderState::OPEN_ERROR, timestamp);
         }
     }
 
@@ -396,7 +446,7 @@ namespace modules {
 
     OrderErrorCode OrderManagerModule::check_transaction(const std::shared_ptr<TradeRequest>& request) {
         if (request->symbol.empty()) return OrderErrorCode::INVALID_SYMBOL;
-        const int64_t timestamp = OPTIONX_TIMESTAMP_MS;
+        const int64_t timestamp = time_shield::ms_to_sec(OPTIONX_TIMESTAMP_MS);
 
         if (!m_account_info) return OrderErrorCode::NO_CONNECTION;
         if (!get_account_info<bool>(AccountInfoType::CONNECTION_STATUS)) return OrderErrorCode::NO_CONNECTION;

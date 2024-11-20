@@ -16,11 +16,11 @@ namespace modules {
     /// \brief Represents a response event containing information about account balance.
     class BalanceResponseEvent : public Event {
     public:
-        std::shared_ptr<TradeRequest> request;  ///< Shared pointer to the original trade request.
-        std::shared_ptr<TradeResult> result;    ///< Shared pointer to the trade result details.
-        double balance;                         ///< Retrieved account balance.
-        CurrencyType currency;                  ///< Currency type of the account.
-        AccountType account_type;               ///< Type of account (e.g., demo or real).
+        std::shared_ptr<TradeRequest> request;      ///< Shared pointer to the original trade request.
+        std::shared_ptr<TradeResult>  result;       ///< Shared pointer to the trade result details.
+        double                        balance;      ///< Retrieved account balance.
+        CurrencyType                  currency;     ///< Currency type of the account.
+        AccountType                   account_type; ///< Type of account (e.g., demo or real).
 
         /// \brief Constructor initializing response details for a balance request.
         /// \param trade_request Shared pointer to the original trade request.

@@ -156,6 +156,178 @@ namespace intrade_bar {
         return std::make_tuple(req_id, req_value, cookies);
     }
 
+    /// \brief Extracts user_id and user_hash from a cookies string.
+    /// \param cookies The input string containing cookies.
+    /// \param user_id [out] The extracted user_id.
+    /// \param user_hash [out] The extracted user_hash.
+    /// \return True if both user_id and user_hash are found, otherwise false.
+    bool parse_cookies(const std::string& cookies, std::string& user_id, std::string& user_hash) {
+        std::unordered_map<std::string, std::string> cookie_map;
+        std::istringstream cookie_stream(cookies);
+        std::string cookie;
+
+        // Parse the cookies string
+        while (std::getline(cookie_stream, cookie, ';')) {
+            size_t pos = cookie.find('=');
+            if (pos != std::string::npos) {
+                std::string key = cookie.substr(0, pos);
+                std::string value = cookie.substr(pos + 1);
+
+                // Trim leading and trailing whitespace
+                key.erase(0, key.find_first_not_of(" \t"));
+                key.erase(key.find_last_not_of(" \t") + 1);
+                value.erase(0, value.find_first_not_of(" \t"));
+                value.erase(value.find_last_not_of(" \t") + 1);
+
+                cookie_map[key] = value;
+            }
+        }
+
+        // Extract user_id and user_hash
+        auto id_it = cookie_map.find("user_id");
+        auto hash_it = cookie_map.find("user_hash");
+
+        if (id_it != cookie_map.end() && hash_it != cookie_map.end()) {
+            user_id = id_it->second;
+            user_hash = hash_it->second;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// \brief Parses the response content of a trade open request.
+    /// \param content The server response content as a string.
+    /// \param request A shared pointer to the TradeRequest containing request details.
+    /// \param result A shared pointer to the TradeResult where the parsed result will be stored.
+    /// \return True if the response was successfully parsed, false otherwise.
+    bool parse_execute_trade(
+            const std::string& content,
+            std::shared_ptr<TradeRequest> request,
+            std::shared_ptr<TradeResult> result) {
+        if (!result || !request) {
+            LOGIT_ERROR("TradeResult or TradeRequest is null.");
+            return false;
+        }
+
+        const int64_t timestamp = OPTIONX_TIMESTAMP_MS;
+
+        try {
+            // Check for error indicators in the response
+            if (content.find("error") != std::string::npos) {
+    #           ifdef OPTIONX_LOG_UNIQUE_FILE_INDEX
+                const int log_index = OPTIONX_LOG_UNIQUE_FILE_INDEX;
+                LOGIT_STREAM_ERROR_TO(log_index) << content;
+                LOGIT_PRINT_ERROR(
+                    "Trade open failed. Response contains 'error'. Content log was written to file: ",
+                    LOGIT_GET_LAST_FILE_NAME(log_index)
+                );
+    #           else
+                LOGIT_PRINT_ERROR("Trade open failed. Response contains 'error'.");
+    #           endif
+                result->state = result->current_state = OrderState::OPEN_ERROR;
+                result->error_code = OrderErrorCode::PARSING_ERROR;
+                result->error_desc = "Trade open failed. Response contains 'error'.";
+                result->delay = timestamp - result->send_date;
+                result->ping = result->delay / 2;
+                result->open_date = timestamp;
+                result->close_date = request->option_type == OptionType::SPRINT
+                                     ? timestamp + time_shield::sec_to_ms(request->duration)
+                                     : time_shield::sec_to_ms(request->expiry_time);
+                return false;
+            }
+
+            if (content.find("alert") != std::string::npos) {
+    #           ifdef OPTIONX_LOG_UNIQUE_FILE_INDEX
+                const int log_index = OPTIONX_LOG_UNIQUE_FILE_INDEX;
+                LOGIT_STREAM_ERROR_TO(log_index) << content;
+                LOGIT_PRINT_ERROR(
+                    "Trade open failed. Response contains 'alert'. Content log was written to file: ",
+                    LOGIT_GET_LAST_FILE_NAME(log_index)
+                );
+    #           else
+                LOGIT_PRINT_ERROR("Trade open failed. Response contains 'alert'.");
+    #           endif
+                result->state = result->current_state = OrderState::OPEN_ERROR;
+                result->error_code = OrderErrorCode::PARSING_ERROR;
+                result->error_desc = "Trade open failed. Response contains 'alert'.";
+                result->delay = timestamp - result->send_date;
+                result->ping = result->delay / 2;
+                result->open_date = timestamp;
+                result->close_date = request->option_type == OptionType::SPRINT
+                                     ? timestamp + time_shield::sec_to_ms(request->duration)
+                                     : time_shield::sec_to_ms(request->expiry_time);
+                return false;
+            }
+
+            // Extract data fields
+            std::string str_data_id, str_data_timeopen, str_data_rate;
+
+            if (extract_between(content, "data-id=\"", "\"", str_data_id) == std::string::npos) {
+                LOGIT_ERROR("Failed to extract id.");
+                result->state = result->current_state = OrderState::OPEN_ERROR;
+                result->error_code = OrderErrorCode::PARSING_ERROR;
+                result->error_desc = "Failed to extract id.";
+                result->delay = timestamp - result->send_date;
+                result->ping = result->delay / 2;
+                result->open_date = timestamp;
+                result->close_date = request->option_type == OptionType::SPRINT
+                                     ? timestamp + time_shield::sec_to_ms(request->duration)
+                                     : time_shield::sec_to_ms(request->expiry_time);
+                return false;
+            }
+            result->option_id = std::stoull(str_data_id);
+
+            if (extract_between(content, "data-timeopen=\"", "\"", str_data_timeopen) == std::string::npos) {
+                LOGIT_ERROR("Failed to extract timeopen.");
+                result->state = result->current_state = OrderState::OPEN_ERROR;
+                result->error_code = OrderErrorCode::PARSING_ERROR;
+                result->error_desc = "Failed to extract timeopen.";
+                result->delay = timestamp - result->send_date;
+                result->ping = result->delay / 2;
+                result->open_date = timestamp;
+                result->close_date = request->option_type == OptionType::SPRINT
+                                     ? timestamp + time_shield::sec_to_ms(request->duration)
+                                     : time_shield::sec_to_ms(request->expiry_time);
+                return false;
+            }
+            result->open_date = time_shield::sec_to_ms(std::stoull(str_data_timeopen));
+            result->delay = timestamp - result->open_date;
+            result->ping = result->delay / 2;
+
+            if (extract_between(content, "data-rate=\"", "\"", str_data_rate) == std::string::npos) {
+                LOGIT_ERROR("Failed to extract rate.");
+                result->state = result->current_state = OrderState::OPEN_ERROR;
+                result->error_code = OrderErrorCode::PARSING_ERROR;
+                result->error_desc = "Failed to extract rate.";
+                result->open_date = timestamp;
+                result->close_date = request->option_type == OptionType::SPRINT
+                                     ? timestamp + time_shield::sec_to_ms(request->duration)
+                                     : time_shield::sec_to_ms(request->expiry_time);
+                return false;
+            }
+
+            // Parse extracted values
+            result->open_price = result->close_price = std::stod(str_data_rate);
+            result->state = OrderState::OPEN_SUCCESS;
+            result->error_code = OrderErrorCode::SUCCESS;
+            return true;
+
+        } catch (const std::exception& ex) {
+            LOGIT_ERROR("Exception while parsing trade response: ", ex.what());
+            result->state = result->current_state = OrderState::OPEN_ERROR;
+            result->error_code = OrderErrorCode::PARSING_ERROR;
+            result->error_desc = "Exception while parsing trade response: " + std::string(ex.what());
+            result->delay = timestamp - result->open_date;
+            result->ping = result->delay / 2;
+            result->open_date = timestamp;
+            result->close_date = request->option_type == OptionType::SPRINT
+                                 ? timestamp + time_shield::sec_to_ms(request->duration)
+                                 : time_shield::sec_to_ms(request->expiry_time);
+        }
+        return false;
+    }
+
 } // namespace intrade_bar
 } // namespace platforms
 } // namespace optionx

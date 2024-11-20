@@ -46,10 +46,10 @@ namespace intrade_bar {
         }
 
         /// \brief Sets authorization data using username and token.
-        /// \param user Username.
+        /// \param user_id User ID.
         /// \param token Token.
-        void set_user_token(const std::string& user, const std::string& token) {
-            this->user = user;
+        void set_user_token(const std::string& user_id, const std::string& token) {
+            this->user_id = user_id;
             this->token = token;
             auth_method = AuthMethod::USER_TOKEN;
         }
@@ -96,7 +96,7 @@ namespace intrade_bar {
                     j["email"] = email;
                     j["password"] = password;
                 } else if (auth_method == AuthMethod::USER_TOKEN) {
-                    j["user"] = user;
+                    j["user_id"] = user_id;
                     j["token"] = token;
                 } else {
                     return false;
@@ -125,8 +125,8 @@ namespace intrade_bar {
                     email = j.at("email").get<std::string>();
                     password = j.at("password").get<std::string>();
                     auth_method = AuthMethod::EMAIL_PASSWORD;
-                } else if (j.contains("user") && j.contains("token")) {
-                    user = j.at("user").get<std::string>();
+                } else if (j.contains("user_id") && j.contains("token")) {
+                    user_id = j.at("user_id").get<std::string>();
                     token = j.at("token").get<std::string>();
                     auth_method = AuthMethod::USER_TOKEN;
                 } else {
@@ -154,7 +154,7 @@ namespace intrade_bar {
             if (auth_method == AuthMethod::EMAIL_PASSWORD) {
                 return !email.empty() && !password.empty();
             } else if (auth_method == AuthMethod::USER_TOKEN) {
-                return !user.empty() && !token.empty();
+                return !user_id.empty() && !token.empty();
             }
             return false;
         }
@@ -181,7 +181,7 @@ namespace intrade_bar {
         CurrencyType currency    = CurrencyType::UNKNOWN;   ///< Account currency, if supported.
         std::string email;          ///< Email for email/password authentication.
         std::string password;       ///< Password for email/password authentication.
-        std::string user;           ///< Username for user/token authentication.
+        std::string user_id;        ///< Username for user/token authentication.
         std::string token;          ///< Token for user/token authentication.
         std::string user_agent;     ///<
         std::string accept_language;///<

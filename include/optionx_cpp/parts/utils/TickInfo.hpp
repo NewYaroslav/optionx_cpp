@@ -51,6 +51,33 @@ namespace optionx {
         void initialize() {
             flags |= INIT_FLAG;
         }
+
+        /// \brief Computes the average price from the bid and ask prices.
+        /// \return The average price.
+        /// \throws std::out_of_range if the number of digits exceeds the predefined range.
+        double get_average_price() const {
+            const double price_scale = (double)get_price_scale();
+            return static_cast<double>(
+                        static_cast<uint64_t>(((tick.bid + tick.ask) / 2.0) * price_scale + 0.5)
+                    ) / price_scale;
+        }
+
+        /// \brief Gets the price scale based on the number of digits.
+        /// \return The price scale as a power of 10.
+        /// \throws std::out_of_range if the number of digits exceeds the predefined range.
+        uint64_t get_price_scale() const {
+            constexpr size_t MAX_DIGITS = 18;
+            static constexpr std::array<uint64_t, MAX_DIGITS + 1> PRICE_SCALES = {
+                1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000,
+                1000000000, 10000000000, 100000000000, 1000000000000,
+                10000000000000, 100000000000000, 1000000000000000,
+                10000000000000000, 100000000000000000, 1000000000000000000
+            };
+            if (digits > MAX_DIGITS) {
+                throw std::out_of_range("Digits exceed maximum supported precision.");
+            }
+            return PRICE_SCALES[digits];
+        }
     }; // TickInfo
 
 }; // namespace optionx
