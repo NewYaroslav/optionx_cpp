@@ -6,13 +6,22 @@
 /// \brief Defines the IPlatformAPI interface for interacting with various trading platforms and APIs.
 
 #include "../../interfaces/IPlatformAPI.hpp"
+#include "PlatformAPI/HttpClientModule.hpp"
+#include "AccountInfoData.hpp"
+#include "AuthData.hpp"
 
 namespace optionx {
 namespace platforms {
 namespace intrade_bar {
 
+    /// \class PlatformAPI
+    /// \brief
     class PlatformAPI final : public IPlatformAPI {
     public:
+
+        PlatformAPI() m_event_hub(),  {
+
+        }
 
         /// \brief Sets a callback for trade result events, including open, close, and errors.
         /// \param callback Function to handle trade result events.
@@ -71,6 +80,9 @@ namespace intrade_bar {
         virtual ~IPlatformAPI() = default;
 
     private:
+
+        EventHub         m_event_hub;
+        HttpClientModule m_http_client;
 
         /// \brief Retrieves account information as a boolean value.
         /// \param request The request specifying the type of information to retrieve.

@@ -36,7 +36,6 @@ namespace intrade_bar {
     private:
         kurlyk::Headers             m_http_headers;
         kurlyk::Headers             m_api_headers;
-        //kurlyk::Headers             m_profile_headers;
         utils::PeriodicTask         m_balance_task;
         utils::PeriodicTask         m_price_task;
         std::unique_ptr<AuthData>   m_auth_data;
