@@ -114,7 +114,7 @@ namespace utils {
             case TaskType::DELAYED_PERIODIC:
                 return (current_time_ms >= m_next_execution_time);
             case TaskType::ON_DATE:
-                return (current_time_ms >= m_next_execution_time);
+                return (current_time_ms >= m_timestamp_ms);
             case TaskType::PERIODIC_ON_DATE:
                 return (current_time_ms >= m_timestamp_ms);
             default:
@@ -175,6 +175,19 @@ namespace utils {
 #           endif
         }
 
+        /// \brief Gets the task's next execution time.
+        int64_t get_next_execution_time() const {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            return m_execution_time;
+        }
+
+        /// \brief Calculates the delay between the scheduled execution time and the actual execution time.
+        /// \return The delay in milliseconds.
+        int64_t get_delay() const {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            return get_current_time() - m_execution_time;
+        }
+
         /// \brief Shuts down the task, preventing further execution.
         void shutdown() {
             std::lock_guard<std::mutex> lock(m_mutex);
@@ -188,11 +201,6 @@ namespace utils {
             m_completed = true;
         }
 
-        /// \brief Gets the task's next execution time.
-        int64_t get_next_execution_time() const {
-            return m_next_execution_time;
-        }
-
 		/// \brief Executes the task's callback.
         void process(int64_t current_time_ms, std::shared_ptr<Task> task) {
             if (m_completed) return;
@@ -200,6 +208,7 @@ namespace utils {
             switch (m_type) {
             case TaskType::SINGLE: {
                 std::unique_lock<std::mutex> lock(m_mutex);
+                m_execution_time = m_reschedule_time ? m_reschedule_time : m_start_time;
                 if (current_time_ms >= m_reschedule_time || m_force_execute || m_shutdown) {
                     m_reschedule_time = 0;
                     lock.unlock();
@@ -210,6 +219,7 @@ namespace utils {
             }
             case TaskType::DELAYED_SINGLE: {
                 std::unique_lock<std::mutex> lock(m_mutex);
+                m_execution_time = m_next_execution_time;
                 if (current_time_ms >= m_next_execution_time || m_force_execute || m_shutdown) {
                     lock.unlock();
                     m_completed = true;
@@ -219,6 +229,7 @@ namespace utils {
             }
             case TaskType::PERIODIC: {
                 std::unique_lock<std::mutex> lock(m_mutex);
+                m_execution_time = m_start_time;
                 if (current_time_ms >= m_start_time || m_force_execute || m_shutdown) {
                     while (current_time_ms >= m_start_time) {
                         m_start_time += m_period_ms;
@@ -230,6 +241,7 @@ namespace utils {
             }
             case TaskType::DELAYED_PERIODIC: {
                 std::unique_lock<std::mutex> lock(m_mutex);
+                m_execution_time = m_next_execution_time;
                 if (current_time_ms >= m_next_execution_time || m_force_execute || m_shutdown) {
                     while (current_time_ms >= m_next_execution_time) {
                         m_next_execution_time += m_period_ms;
@@ -241,6 +253,7 @@ namespace utils {
             }
             case TaskType::ON_DATE: {
                 std::unique_lock<std::mutex> lock(m_mutex);
+                m_execution_time = m_timestamp_ms;
                 if (current_time_ms >= m_timestamp_ms || m_force_execute || m_shutdown) {
                     lock.unlock();
                     m_completed = true;
@@ -250,6 +263,7 @@ namespace utils {
             }
             case TaskType::PERIODIC_ON_DATE: {
                 std::unique_lock<std::mutex> lock(m_mutex);
+                m_execution_time = m_timestamp_ms;
                 if (current_time_ms >= m_timestamp_ms || m_force_execute || m_shutdown) {
                     while (current_time_ms >= m_timestamp_ms) {
                         m_timestamp_ms += m_period_ms;
@@ -279,6 +293,7 @@ namespace utils {
         int64_t  m_start_time;
         int64_t  m_next_execution_time;
         int64_t  m_reschedule_time;
+        int64_t  m_execution_time;
         std::atomic<bool> m_completed;
         std::atomic<bool> m_force_execute;
         std::atomic<bool> m_shutdown;

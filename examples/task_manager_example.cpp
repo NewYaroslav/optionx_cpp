@@ -14,13 +14,14 @@ int main() {
 
     // Add a delayed task that will execute after 3 seconds
     task_manager.add_delayed_task(3000, [](std::shared_ptr<optionx::utils::Task> task) {
-        std::cout << "Delayed single task executed!" << std::endl;
+        std::cout << "Delayed single task executed! Delay: " << task->get_delay() << " ms\n";
     });
 
     // Add a periodic task that executes every 2 seconds
     task_manager.add_periodic_task(2000, [](std::shared_ptr<optionx::utils::Task> task) {
         static int counter = 0;
-        std::cout << "Periodic task executed: " << ++counter << std::endl;
+        std::cout << "Periodic task executed: " << ++counter
+                  << " | Delay: " << task->get_delay() << " ms\n";
         if (counter >= 5) {
             task->shutdown();
         }
@@ -29,14 +30,15 @@ int main() {
     // Add a task scheduled to execute at a specific time
     auto future_time = optionx::utils::Task::get_current_time() + 5000; // Executes in 5 seconds
     task_manager.add_on_date_task(future_time, [](std::shared_ptr<optionx::utils::Task> task) {
-        std::cout << "Task executed at a specified date!" << std::endl;
+        std::cout << "Task executed at specified date! Delay: " << task->get_delay() << " ms\n";
     });
 
     // Add a periodic task that starts executing at a specific time
     auto start_time = optionx::utils::Task::get_current_time() + 6000; // Starts in 6 seconds
     task_manager.add_periodic_on_date_task(start_time, 1000, [](std::shared_ptr<optionx::utils::Task> task) {
         static int periodic_counter = 0;
-        std::cout << "Periodic on-date task executed: " << ++periodic_counter << std::endl;
+        std::cout << "Periodic on-date task executed: " << ++periodic_counter
+                  << " | Delay: " << task->get_delay() << " ms\n";
         if (periodic_counter >= 3) {
             task->shutdown();
         }
