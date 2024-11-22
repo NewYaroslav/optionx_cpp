@@ -17,7 +17,7 @@ namespace optionx {
     /// \brief Represents the result of a trade request, including details on trade execution and outcome.
     class TradeResult {
     public:
-        OrderErrorCode error_code = OrderErrorCode::SUCCESS;   ///< Error code for the trade result.
+        TradeErrorCode error_code = TradeErrorCode::SUCCESS;   ///< Error code for the trade result.
         std::string error_desc;                                ///< Description of the error, if any.
 
         std::string option_hash;    ///< Unique hash of the order on the broker side.
@@ -34,8 +34,8 @@ namespace optionx {
         int64_t send_date   = 0;    ///< Request sending timestamp (Unix, milliseconds).
         int64_t open_date   = 0;    ///< Trade opening timestamp (Unix, milliseconds).
         int64_t close_date  = 0;    ///< Trade closing timestamp (Unix, milliseconds).
-        OrderState state            = OrderState::UNKNOWN;  ///< Final state of the order.
-        OrderState current_state    = OrderState::UNKNOWN;  ///< Current state of the order.
+        TradeState trade_state      = TradeState::UNKNOWN;  ///< Represents the state of the trade, including intermediate and final states.
+        TradeState live_state       = TradeState::UNKNOWN;  ///< Represents the real-time state of the trade based on the current price.
         AccountType account_type    = AccountType::UNKNOWN; ///< Type of the account used.
         CurrencyType currency       = CurrencyType::UNKNOWN;///< Currency of the account.
         ApiType api_type            = ApiType::UNKNOWN;     ///< Type of API used for the trade.
@@ -60,8 +60,8 @@ namespace optionx {
                 j["send_date"]      = send_date;
                 j["open_date"]      = open_date;
                 j["close_date"]     = close_date;
-                j["state"]          = to_str(state);
-                j["current_state"]  = to_str(current_state);
+                j["trade_state"]    = to_str(trade_state);
+                j["live_state"]     = to_str(live_state);
                 j["account_type"]   = to_str(account_type);
                 j["currency"]       = to_str(currency);
                 j["api_type"]       = to_str(api_type);
@@ -88,10 +88,10 @@ namespace optionx {
                 send_date   = j["send_date"];
                 open_date   = j["open_date"];
                 close_date  = j["close_date"];
-                if (!to_enum(to_upper_case(j["state"].get<std::string>()), state)) {
+                if (!to_enum(to_upper_case(j["trade_state"].get<std::string>()), trade_state)) {
                     return false;
                 }
-                if (!to_enum(to_upper_case(j["current_state"].get<std::string>()), current_state)) {
+                if (!to_enum(to_upper_case(j["live_state"].get<std::string>()), live_state)) {
                     return false;
                 }
                 if (!to_enum(to_upper_case(j["account_type"].get<std::string>()), account_type)) {

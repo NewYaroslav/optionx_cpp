@@ -19,16 +19,16 @@ namespace intrade_bar {
         }
         result->close_price = price;
         if (std::abs(profit - result->amount) < 0.01) {
-            result->state = result->current_state = OrderState::STANDOFF;
+            result->trade_state = result->live_state = TradeState::STANDOFF;
             result->payout = account_info->get_account_info<int64_t>(AccountInfoType::PAYOUT, request, time_shield::ms_to_sec(result->open_date));
             result->profit = 0;
         } else
         if (profit <= 0.01) {
-            result->state = result->current_state = OrderState::LOSS;
+            result->trade_state = result->live_state = TradeState::LOSS;
             result->payout = account_info->get_account_info<int64_t>(AccountInfoType::PAYOUT, request, time_shield::ms_to_sec(result->open_date));
             result->profit = -result->amount;
         } else {
-            result->state = result->current_state = OrderState::WIN;
+            result->trade_state = result->live_state = TradeState::WIN;
             result->profit = profit;
             result->payout = profit / result->amount;
         }

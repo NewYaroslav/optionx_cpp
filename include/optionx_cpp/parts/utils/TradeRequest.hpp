@@ -46,9 +46,10 @@ namespace optionx {
         /// \brief Executes all registered callback functions.
         /// \param request Pointer to the original trade request.
         /// \param result Pointer to the trade result.
+        template<class RequestType, class ResultType>
         void invoke_callbacks(
-                std::unique_ptr<TradeRequest> request,
-                std::unique_ptr<TradeResult> result) {
+                RequestType& request,
+                ResultType& result) {
             for (auto& callback : m_callbacks) {
                 callback(
                     std::move(request->clone_unique()),

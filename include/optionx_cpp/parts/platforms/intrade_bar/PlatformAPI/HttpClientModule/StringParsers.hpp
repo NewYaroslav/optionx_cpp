@@ -225,8 +225,8 @@ namespace intrade_bar {
     #           else
                 LOGIT_PRINT_ERROR("Trade open failed. Response contains 'error'.");
     #           endif
-                result->state = result->current_state = OrderState::OPEN_ERROR;
-                result->error_code = OrderErrorCode::PARSING_ERROR;
+                result->trade_state = result->live_state = TradeState::OPEN_ERROR;
+                result->error_code = TradeErrorCode::PARSING_ERROR;
                 result->error_desc = "Trade open failed. Response contains 'error'.";
                 result->delay = timestamp - result->send_date;
                 result->ping = result->delay / 2;
@@ -248,8 +248,8 @@ namespace intrade_bar {
     #           else
                 LOGIT_PRINT_ERROR("Trade open failed. Response contains 'alert'.");
     #           endif
-                result->state = result->current_state = OrderState::OPEN_ERROR;
-                result->error_code = OrderErrorCode::PARSING_ERROR;
+                result->trade_state = result->live_state = TradeState::OPEN_ERROR;
+                result->error_code = TradeErrorCode::PARSING_ERROR;
                 result->error_desc = "Trade open failed. Response contains 'alert'.";
                 result->delay = timestamp - result->send_date;
                 result->ping = result->delay / 2;
@@ -265,8 +265,8 @@ namespace intrade_bar {
 
             if (extract_between(content, "data-id=\"", "\"", str_data_id) == std::string::npos) {
                 LOGIT_ERROR("Failed to extract id.");
-                result->state = result->current_state = OrderState::OPEN_ERROR;
-                result->error_code = OrderErrorCode::PARSING_ERROR;
+                result->trade_state = result->live_state = TradeState::OPEN_ERROR;
+                result->error_code = TradeErrorCode::PARSING_ERROR;
                 result->error_desc = "Failed to extract id.";
                 result->delay = timestamp - result->send_date;
                 result->ping = result->delay / 2;
@@ -280,8 +280,8 @@ namespace intrade_bar {
 
             if (extract_between(content, "data-timeopen=\"", "\"", str_data_timeopen) == std::string::npos) {
                 LOGIT_ERROR("Failed to extract timeopen.");
-                result->state = result->current_state = OrderState::OPEN_ERROR;
-                result->error_code = OrderErrorCode::PARSING_ERROR;
+                result->trade_state = result->live_state = TradeState::OPEN_ERROR;
+                result->error_code = TradeErrorCode::PARSING_ERROR;
                 result->error_desc = "Failed to extract timeopen.";
                 result->delay = timestamp - result->send_date;
                 result->ping = result->delay / 2;
@@ -297,8 +297,8 @@ namespace intrade_bar {
 
             if (extract_between(content, "data-rate=\"", "\"", str_data_rate) == std::string::npos) {
                 LOGIT_ERROR("Failed to extract rate.");
-                result->state = result->current_state = OrderState::OPEN_ERROR;
-                result->error_code = OrderErrorCode::PARSING_ERROR;
+                result->trade_state = result->live_state = TradeState::OPEN_ERROR;
+                result->error_code = TradeErrorCode::PARSING_ERROR;
                 result->error_desc = "Failed to extract rate.";
                 result->open_date = timestamp;
                 result->close_date = request->option_type == OptionType::SPRINT
@@ -309,14 +309,14 @@ namespace intrade_bar {
 
             // Parse extracted values
             result->open_price = result->close_price = std::stod(str_data_rate);
-            result->state = OrderState::OPEN_SUCCESS;
-            result->error_code = OrderErrorCode::SUCCESS;
+            result->trade_state = result->live_state = TradeState::OPEN_SUCCESS;
+            result->error_code = TradeErrorCode::SUCCESS;
             return true;
 
         } catch (const std::exception& ex) {
             LOGIT_ERROR("Exception while parsing trade response: ", ex.what());
-            result->state = result->current_state = OrderState::OPEN_ERROR;
-            result->error_code = OrderErrorCode::PARSING_ERROR;
+            result->trade_state = result->live_state = TradeState::OPEN_ERROR;
+            result->error_code = TradeErrorCode::PARSING_ERROR;
             result->error_desc = "Exception while parsing trade response: " + std::string(ex.what());
             result->delay = timestamp - result->open_date;
             result->ping = result->delay / 2;

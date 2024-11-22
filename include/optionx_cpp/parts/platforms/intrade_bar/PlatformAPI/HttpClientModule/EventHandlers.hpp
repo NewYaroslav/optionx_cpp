@@ -22,8 +22,8 @@ namespace intrade_bar {
                     auto account_info = get_account_info();
                     result->balance = account_info->balance;
                 }
-                result->state = OrderState::OPEN_SUCCESS;
-                result->current_state = OrderState::STANDOFF;
+                result->trade_state = TradeState::OPEN_SUCCESS;
+                result->live_state = TradeState::STANDOFF;
             });
         });
     }
@@ -38,10 +38,10 @@ namespace intrade_bar {
                 auto account_info = get_account_info();
                 result->payout = account_info->get_account_info<int64_t>(AccountInfoType::PAYOUT, request, time_shield::ms_to_sec(result->open_date));
                 result->profit =
-                    result->current_state == OrderState::STANDOFF ? 0 :
-                    (result->current_state == OrderState::WIN ?
+                    result->live_state == TradeState::STANDOFF ? 0 :
+                    (result->live_state == TradeState::WIN ?
                      result->payout * result->amount : -result->amount);
-                result->state = result->current_state = OrderState::CHECK_ERROR;
+                result->trade_state = result->live_state = TradeState::CHECK_ERROR;
                 return;
             }
             request_balance([this, request, result, price, profit](bool success, double balance, CurrencyType currency) {

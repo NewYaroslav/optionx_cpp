@@ -516,8 +516,8 @@ namespace intrade_bar {
 
             if (!validate_response(response)) {
                 LOGIT_ERROR("Invalid response received for trade open request.");
-                result->state = result->current_state = OrderState::OPEN_ERROR;
-                result->error_code = OrderErrorCode::PARSING_ERROR;
+                result->trade_state = result->live_state = TradeState::OPEN_ERROR;
+                result->error_code = TradeErrorCode::PARSING_ERROR;
                 result->error_desc = "Trade open failed due to invalid response.";
                 result->delay = timestamp - result->send_date;
                 result->ping = result->delay / 2;

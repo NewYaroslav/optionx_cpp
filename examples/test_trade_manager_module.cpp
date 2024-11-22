@@ -1,19 +1,56 @@
-#pragma once
-#ifndef _OPTIONX_PLATFORMS_INTRADERBAR_ACCOUNT_INFO_DATA_HPP_INCLUDED
-#define _OPTIONX_PLATFORMS_INTRADERBAR_ACCOUNT_INFO_DATA_HPP_INCLUDED
-
-/// \file AccountInfoData.hpp
-/// \brief Contains the AccountInfoData class for Intrade Bar platform account information.
-
-#include "../../interfaces/IAccountInfoData.hpp"
-#include <time_shield_cpp/time_shield.hpp>
-#include <string>
+#define SQLITE_THREADSAFE 1
+#define LOGIT_BASE_PATH "E:\\_repoz\\optionx_cpp"
+#define OPTIONX_LOG_UNIQUE_FILE_INDEX 2
+#include <stdexcept>
+#include "optionx_cpp/parts/modules/TradeManagerModule.hpp"
+#include "optionx_cpp/parts/utils/tasks/TaskManager.hpp"
+#include <thread>
+#include <atomic>
+#include <iostream>
 
 namespace optionx {
-namespace platforms {
-namespace intrade_bar {
+namespace modules {
 
-    /// \class AccountInfoData
+    /// \class AuthData
+    /// \brief Represents authorization data for the Intrade Bar platform.
+    class AuthData : public IAuthData {
+    public:
+
+        AuthData() {}
+
+        virtual ~AuthData() = default;
+
+        bool to_json(json &j) override {return false;}
+
+        bool from_json(json &j) override {return false;}
+
+        bool check() const override {
+            return true;
+        }
+
+        /// \brief Clones the authorization data instance to a unique pointer.
+        /// \return Unique pointer to a cloned IAuthData instance.
+        std::unique_ptr<IAuthData> clone_unique() const override {
+            return std::make_unique<AuthData>(*this);
+        }
+
+        /// \brief Clones the authorization data instance to a shared pointer.
+        /// \return Shared pointer to a cloned IAuthData instance.
+        std::shared_ptr<IAuthData> clone_shared() const override {
+            return std::make_shared<AuthData>(*this);
+        }
+
+        /// \brief Retrieves the API type associated with this authorization data.
+        /// \return The type of API used.
+        ApiType api_type() const override {
+            return ApiType::SIMULATOR;
+        }
+
+        AccountType account_type = AccountType::DEMO;
+        CurrencyType currency    = CurrencyType::USD;
+    }; // AuthData
+
+        /// \class AccountInfoData
     /// \brief Account information data for Intrade Bar platform.
     class AccountInfoData : public IAccountInfoData {
     public:
@@ -36,8 +73,8 @@ namespace intrade_bar {
         double max_rub_limit_amount     = 3500.0;                   ///< Maximum trade amount during restricted periods for RUB
         double high_payout_rub_amount   = 5000.0;                   ///< Trade amount threshold for increased payout percentage in RUB
 
-        int64_t min_duration            = 60;                       ///< Minimum binary option duration (in seconds)
-        int64_t min_btc_duration        = 300;                      ///< Minimum duration for BTCUSDT (in seconds)
+        int64_t min_duration            = 5;                        ///< Minimum binary option duration (in seconds)
+        int64_t min_btc_duration        = 5;                        ///< Minimum duration for BTCUSDT (in seconds)
         int64_t max_duration            = 30000;                    ///< Maximum duration (in seconds)
         int64_t max_trades              = 5;                        ///< Maximum number of trades
         int64_t max_limit_trades        = 2;                        ///< Maximum number of trades during restricted periods
@@ -49,13 +86,13 @@ namespace intrade_bar {
         int64_t start_btc_time          = 0;                        ///< Start of trading time for BTCUSDT
         int64_t end_btc_time            = 86400;                    ///< End of trading time for BTCUSDT
         // Trading time for standard pairs
-        int64_t start_time              = 3600;                     ///< Start of trading time for standard pairs
-        int64_t end_time                = 75600;                    ///< End of trading time for standard pairs
+        int64_t start_time              = 0;                        ///< Start of trading time for standard pairs
+        int64_t end_time                = 84600;                    ///< End of trading time for standard pairs
 
         /// \brief Retrieves the API type associated with this account data.
         /// \return The type of API used.
         const ApiType api_type() const override final {
-            return ApiType::INTRADE_BAR;
+            return ApiType::SIMULATOR;
         }
 
         /// \brief Creates a unique pointer to a clone of this account info data instance.
@@ -114,11 +151,8 @@ namespace intrade_bar {
                 return true;
             case AccountInfoType::DURATION_AVAILABLE: {
                 if (request.option_type == OptionType::CLASSIC) return true;
-                const int64_t req_min_duration = (request.symbol == "BTCUSD" || request.symbol == "BTCUSDT") ?
-                    min_btc_duration : min_duration;
-                const int64_t req_max_duration = (request.symbol == "BTCUSD" || request.symbol == "BTCUSDT") ?
-                    max_duration : std::min(time_shield::start_of_min(end_time - time_shield::sec_of_day(request.timestamp)), max_duration);
-                return (request.duration >= req_min_duration && request.duration <= req_max_duration);
+                const int64_t req_min_duration = (request.symbol == "BTCUSD" || request.symbol == "BTCUSDT") ? min_btc_duration : min_duration;
+                return (request.duration >= req_min_duration && request.duration <= max_duration);
             }
             case AccountInfoType::EXPIRATION_DATE_AVAILABLE: {
                 if (request.option_type == OptionType::SPRINT) return true;
@@ -198,23 +232,14 @@ namespace intrade_bar {
             return std::string();
         }
 
-        /// \brief Retrieves the account currency.
-        /// \param request The account information request.
-        /// \return The account's currency type.
         CurrencyType get_account_currency(const AccountInfoRequest& request) const override final {
             return currency;
         }
 
-        /// \brief Retrieves the account type.
-        /// \param request The account information request.
-        /// \return The account's type (DEMO or REAL).
         AccountType get_account_type(const AccountInfoRequest& request) const override final {
             return account_type;
         }
 
-        /// \brief Gets the minimum trade amount based on the currency type.
-        /// \param request The account information request.
-        /// \return The minimum trade amount.
         double get_min_amount(const AccountInfoRequest& request) const {
             return request.currency == CurrencyType::USD ?
                 min_usd_amount : (request.currency == CurrencyType::RUB ?
@@ -222,9 +247,6 @@ namespace intrade_bar {
                 min_usd_amount : (currency == CurrencyType::RUB ? min_rub_amount : 0.0)));
         }
 
-        /// \brief Gets the maximum trade amount based on the currency type.
-        /// \param request The account information request.
-        /// \return The maximum trade amount.
         double get_max_amount(const AccountInfoRequest& request) const {
             if (check_amount_limits(time_shield::sec_of_day(request.timestamp))) {
                 return request.currency == CurrencyType::USD ?
@@ -243,132 +265,13 @@ namespace intrade_bar {
         /// \return True if amount limits are in effect, false otherwise.
         bool check_amount_limits(const int second_day) const {
             // Check if the given time of day falls within specified high-risk periods
-            return ((second_day >= 50100 && second_day < 50700) || // 17:00
-                    (second_day >= 53700 && second_day < 54300) || // 18:00
-                    (second_day >= 57300 && second_day < 57900) || // 19:00
-                    (second_day >= 60900 && second_day < 61500) || // 20:00
-                    (second_day >= 64500 && second_day < 65100) || // 21:00
-                    (second_day >= 68100 && second_day < 68700) || // 22:00
-                    (second_day >= 71700 && second_day < 72300) || // 23:00
-                    (second_day >= 73500 && second_day < 74100) || // 23:30
-                    (second_day >= 75300));
+            return false;
         }
 
-        /// \brief Checks if payout limits apply based on the time of day.
-        /// \param second_day The time in seconds since the start of the day.
-        /// \return True if payout limits are in effect, false otherwise.
-        bool check_payout_limits(const int second_day) const {
-            // Check if the time of day falls within higher payout periods
-            return ((second_day < 3780) ||                          // 4:00
-                    (second_day >= 7020 && second_day < 7380) ||    // 5:00
-                    (second_day >= 10620 && second_day < 10980) ||  // 6:00
-                    (second_day >= 14220 && second_day < 14580) ||  // 7:00
-                    (second_day >= 17820 && second_day < 18180) ||  // 8:00
-                    (second_day >= 21420 && second_day < 21780) ||  // 9:00
-                    (second_day >= 50100 && second_day < 50700) || // 17:00
-                    (second_day >= 53700 && second_day < 54300) || // 18:00
-                    (second_day >= 57300 && second_day < 57900) || // 19:00
-                    (second_day >= 60900 && second_day < 61500) || // 20:00
-                    (second_day >= 64500 && second_day < 65100) || // 21:00
-                    (second_day >= 68100 && second_day < 68700) || // 22:00
-                    (second_day >= 71700 && second_day < 72300) || // 23:00
-                    (second_day >= 75300));
-        }
-
-        /// \brief Gets the payout percentage based on the trade parameters.
-        /// \param request The account information request.
-        /// \return The payout percentage (as a decimal value).
         double get_payout(const AccountInfoRequest& request) const {
-
-            if ((request.currency == CurrencyType::USD && request.amount < min_usd_amount) ||
-                (request.currency == CurrencyType::RUB && request.amount < min_rub_amount)) {
-                return 0.0;
-            }
-            if ((currency == CurrencyType::USD && request.amount < min_usd_amount)||
-                (currency == CurrencyType::RUB && request.amount < min_rub_amount)) {
-                return 0.0;
-            }
-
-            const int64_t sec_of_day = time_shield::sec_of_day(request.timestamp);
-            if (request.symbol == "BTCUSDT" || request.symbol == "BTCUSD") {
-                if (request.option_type == OptionType::CLASSIC ||
-                    request.duration < min_btc_duration ||
-                    request.duration > max_duration) {
-                    return 0.0;
-                }
-                if (!check_payout_limits(sec_of_day)) {
-                    if ((request.currency == CurrencyType::USD && request.amount >= high_payout_usd_amount)||
-                        (request.currency == CurrencyType::RUB && request.amount >= high_payout_rub_amount)) {
-                        return 0.85;
-                    }
-                    if ((currency == CurrencyType::USD && request.amount >= high_payout_usd_amount)||
-                        (currency == CurrencyType::RUB && request.amount >= high_payout_rub_amount)) {
-                        return 0.85;
-                    }
-                    return 0.79;
-                }
-                return 0.6;
-            }
-
-
-            if (time_shield::is_day_off(request.timestamp) ||
-                sec_of_day < start_time ||
-                sec_of_day >= end_time) {
-                return 0.0;
-            }
-
-            if (request.option_type == OptionType::SPRINT) {
-                if (request.duration < time_shield::SEC_PER_MIN ||
-                    request.duration == (2 * time_shield::SEC_PER_MIN) ||
-                    (request.duration % time_shield::SEC_PER_MIN) != 0 ||
-                    request.duration > std::min(time_shield::start_of_min(end_time - time_shield::sec_of_day(request.timestamp)), max_duration)) {
-                    return 0.0;
-                }
-                if (!check_payout_limits(sec_of_day)) {
-                    if ((request.currency == CurrencyType::USD && request.amount >= high_payout_usd_amount)||
-                        (request.currency == CurrencyType::RUB && request.amount >= high_payout_rub_amount)) {
-                        return 0.85;
-                    }
-                    if ((currency == CurrencyType::USD && request.amount >= high_payout_usd_amount)||
-                        (currency == CurrencyType::RUB && request.amount >= high_payout_rub_amount)) {
-                        return 0.85;
-                    }
-                    if (request.duration == 180) return 0.82;
-                    if (request.duration == 60) return 0.82;
-                    return 0.82;
-                }
-                return 0.6;
-            } else
-            if (request.option_type == OptionType::CLASSIC) {
-                if (request.duration > time_shield::SEC_PER_YEAR) {
-                    const int64_t expiration = get_classic_bo_expiration(request.timestamp, request.duration);
-                    if (expiration == 0) return 0.0;
-                } else {
-                    if ((request.duration % (5 * time_shield::SEC_PER_MIN)) != 0) return 0.0;
-                    const int64_t timestamp = get_classic_bo_closing_timestamp(request.timestamp, request.duration / time_shield::SEC_PER_MIN);
-                    if (timestamp == 0) return 0.0;
-                    if (timestamp > (time_shield::start_of_day(timestamp) + end_time)) return 0.0;
-                }
-                if (sec_of_day < start_time || sec_of_day >= end_time) return 0.0;
-                if (!check_payout_limits(sec_of_day)) {
-                    if ((request.currency == CurrencyType::USD && request.amount >= high_payout_usd_amount)||
-                        (request.currency == CurrencyType::RUB && request.amount >= high_payout_rub_amount)) {
-                        return 0.85;
-                    }
-                    if ((currency == CurrencyType::USD && request.amount >= high_payout_usd_amount)||
-                        (currency == CurrencyType::RUB && request.amount >= high_payout_rub_amount)) {
-                        return 0.85;
-                    }
-                    return 0.79;
-                }
-            }
-            return 0.0;
+            return 0.8;
         }
 
-        /// \brief Gets the expiration time for a classic binary option.
-        /// \param timestamp The current timestamp in seconds.
-        /// \param closing_timestamp The intended closing timestamp.
-        /// \return Expiration time in seconds, or 0 if invalid.
         int64_t get_classic_bo_expiration(int64_t timestamp, int64_t closing_timestamp) const {
             const int64_t min_exp = 5 * time_shield::SEC_PER_MIN;
             if ((closing_timestamp % min_exp) != 0) return 0;
@@ -378,10 +281,6 @@ namespace intrade_bar {
             return ((((diff - 1) / time_shield::SEC_PER_MIN - 3) / 5) * 5 + 5) * time_shield::SEC_PER_MIN;
         }
 
-        /// \brief Gets the closing timestamp for a classic binary option.
-        /// \param timestamp The initial timestamp in seconds.
-        /// \param expiration Expiration time in minutes.
-        /// \return Closing timestamp, or 0 if invalid.
         int64_t get_classic_bo_closing_timestamp(int64_t timestamp, int64_t expiration) const {
             if ((expiration % 5) != 0 || expiration < 5) return 0;
             const int64_t timestamp_future = timestamp + (expiration + 3) * time_shield::SEC_PER_MIN;
@@ -389,8 +288,226 @@ namespace intrade_bar {
         }
     }; // AccountInfoData
 
-} // namespace intrade_bar
-} // namespace platforms
+    /// \class TradeManagerTest
+    /// \brief Test implementation of TradeManagerModule for unit testing.
+    class TradeManagerTest : public TradeManagerModule {
+    public:
+        TradeManagerTest(EventHub& hub, std::shared_ptr<IAccountInfoData> account_info)
+            : TradeManagerModule(hub, std::move(account_info)) {}
+
+        /// \brief Overrides API type retrieval for the test.
+        /// \return Dummy ApiType for testing.
+        ApiType get_api_type() override {
+            return ApiType::SIMULATOR;
+        }
+
+        /// \brief Handles authorization data event (dummy implementation).
+        /// \param event Authorization data event.
+        void handle_event(const AuthDataEvent& event) override {
+            LOGIT_INFO("AuthDataEvent handled. Dummy implementation.");
+        }
+
+    };
+
+    /// \class TradeTestMediator
+    /// \brief Mediator module for handling test events.
+    class TradeTestMediator : public EventMediator {
+    public:
+        explicit TradeTestMediator(EventHub& hub) : EventMediator(hub) {
+            subscribe<TradeStatusEvent>(this);
+            subscribe<TradeRequestEvent>(this);
+        }
+
+        /// \brief Handles trade status events.
+        /// \param event The trade status event.
+        void on_event(const std::shared_ptr<Event>& event) override {
+            if (auto status_event = std::dynamic_pointer_cast<TradeStatusEvent>(event)) {
+
+            } else
+            if (auto request_event = std::dynamic_pointer_cast<TradeRequestEvent>(event)) {
+
+            }
+        }
+
+        void on_event(const Event* const event) {
+            if (auto status_event = dynamic_cast<const TradeStatusEvent*>(event)) {
+                LOGIT_PRINT_INFO("Trade status event received. State: ", status_event->result->trade_state);
+                auto request = status_event->request;
+                auto result = status_event->result;
+                m_task_manager.add_delayed_task(10000, [this, request, result](std::shared_ptr<utils::Task>){
+                    LOGIT_PRINT_INFO("WIN");
+                    result->trade_state = result->live_state = TradeState::WIN;
+                    result->close_price = 1.12360;
+                });
+            } else
+            if (auto request_event = dynamic_cast<const TradeRequestEvent*>(event)) {
+                LOGIT_PRINT_INFO("Trade request event received. Symbol: ", request_event->request->symbol);
+                auto request = request_event->request;
+                auto result = request_event->result;
+                m_task_manager.add_delayed_task(1000, [this, request, result](std::shared_ptr<utils::Task>){
+                    LOGIT_PRINT_INFO("OPEN_SUCCESS");
+                    result->trade_state = result->live_state = TradeState::OPEN_SUCCESS;
+                    result->open_price = result->close_price = 1.12335;
+                    result->open_date = time_shield::timestamp_ms();
+                    result->close_date = result->open_date + time_shield::sec_to_ms(request->duration);
+                });
+            }
+        }
+
+        void process() {
+            m_task_manager.process();
+        }
+
+        void shutdown() {
+            m_task_manager.shutdown();
+        }
+
+    private:
+        utils::TaskManager m_task_manager;
+    };
+
+    /// \brief Outputs the details of a TradeRequest.
+    /// \param request The TradeRequest instance to output.
+    void print_trade_request(const TradeRequest& request) {
+        LOGIT_STREAM_TRACE()
+            << "TradeRequest Details:\n"
+            << "---------------------\n"
+            << "Symbol: " << request.symbol << "\n"
+            << "Signal Name: " << request.signal_name << "\n"
+            << "User Data: " << request.user_data << "\n"
+            << "Comment: " << request.comment << "\n"
+            << "Unique Hash: " << request.unique_hash << "\n"
+            << "Unique ID: " << request.unique_id << "\n"
+            << "Account ID: " << request.account_id << "\n"
+            << "Option Type: " << to_str(request.option_type) << "\n"
+            << "Order Type: " << to_str(request.order_type) << "\n"
+            << "Account Type: " << to_str(request.account_type) << "\n"
+            << "Currency: " << to_str(request.currency) << "\n"
+            << "Amount: " << request.amount << "\n"
+            << "Refund: " << request.refund << "\n"
+            << "Min Payout: " << request.min_payout << "\n"
+            << "Duration: " << request.duration << " seconds\n"
+            << "Expiry Time: " << request.expiry_time << " (Unix timestamp)\n";
+    }
+
+    /// \brief Outputs the details of a TradeResult.
+    /// \param result The TradeResult instance to output.
+    void print_trade_result(const TradeResult& result) {
+        LOGIT_STREAM_TRACE()
+            << "TradeResult Details:\n"
+            << "--------------------\n"
+            << "Error Code: " << to_str(result.error_code) << "\n"
+            << "Error Description: " << result.error_desc << "\n"
+            << "Option Hash: " << result.option_hash << "\n"
+            << "Option ID: " << result.option_id << "\n"
+            << "Amount: " << result.amount << "\n"
+            << "Payout: " << result.payout << "\n"
+            << "Profit: " << result.profit << "\n"
+            << "Balance: " << result.balance << "\n"
+            << "Open Price: " << result.open_price << "\n"
+            << "Close Price: " << result.close_price << "\n"
+            << "Delay: " << result.delay << " ms\n"
+            << "Ping: " << result.ping << " ms\n"
+            << "Place Date: " << result.place_date << " (Unix ms)\n"
+            << "Send Date: " << result.send_date << " (Unix ms)\n"
+            << "Open Date: " << result.open_date << " (Unix ms)\n"
+            << "Close Date: " << result.close_date << " (Unix ms)\n"
+            << "State: " << to_str(result.trade_state) << "\n"
+            << "Current State: " << to_str(result.live_state) << "\n"
+            << "Account Type: " << to_str(result.account_type) << "\n"
+            << "Currency: " << to_str(result.currency) << "\n"
+            << "API Type: " << to_str(result.api_type) << "\n";
+    }
+
+} // namespace modules
 } // namespace optionx
 
-#endif // _OPTIONX_PLATFORMS_INTRADERBAR_ACCOUNT_INFO_DATA_HPP_INCLUDED
+using namespace optionx;
+using namespace optionx::modules;
+
+int main() {
+    LOGIT_ADD_CONSOLE_DEFAULT();
+    LOGIT_ADD_FILE_LOGGER_DEFAULT();
+    LOGIT_ADD_UNIQUE_FILE_LOGGER_DEFAULT_SINGLE_MODE();
+
+    // Initialize the event hub
+    EventHub hub;
+
+    // Create shared account info and auth data
+    auto account_info = std::make_shared<AccountInfoData>();
+    auto auth_data = std::make_shared<AuthData>();
+
+    // Set dummy account info
+    account_info->user_id = 12345;
+    account_info->balance = 1000.0;
+    account_info->currency = CurrencyType::USD;
+    account_info->account_type = AccountType::DEMO;
+    account_info->connect = true;
+
+    // Create the test TradeManagerModule
+    TradeManagerTest trade_manager(hub, account_info);
+
+    // Create the test mediator to handle events
+    TradeTestMediator test_mediator(hub);
+
+    // Atomic flag to control the processing loop
+    std::atomic<bool> processing{true};
+
+    // Start processing in a separate thread
+    std::thread processor([&]() {
+        while (processing) {
+            trade_manager.process();
+            test_mediator.process();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        // Finalize all trades
+        LOGIT_STREAM_TRACE() << "Finalizing all trades...\n";
+        trade_manager.shutdown();
+        test_mediator.shutdown();
+    });
+
+    // Simulate a trade request
+    auto trade_request = std::make_unique<TradeRequest>();
+    trade_request->symbol = "EURUSD";
+    trade_request->amount = 100.0;
+    trade_request->option_type = OptionType::SPRINT;
+    trade_request->order_type = OrderType::BUY;
+    trade_request->duration = 10;
+    trade_request->add_callback([](std::unique_ptr<TradeRequest> request, std::unique_ptr<TradeResult> result){
+        //print_trade_request(*request.get());
+        print_trade_result(*result.get());
+    });
+
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    // Place a trade
+    LOGIT_STREAM_TRACE() << "Placing trade...\n";
+    if (trade_manager.place_trade(std::move(trade_request))) {
+        LOGIT_STREAM_TRACE() << "Trade placed successfully.\n";
+    } else {
+        LOGIT_STREAM_TRACE() << "Failed to place trade.\n";
+    }
+
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    // Simulate a price update event
+    std::vector<TickInfo> ticks = {
+        {"EURUSD", 5, REALTIME_FLAG | INIT_FLAG, {1695483030000, 1695483031000, 1.12340, 1.12350}},  // Example for EURUSD
+        {"USDJPY", 3, REALTIME_FLAG | INIT_FLAG, {1695483030000, 1695483031000, 109.875, 109.877}}   // Example for USDJPY
+    };
+    LOGIT_STREAM_INFO() << "Send PriceUpdateEvent\n";
+    hub.notify(std::make_shared<PriceUpdateEvent>(ticks));
+
+    // Allow some time for processing
+    std::this_thread::sleep_for(std::chrono::seconds(20));
+
+    // Stop processing and join the thread
+    processing = false;
+    processor.join();
+    test_mediator.shutdown();
+
+    LOGIT_STREAM_TRACE() << "Test completed.\n";
+
+    LOGIT_WAIT();
+    return 0;
+}

@@ -3,8 +3,8 @@
 #define _OPTIONX_MODULES_OPEN_TRADES_EVENT_HPP_INCLUDED
 
 #include "../../pubsub/Event.hpp"
-#include "../TradeRequest.hpp"
-#include "../TradeResult.hpp"
+#include "../../utils/TradeRequest.hpp"
+#include "../../utils/TradeResult.hpp"
 
 namespace optionx {
 namespace modules {

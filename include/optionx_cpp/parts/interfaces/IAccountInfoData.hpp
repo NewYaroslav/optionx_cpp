@@ -22,13 +22,13 @@ namespace optionx {
         /// \param request Specifies the type of account information requested.
         /// \return The account information as type T.
         template<class T>
-        const T get_account_info(const AccountInfoRequest& request);
+        const T get_account_info(const AccountInfoRequest& request) const;
 
         /// \brief Retrieves account information by AccountInfoType.
         /// \param type Type of account information requested.
         /// \param timestamp Timestamp to use for the request (optional).
         template<class T>
-        const T get_account_info(AccountInfoType type, int64_t timestamp = 0) {
+        const T get_account_info(AccountInfoType type, int64_t timestamp = 0) const {
             AccountInfoRequest request;
             request.type = type;
             request.timestamp = timestamp;
@@ -39,7 +39,7 @@ namespace optionx {
         /// \param symbol Symbol for which availability is checked.
         /// \param timestamp Timestamp to use for the request (optional).
         template<class T>
-        const T get_account_info(const std::string &symbol, int64_t timestamp = 0) {
+        const T get_account_info(const std::string &symbol, int64_t timestamp = 0) const {
             AccountInfoRequest request;
             request.type = AccountInfoType::SYMBOL_AVAILABILITY;
             request.symbol = symbol;
@@ -51,7 +51,7 @@ namespace optionx {
         /// \param option OptionType for which availability is checked.
         /// \param timestamp Timestamp to use for the request (optional).
         template<class T>
-        const T get_account_info(OptionType option_type, int64_t timestamp = 0) {
+        const T get_account_info(OptionType option_type, int64_t timestamp = 0) const {
             AccountInfoRequest request;
             request.type = AccountInfoType::OPTION_TYPE_AVAILABILITY;
             request.option_type = option_type;
@@ -63,7 +63,7 @@ namespace optionx {
         /// \param order OrderType for which availability is checked.
         /// \param timestamp Timestamp to use for the request (optional).
         template<class T>
-        const T get_account_info(OrderType order_type, int64_t timestamp = 0) {
+        const T get_account_info(OrderType order_type, int64_t timestamp = 0) const {
             AccountInfoRequest request;
             request.type = AccountInfoType::ORDER_TYPE_AVAILABILITY;
             request.order_type = order_type;
@@ -75,7 +75,7 @@ namespace optionx {
         /// \param account AccountType for which availability is checked.
         /// \param timestamp Timestamp to use for the request (optional).
         template<class T>
-        const T get_account_info(AccountType account_type, int64_t timestamp = 0) {
+        const T get_account_info(AccountType account_type, int64_t timestamp = 0) const {
             AccountInfoRequest request;
             request.type = AccountInfoType::ACCOUNT_TYPE_AVAILABILITY;
             request.account_type = account_type;
@@ -87,7 +87,7 @@ namespace optionx {
         /// \param currency CurrencyType for which availability is checked.
         /// \param timestamp Timestamp to use for the request (optional).
         template<class T>
-        const T get_account_info(CurrencyType currency, int64_t timestamp = 0) {
+        const T get_account_info(CurrencyType currency, int64_t timestamp = 0) const {
             AccountInfoRequest request;
             request.type = AccountInfoType::CURRENCY_AVAILABILITY;
             request.currency = currency;
@@ -100,7 +100,7 @@ namespace optionx {
         /// \param trade_request Shared pointer to a TradeRequest instance.
         /// \param timestamp Timestamp to use for the request (optional).
         template<class T>
-        const T get_account_info(AccountInfoType info_type, const std::shared_ptr<TradeRequest>& trade_request, int64_t timestamp = 0) {
+        const T get_account_info(AccountInfoType info_type, const std::shared_ptr<TradeRequest>& trade_request, int64_t timestamp = 0) const {
             AccountInfoRequest request(trade_request, info_type);
             request.timestamp = timestamp;
             return get_account_info<T>(request);
@@ -124,84 +124,84 @@ namespace optionx {
 
     protected:
         /// \brief Retrieves boolean account information based on the request type.
-        virtual bool get_account_info_bool(const AccountInfoRequest& request) = 0;
+        virtual bool get_account_info_bool(const AccountInfoRequest& request) const = 0;
 
         /// \brief Retrieves integer account information based on the request type.
-        virtual int64_t get_account_info_int64(const AccountInfoRequest& request) = 0;
+        virtual int64_t get_account_info_int64(const AccountInfoRequest& request) const = 0;
 
         /// \brief Retrieves floating-point account information based on the request type.
-        virtual double get_account_info_f64(const AccountInfoRequest& request) = 0;
+        virtual double get_account_info_f64(const AccountInfoRequest& request) const = 0;
 
         /// \brief Retrieves string account information based on the request type.
-        virtual std::string get_account_info_str(const AccountInfoRequest& request) = 0;
+        virtual std::string get_account_info_str(const AccountInfoRequest& request) const = 0;
 
         /// \brief Retrieves the account type.
-        virtual AccountType get_account_type(const AccountInfoRequest& request) = 0;
+        virtual AccountType get_account_type(const AccountInfoRequest& request) const = 0;
 
         /// \brief Retrieves the account currency type.
-        virtual CurrencyType get_account_currency(const AccountInfoRequest& request) = 0;
+        virtual CurrencyType get_account_currency(const AccountInfoRequest& request) const = 0;
     };
 
     // Template specializations for retrieving specific account information types
 
     /// \brief Template specialization for retrieving boolean account information.
     template<>
-    const bool IAccountInfoData::get_account_info<bool>(const AccountInfoRequest& request) {
+    const bool IAccountInfoData::get_account_info<bool>(const AccountInfoRequest& request) const {
         return get_account_info_bool(request);
     }
 
     /// \brief Template specialization for retrieving integer account information.
     template<>
-    const int IAccountInfoData::get_account_info<int>(const AccountInfoRequest& request) {
+    const int IAccountInfoData::get_account_info<int>(const AccountInfoRequest& request) const {
         return static_cast<int>(get_account_info_int64(request));
     }
 
     /// \brief Template specialization for retrieving int64_t account information.
     template<>
-    const int64_t IAccountInfoData::get_account_info<int64_t>(const AccountInfoRequest& request) {
+    const int64_t IAccountInfoData::get_account_info<int64_t>(const AccountInfoRequest& request) const {
         return get_account_info_int64(request);
     }
 
     /// \brief Template specialization for retrieving size_t account information.
     template<>
-    const size_t IAccountInfoData::get_account_info<size_t>(const AccountInfoRequest& request) {
+    const size_t IAccountInfoData::get_account_info<size_t>(const AccountInfoRequest& request) const {
         return static_cast<size_t>(get_account_info_int64(request));
     }
 
     /// \brief Template specialization for retrieving double account information.
     template<>
-    const double IAccountInfoData::get_account_info<double>(const AccountInfoRequest& request) {
+    const double IAccountInfoData::get_account_info<double>(const AccountInfoRequest& request) const {
         return get_account_info_f64(request);
     }
 
     /// \brief Template specialization for retrieving string account information.
     template<>
-    const std::string IAccountInfoData::get_account_info<std::string>(const AccountInfoRequest& request) {
+    const std::string IAccountInfoData::get_account_info<std::string>(const AccountInfoRequest& request) const {
         return get_account_info_str(request);
     }
 
     /// \brief Template specialization for retrieving AccountType.
     template<>
-    const AccountType IAccountInfoData::get_account_info<AccountType>(const AccountInfoRequest& request) {
+    const AccountType IAccountInfoData::get_account_info<AccountType>(const AccountInfoRequest& request) const {
         return get_account_type(request);
     }
 
     /// \brief Template specialization for retrieving CurrencyType.
     template<>
-    const CurrencyType IAccountInfoData::get_account_info<CurrencyType>(const AccountInfoRequest& request) {
+    const CurrencyType IAccountInfoData::get_account_info<CurrencyType>(const AccountInfoRequest& request) const {
         return get_account_currency(request);
     }
 
     /// \brief Template specialization for retrieving ApiType.
     template<>
-    const ApiType IAccountInfoData::get_account_info<ApiType>(const AccountInfoRequest&) {
+    const ApiType IAccountInfoData::get_account_info<ApiType>(const AccountInfoRequest&) const {
         return api_type();
     }
 
     /// \brief Default template specialization for unsupported types.
     /// This ensures compile-time error for unsupported types used with get_account_info.
     template<class T>
-    const T IAccountInfoData::get_account_info(const AccountInfoRequest& request) {
+    const T IAccountInfoData::get_account_info(const AccountInfoRequest& request) const {
         static_assert(sizeof(T) == 0, "Unsupported type for get_account_info");
         return T();
     }

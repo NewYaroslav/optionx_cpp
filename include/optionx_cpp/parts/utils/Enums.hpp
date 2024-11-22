@@ -6,10 +6,14 @@
 /// \brief
 
 #include <kurlyk.hpp>
+#include <log-it/LogIt.hpp>
 #include "StringUtils.hpp"
 #include <stdexcept>
 
 namespace optionx {
+
+    template <typename EnumType>
+    EnumType to_enum(const std::string &str);
 
     enum class ApiType {
         UNKNOWN = 0,
@@ -25,8 +29,8 @@ namespace optionx {
         CLASSIC = 2,
     };
 
-    /** \brief Тип ордера
-     */
+    /// \enum OrderType
+    /// \brief Тип ордера
     enum class OrderType {
         UNKNOWN = 0,
         BUY     = 1,
@@ -76,27 +80,91 @@ namespace optionx {
         API_INIT_ERROR          ///< Ошибка инициализации API
     };
 
-    /** \brief Статус ордера
-     */
+//------------------------------------------------------------------------------
 
-    /// \enum OrderState
-    /// \brief Represents the state of a trade order during its lifecycle.
-    enum class OrderState {
-        UNKNOWN = 0,    ///< The state of the trade order is unknown.
-        CANCELED_TRADE, ///< The trade was canceled.
-        WAITING_OPEN,   ///< The trade is waiting to be opened.
-        OPEN_SUCCESS,   ///< The trade was successfully opened.
-        OPEN_ERROR,     ///< An error occurred while opening the trade.
-        WAITING_CLOSE,  ///< The trade is waiting to be closed.
-        CHECK_ERROR,    ///< An error occurred while checking the trade result.
-        WIN,            ///< The trade ended with a win.
-        LOSS,           ///< The trade ended with a loss.
-        STANDOFF,       ///< The trade ended in a standoff (draw).
-        REFUND          ///< The trade was refunded (partial or full).
+    /// \enum TradeState
+    /// \brief Represents the state of a binary option during its lifecycle.
+    enum class TradeState {
+        UNKNOWN = 0,        ///< The state of the binary option is unknown.
+        WAITING_OPEN,       ///< The binary option is waiting to be opened.
+        OPEN_SUCCESS,       ///< The binary option was successfully opened.
+        OPEN_ERROR,         ///< An error occurred while opening the binary option.
+        IN_PROGRESS,        ///< The binary option is active and awaiting expiry.
+        WAITING_CLOSE,      ///< The binary option is waiting to be closed (if applicable).
+        CHECK_ERROR,        ///< An error occurred while checking the binary option result.
+        WIN,                ///< The binary option ended with a win.
+        LOSS,               ///< The binary option ended with a loss.
+        STANDOFF,           ///< The binary option ended in a standoff (draw).
+        REFUND,             ///< The binary option was refunded (partial or full).
+        CANCELED_TRADE      ///< The binary option trade was canceled.
     };
 
-    /** \brief Тип информации об аккаунте
-     */
+    /// \brief Converts TradeState to its string representation.
+    /// \param value The TradeState enumeration value.
+    /// \return A constant reference to the string representation.
+    inline const std::string &to_str(const TradeState value) noexcept {
+        static const std::vector<std::string> state_strings = {
+            "UNKNOWN",
+            "WAITING_OPEN",
+            "OPEN_SUCCESS",
+            "OPEN_ERROR",
+            "IN_PROGRESS",
+            "WAITING_CLOSE",
+            "CHECK_ERROR",
+            "WIN",
+            "LOSS",
+            "STANDOFF",
+            "REFUND",
+            "CANCELED_TRADE"
+        };
+        static const std::string unknown = "INVALID_OPTION_STATE";
+
+        size_t index = static_cast<size_t>(value);
+        return (index < state_strings.size()) ? state_strings[index] : unknown;
+    }
+
+    /// \brief Converts a string to its corresponding TradeState enumeration value.
+    /// \param str The string representation of the TradeState.
+    /// \param value The TradeState to populate.
+    /// \return True if the conversion succeeded, false otherwise.
+    inline bool to_enum(const std::string &str, TradeState &value) noexcept {
+        static const std::map<std::string, TradeState> state_map = {
+            {"UNKNOWN",         TradeState::UNKNOWN},
+            {"WAITING_OPEN",    TradeState::WAITING_OPEN},
+            {"OPEN_SUCCESS",    TradeState::OPEN_SUCCESS},
+            {"OPEN_ERROR",      TradeState::OPEN_ERROR},
+            {"IN_PROGRESS",     TradeState::IN_PROGRESS},
+            {"WAITING_CLOSE",   TradeState::WAITING_CLOSE},
+            {"CHECK_ERROR",     TradeState::CHECK_ERROR},
+            {"WIN",             TradeState::WIN},
+            {"LOSS",            TradeState::LOSS},
+            {"STANDOFF",        TradeState::STANDOFF},
+            {"REFUND",          TradeState::REFUND},
+            {"CANCELED_TRADE",  TradeState::CANCELED_TRADE}
+        };
+
+        auto it = state_map.find(to_upper_case(str));
+        if (it != state_map.end()) {
+            value = it->second;
+            return true;
+        }
+        return false;
+    }
+
+    /// \brief Template specialization to convert a string to TradeState.
+    /// \param str The string representation.
+    /// \return The corresponding TradeState value.
+    /// \throws std::invalid_argument If the string cannot be converted.
+    template <>
+    inline TradeState to_enum<TradeState>(const std::string &str) {
+        TradeState value;
+        if (!to_enum(str, value)) {
+            throw std::invalid_argument("Invalid TradeState string: " + str);
+        }
+        return value;
+    }
+
+//------------------------------------------------------------------------------
 
     /// \enum AccountInfoType
     /// \brief Defines the types of account information that can be requested.
@@ -140,9 +208,11 @@ namespace optionx {
         AMOUNT_BELOW_BALANCE      ///< Check if the trade amount is below the account balance
     };
 
-    /// \enum OrderErrorCode
+//------------------------------------------------------------------------------
+
+    /// \enum TradeErrorCode
     /// \brief Represents error codes for order validation and processing.
-    enum class OrderErrorCode {
+    enum class TradeErrorCode {
         SUCCESS = 0,                  ///< No error, operation successful.
         INVALID_SYMBOL,               ///< Invalid symbol for trading.
         INVALID_OPTION,               ///< Invalid option type.
@@ -166,6 +236,97 @@ namespace optionx {
         CANCELED_TRADE,               ///< Trade was canceled by user or system.
         INSUFFICIENT_BALANCE          ///< Trade amount exceeds available account balance.
     };
+
+    /// \brief Converts an TradeErrorCode value to its corresponding string representation.
+    /// \param value The error code to convert.
+    /// \return A string representation of the provided error code.
+    inline const std::string &to_str(const TradeErrorCode value) noexcept {
+        static const std::vector<std::string> str_data = {
+            "Success",
+            "Invalid symbol",
+            "Invalid option type",
+            "Invalid order type",
+            "Invalid account type",
+            "Invalid currency",
+            "Amount below minimum",
+            "Amount above maximum",
+            "Refund below minimum",
+            "Refund above maximum",
+            "Low payout percentage",
+            "Invalid duration",
+            "Invalid expiry time",
+            "Reached open trades limit",
+            "Invalid request",
+            "Long wait in the order queue",
+            "Long wait for server response",
+            "No network connection",
+            "Forced client shutdown",
+            "Parser error",
+            "Canceled",
+            "Insufficient balance"
+        };
+        static const std::string unknown = "Unknown error code";
+        size_t index = static_cast<size_t>(value);
+        return (index < str_data.size()) ? str_data[index] : unknown;
+    }
+
+    /// \brief Converts a string to its corresponding TradeErrorCode value.
+    /// \param str The string representation of the error code.
+    /// \param value The TradeErrorCode to populate.
+    /// \return True if the conversion succeeded, false otherwise.
+    inline bool to_enum(const std::string &str, TradeErrorCode &value) noexcept {
+        static const std::map<std::string, TradeErrorCode> error_map = {
+            {"Success",                  TradeErrorCode::SUCCESS},
+            {"Invalid symbol",           TradeErrorCode::INVALID_SYMBOL},
+            {"Invalid option type",      TradeErrorCode::INVALID_OPTION},
+            {"Invalid order type",       TradeErrorCode::INVALID_ORDER},
+            {"Invalid account type",     TradeErrorCode::INVALID_ACCOUNT},
+            {"Invalid currency",         TradeErrorCode::INVALID_CURRENCY},
+            {"Amount below minimum",     TradeErrorCode::AMOUNT_TOO_LOW},
+            {"Amount above maximum",     TradeErrorCode::AMOUNT_TOO_HIGH},
+            {"Refund below minimum",     TradeErrorCode::REFUND_TOO_LOW},
+            {"Refund above maximum",     TradeErrorCode::REFUND_TOO_HIGH},
+            {"Low payout percentage",    TradeErrorCode::PAYOUT_TOO_LOW},
+            {"Invalid duration",         TradeErrorCode::INVALID_DURATION},
+            {"Invalid expiry time",      TradeErrorCode::INVALID_EXPIRY_TIME},
+            {"Reached open trades limit",TradeErrorCode::LIMIT_OPEN_TRADES},
+            {"Invalid request",          TradeErrorCode::INVALID_REQUEST},
+            {"Long wait in the order queue", TradeErrorCode::LONG_QUEUE_WAIT},
+            {"Long wait for server response", TradeErrorCode::LONG_RESPONSE_WAIT},
+            {"No network connection",    TradeErrorCode::NO_CONNECTION},
+            {"Forced client shutdown",   TradeErrorCode::CLIENT_FORCED_CLOSE},
+            {"Parser error",             TradeErrorCode::PARSING_ERROR},
+            {"Canceled",                 TradeErrorCode::CANCELED_TRADE},
+            {"Insufficient balance",     TradeErrorCode::INSUFFICIENT_BALANCE}
+        };
+
+        auto it = error_map.find(str);
+        if (it != error_map.end()) {
+            value = it->second;
+            return true;
+        }
+        return false;
+    }
+
+    /// \brief Template specialization to convert a string to TradeErrorCode.
+    /// \param str The string representation.
+    /// \return The corresponding TradeErrorCode value.
+    /// \throws std::invalid_argument If the string cannot be converted.
+    template <>
+    inline TradeErrorCode to_enum<TradeErrorCode>(const std::string &str) {
+        TradeErrorCode value;
+        if (!to_enum(str, value)) {
+            throw std::invalid_argument("Invalid TradeErrorCode string: " + str);
+        }
+        return value;
+    }
+
+    std::ostream& operator<<(std::ostream& os, TradeErrorCode value) {
+        os << optionx::to_str(value);
+        return os;
+    }
+
+//------------------------------------------------------------------------------
 
     /** \brief Тип системы мани-менеджмента
      */
@@ -303,55 +464,6 @@ namespace optionx {
         return data_mode_0[static_cast<size_t>(value)];
     };
 
-    inline const std::string &to_str(const OrderState value) noexcept {
-        static const std::vector<std::string> data_mode_0 = {
-            "UNKNOWN",
-            "CANCELED_TRADE",
-            "WAITING_OPEN",
-            "OPEN_SUCCESS",
-            "OPEN_ERROR",
-            "WAITING_CLOSE",
-            "CHECK_ERROR",
-            "WIN",
-            "LOSS",
-            "STANDOFF",
-            "REFUND"
-        };
-        return data_mode_0[static_cast<size_t>(value)];
-    };
-
-    /// \brief Converts an OrderErrorCode value to its corresponding string representation.
-    /// \param value The error code to convert.
-    /// \return A string representation of the provided error code.
-    inline const std::string &to_str(const OrderErrorCode value) noexcept {
-        static const std::vector<std::string> str_data = {
-            "Success",
-            "Invalid symbol",
-            "Invalid option type",
-            "Invalid order type",
-            "Invalid account type",
-            "Invalid currency",
-            "Amount below minimum",
-            "Amount above maximum",
-            "Refund below minimum",
-            "Refund above maximum",
-            "Low payout percentage",
-            "Invalid duration",
-            "Invalid expiry time",
-            "Reached open trades limit",
-            "Invalid request",
-            "Long wait in the order queue",
-            "Long wait for server response",
-            "No network connection",
-            "Forced client shutdown",
-            "Parser error",
-            "Canceled",
-            "Insufficient balance",
-            "Server responded with an error",
-        };
-        return str_data[static_cast<size_t>(value)];
-    };
-
     inline const std::string &to_str(const MmSystemType value) noexcept {
         static const std::vector<std::string> data_mode_0 = {
             "NONE",
@@ -404,9 +516,6 @@ namespace optionx {
     }
 
     //--------------------------------------------------------------------------
-
-    template <typename EnumType>
-    EnumType to_enum(const std::string &str);
 
     inline const bool to_enum(const std::string &str, ApiType &value) noexcept {
         static const std::map<std::string, ApiType> data =    {
@@ -544,27 +653,6 @@ namespace optionx {
         throw std::invalid_argument("Invalid CurrencyType string: " + str);
     }
 
-    inline const bool to_enum(const std::string &str, OrderState &value) noexcept {
-        static const std::map<std::string, OrderState> data_mode_0 = {
-            {"UNKNOWN",                 OrderState::UNKNOWN,        },
-            {"CANCELED_TRADE",          OrderState::CANCELED_TRADE, },
-            {"WAITING_OPEN",            OrderState::WAITING_OPEN,   },
-            {"OPEN_SUCCESS",            OrderState::OPEN_SUCCESS,   },
-            {"OPEN_ERROR",              OrderState::OPEN_ERROR,     },
-            {"CHECK_ERROR",             OrderState::CHECK_ERROR,    },
-            {"WIN",                     OrderState::WIN,            },
-            {"LOSS",                    OrderState::LOSS,           },
-            {"STANDOFF",                OrderState::STANDOFF,       },
-            {"REFUND",                  OrderState::REFUND,         }
-        };
-        auto it_mode_0 = data_mode_0.find(to_upper_case(str));
-        if (it_mode_0 != data_mode_0.end()) {
-            value = it_mode_0->second;
-            return true;
-        }
-        return false;
-    }
-
     inline const bool to_enum(const std::string &str, MmSystemType &value) noexcept {
         static const std::map<std::string, MmSystemType> data_mode_0 = {
             {"NONE",                   MmSystemType::NONE,  				},
@@ -617,5 +705,19 @@ namespace optionx {
     }
 
 }; // namespace optionx
+
+std::ostream& operator<<(std::ostream& os, optionx::TradeState value) {
+    os << optionx::to_str(value);
+    return os;
+}
+
+namespace logit {
+
+    template<>
+    std::string enum_to_string(optionx::TradeState value) {
+        return optionx::to_str(value);
+    }
+
+};
 
 #endif // _OPTIONX_ENUMS_HPP_INCLUDED
