@@ -6,14 +6,12 @@
 #define OPTIONX_TIMESTAMP_MS time_shield::timestamp_ms()
 #endif
 
-#include <stdexcept>
-#include <winsock2.h>
-#include <windows.h>
-#include "optionx_cpp/parts/modules.hpp"
+#include <gtest/gtest.h>
 #include <thread>
 #include <atomic>
-#include <set>
-#include <iostream>
+#include <chrono>
+#include "optionx_cpp/parts/modules.hpp" // Main header including all modules
+#include "optionx_cpp/parts/platforms.hpp"
 
 namespace optionx::modules {
 
@@ -295,11 +293,11 @@ namespace optionx::modules {
     }; // AccountInfoData
 
     /// \class TradeManagerTest
-    /// \brief Test implementation of BaseTradeManagerModule for unit testing.
-    class TradeManagerTest : public BaseTradeManagerModule {
+    /// \brief Test implementation of BaseTradeExecutionModule for unit testing.
+    class TradeManagerTest : public BaseTradeExecutionModule {
     public:
         TradeManagerTest(utils::EventHub& hub, std::shared_ptr<IAccountInfoData> account_info)
-            : BaseTradeManagerModule(hub, std::move(account_info)) {
+            : BaseTradeExecutionModule(hub, std::move(account_info)) {
             subscribe<events::AuthDataEvent>(this);
         }
 
@@ -308,19 +306,6 @@ namespace optionx::modules {
         PlatformType platform_type() override {
             return PlatformType::SIMULATOR;
         }
-
-        void on_event(const utils::Event* const event) override {
-            if (const auto* msg = dynamic_cast<const events::AuthDataEvent*>(event)) {
-                handle_event(*msg);
-            }
-        }
-
-        /// \brief Handles authorization data event (dummy implementation).
-        /// \param event Authorization data event.
-        void handle_event(const events::AuthDataEvent& event) {
-            LOGIT_INFO("AuthDataEvent handled. Dummy implementation.");
-        }
-
     };
 
     /// \class TradeTestMediator
@@ -330,41 +315,38 @@ namespace optionx::modules {
         explicit TradeTestMediator(utils::EventHub& hub) : utils::EventMediator(hub) {
             subscribe<events::TradeStatusEvent>(this);
             subscribe<events::TradeRequestEvent>(this);
+            subscribe<events::OpenTradesEvent>(this);
         }
 
         /// \brief Handles trade status events.
         /// \param event The trade status event.
-        void on_event(const std::shared_ptr<utils::Event>& event) override {
-            if (auto status_event = std::dynamic_pointer_cast<events::TradeStatusEvent>(event)) {
-
-            } else
-            if (auto request_event = std::dynamic_pointer_cast<events::TradeRequestEvent>(event)) {
-
-            }
-        }
+        void on_event(const std::shared_ptr<utils::Event>& event) override {}
 
         void on_event(const utils::Event* const event) {
             if (auto status_event = dynamic_cast<const events::TradeStatusEvent*>(event)) {
-                LOGIT_PRINT_INFO("Trade status event received. State: ", status_event->result->trade_state);
+                LOGIT_0DEBUG();
                 auto request = status_event->request;
                 auto result = status_event->result;
-                m_task_manager.add_delayed_task(10000, [this, request, result](std::shared_ptr<utils::Task>){
-                    LOGIT_PRINT_INFO("WIN");
+                m_task_manager.add_delayed_task(1000, [this, request, result](std::shared_ptr<utils::Task>){
+                    LOGIT_0DEBUG();
                     result->trade_state = result->live_state = TradeState::WIN;
                     result->close_price = 1.12360;
                 });
             } else
             if (auto request_event = dynamic_cast<const events::TradeRequestEvent*>(event)) {
-                LOGIT_PRINT_INFO("Trade request event received. Symbol: ", request_event->request->symbol);
+                LOGIT_0DEBUG();
                 auto request = request_event->request;
                 auto result = request_event->result;
                 m_task_manager.add_delayed_task(1000, [this, request, result](std::shared_ptr<utils::Task>){
-                    LOGIT_PRINT_INFO("OPEN_SUCCESS");
+                    LOGIT_0DEBUG();
                     result->trade_state = result->live_state = TradeState::OPEN_SUCCESS;
                     result->open_price = result->close_price = 1.12335;
-                    result->open_date = time_shield::timestamp_ms();
+                    result->open_date = OPTIONX_TIMESTAMP_MS;
                     result->close_date = result->open_date + time_shield::sec_to_ms(request->duration);
                 });
+            } else
+            if (auto trades_event = dynamic_cast<const events::OpenTradesEvent*>(event)) {
+                LOGIT_INFO(trades_event->open_trades);
             }
         }
 
@@ -438,26 +420,39 @@ namespace optionx::modules {
 using namespace optionx;
 using namespace optionx::modules;
 
-int main() {
-    LOGIT_ADD_CONSOLE_DEFAULT();
-    LOGIT_ADD_FILE_LOGGER_DEFAULT();
-    LOGIT_ADD_UNIQUE_FILE_LOGGER_DEFAULT_SINGLE_MODE();
+/// \brief Test fixture for TradeManager tests.
+class TradeManagerTestFixture : public ::testing::Test {
+protected:
+    /// \brief Set up the test environment.
+    void SetUp() override {
 
-    // Initialize the event hub
+    }
+
+    /// \brief Tear down the test environment.
+    void TearDown() override {
+
+    }
+};
+
+/// \brief Tests that a valid trade request is processed successfully.
+///
+/// The test places a BUY trade for "EURUSD" and then simulates a price update
+/// event. The immediate mediator updates the trade state so that the final state
+/// is expected to be WIN.
+TEST_F(TradeManagerTestFixture, ValidTradeTest) {
+    // Initialize the event hub.
     utils::EventHub hub;
 
-    // Create shared account info and auth data
+    // Create shared account info.
     auto account_info = std::make_shared<AccountInfoData>();
-    auto auth_data = std::make_shared<AuthData>();
-
-    // Set dummy account info
-    account_info->user_id = 12345;
-    account_info->balance = 1000.0;
-    account_info->currency = CurrencyType::USD;
+    // Set dummy account info.
+    account_info->user_id      = 12345;
+    account_info->balance      = 1000.0;
+    account_info->currency     = CurrencyType::USD;
     account_info->account_type = AccountType::DEMO;
-    account_info->connect = true;
+    account_info->connect      = true;
 
-    // Create the test TradeManagerModule
+    // Create the test TradeManager.
     TradeManagerTest trade_manager(hub, account_info);
 
     // Create the test mediator to handle events
@@ -467,7 +462,7 @@ int main() {
     std::atomic<bool> processing{true};
 
     // Start processing in a separate thread
-    std::thread processor([&]() {
+    std::thread processor([&processing, &hub, &trade_manager, &test_mediator]() {
         while (processing) {
             trade_manager.process();
             test_mediator.process();
@@ -480,48 +475,271 @@ int main() {
         test_mediator.shutdown();
     });
 
-    // Simulate a trade request
+    std::atomic<int>  callback_step{0};
+
+    // Create a valid trade request.
     auto trade_request = std::make_unique<TradeRequest>();
-    trade_request->symbol = "EURUSD";
-    trade_request->amount = 100.0;
+    trade_request->symbol      = "EURUSD";
+    trade_request->amount      = 100.0;
     trade_request->option_type = OptionType::SPRINT;
-    trade_request->order_type = OrderType::BUY;
-    trade_request->duration = 10;
-    trade_request->add_callback([](std::unique_ptr<TradeRequest> request, std::unique_ptr<TradeResult> result){
-        //print_trade_request(*request.get());
-        print_trade_result(*result.get());
+    trade_request->order_type  = OrderType::BUY;
+    trade_request->duration    = 10;
+    trade_request->add_callback([&callback_step](
+            std::unique_ptr<TradeRequest> req,
+            std::unique_ptr<TradeResult> res) {
+        LOGIT_STREAM_TRACE() << "State: " << to_str(res->trade_state);
+        switch (res->trade_state) {
+        case TradeState::WAITING_OPEN:
+            callback_step = 1;
+            break;
+        case TradeState::OPEN_SUCCESS:
+            if (callback_step == 1) callback_step = 2;
+            break;
+        case TradeState::IN_PROGRESS:
+            if (callback_step == 2) callback_step = 3;
+            break;
+        case TradeState::WAITING_CLOSE:
+            if (callback_step == 3) callback_step = 4;
+            break;
+        case TradeState::WIN:
+            if (callback_step == 4) callback_step = 5;
+            break;
+        default:
+            callback_step = 0;
+            break;
+        }
     });
 
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    // Place the trade.
+    bool placed = trade_manager.place_trade(std::move(trade_request));
+    ASSERT_TRUE(placed);
 
-    // Place a trade
-    LOGIT_STREAM_TRACE() << "Placing trade...\n";
-    if (trade_manager.place_trade(std::move(trade_request))) {
-        LOGIT_STREAM_TRACE() << "Trade placed successfully.\n";
-    } else {
-        LOGIT_STREAM_TRACE() << "Failed to place trade.\n";
-    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    // Simulate a price update event to trigger closing.
+    TickData tick;
+    // Set tick price data so that mid_price > open_price.
+    // For example, for BUY order if mid_price > 1.12335 then trade is WIN.
+    tick.tick         = { 1.12350, 1.12340, 0.1, 1695483030000, 1695483031000, 0 };
+    tick.symbol       = "EURUSD";
+    tick.price_digits = 5;
+    tick.flags        = optionx::TickStatusFlags::REALTIME | optionx::TickStatusFlags::INITIALIZED;
+    std::vector<TickData> ticks = { tick };
 
-    // Simulate a price update event
-    std::vector<TickData> ticks = {
-        {{1.12350, 1.12340, 0.1, 1695483030000, 1695483031000, 0}, "EURUSD", "", 5, 3, optionx::TickStatusFlags::REALTIME | optionx::TickStatusFlags::INITIALIZED},  // Example for EURUSD
-        {{1.12350, 1.12340, 0.1, 1695483030000, 1695483031000, 0}, "USDJPY", "", 3, 3, optionx::TickStatusFlags::REALTIME | optionx::TickStatusFlags::INITIALIZED}   // Example for USDJPY
-    };
-    LOGIT_STREAM_INFO() << "Send PriceUpdateEvent\n";
     hub.notify_async(std::make_unique<events::PriceUpdateEvent>(ticks));
 
-    // Allow some time for processing
-    std::this_thread::sleep_for(std::chrono::seconds(20));
+    // Wait a short time for the callback to be invoked.
+    int wait_iterations = 0;
+    while (callback_step != 5 && wait_iterations < 30) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        wait_iterations++;
+    }
 
     // Stop processing and join the thread
     processing = false;
     processor.join();
-    test_mediator.shutdown();
 
-    LOGIT_STREAM_TRACE() << "Test completed.\n";
+    EXPECT_EQ(callback_step, 5);
 
     LOGIT_WAIT();
-    return 0;
+}
+
+TEST_F(TradeManagerTestFixture, InvalidTradeTest) {
+    // Initialize the event hub.
+    utils::EventHub hub;
+
+    // Create shared account info.
+    auto account_info = std::make_shared<AccountInfoData>();
+    // Set dummy account info.
+    account_info->user_id      = 12345;
+    account_info->balance      = 1000.0;
+    account_info->currency     = CurrencyType::USD;
+    account_info->account_type = AccountType::DEMO;
+    account_info->connect      = true;
+
+    // Create the test TradeManager.
+    TradeManagerTest trade_manager(hub, account_info);
+
+    // Create the test mediator to handle events
+    TradeTestMediator test_mediator(hub);
+
+    // Atomic flag to control the processing loop
+    std::atomic<bool> processing{true};
+
+    // Start processing in a separate thread
+    std::thread processor([&processing, &hub, &trade_manager, &test_mediator]() {
+        while (processing) {
+            trade_manager.process();
+            test_mediator.process();
+            hub.process();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        // Finalize all trades
+        LOGIT_STREAM_TRACE() << "Finalizing all trades...\n";
+        trade_manager.shutdown();
+        test_mediator.shutdown();
+    });
+
+    std::atomic<int> callback_step{0};
+    TradeErrorCode final_error = TradeErrorCode::SUCCESS;
+
+    // Create a valid trade request.
+    auto trade_request = std::make_unique<TradeRequest>();
+    trade_request->symbol      = "";
+    trade_request->amount      = 100.0;
+    trade_request->option_type = OptionType::SPRINT;
+    trade_request->order_type  = OrderType::BUY;
+    trade_request->duration    = 10;
+    trade_request->add_callback([&callback_step, &final_error](
+            std::unique_ptr<TradeRequest> req,
+            std::unique_ptr<TradeResult> res) {
+        LOGIT_STREAM_TRACE() << "State: " << to_str(res->trade_state);
+        switch (res->trade_state) {
+        case TradeState::OPEN_ERROR:
+            callback_step = 1;
+            final_error = res->error_code;
+            break;
+        default:
+            callback_step = 0;
+            break;
+        }
+    });
+
+    // Place the trade.
+    bool placed = trade_manager.place_trade(std::move(trade_request));
+    ASSERT_TRUE(placed);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+
+    // Simulate a price update event to trigger closing.
+    TickData tick;
+    // Set tick price data so that mid_price > open_price.
+    // For example, for BUY order if mid_price > 1.12335 then trade is WIN.
+    tick.tick         = { 1.12350, 1.12340, 0.1, 1695483030000, 1695483031000, 0 };
+    tick.symbol       = "EURUSD";
+    tick.price_digits = 5;
+    tick.flags        = optionx::TickStatusFlags::REALTIME | optionx::TickStatusFlags::INITIALIZED;
+    std::vector<TickData> ticks = { tick };
+
+    hub.notify_async(std::make_unique<events::PriceUpdateEvent>(ticks));
+
+    // Wait a short time for the callback to be invoked.
+    int wait_iterations = 0;
+    while (callback_step != 1 && wait_iterations < 30) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        wait_iterations++;
+    }
+
+    // Stop processing and join the thread
+    processing = false;
+    processor.join();
+
+    EXPECT_EQ(callback_step, 1);
+    // Expect that an empty symbol leads to INVALID_SYMBOL error.
+    EXPECT_EQ(final_error, TradeErrorCode::INVALID_SYMBOL);
+
+    LOGIT_WAIT();
+}
+
+TEST_F(TradeManagerTestFixture, ShutdownTest) {
+    // Initialize the event hub.
+    utils::EventHub hub;
+
+    // Create shared account info.
+    auto account_info = std::make_shared<AccountInfoData>();
+    // Set dummy account info.
+    account_info->user_id      = 12345;
+    account_info->balance      = 1000.0;
+    account_info->currency     = CurrencyType::USD;
+    account_info->account_type = AccountType::DEMO;
+    account_info->connect      = true;
+
+    // Create the test TradeManager.
+    TradeManagerTest trade_manager(hub, account_info);
+
+    // Create the test mediator to handle events
+    TradeTestMediator test_mediator(hub);
+
+    // Atomic flag to control the processing loop
+    std::atomic<bool> processing{true};
+
+    // Start processing in a separate thread
+    std::thread processor([&processing, &hub, &trade_manager, &test_mediator]() {
+        while (processing) {
+            trade_manager.process();
+            test_mediator.process();
+            hub.process();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        // Finalize all trades
+        LOGIT_STREAM_TRACE() << "Finalizing all trades...\n";
+        trade_manager.shutdown();
+        test_mediator.shutdown();
+    });
+
+    std::atomic<int> callback_step{0};
+    TradeErrorCode final_error = TradeErrorCode::SUCCESS;
+
+    // Create a valid trade request.
+    auto trade_request = std::make_unique<TradeRequest>();
+    trade_request->symbol      = "EURUSD";
+    trade_request->amount      = 100.0;
+    trade_request->option_type = OptionType::SPRINT;
+    trade_request->order_type  = OrderType::BUY;
+    trade_request->duration    = 10;
+    trade_request->add_callback([&callback_step, &final_error](
+            std::unique_ptr<TradeRequest> req,
+            std::unique_ptr<TradeResult> res) {
+        LOGIT_STREAM_TRACE() << "State: " << to_str(res->trade_state);
+        switch (res->trade_state) {
+        case TradeState::CHECK_ERROR:
+            callback_step = 1;
+            final_error = res->error_code;
+            break;
+        default:
+            callback_step = 0;
+            break;
+        }
+    });
+
+    // Place the trade.
+    bool placed = trade_manager.place_trade(std::move(trade_request));
+    ASSERT_TRUE(placed);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+
+    // Simulate a price update event to trigger closing.
+    TickData tick;
+    // Set tick price data so that mid_price > open_price.
+    // For example, for BUY order if mid_price > 1.12335 then trade is WIN.
+    tick.tick         = { 1.12350, 1.12340, 0.1, 1695483030000, 1695483031000, 0 };
+    tick.symbol       = "EURUSD";
+    tick.price_digits = 5;
+    tick.flags        = optionx::TickStatusFlags::REALTIME | optionx::TickStatusFlags::INITIALIZED;
+    std::vector<TickData> ticks = { tick };
+
+    hub.notify_async(std::make_unique<events::PriceUpdateEvent>(ticks));
+
+    // Wait a short time for the callback to be invoked.
+    std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+
+    // Stop processing and join the thread
+    processing = false;
+    processor.join();
+
+    EXPECT_EQ(callback_step, 1);
+    // Expect that an empty symbol leads to INVALID_SYMBOL error.
+    EXPECT_EQ(final_error, TradeErrorCode::CLIENT_FORCED_CLOSE);
+
+    LOGIT_WAIT();
+}
+
+
+/// \brief Main entry point for GoogleTest.
+int main(int argc, char **argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    LOGIT_ADD_CONSOLE_DEFAULT();
+    LOGIT_ADD_FILE_LOGGER_DEFAULT();
+    LOGIT_ADD_UNIQUE_FILE_LOGGER_DEFAULT_SINGLE_MODE();
+    return RUN_ALL_TESTS();
 }

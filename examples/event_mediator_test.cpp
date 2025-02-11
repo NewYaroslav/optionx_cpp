@@ -1,10 +1,10 @@
-#include "optionx_cpp/parts/pubsub/EventMediator.hpp"
+#include "optionx_cpp/parts/utils/pubsub.hpp"
 #include <iostream>
 #include <memory>
 
 /// \class MessageA
 /// \brief Event type for message A.
-class MessageA : public optionx::Event {
+class MessageA : public optionx::utils::Event {
 public:
     int data;
     explicit MessageA(int val) : data(val) {}
@@ -12,7 +12,7 @@ public:
 
 /// \class MessageB
 /// \brief Event type for message B.
-class MessageB : public optionx::Event {
+class MessageB : public optionx::utils::Event {
 public:
     std::string text;
     explicit MessageB(const std::string& str) : text(str) {}
@@ -20,7 +20,7 @@ public:
 
 /// \class MessageC
 /// \brief Event type for message C.
-class MessageC : public optionx::Event {
+class MessageC : public optionx::utils::Event {
 public:
     double value;
     explicit MessageC(double val) : value(val) {}
@@ -28,7 +28,7 @@ public:
 
 /// \class MessageD
 /// \brief Event type for message D.
-class MessageD : public optionx::Event {
+class MessageD : public optionx::utils::Event {
 public:
     int a, b;
     explicit MessageD(int a, int b) : a(a), b(b) {}
@@ -36,10 +36,10 @@ public:
 
 /// \class Module1
 /// \brief Sends MessageA and receives MessageB.
-class Module1 : public optionx::EventMediator {
+class Module1 : public optionx::utils::EventMediator {
 public:
 
-    Module1(optionx::EventHub& hub) : EventMediator(hub) {
+    Module1(optionx::utils::EventHub& hub) : EventMediator(hub) {
         subscribe<MessageB>([](std::shared_ptr<MessageB> msg) {
             std::cout << "Module1 received MessageB with text: " << msg->text << std::endl;
         });
@@ -51,7 +51,7 @@ public:
         notify(msg);
     }
 
-    void on_event(const std::shared_ptr<optionx::Event>& event) override {
+    void on_event(const std::shared_ptr<optionx::utils::Event>& event) override {
         if (auto msg = std::dynamic_pointer_cast<MessageA>(event)) {
             std::cout << "Module1 received MessageA with data: " << msg->data << std::endl;
         } else
@@ -66,7 +66,7 @@ public:
         }
     };
 
-    void on_event(const optionx::Event* const event) override {
+    void on_event(const optionx::utils::Event* const event) override {
         if (auto msg = dynamic_cast<const MessageA*>(event)) {
             std::cout << "Module1 received MessageA with data: " << msg->data << std::endl;
         } else
@@ -84,9 +84,9 @@ public:
 
 /// \class Module2
 /// \brief Receives MessageA and sends MessageB.
-class Module2 : public optionx::EventMediator {
+class Module2 : public optionx::utils::EventMediator {
 public:
-    Module2(optionx::EventHub& hub) : optionx::EventMediator(hub) {
+    Module2(optionx::utils::EventHub& hub) : optionx::utils::EventMediator(hub) {
         subscribe<MessageA>([this](std::shared_ptr<MessageA> msg) {
             std::cout << "Module2 received MessageA with data: " << msg->data << std::endl;
             send_message_b("Hello from Module2");
@@ -99,7 +99,7 @@ public:
         notify(msg);
     }
 
-    void on_event(const std::shared_ptr<optionx::Event>& event) override {
+    void on_event(const std::shared_ptr<optionx::utils::Event>& event) override {
         if (auto msg = std::dynamic_pointer_cast<MessageA>(event)) {
             std::cout << "Module2 received MessageA with data: " << msg->data << std::endl;
         } else
@@ -114,7 +114,7 @@ public:
         }
     };
 
-    void on_event(const optionx::Event* const event) override {
+    void on_event(const optionx::utils::Event* const event) override {
         if (auto msg = dynamic_cast<const MessageA*>(event)) {
             std::cout << "Module2 received MessageA with data: " << msg->data << std::endl;
         } else
@@ -132,9 +132,9 @@ public:
 
 /// \class Module3
 /// \brief Receives MessageC by reference.
-class Module3 : public optionx::EventMediator {
+class Module3 : public optionx::utils::EventMediator {
 public:
-    Module3(optionx::EventHub& hub) : optionx::EventMediator(hub) {
+    Module3(optionx::utils::EventHub& hub) : optionx::utils::EventMediator(hub) {
         subscribe<MessageC>(this);
     }
 
@@ -148,7 +148,7 @@ public:
         notify(msg);
     }
 
-    void on_event(const std::shared_ptr<optionx::Event>& event) override {
+    void on_event(const std::shared_ptr<optionx::utils::Event>& event) override {
         if (auto msg = std::dynamic_pointer_cast<MessageA>(event)) {
             std::cout << "Module3 received MessageA with data: " << msg->data << std::endl;
         } else
@@ -163,7 +163,7 @@ public:
         }
     };
 
-    void on_event(const optionx::Event* const event) override {
+    void on_event(const optionx::utils::Event* const event) override {
         if (auto msg = dynamic_cast<const MessageA*>(event)) {
             std::cout << "Module3 received MessageA with data: " << msg->data << std::endl;
         } else
@@ -180,7 +180,7 @@ public:
 };
 
 int main() {
-    optionx::EventHub hub;
+    optionx::utils::EventHub hub;
 
     Module1 module1(hub);
     Module2 module2(hub);
