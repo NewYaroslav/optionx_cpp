@@ -71,12 +71,10 @@ namespace optionx::storage {
             std::lock_guard<std::mutex> lock(m_mutex);
             std::string key = platform + ":" + email;
             try {
-                std::string base64_key = utils::Base64::encode(key);
                 std::string base64_encrypted_value;
-                if (!m_db.find(base64_key, base64_encrypted_value)) return std::nullopt;
+                if (!m_db.find(utils::Base64::encode(key), base64_encrypted_value)) return std::nullopt;
                 if (base64_encrypted_value.empty()) return std::nullopt;
-                std::string encrypted_value = utils::Base64::decode(base64_encrypted_value);
-                std::string value = m_aes.decrypt(encrypted_value);
+                std::string value = m_aes.decrypt(utils::Base64::decode(base64_encrypted_value));
                 if (value.empty()) return std::nullopt;
                 return {value};
             } catch (const sqlite_containers::sqlite_exception& ex) {
@@ -96,11 +94,7 @@ namespace optionx::storage {
             std::lock_guard<std::mutex> lock(m_mutex);
             std::string key = platform + ":" + email;
             try {
-                //std::string base64_key = utils::Base64::encode(key);
-                //std::string encrypted_value = m_aes.encrypt(value);
-                //m_db.insert(base64_key, utils::Base64::encode(encrypted_value));
-                std::string encrypted_value = m_aes.encrypt(value);
-                m_db.insert(utils::Base64::encode(key), utils::Base64::encode(encrypted_value));
+                m_db.insert(utils::Base64::encode(key), utils::Base64::encode(m_aes.encrypt(value)));
                 return true;
             } catch(const sqlite_containers::sqlite_exception& ex){
                 LOGIT_PRINT_ERROR("Database error: ", ex);
