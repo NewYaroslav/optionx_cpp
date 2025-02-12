@@ -339,7 +339,7 @@ namespace optionx::platforms::intrade_bar {
             m_auth_data->email);
 
         if (!session) {
-            LOGIT_TRACE("Session not found for email: ", m_auth_data->email);
+            LOGIT_PRINT_TRACE("Session not found for email: ", m_auth_data->email);
             execute_authentication_flow(std::move(callback));
             return;
         }
@@ -402,7 +402,7 @@ namespace optionx::platforms::intrade_bar {
             const std::string& reason,
             connection_callback_t callback) {
         using Status = events::AccountInfoUpdateEvent::Status;
-        LOGIT_ERROR("Authentication failed: ", reason);
+        LOGIT_PRINTF_ERROR("Authentication failed: ", reason);
         callback({false, reason, m_auth_data ? m_auth_data->clone_unique() : nullptr});
         notify(events::AccountInfoUpdateEvent(
             get_account_info(),

@@ -11,25 +11,33 @@
 #include <string>
 #include <mutex>
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(_WIN64)
 
-#ifndef OPTIONX_DATA_PATH
-#define OPTIONX_DATA_PATH "data"
-#endif
+#   ifndef OPTIONX_DATA_PATH
+#   define OPTIONX_DATA_PATH "data"
+#   endif
 
-#ifndef OPTIONX_DB_PATH
-#define OPTIONX_DB_PATH OPTIONX_DATA_PATH "\\databases"
-#endif
+#   ifndef OPTIONX_DB_PATH
+#   define OPTIONX_DB_PATH OPTIONX_DATA_PATH "\\databases"
+#   endif
+
+#   ifndef OPTIONX_SESSION_DB_FILE
+#   define OPTIONX_SESSION_DB_FILE OPTIONX_DB_PATH "\\session_data.db"
+#   endif
 
 #else
 
-#ifndef OPTIONX_DATA_PATH
-#define OPTIONX_DATA_PATH "data"
-#endif
+#   ifndef OPTIONX_DATA_PATH
+#   define OPTIONX_DATA_PATH "data"
+#   endif
 
-#ifndef OPTIONX_DB_PATH
-#define OPTIONX_DB_PATH OPTIONX_DATA_PATH "/databases"
-#endif
+#   ifndef OPTIONX_DB_PATH
+#   define OPTIONX_DB_PATH OPTIONX_DATA_PATH "/databases"
+#   endif
+
+#   ifndef OPTIONX_SESSION_DB_FILE
+#   define OPTIONX_SESSION_DB_FILE OPTIONX_DB_PATH "/session_data.db"
+#   endif
 
 #endif
 
@@ -64,9 +72,10 @@ namespace optionx::storage {
             std::string key = platform + ":" + email;
             try {
                 std::string base64_key = utils::Base64::encode(key);
-                std::string encrypted_value;
-                if (!m_db.find(base64_key, encrypted_value)) return std::nullopt;
-                if (encrypted_value.empty()) return std::nullopt;
+                std::string base64_encrypted_value;
+                if (!m_db.find(base64_key, base64_encrypted_value)) return std::nullopt;
+                if (base64_encrypted_value.empty()) return std::nullopt;
+                std::string encrypted_value = utils::Base64::decode(base64_encrypted_value);
                 std::string value = m_aes.decrypt(encrypted_value);
                 if (value.empty()) return std::nullopt;
                 return {value};
@@ -87,9 +96,11 @@ namespace optionx::storage {
             std::lock_guard<std::mutex> lock(m_mutex);
             std::string key = platform + ":" + email;
             try {
-                std::string base64_key = utils::Base64::encode(key);
+                //std::string base64_key = utils::Base64::encode(key);
+                //std::string encrypted_value = m_aes.encrypt(value);
+                //m_db.insert(base64_key, utils::Base64::encode(encrypted_value));
                 std::string encrypted_value = m_aes.encrypt(value);
-                m_db.insert(base64_key, encrypted_value);
+                m_db.insert(utils::Base64::encode(key), utils::Base64::encode(encrypted_value));
                 return true;
             } catch(const sqlite_containers::sqlite_exception& ex){
                 LOGIT_PRINT_ERROR("Database error: ", ex);
@@ -145,10 +156,10 @@ namespace optionx::storage {
             m_aes.set_key(def_key);
             try {
                 sqlite_containers::Config config;
-#               ifdef _WIN32
-                config.db_path = utils::get_exec_dir() + std::string("\\") + OPTIONX_DB_PATH + "\\session_data.db";
+#               if defined(_WIN32) || defined(_WIN64)
+                config.db_path = utils::get_exec_dir() + std::string("\\") + OPTIONX_SESSION_DB_FILE;
 #               else
-                config.db_path = utils:get_exec_dir() + std::string("/") + OPTIONX_DB_PATH + "/session_data.db";
+                config.db_path = utils:get_exec_dir() + std::string("/") + OPTIONX_SESSION_DB_FILE;
 #               endif
                 config.table_name = "sessions";
                 config.busy_timeout = 1000;               // Таймаут при блокировке базы данных.

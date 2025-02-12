@@ -33,7 +33,7 @@ namespace optionx::utils {
                 }
 
                 for (size_t j = 0; j < 4; ++j) {
-                    if (j <= (remaining + 1)) {
+                    if (j < (remaining + 1)) {
                         output += BASE64_ALPHABET[(buffer >> (18 - j * 6)) & 0x3F];
                     } else {
                         output += '=';
