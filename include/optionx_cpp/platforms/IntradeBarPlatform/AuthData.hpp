@@ -139,15 +139,23 @@ namespace optionx::platforms::intrade_bar {
             }
         }
 
-        /// \brief Validates the authorization data.
-        /// \return True if the authorization data is valid, false otherwise.
-        bool check() const override {
+        /// \brief Validates the authorization data with detailed error message.
+        /// \return A pair where the first element is true if data is valid, and the second element contains an error message in case of failure.
+        std::pair<bool, std::string> validate() const override {
             if (auth_method == AuthMethod::EMAIL_PASSWORD) {
-                return !email.empty() && !password.empty();
+                if (email.empty())
+                    return { false, "Email is empty" };
+                if (password.empty())
+                    return { false, "Password is empty" };
             } else if (auth_method == AuthMethod::USER_TOKEN) {
-                return !user_id.empty() && !token.empty();
+                if (user_id.empty())
+                    return { false, "User ID is empty" };
+                if (token.empty())
+                    return { false, "Token is empty" };
+            } else {
+                return { false, "Authentication method is not set" };
             }
-            return false;
+            return { true, std::string() };
         }
 
         /// \brief Clones the authorization data instance to a unique pointer.

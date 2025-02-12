@@ -32,9 +32,9 @@ namespace optionx {
         /// \param j JSON object containing authorization data.
         virtual void from_json(const nlohmann::json& j) = 0;
 
-        /// \brief Validates the authorization data.
-        /// \return `true` if the authorization data is valid; otherwise, `false`.
-        virtual bool check() const = 0;
+        /// \brief Validates the authorization data with detailed error message.
+        /// \return A pair where the first element is true if data is valid, and the second element contains an error message in case of failure.
+        virtual std::pair<bool, std::string> validate() const = 0;
 
         /// \brief Clones the authorization data instance as a unique pointer.
         /// \return A `std::unique_ptr<IAuthData>` pointing to the cloned instance.

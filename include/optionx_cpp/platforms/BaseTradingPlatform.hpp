@@ -55,7 +55,6 @@ namespace optionx::platforms {
         /// \return True if the authorization data was set successfully; false otherwise.
         virtual bool configure_auth(std::unique_ptr<IAuthData> auth_data) {
             if (!auth_data) return false;
-            if (!auth_data->check()) return false;
             m_event_hub.notify_async(std::make_unique<events::AuthDataEvent>(std::move(auth_data)));
             return true;
         }

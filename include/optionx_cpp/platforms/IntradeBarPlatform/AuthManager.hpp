@@ -167,7 +167,13 @@ namespace optionx::platforms::intrade_bar {
     void AuthManager::handle_event(const events::AuthDataEvent& event) {
         if (auto new_auth_data = std::dynamic_pointer_cast<AuthData>(event.auth_data)) {
             LOGIT_TRACE0();
-            m_new_auth_data = std::make_unique<AuthData>(*new_auth_data.get());
+            auto [success, message] = new_auth_data->validate();
+            if (success) {
+                m_new_auth_data = std::make_unique<AuthData>(*new_auth_data.get());
+            } else {
+                m_new_auth_data.reset();
+            }
+            new_auth_data->dispatch_callbacks(true, message);
         }
     }
 
