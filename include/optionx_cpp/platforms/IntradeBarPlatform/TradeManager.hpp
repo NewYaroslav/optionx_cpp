@@ -52,6 +52,8 @@ namespace optionx::platforms::intrade_bar {
         /// \param event The trade status event.
         void handle_event(const events::TradeStatusEvent& event);
 
+        /// \brief Handles an OpenTradesEvent.
+        /// \param event The OpenTradesEvent containing the number of open trades.
         void handle_event(const events::OpenTradesEvent& event);
 
         /// \brief Processes trade status based on retrieved price and profit.

@@ -25,6 +25,16 @@ namespace optionx::events {
             request = std::shared_ptr<TradeRequest>(trade_request.release());
         }
 
+        /// \brief Constructs a TradeTransactionEvent with a trade request and trade result.
+        /// \param trade_request A unique pointer to the trade request to initialize the event.
+        /// \param trade_result A unique pointer to the trade result to initialize the event.
+        TradeTransactionEvent(
+                std::unique_ptr<TradeRequest> &trade_request,
+                std::unique_ptr<TradeResult> &trade_result) {
+            request = std::shared_ptr<TradeRequest>(trade_request.release());
+            result = std::shared_ptr<TradeResult>(trade_result.release());
+        }
+
         /// \brief Default virtual destructor.
         virtual ~TradeTransactionEvent() = default;
     };

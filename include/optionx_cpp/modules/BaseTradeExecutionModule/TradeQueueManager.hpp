@@ -53,10 +53,16 @@ namespace optionx::modules {
         };
 
         /// \brief Adds a trade request to the processing queue.
+        /// \tparam PreprocessFunctor Type of the preprocessing functor.
         /// \param request Unique pointer to a trade request.
         /// \param platform_type The platform type associated with the request.
+        /// \param preprocess Functor to preprocess the trade request and result.
         /// \return True if the trade request was successfully added; false otherwise.
-        bool add_trade(std::unique_ptr<TradeRequest> request, PlatformType platform_type);
+        template<typename PreprocessFunction>
+        bool add_trade(
+            std::unique_ptr<TradeRequest> request,
+            PlatformType platform_type,
+            PreprocessFunction preprocess);
 
         /// \brief Sets a callback for trade result events.
         /// \param callback Function to handle trade result events.
@@ -142,8 +148,11 @@ namespace optionx::modules {
         void handle_event(const events::DisconnectRequestEvent& event);
     };
 
-
-    bool TradeQueueManager::add_trade(std::unique_ptr<TradeRequest> request, PlatformType platform_type) {
+    template<typename PreprocessFunction>
+    bool TradeQueueManager::add_trade(
+            std::unique_ptr<TradeRequest> request,
+            PlatformType platform_type,
+            PreprocessFunction preprocess) {
         LOGIT_0TRACE();
         if (!request) return false;
         if (request->account_type == AccountType::UNKNOWN) {
@@ -152,9 +161,14 @@ namespace optionx::modules {
         if (request->currency == CurrencyType::UNKNOWN) {
             request->currency = m_account_info.get_info<CurrencyType>(AccountInfoType::CURRENCY);
         }
+        auto result = request->create_trade_result_unique();
+        result->trade_id = utils::TradeIdGenerator::instance().generate_id();
+        result->place_date = OPTIONX_TIMESTAMP_MS;
+        result->platform_type = platform_type;
+        if (!preprocess(request, result)) return false;
 
         LOGIT_0TRACE();
-        auto trade_event = std::make_shared<events::TradeTransactionEvent>(request, platform_type);
+        auto trade_event = std::make_shared<events::TradeTransactionEvent>(request, result);
         std::lock_guard<std::mutex> lock(m_pending_mutex);
         m_pending_transactions.push_back(std::move(trade_event));
         return true;

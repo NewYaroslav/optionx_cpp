@@ -118,7 +118,7 @@ namespace optionx::platforms::intrade_bar {
                 if (request.option_type == OptionType::SPRINT) return true;
                 const int64_t sec_of_day = time_shield::sec_of_day(request.expiry_time);
                 if (sec_of_day < start_time || sec_of_day > end_time) return false;
-                if (sec_of_day % (5 * time_shield::SEC_PER_MIN) != 0) return false;
+                if ((sec_of_day % time_shield::SEC_PER_5_MIN) != 0) return false;
                 const int64_t sec_close = request.expiry_time - request.timestamp;
                 const int64_t min_sec = 300;
                 return (sec_close > min_sec);

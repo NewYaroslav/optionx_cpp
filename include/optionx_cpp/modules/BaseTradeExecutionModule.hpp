@@ -66,7 +66,14 @@ namespace optionx::modules {
         /// \param request Unique pointer to a trade request.
         /// \return True if the request passes validation and is added to the queue; false otherwise.
         bool place_trade(std::unique_ptr<TradeRequest> request) {
-            return m_trade_queue.add_trade(std::move(request), platform_type());
+            return m_trade_queue.add_trade(
+                    std::move(request),
+                    platform_type(),
+                    [this](
+                    std::unique_ptr<TradeRequest> &trade_request,
+                    std::unique_ptr<TradeResult> &trade_result) {
+                return preprocess_trade_request(trade_request, trade_result);
+            });
         }
 
         /// \brief Initializes the module.
@@ -86,6 +93,17 @@ namespace optionx::modules {
         AccountInfoProvider m_account_info; ///< Manages access to account-related data.
         TradeStateManager   m_trade_state_manager; ///< Handles trade state transitions and validation.
         TradeQueueManager   m_trade_queue; ///< Manages the queue of pending and active trade transactions.
+
+        /// \brief Preprocesses a trade request before placing it into the queue.
+        /// \param trade_request Unique pointer to a trade request.
+        /// \param trade_result Unique pointer to a trade result.
+        /// \return True if the request is valid after preprocessing; false otherwise.
+        virtual bool preprocess_trade_request(
+                std::unique_ptr<TradeRequest> &trade_request,
+                std::unique_ptr<TradeResult> &trade_result) {
+            // Default implementation; can be overridden by derived classes.
+            return true;
+        }
 
         /// \brief Returns the platform type associated with this trade manager.
         /// \return The `PlatformType` of the trading module.
