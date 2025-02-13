@@ -160,9 +160,8 @@ namespace optionx::storage {
                 config.page_size = 4096;                  // Размер страницы по умолчанию.
                 config.cache_size = 1000;                 // Небольшой кэш, так как объем данных невелик.
                 config.analysis_limit = 500;              // Уменьшить лимит анализа для оптимизации.
-                config.wal_autocheckpoint = 500;          // Более частые авто-чекпоинты для предотвращения роста WAL.
-                config.journal_mode = sqlite_containers::JournalMode::WAL;
-                config.synchronous = sqlite_containers::SynchronousMode::NORMAL;
+                config.journal_mode = sqlite_containers::JournalMode::DELETE_MODE;
+                config.synchronous = sqlite_containers::SynchronousMode::FULL;
                 config.auto_vacuum_mode = sqlite_containers::AutoVacuumMode::FULL;
                 config.default_txn_mode = sqlite_containers::TransactionMode::DEFERRED;
                 m_db.set_config(config);
