@@ -41,10 +41,6 @@ namespace optionx::modules {
         /// \brief Virtual destructor.
         virtual ~TradeQueueManager() = default;
 
-        /// \brief Handles an event notification received as a shared pointer.
-        /// \param event The received event.
-        void on_event(const std::shared_ptr<utils::Event>& event) override {};
-
         /// \brief Handles an event notification received as a raw pointer.
         /// \param event The received event.
         void on_event(const utils::Event* const event) override {

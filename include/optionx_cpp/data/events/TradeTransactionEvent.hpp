@@ -19,6 +19,7 @@ namespace optionx::events {
         /// \param platform_type
         TradeTransactionEvent(std::unique_ptr<TradeRequest> &trade_request, PlatformType platform_type) {
             result = trade_request->create_trade_result_shared();
+            result->trade_id = utils::TradeIdGenerator::instance().generate_id();
             result->place_date = OPTIONX_TIMESTAMP_MS;
             result->platform_type = platform_type;
             request = std::shared_ptr<TradeRequest>(trade_request.release());

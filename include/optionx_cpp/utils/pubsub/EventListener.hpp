@@ -18,7 +18,7 @@ namespace optionx::utils {
 
         /// \brief Handles an event notification received as a shared pointer.
         /// \param event The event received, passed as a shared pointer.
-        virtual void on_event(const std::shared_ptr<Event>& event) = 0;
+        virtual void on_event(const std::shared_ptr<Event>& event) {};
 
         /// \brief Handles an event notification received as a raw pointer.
         /// \param event The event received, passed as a raw pointer.
