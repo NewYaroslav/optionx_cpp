@@ -342,7 +342,7 @@ namespace optionx::platforms::intrade_bar {
             return true;
 
         } catch (const std::exception& ex) {
-            LOGIT_ERROR("Exception while parsing trade response: ", ex.what());
+            LOGIT_PRINTF_ERROR("Exception while parsing trade response: ", ex.what());
             result->trade_state = result->live_state = TradeState::OPEN_ERROR;
             result->error_code = TradeErrorCode::PARSING_ERROR;
             result->error_desc = "Exception while parsing trade response: " + std::string(ex.what());

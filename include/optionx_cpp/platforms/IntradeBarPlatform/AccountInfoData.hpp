@@ -338,11 +338,11 @@ namespace optionx::platforms::intrade_bar {
             } else
             if (request.option_type == OptionType::CLASSIC) {
                 if (request.duration > time_shield::SEC_PER_YEAR) {
-                    const int64_t expiration = get_classic_bo_expiration(request.timestamp, request.duration);
+                    const int64_t expiration = calc_expiration(request.timestamp, request.duration);
                     if (expiration == 0) return 0.0;
                 } else {
                     if ((request.duration % (5 * time_shield::SEC_PER_MIN)) != 0) return 0.0;
-                    const int64_t timestamp = get_classic_bo_closing_timestamp(request.timestamp, request.duration / time_shield::SEC_PER_MIN);
+                    const int64_t timestamp = calc_expiry_time(request.timestamp, request.duration / time_shield::SEC_PER_MIN);
                     if (timestamp == 0) return 0.0;
                     if (timestamp > (time_shield::start_of_day(timestamp) + end_time)) return 0.0;
                 }
@@ -362,24 +362,22 @@ namespace optionx::platforms::intrade_bar {
             return 0.0;
         }
 
-        /// \brief Gets the expiration time for a classic binary option.
+        /// \brief Calculates the expiration time for a classic binary option.
         /// \param timestamp The current timestamp in seconds.
-        /// \param closing_timestamp The intended closing timestamp.
+        /// \param expiry_time The intended closing timestamp.
         /// \return Expiration time in seconds, or 0 if invalid.
-        int64_t get_classic_bo_expiration(int64_t timestamp, int64_t closing_timestamp) const {
-            const int64_t min_exp = 5 * time_shield::SEC_PER_MIN;
-            if ((closing_timestamp % min_exp) != 0) return 0;
-            const int64_t diff = closing_timestamp - timestamp;
-            const int64_t min_diff = 3 * time_shield::SEC_PER_MIN;
-            if (diff <= min_diff) return 0;
+        int64_t calc_expiration(int64_t timestamp, int64_t expiry_time) const {
+            if ((expiry_time % time_shield::SEC_PER_5_MIN) != 0) return 0;
+            const int64_t diff = expiry_time - timestamp;
+            if (diff <= time_shield::SEC_PER_3_MIN) return 0;
             return ((((diff - 1) / time_shield::SEC_PER_MIN - 3) / 5) * 5 + 5) * time_shield::SEC_PER_MIN;
         }
 
-        /// \brief Gets the closing timestamp for a classic binary option.
+        /// \brief Calculates the closing timestamp for a classic binary option.
         /// \param timestamp The initial timestamp in seconds.
         /// \param expiration Expiration time in minutes.
-        /// \return Closing timestamp, or 0 if invalid.
-        int64_t get_classic_bo_closing_timestamp(int64_t timestamp, int64_t expiration) const {
+        /// \return Closing timestamp in seconds, or 0 if the expiration is invalid.
+        int64_t calc_expiry_time(int64_t timestamp, int64_t expiration) const {
             if ((expiration % 5) != 0 || expiration < 5) return 0;
             const int64_t timestamp_future = timestamp + (expiration + 3) * time_shield::SEC_PER_MIN;
             return (timestamp_future - timestamp_future % (5 * time_shield::SEC_PER_MIN));

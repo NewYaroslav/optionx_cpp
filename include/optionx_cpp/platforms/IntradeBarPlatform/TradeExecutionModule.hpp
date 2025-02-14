@@ -69,10 +69,10 @@ namespace optionx::platforms::intrade_bar {
             return ((((diff - 1) / time_shield::SEC_PER_MIN - 3) / 5) * 5 + 5) * time_shield::SEC_PER_MIN;
         }
 
-        /// \brief Gets the closing timestamp for a classic binary option.
+        /// \brief Calculates the closing timestamp for a classic binary option.
         /// \param timestamp The initial timestamp in seconds.
         /// \param expiration Expiration time in minutes.
-        /// \return Closing timestamp, or 0 if invalid.
+        /// \return Closing timestamp in seconds, or 0 if the expiration is invalid.
         int64_t calc_expiry_time(int64_t timestamp, int64_t expiration) const {
             if ((expiration % 5) != 0 || expiration < 5) return 0;
             const int64_t timestamp_future = timestamp + (expiration + 3) * time_shield::SEC_PER_MIN;
