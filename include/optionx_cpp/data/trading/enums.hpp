@@ -83,6 +83,66 @@ namespace optionx {
         os << optionx::to_str(value);
         return os;
     }
+	
+//------------------------------------------------------------------------------
+
+    /// \enum BridgeType
+    /// \brief Represents different types of bridges.
+    enum class BridgeType {
+        UNKNOWN = 0,    ///< Unknown bridge type
+        INTRADE_BAR_LEGACY  ///< Intrade Bar Legacy bridge
+    };
+
+    /// \brief Converts BridgeType to its string representation.
+    /// \param value The BridgeType enumeration value.
+    /// \return Constant reference to the corresponding string.
+    inline const std::string& to_str(BridgeType value, int mode = 0) noexcept {
+        static const std::vector<std::string> str_data = {"UNKNOWN", "INTRADE_BAR_LEGACY"};
+        return str_data[static_cast<size_t>(value)];
+    }
+
+    /// \brief Converts string to BridgeType enumeration.
+    /// \param str Input string to convert.
+    /// \param value Output enumeration value.
+    /// \return True if conversion succeeded.
+    inline bool to_enum(const std::string& str, BridgeType& value) noexcept {
+        static const std::unordered_map<std::string, BridgeType> str_data = {
+            {"UNKNOWN", 		   BridgeType::UNKNOWN           },
+            {"INTRADE_BAR_LEGACY", BridgeType::INTRADE_BAR_LEGACY}
+        };
+        auto it = str_data.find(str);
+        if (it != str_data.end()) {
+            value = it->second;
+            return true;
+        }
+        return false;
+    }
+
+    /// \brief Template specialization for BridgeType enum conversion.
+    template <>
+    inline BridgeType to_enum<BridgeType>(const std::string& str) {
+        BridgeType value;
+        if (!to_enum(str, value)) {
+            throw std::invalid_argument("Invalid BridgeType string: " + str);
+        }
+        return value;
+    }
+
+    /// \brief Converts BridgeType to JSON.
+    inline void to_json(nlohmann::json& j, const BridgeType& type) {
+        j = optionx::to_str(type);
+    }
+
+    /// \brief Converts JSON to BridgeType.
+    inline void from_json(const nlohmann::json& j, BridgeType& type) {
+        type = optionx::to_enum<BridgeType>(j.get<std::string>());
+    }
+
+    /// \brief Stream output operator for BridgeType.
+    inline std::ostream& operator<<(std::ostream& os, BridgeType value) {
+        os << optionx::to_str(value);
+        return os;
+    }
 
 //------------------------------------------------------------------------------
 
