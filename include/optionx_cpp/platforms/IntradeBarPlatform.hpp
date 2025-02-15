@@ -58,6 +58,12 @@ namespace optionx::platforms {
             return m_trade_execution.place_trade(std::move(trade_request));
         }
 
+        /// \brief Returns the platform type.
+        /// \return Platform type identifier (`PlatformType::INTRADE_BAR`).
+        PlatformType platform_type() const override {
+            return PlatformType::INTRADE_BAR;
+        }
+
     private:
         intrade_bar::HttpClientModule     m_http_client;      ///< Handles HTTP communication.
         intrade_bar::RequestManager       m_request_manager;  ///< Manages API requests.

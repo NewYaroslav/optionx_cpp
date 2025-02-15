@@ -107,7 +107,7 @@ namespace optionx::modules {
 
         /// \brief Returns the platform type associated with this trade manager.
         /// \return The `PlatformType` of the trading module.
-        virtual PlatformType platform_type() = 0;
+        virtual PlatformType platform_type() const = 0;
     };
 
 } // namespace optionx::modules

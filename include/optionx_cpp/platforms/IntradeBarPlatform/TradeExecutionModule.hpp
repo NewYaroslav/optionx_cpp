@@ -32,7 +32,7 @@ namespace optionx::platforms::intrade_bar {
 
         /// \brief Returns the platform type.
         /// \return Platform type identifier (`PlatformType::INTRADE_BAR`).
-        PlatformType platform_type() override final {
+        PlatformType platform_type() const override final {
             return PlatformType::INTRADE_BAR;
         }
 

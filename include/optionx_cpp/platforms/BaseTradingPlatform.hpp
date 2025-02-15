@@ -173,6 +173,10 @@ namespace optionx::platforms {
             m_modules.push_back(module);
         }
 
+        /// \brief Retrieves the API type associated with this authorization data.
+        /// \return The `PlatformType` associated with this authentication data.
+        virtual PlatformType platform_type() const = 0;
+
     protected:
         std::shared_ptr<BaseAccountInfoData> m_account_info;
         modules::AccountInfoProvider      m_account_provider;
