@@ -16,6 +16,7 @@
 #include "IntradeBarPlatform/TradeExecutionModule.hpp"
 #include "IntradeBarPlatform/BalanceManager.hpp"
 #include "IntradeBarPlatform/PriceManager.hpp"
+#include "IntradeBarPlatform/BtcPriceManager.hpp"
 #include "IntradeBarPlatform/TradeManager.hpp"
 
 namespace optionx::platforms {
@@ -41,6 +42,7 @@ namespace optionx::platforms {
               m_auth_manager(*this, m_request_manager, m_account_info),
               m_balance_manager(*this, m_request_manager, m_account_info),
               m_price_manager(*this, m_request_manager),
+              m_btc_price_manager(*this),
               m_trade_manager(*this, m_request_manager, m_account_info) {
         }
 
@@ -63,6 +65,7 @@ namespace optionx::platforms {
         intrade_bar::AuthManager          m_auth_manager;     ///< Handles authentication processes.
         intrade_bar::BalanceManager       m_balance_manager;  ///< Tracks account balance.
         intrade_bar::PriceManager         m_price_manager;    ///< Retrieves and updates price data.
+        intrade_bar::BtcPriceManager      m_btc_price_manager;///<
         intrade_bar::TradeManager         m_trade_manager;    ///< Manages trades and status updates.
     }; // IntradeBarPlatform
 

@@ -130,7 +130,7 @@ namespace optionx::platforms::intrade_bar {
                 user_agent = j.value("user_agent", user_agent);
                 accept_language = j.value("accept_language", accept_language);
                 proxy_server = j.value("proxy_server", proxy_server);
-                proxy_auth = j.value("proxy_auth", proxy_auth);
+                proxy_auth   = j.value("proxy_auth", proxy_auth);
 
                 account_type = to_enum<AccountType>(j.value("account_type", "UNKNOWN"));
                 currency = to_enum<CurrencyType>(j.value("currency", "UNKNOWN"));

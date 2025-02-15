@@ -434,6 +434,31 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
+    /// \brief Parses a BTCUSDT tick message from the WebSocket and updates the provided TickData structure.
+    /// \param message The JSON-formatted string containing the tick data.
+    /// \param tick_data Reference to the TickData structure to be updated.
+    /// \return true if parsing is successful and the symbol matches BTCUSDT; false otherwise.
+    bool parse_btcusdt_tick(const std::string& message, TickData& tick_data) {
+        auto j = nlohmann::json::parse(message);
+
+        if (j.contains("data")) {
+            const auto& j_data = j["data"];
+            if (j_data.value("s", "") != "BTCUSDT") return false;
+            tick_data.tick.ask = tick_data.tick.bid = std::stod(j_data.value("p", "0.0"));
+            tick_data.tick.volume = std::stod(j_data.value("q", "0.0"));
+            tick_data.tick.time_ms = j_data.value("T", 0);
+            tick_data.tick.received_ms = OPTIONX_TIMESTAMP_MS;
+            tick_data.tick.set_flag(TickUpdateFlags::ASK_UPDATED);
+            tick_data.tick.set_flag(TickUpdateFlags::BID_UPDATED);
+            tick_data.tick.set_flag(TickUpdateFlags::VOLUME_UPDATED);
+            tick_data.set_flag(TickStatusFlags::INITIALIZED);
+            tick_data.set_flag(TickStatusFlags::REALTIME);
+            return true;
+        }
+
+        return false;
+    }
+
 }
 
 #endif // _OPTIONX_PLATFORMS_INTRADERBAR_HTTP_CLIENT_MODULE_STRING_PARSERS_HPP_INCLUDED

@@ -673,6 +673,7 @@ namespace optionx::platforms::intrade_bar {
 
             // Retry if the response is empty and retry attempts remain
             if (content.empty() && retry_attempts > 0) {
+                LOGIT_0ERROR();
                 request_trade_check(deal_id, retry_attempts - 1, callback_check);
                 return;
             }
@@ -682,6 +683,7 @@ namespace optionx::platforms::intrade_bar {
                 if (content.find("error") != std::string::npos) {
                     // Retry if the response contains 'error' and retry attempts remain
                     if (retry_attempts > 0) {
+                        LOGIT_0ERROR();
                         request_trade_check(deal_id, retry_attempts - 1, callback_check);
                         return;
                     }

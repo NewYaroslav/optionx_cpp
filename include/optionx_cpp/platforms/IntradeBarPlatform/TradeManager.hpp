@@ -200,7 +200,7 @@ namespace optionx::platforms::intrade_bar {
                 result->error_desc = to_str(TradeErrorCode::CLIENT_FORCED_CLOSE);
                 return;
             }
-            const int retry_attempts = 10;
+            const int retry_attempts = 15;
             m_request_manager.request_trade_check(
                     result->option_id,
                     retry_attempts,
