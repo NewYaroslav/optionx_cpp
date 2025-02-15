@@ -170,8 +170,8 @@ namespace optionx::platforms::intrade_bar {
             return std::make_shared<AuthData>(*this);
         }
 
-        /// \brief Retrieves the API type associated with this authorization data.
-        /// \return The type of API used.
+        /// \brief Returns the platform type.
+        /// \return Platform type identifier (`PlatformType::INTRADE_BAR`).
         PlatformType platform_type() const override {
             return PlatformType::INTRADE_BAR;
         }
@@ -182,12 +182,12 @@ namespace optionx::platforms::intrade_bar {
         std::string password;       ///< Password for email/password authentication.
         std::string user_id;        ///< Username for user/token authentication.
         std::string token;          ///< Token for user/token authentication.
-        std::string user_agent;     ///<
-        std::string accept_language;///<
-        std::string host;           ///<
+        std::string user_agent;     ///< User agent string for HTTP requests.
+        std::string accept_language;///< Accepted languages for HTTP requests.
+        std::string host;           ///< Host URL for the Intrade Bar platform.
         std::string proxy_server;   ///< Proxy address in <ip:port> format.
         std::string proxy_auth;     ///< Proxy authentication in <username:password> format.
-        kurlyk::ProxyType proxy_type; ///<
+        kurlyk::ProxyType proxy_type; ///< Proxy type (e.g., HTTP, SOCKS).
         AuthMethod auth_method = AuthMethod::NONE; ///< Authentication method used.
     }; // AuthData
 
