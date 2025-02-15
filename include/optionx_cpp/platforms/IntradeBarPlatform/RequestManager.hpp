@@ -680,6 +680,11 @@ namespace optionx::platforms::intrade_bar {
             try {
                 // Check for error in the response
                 if (content.find("error") != std::string::npos) {
+                    // Retry if the response contains 'error' and retry attempts remain
+                    if (retry_attempts > 0) {
+                        request_trade_check(deal_id, retry_attempts - 1, callback_check);
+                        return;
+                    }
 #                   ifdef OPTIONX_LOG_UNIQUE_FILE_INDEX
                     const int log_index = OPTIONX_LOG_UNIQUE_FILE_INDEX;
                     LOGIT_STREAM_ERROR_TO(log_index) << content;
