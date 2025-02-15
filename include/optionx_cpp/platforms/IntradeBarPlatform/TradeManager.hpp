@@ -39,6 +39,12 @@ namespace optionx::platforms::intrade_bar {
         /// \param event The received event.
         void on_event(const utils::Event* const event) override;
 
+        /// \brief
+        void process() override;
+
+        /// \brief
+        void shutdown() override;
+
     private:
         RequestManager&    m_request_manager; ///< Reference to the request manager.
         utils::TaskManager m_task_manager;    ///< Task manager for handling asynchronous tasks.
@@ -87,6 +93,14 @@ namespace optionx::platforms::intrade_bar {
             handle_event(*msg);
         }
     };
+
+    void TradeManager::process() {
+        m_task_manager.process();
+    }
+
+    void TradeManager::shutdown() {
+        m_task_manager.shutdown();
+    }
 
     void TradeManager::handle_event(const events::TradeRequestEvent& event) {
         auto request = event.request;
@@ -157,7 +171,6 @@ namespace optionx::platforms::intrade_bar {
         });
     }
 
-
     void TradeManager::handle_event(const events::TradeStatusEvent& event) {
         auto request = event.request;
         auto result  = event.result;
@@ -165,16 +178,14 @@ namespace optionx::platforms::intrade_bar {
             LOGIT_ERROR("TradeStatusEvent received with null request or result.");
             return;
         }
-        const int retry_attempts = 10;
-        m_request_manager.request_trade_check(
-                result->option_id,
-                retry_attempts,
-                [this, request, result](
-                bool success,
-                double price,
-                double profit) {
-            if (!success) {
-                LOGIT_ERROR("Failed to retrieve trade result for option ID: ", result->option_id);
+
+        LOGIT_0TRACE();
+        const int64_t delay_ms = 500;
+        m_task_manager.add_delayed_task(delay_ms, [this, request, result](
+                std::shared_ptr<utils::Task> task) {
+            LOGIT_0TRACE();
+            if (task->is_shutdown()) {
+                LOGIT_INFO("Task was shut down unexpectedly for option ID: ", result->option_id);
                 auto account_info = get_account_info();
                 result->payout = account_info->get_for_trade<double>(
                     AccountInfoType::PAYOUT,
@@ -185,20 +196,48 @@ namespace optionx::platforms::intrade_bar {
                     (result->live_state == TradeState::WIN ?
                      result->payout * result->amount : -result->amount);
                 result->trade_state = result->live_state = TradeState::CHECK_ERROR;
+                result->error_code = TradeErrorCode::CLIENT_FORCED_CLOSE;
+                result->error_desc = to_str(TradeErrorCode::CLIENT_FORCED_CLOSE);
                 return;
             }
-            m_request_manager.request_balance(
-                    [this, request, result, price, profit](
+            const int retry_attempts = 10;
+            m_request_manager.request_trade_check(
+                    result->option_id,
+                    retry_attempts,
+                    [this, request, result](
                     bool success,
-                    double balance,
-                    CurrencyType currency) {
-                process_trade_status(
-                    success,
-                    price,
-                    profit,
-                    balance,
-                    request,
-                    result);
+                    double price,
+                    double profit) {
+                if (!success) {
+                    LOGIT_ERROR("Failed to retrieve trade result for option ID: ", result->option_id);
+                    auto account_info = get_account_info();
+                    result->payout = account_info->get_for_trade<double>(
+                        AccountInfoType::PAYOUT,
+                        request,
+                        time_shield::ms_to_sec(result->open_date));
+                    result->profit =
+                        result->live_state == TradeState::STANDOFF ? 0 :
+                        (result->live_state == TradeState::WIN ?
+                         result->payout * result->amount : -result->amount);
+                    result->trade_state = result->live_state = TradeState::CHECK_ERROR;
+                    result->error_code = TradeErrorCode::PARSING_ERROR;
+                    result->error_desc = "Failed to retrieve trade result.";
+                    return;
+                }
+                LOGIT_0TRACE();
+                m_request_manager.request_balance(
+                        [this, request, result, price, profit](
+                        bool success,
+                        double balance,
+                        CurrencyType currency) {
+                    process_trade_status(
+                        success,
+                        price,
+                        profit,
+                        balance,
+                        request,
+                        result);
+                });
             });
         });
     }

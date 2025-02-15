@@ -83,7 +83,7 @@ namespace optionx {
         os << optionx::to_str(value);
         return os;
     }
-	
+
 //------------------------------------------------------------------------------
 
     /// \enum BridgeType
@@ -564,30 +564,30 @@ namespace optionx {
     /// \return A string representation of the provided error code.
     inline const std::string &to_str(TradeErrorCode value) noexcept {
         static const std::vector<std::string> str_data = {
-            "Success",
-            "Invalid symbol",
-            "Invalid option type",
-            "Invalid order type",
-            "Invalid account type",
-            "Invalid currency",
-            "Amount below minimum",
-            "Amount above maximum",
-            "Refund below minimum",
-            "Refund above maximum",
-            "Low payout percentage",
-            "Invalid duration",
-            "Invalid expiry time",
-            "Reached open trades limit",
-            "Invalid request",
-            "Long wait in the order queue",
-            "Long wait for server response",
-            "No network connection",
-            "Forced client shutdown",
-            "Parser error",
-            "Canceled",
-            "Insufficient balance"
+            "Success.",
+            "Invalid symbol.",
+            "Invalid option type.",
+            "Invalid order type.",
+            "Invalid account type.",
+            "Invalid currency.",
+            "Amount below minimum.",
+            "Amount above maximum.",
+            "Refund below minimum.",
+            "Refund above maximum.",
+            "Low payout percentage.",
+            "Invalid duration.",
+            "Invalid expiry time.",
+            "Reached open trades limit.",
+            "Invalid request.",
+            "Long wait in the order queue.",
+            "Long wait for server response.",
+            "No network connection.",
+            "Forced client shutdown.",
+            "Parser error.",
+            "Canceled.",
+            "Insufficient balance."
         };
-        static const std::string unknown = "Unknown error code";
+        static const std::string unknown = "Unknown error code.";
         size_t index = static_cast<size_t>(value);
         return (index < str_data.size()) ? str_data[index] : unknown;
     }
@@ -597,33 +597,33 @@ namespace optionx {
     /// \param value The TradeErrorCode to populate.
     /// \return True if the conversion succeeded, false otherwise.
     inline bool to_enum(const std::string &str, TradeErrorCode &value) noexcept {
-        static const std::map<std::string, TradeErrorCode> error_map = {
-            {"Success",                  TradeErrorCode::SUCCESS},
-            {"Invalid symbol",           TradeErrorCode::INVALID_SYMBOL},
-            {"Invalid option type",      TradeErrorCode::INVALID_OPTION},
-            {"Invalid order type",       TradeErrorCode::INVALID_ORDER},
-            {"Invalid account type",     TradeErrorCode::INVALID_ACCOUNT},
-            {"Invalid currency",         TradeErrorCode::INVALID_CURRENCY},
-            {"Amount below minimum",     TradeErrorCode::AMOUNT_TOO_LOW},
-            {"Amount above maximum",     TradeErrorCode::AMOUNT_TOO_HIGH},
-            {"Refund below minimum",     TradeErrorCode::REFUND_TOO_LOW},
-            {"Refund above maximum",     TradeErrorCode::REFUND_TOO_HIGH},
-            {"Low payout percentage",    TradeErrorCode::PAYOUT_TOO_LOW},
-            {"Invalid duration",         TradeErrorCode::INVALID_DURATION},
-            {"Invalid expiry time",      TradeErrorCode::INVALID_EXPIRY_TIME},
-            {"Reached open trades limit",TradeErrorCode::LIMIT_OPEN_TRADES},
-            {"Invalid request",          TradeErrorCode::INVALID_REQUEST},
-            {"Long wait in the order queue", TradeErrorCode::LONG_QUEUE_WAIT},
-            {"Long wait for server response", TradeErrorCode::LONG_RESPONSE_WAIT},
-            {"No network connection",    TradeErrorCode::NO_CONNECTION},
-            {"Forced client shutdown",   TradeErrorCode::CLIENT_FORCED_CLOSE},
-            {"Parser error",             TradeErrorCode::PARSING_ERROR},
-            {"Canceled",                 TradeErrorCode::CANCELED_TRADE},
-            {"Insufficient balance",     TradeErrorCode::INSUFFICIENT_BALANCE}
+        static const std::map<std::string,TradeErrorCode> str_data = {
+            {"Success.",                  TradeErrorCode::SUCCESS},
+            {"Invalid symbol.",           TradeErrorCode::INVALID_SYMBOL},
+            {"Invalid option type.",      TradeErrorCode::INVALID_OPTION},
+            {"Invalid order type.",       TradeErrorCode::INVALID_ORDER},
+            {"Invalid account type.",     TradeErrorCode::INVALID_ACCOUNT},
+            {"Invalid currency.",         TradeErrorCode::INVALID_CURRENCY},
+            {"Amount below minimum.",     TradeErrorCode::AMOUNT_TOO_LOW},
+            {"Amount above maximum.",     TradeErrorCode::AMOUNT_TOO_HIGH},
+            {"Refund below minimum.",     TradeErrorCode::REFUND_TOO_LOW},
+            {"Refund above maximum.",     TradeErrorCode::REFUND_TOO_HIGH},
+            {"Low payout percentage.",    TradeErrorCode::PAYOUT_TOO_LOW},
+            {"Invalid duration.",         TradeErrorCode::INVALID_DURATION},
+            {"Invalid expiry time.",      TradeErrorCode::INVALID_EXPIRY_TIME},
+            {"Reached open trades limit.",TradeErrorCode::LIMIT_OPEN_TRADES},
+            {"Invalid request.",          TradeErrorCode::INVALID_REQUEST},
+            {"Long wait in the order queue.", TradeErrorCode::LONG_QUEUE_WAIT},
+            {"Long wait for server response.",TradeErrorCode::LONG_RESPONSE_WAIT},
+            {"No network connection.",    TradeErrorCode::NO_CONNECTION},
+            {"Forced client shutdown.",   TradeErrorCode::CLIENT_FORCED_CLOSE},
+            {"Parser error.",             TradeErrorCode::PARSING_ERROR},
+            {"Canceled.",                 TradeErrorCode::CANCELED_TRADE},
+            {"Insufficient balance.",     TradeErrorCode::INSUFFICIENT_BALANCE}
         };
 
-        auto it = error_map.find(str);
-        if (it != error_map.end()) {
+        auto it = str_data.find(str);
+        if (it != str_data.end()) {
             value = it->second;
             return true;
         }

@@ -407,8 +407,6 @@ namespace optionx::modules {
     }
 
     void TradeQueueManager::dispatch_trade_event(const transaction_t& transaction) {
-        LOGIT_0TRACE();
-
         auto &request = transaction->request;
         auto &result  = transaction->result;
 
