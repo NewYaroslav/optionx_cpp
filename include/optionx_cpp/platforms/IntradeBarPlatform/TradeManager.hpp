@@ -39,10 +39,10 @@ namespace optionx::platforms::intrade_bar {
         /// \param event The received event.
         void on_event(const utils::Event* const event) override;
 
-        /// \brief
+        /// \brief Executes periodic tasks related to trade management.
         void process() override;
 
-        /// \brief
+        /// \brief Shuts down the trade manager and cleans up resources.
         void shutdown() override;
 
     private:

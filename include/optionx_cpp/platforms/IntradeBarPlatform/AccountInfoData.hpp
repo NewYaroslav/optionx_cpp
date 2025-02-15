@@ -112,7 +112,10 @@ namespace optionx::platforms::intrade_bar {
                     min_btc_duration : min_duration;
                 const int64_t req_max_duration = (request.symbol == "BTCUSD" || request.symbol == "BTCUSDT") ?
                     max_duration : std::min(time_shield::start_of_min(end_time - time_shield::sec_of_day(request.timestamp)), max_duration);
-                return (request.duration >= req_min_duration && request.duration <= req_max_duration);
+                return (request.duration >= req_min_duration &&
+                        request.duration <= req_max_duration &&
+                        (request.duration % time_shield::SEC_PER_MIN) == 0 &&
+                        request.duration != (2 * time_shield::SEC_PER_MIN));
             }
             case AccountInfoType::EXPIRATION_DATE_AVAILABLE: {
                 if (request.option_type == OptionType::SPRINT) return true;
@@ -292,6 +295,11 @@ namespace optionx::platforms::intrade_bar {
                     request.duration < min_btc_duration ||
                     request.duration > max_duration) {
                     return 0.0;
+                }
+                // В выходные дни выплаты по сделкам с BTC будут снижены до 60%.
+                // https://t.me/intradebar_official/489
+                if (time_shield::is_day_off(request.timestamp + (3 * time_shield::SEC_PER_HOUR))) {
+                    return 0.6;
                 }
                 if (!check_payout_limits(sec_of_day)) {
                     if ((request.currency == CurrencyType::USD && request.amount >= high_payout_usd_amount)||
