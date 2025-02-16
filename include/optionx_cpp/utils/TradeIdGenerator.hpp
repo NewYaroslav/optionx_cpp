@@ -17,8 +17,8 @@ namespace optionx::utils {
         /// \brief Retrieves the singleton instance of TradeIdGenerator.
         /// \return Reference to the singleton instance.
         static TradeIdGenerator& instance() {
-            static TradeIdGenerator s_instance;
-            return s_instance;
+            static TradeIdGenerator* s_instance = new TradeIdGenerator();
+            return *s_instance;
         }
 
         /// \brief Generates a new unique trade identifier.

@@ -47,6 +47,7 @@ namespace optionx::storage {
     /// \brief Manages session data storage and retrieval using an SQLite database.
     class ServiceSessionDB {
     public:
+
         /// \brief Gets the singleton instance of ServiceSessionDB.
         /// \return Reference to the singleton instance.
         static ServiceSessionDB& get_instance() {
@@ -56,17 +57,17 @@ namespace optionx::storage {
 
         /// \brief Sets the encryption key.
         /// \tparam T Type of the encryption key container (e.g., std::array, std::vector).
-        /// \param key A new key for encryption.
-        /// \return True if the key is set successfully.
+        /// \param key New encryption key.
+        /// \return True if key is set successfully.
         template<class T>
         bool set_key(const T& key) {
             return m_aes.set_key(key);
         }
 
-        /// \brief Retrieves a session value by platform and email.
-        /// \param platform The platform name.
-        /// \param email The email address.
-        /// \return The session value as a string, or std::nullopt if not found.
+        /// \brief Retrieves session value by platform and email.
+        /// \param platform Platform name.
+        /// \param email Email address.
+        /// \return Session value as a string, or std::nullopt if not found.
         std::optional<std::string> get_session_value(const std::string& platform, const std::string& email) {
             std::lock_guard<std::mutex> lock(m_mutex);
             std::string key = platform + ":" + email;
@@ -85,11 +86,11 @@ namespace optionx::storage {
             return std::nullopt;
         }
 
-        /// \brief Stores a session value for a specific platform and email.
-        /// \param platform The platform name.
-        /// \param email The email address.
-        /// \param value The session value to store.
-        /// \return True if the session value is stored successfully, otherwise false.
+        /// \brief Stores session value for a specific platform and email.
+        /// \param platform Platform name.
+        /// \param email Email address.
+        /// \param value Session value to store.
+        /// \return True if session value is stored successfully, otherwise false.
         bool set_session_value(const std::string& platform, const std::string& email, const std::string& value) {
             std::lock_guard<std::mutex> lock(m_mutex);
             std::string key = platform + ":" + email;
@@ -104,10 +105,10 @@ namespace optionx::storage {
             return false;
         }
 
-        /// \brief Removes a session value for a specific platform and email.
-        /// \param platform The platform name.
-        /// \param email The email address.
-        /// \return True if the session value is removed successfully, otherwise false.
+        /// \brief Removes session value for a specific platform and email.
+        /// \param platform Platform name.
+        /// \param email Email address.
+        /// \return True if session value is removed successfully, otherwise false.
         bool remove_session(const std::string& platform, const std::string& email) {
             std::lock_guard<std::mutex> lock(m_mutex);
             std::string key = platform + ":" + email;
@@ -124,7 +125,7 @@ namespace optionx::storage {
         }
 
         /// \brief Clears all session data from the database.
-        /// \return True if the database is cleared successfully, otherwise false.
+        /// \return True if database is cleared successfully, otherwise false.
         bool clear() {
             std::lock_guard<std::mutex> lock(m_mutex);
             try {
@@ -138,7 +139,19 @@ namespace optionx::storage {
             return false;
         }
 
+        /// \brief Shuts down session service.
+        /// \details Disconnects database and clears encryption key.
+        void shutdown() {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_db.disconnect();
+            m_aes.clear_key();
+        }
+
     private:
+        std::mutex       m_mutex; ///< Mutex for thread safety.
+        crypto::AESCrypt m_aes;   ///< AES encryption and decryption instance.
+        sqlite_containers::KeyValueDB<std::string, std::string> m_db; ///< The SQLite KeyValueDB instance.
+
         /// \brief Private constructor for singleton pattern.
         ServiceSessionDB() : m_aes(crypto::AesMode::CBC_256) {
             std::array<uint8_t, 32> def_key = {
@@ -173,14 +186,12 @@ namespace optionx::storage {
             }
         }
 
-        ~ServiceSessionDB() = default;
+        ~ServiceSessionDB() {
+            shutdown();
+        }
 
         ServiceSessionDB(const ServiceSessionDB&) = delete;
         ServiceSessionDB& operator=(const ServiceSessionDB&) = delete;
-
-        std::mutex       m_mutex; ///< Mutex for thread safety.
-        crypto::AESCrypt m_aes;   ///< AES encryption and decryption instance.
-        sqlite_containers::KeyValueDB<std::string, std::string> m_db; ///< The SQLite KeyValueDB instance.
     };
 
 } // namespace optionx::storage
