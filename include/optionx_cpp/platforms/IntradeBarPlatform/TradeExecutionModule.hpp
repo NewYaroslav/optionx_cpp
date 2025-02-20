@@ -48,11 +48,15 @@ namespace optionx::platforms::intrade_bar {
             if (trade_request &&
                 trade_request->option_type == OptionType::CLASSIC) {
                 if (trade_request->expiry_time > 0) {
-                    trade_request->duration = calc_expiration(trade_result->place_date, trade_request->expiry_time);
+                    trade_request->duration = calc_expiration(
+                        time_shield::ms_to_sec(trade_result->place_date),
+                        trade_request->expiry_time);
                 } else
                 if (trade_request->expiry_time == 0 &&
                     trade_request->duration > 0) {
-                    trade_request->expiry_time = calc_expiry_time(trade_result->place_date, trade_request->duration / time_shield::SEC_PER_MIN);
+                    trade_request->expiry_time = calc_expiry_time(
+                        time_shield::ms_to_sec(trade_result->place_date),
+                        trade_request->duration / time_shield::SEC_PER_MIN);
                 }
             }
             return true;

@@ -97,7 +97,9 @@ namespace optionx::platforms::intrade_bar {
             case AccountInfoType::CURRENCY_AVAILABILITY:
                 return (currency != CurrencyType::UNKNOWN && request.currency == currency);
             case AccountInfoType::TRADE_LIMIT_NOT_EXCEEDED:
-                return (open_trades < max_trades);
+                return check_amount_limits(time_shield::sec_of_day(request.timestamp))
+                    ? (open_trades < max_limit_trades)
+                    : (open_trades < max_trades);
             case AccountInfoType::AMOUNT_BELOW_MAX:
                 return request.amount <= get_max_amount(request);
             case AccountInfoType::AMOUNT_ABOVE_MIN:
@@ -120,11 +122,12 @@ namespace optionx::platforms::intrade_bar {
             case AccountInfoType::EXPIRATION_DATE_AVAILABLE: {
                 if (request.option_type == OptionType::SPRINT) return true;
                 const int64_t sec_of_day = time_shield::sec_of_day(request.expiry_time);
+                LOGIT_DEBUG(start_time, end_time, sec_of_day, request.expiry_time, request.timestamp);
                 if (sec_of_day < start_time || sec_of_day > end_time) return false;
-                if ((sec_of_day % time_shield::SEC_PER_5_MIN) != 0) return false;
-                const int64_t sec_close = request.expiry_time - request.timestamp;
-                const int64_t min_sec = 300;
-                return (sec_close > min_sec);
+                if ((request.expiry_time % time_shield::SEC_PER_5_MIN) != 0) return false;
+                const int64_t dur = request.expiry_time - request.timestamp;
+                const int64_t min_sec = 180;
+                return (dur >= min_sec);
             }
             case AccountInfoType::PAYOUT_ABOVE_MIN:
                 if (request.min_payout == 0.0) return true;
