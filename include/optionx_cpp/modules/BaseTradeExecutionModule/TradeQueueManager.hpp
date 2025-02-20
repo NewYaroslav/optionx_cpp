@@ -317,7 +317,7 @@ namespace optionx::modules {
             }
 
             // If it's not time to close the option yet, skip
-            if (timestamp < (close_date - 15000)) {
+            if (timestamp < close_date) {
                 ++it;
                 continue;
             }
