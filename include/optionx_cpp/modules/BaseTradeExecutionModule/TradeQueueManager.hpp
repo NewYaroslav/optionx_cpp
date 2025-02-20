@@ -232,7 +232,12 @@ namespace optionx::modules {
         auto& request = transaction->request;
         LOGIT_0FATAL();
         decrement_open_trades(request, result);
-        m_trade_state_manager.finalize_transaction_with_error(transaction, result->error_code, TradeState::CHECK_ERROR, timestamp);
+        m_trade_state_manager.finalize_transaction_with_error(
+            transaction,
+            result->error_code,
+            TradeState::CHECK_ERROR,
+            timestamp,
+            result->error_desc);
         dispatch_trade_event(transaction);
     }
 

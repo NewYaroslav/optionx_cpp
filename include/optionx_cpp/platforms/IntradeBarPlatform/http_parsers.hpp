@@ -358,13 +358,20 @@ namespace optionx::platforms::intrade_bar {
 
     /// \brief Parses the response content of a trade open request.
     /// \param content The server response content as a string.
-    /// \param request A shared pointer to the TradeRequest containing request details.
-    /// \param result A shared pointer to the TradeResult where the parsed result will be stored.
-    /// \return True if the response was successfully parsed, false otherwise.
+    /// \param status_code The HTTP status code returned by the server.
+    /// \param result_callback A callback function that receives the parsing result:
+    ///        - success: True if the response was successfully parsed, false otherwise.
+    ///        - status_code: The HTTP status code returned by the server.
+    ///        - option_id: The option ID extracted from the response.
+    ///        - open_date: The trade open date as a timestamp.
+    ///        - open_price: The trade open price.
+    ///        - error_desc: A description of the error if parsing fails.
     void parse_execute_trade(
             const std::string& content,
+            long status_code,
             std::function<void(
                 bool success,
+                long status_code,
                 int64_t option_id,
                 int64_t open_date,
                 double open_price,
@@ -382,7 +389,8 @@ namespace optionx::platforms::intrade_bar {
 #               else
                 LOGIT_PRINT_ERROR("Trade open failed. Response contains 'error'.");
 #               endif
-                result_callback(false, 0, 0, 0, "Trade open failed. Response contains 'error'.");
+                result_callback(false, status_code,
+                    0, 0, 0, "Trade open failed. Response contains 'error'.");
                 return;
             }
 
@@ -397,7 +405,8 @@ namespace optionx::platforms::intrade_bar {
 #               else
                 LOGIT_PRINT_ERROR("Trade open failed. Response contains 'alert'.");
 #               endif
-                result_callback(false, 0, 0, 0, "Trade open failed. Response contains 'alert'.");
+                result_callback(false, status_code,
+                    0, 0, 0, "Trade open failed. Response contains 'alert'.");
                 return;
             }
 
@@ -406,31 +415,36 @@ namespace optionx::platforms::intrade_bar {
 
             if (utils::extract_between(content, "data-id=\"", "\"", str_data_id) == std::string::npos) {
                 LOGIT_ERROR("Failed to extract id.");
-                result_callback(false, 0, 0, 0, "Failed to extract id.");
+                result_callback(false, status_code,
+                    0, 0, 0, "Failed to extract id.");
                 return;
             }
 
             if (utils::extract_between(content, "data-timeopen=\"", "\"", str_data_timeopen) == std::string::npos) {
                 LOGIT_ERROR("Failed to extract timeopen.");
-                result_callback(false, 0, 0, 0, "Failed to extract timeopen.");
+                result_callback(false, status_code,
+                    0, 0, 0, "Failed to extract timeopen.");
                 return;
             }
 
             if (utils::extract_between(content, "data-rate=\"", "\"", str_data_rate) == std::string::npos) {
                 LOGIT_ERROR("Failed to extract rate.");
-                result_callback(false, 0, 0, 0, "Failed to extract rate.");
+                result_callback(false, status_code,
+                    0, 0, 0, "Failed to extract rate.");
                 return;
             }
 
             result_callback(
                 true,
+                status_code,
                 std::stoll(str_data_id),
                 time_shield::sec_to_ms(std::stoll(str_data_timeopen)),
                 std::stod(str_data_rate),
                 std::string());
         } catch (const std::exception& ex) {
             LOGIT_ERROR("Exception while parsing trade response: ", ex.what());
-            result_callback(false, 0, 0, 0, "Exception while parsing trade response: " + std::string(ex.what()));
+            result_callback(false, status_code,
+                0, 0, 0, "Exception while parsing trade response: " + std::string(ex.what()));
         }
     }
 
