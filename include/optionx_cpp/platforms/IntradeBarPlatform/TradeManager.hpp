@@ -145,7 +145,9 @@ namespace optionx::platforms::intrade_bar {
             result->close_date = request->option_type == OptionType::SPRINT
              ? open_date + time_shield::sec_to_ms(request->duration)
              : time_shield::sec_to_ms(request->expiry_time);
-            result->delay = timestamp - result->open_date;
+            result->delay = timestamp > result->open_date ?
+                timestamp - result->open_date :
+                timestamp - result->send_date;
             result->ping = result->delay / 2;
             result->open_price = result->close_price = open_price;
             result->live_state = TradeState::STANDOFF;
