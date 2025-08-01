@@ -25,12 +25,15 @@
 [submodule "libs/SimpleNamedPipe"]
 	path = libs/SimpleNamedPipe
 	url = https://github.com/NewYaroslav/SimpleNamedPipe.git
-[submodule "libs/sqlite-containers"]
-	path = libs/sqlite-containers
-	url = https://github.com/NewYaroslav/sqlite-containers.git
 [submodule "libs/AES"]
 	path = libs/AES
 	url = https://github.com/SergeyBel/AES.git
 [submodule "libs/googletest"]
 	path = libs/googletest
 	url = https://github.com/google/googletest.git
+[submodule "libs/mdbx-containers"]
+	path = libs/mdbx-containers
+	url = https://github.com/NewYaroslav/mdbx-containers.git
+[submodule "libs/libmdbx"]
+	path = libs/libmdbx
+	url = https://github.com/erthink/libmdbx.git

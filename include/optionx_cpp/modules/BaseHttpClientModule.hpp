@@ -71,7 +71,7 @@ namespace optionx::modules {
 
     protected:
 		kurlyk::HttpClient m_client; ///< The HTTP client for making requests.
-		std::unordered_map<uint32_t, uint32_t> m_rate_limits; ///<
+		std::unordered_map<uint32_t, uint32_t> m_rate_limits; ///< Rate limit handles by ID.
 
         /// \class HttpRequestTask
         /// \brief Represents a single HTTP request task with a future and a callback.

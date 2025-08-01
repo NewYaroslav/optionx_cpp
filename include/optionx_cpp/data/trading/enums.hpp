@@ -658,94 +658,130 @@ namespace optionx {
         os << optionx::to_str(value);
         return os;
     }
+	
+//------------------------------------------------------------------------------
+	
+	/// \enum MmSystemType
+    /// \brief Defines various money management strategies.
+    enum class MmSystemType {
+        NONE,                      ///< No money management.
+        FIXED,                     ///< Fixed trade amount.
+        PERCENT,                   ///< Percentage of balance.
+        KELLY_CRITERION,           ///< Kelly criterion for optimal bet sizing.
+        
+        // Martingale variations
+        MARTINGALE_SIGNAL,          ///< Martingale per signal instance.
+        MARTINGALE_SYMBOL,          ///< Martingale per trading symbol.
+        MARTINGALE_BAR,             ///< Martingale per market bar.
+
+        // Anti-Martingale variations
+        ANTI_MARTINGALE_SIGNAL,     ///< Anti-Martingale per signal instance.
+        ANTI_MARTINGALE_SYMBOL,     ///< Anti-Martingale per trading symbol.
+        ANTI_MARTINGALE_BAR,        ///< Anti-Martingale per market bar.
+
+        // Labouchere variations
+        LABOUCHERE_SIGNAL,          ///< Labouchere per signal.
+        LABOUCHERE_SYMBOL,          ///< Labouchere per symbol.
+        LABOUCHERE_BAR,             ///< Labouchere per bar.
+
+        // SKU (Some unknown strategy)
+        SKU_SIGNAL,                 ///< SKU per signal.
+        SKU_SYMBOL,                 ///< SKU per symbol.
+        SKU_BAR                     ///< SKU per bar.
+    };
+	
+	/// \brief Converts MmSystemType to its string representation.
+    /// \param value The MmSystemType enumeration value.
+    /// \return A constant reference to the string representation.
+    inline const std::string& to_str(MmSystemType value) noexcept {
+        static const std::vector<std::string> str_data = {
+            "NONE",
+            "FIXED",
+            "PERCENT",
+            "KELLY_CRITERION",
+            "MARTINGALE_SIGNAL",
+            "MARTINGALE_SYMBOL",
+            "MARTINGALE_BAR",
+            "ANTI_MARTINGALE_SIGNAL",
+            "ANTI_MARTINGALE_SYMBOL",
+            "ANTI_MARTINGALE_BAR",
+            "LABOUCHERE_SIGNAL",
+            "LABOUCHERE_SYMBOL",
+            "LABOUCHERE_BAR",
+            "SKU_SIGNAL",
+            "SKU_SYMBOL",
+            "SKU_BAR"
+        };
+        return str_data[static_cast<size_t>(value)];
+    }
+
+    /// \brief Converts a string to its corresponding MmSystemType enumeration value.
+    /// \param str The string representation of the MmSystemType.
+    /// \param value The MmSystemType to populate.
+    /// \return True if the conversion succeeded, false otherwise.
+    inline bool to_enum(const std::string& str, MmSystemType& value) noexcept {
+        static const std::unordered_map<std::string, MmSystemType> str_data = {
+            {"NONE", 					MmSystemType::NONE						},
+            {"FIXED", 					MmSystemType::FIXED						},
+            {"PERCENT", 				MmSystemType::PERCENT					},
+            {"KELLY_CRITERION", 		MmSystemType::KELLY_CRITERION			},
+            {"MARTINGALE_SIGNAL", 		MmSystemType::MARTINGALE_SIGNAL			},
+            {"MARTINGALE_SYMBOL", 		MmSystemType::MARTINGALE_SYMBOL			},
+            {"MARTINGALE_BAR", 			MmSystemType::MARTINGALE_BAR			},
+            {"ANTI_MARTINGALE_SIGNAL", 	MmSystemType::ANTI_MARTINGALE_SIGNAL	},
+            {"ANTI_MARTINGALE_SYMBOL", 	MmSystemType::ANTI_MARTINGALE_SYMBOL	},
+            {"ANTI_MARTINGALE_BAR", 	MmSystemType::ANTI_MARTINGALE_BAR		},
+            {"LABOUCHERE_SIGNAL", 		MmSystemType::LABOUCHERE_SIGNAL			},
+            {"LABOUCHERE_SYMBOL", 		MmSystemType::LABOUCHERE_SYMBOL			},
+            {"LABOUCHERE_BAR", 			MmSystemType::LABOUCHERE_BAR			},
+            {"SKU_SIGNAL", 				MmSystemType::SKU_SIGNAL				},
+            {"SKU_SYMBOL", 				MmSystemType::SKU_SYMBOL				},
+            {"SKU_BAR", 				MmSystemType::SKU_BAR					}
+        };
+        auto it = str_data.find(str);
+        if (it != str_data.end()) {
+            value = it->second;
+            return true;
+        }
+        return false;
+    }
+
+    /// \brief Template specialization to convert a string to MmSystemType.
+    /// \param str The string representation.
+    /// \return The corresponding MmSystemType value.
+    /// \throws std::invalid_argument If the string cannot be converted.
+    template <>
+    inline MmSystemType to_enum<MmSystemType>(const std::string& str) {
+        MmSystemType value;
+        if (!to_enum(str, value)) {
+            throw std::invalid_argument("Invalid MmSystemType string: " + str);
+        }
+        return value;
+    }
+
+    /// \brief Converts MmSystemType to JSON.
+    /// \param j The JSON object to populate.
+    /// \param state The MmSystemType value to convert.
+    inline void to_json(nlohmann::json& j, const MmSystemType& state) {
+        j = optionx::to_str(state);
+    }
+
+    /// \brief Converts JSON to MmSystemType.
+    /// \param j The JSON object to read.
+    /// \param state The MmSystemType variable to populate.
+    inline void from_json(const nlohmann::json& j, MmSystemType& state) {
+        state = optionx::to_enum<MmSystemType>(j.get<std::string>());
+    }
+
+    /// \brief Stream output operator for MmSystemType.
+    /// \param os The output stream.
+    /// \param value The MmSystemType enumeration value.
+    /// \return The output stream with the string representation of MmSystemType.
+    inline std::ostream& operator<<(std::ostream& os, MmSystemType value) {
+        os << optionx::to_str(value);
+        return os;
+    }
 
 } // namespace optionx
-
-/*
-// Enum serialization specializations
-namespace nlohmann {
-
-    template <>
-    struct adl_serializer<optionx::PlatformType> {
-        static void to_json(json& j, const optionx::PlatformType& value) {
-            j = optionx::to_str(value);
-        }
-
-        static void from_json(const json& j, optionx::PlatformType& value) {
-            value = optionx::to_enum<optionx::PlatformType>(j.get<std::string>());
-        }
-    };
-
-	template <>
-    struct adl_serializer<optionx::OrderType> {
-        static void to_json(json& j, const optionx::OrderType& value) {
-            j = optionx::to_str(value);
-        }
-
-        static void from_json(const json& j, optionx::OrderType& value) {
-            value = optionx::to_enum<optionx::OrderType>(
-                optionx::utils::to_upper_case(j.get<std::string>()));
-        }
-    };
-
-	template <>
-    struct adl_serializer<optionx::OptionType> {
-        static void to_json(json& j, const optionx::OptionType& value) {
-            j = optionx::to_str(value);
-        }
-
-        static void from_json(const json& j, optionx::OptionType& value) {
-            value = optionx::to_enum<optionx::OptionType>(
-                optionx::utils::to_upper_case(j.get<std::string>()));
-        }
-    };
-
-	template <>
-    struct adl_serializer<optionx::TradeState> {
-        static void to_json(json& j, const optionx::TradeState& value) {
-            j = optionx::to_str(value);
-        }
-
-        static void from_json(const json& j, optionx::TradeState& value) {
-            value = optionx::to_enum<optionx::TradeState>(j.get<std::string>());
-        }
-    };
-
-    template <>
-    struct adl_serializer<optionx::AccountType> {
-        static void to_json(json& j, const optionx::AccountType& value) {
-            j = optionx::to_str(value);
-        }
-
-        static void from_json(const json& j, optionx::AccountType& value) {
-            value = optionx::to_enum<optionx::AccountType>(j.get<std::string>());
-        }
-    };
-
-    template <>
-    struct adl_serializer<optionx::CurrencyType> {
-        static void to_json(json& j, const optionx::CurrencyType& value) {
-            j = optionx::to_str(value);
-        }
-
-        static void from_json(const json& j, optionx::CurrencyType& value) {
-            value = optionx::to_enum<optionx::CurrencyType>(j.get<std::string>());
-        }
-    };
-
-    template <>
-    struct adl_serializer<optionx::TradeErrorCode> {
-        static void to_json(json& j, const optionx::TradeErrorCode& value) {
-            j = optionx::to_str(value);
-        }
-
-        static void from_json(const json& j, optionx::TradeErrorCode& value) {
-            value = optionx::to_enum<optionx::TradeErrorCode>(j.get<std::string>());
-        }
-    };
-
-} // namespace nlohmann
-
-*/
 
 #endif // _OPTIONX_TRADING_ENUMS_HPP_INCLUDED

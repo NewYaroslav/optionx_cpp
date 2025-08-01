@@ -12,7 +12,7 @@ namespace optionx {
     class TradeRequest {
     public:
         // Trade parameters
-        std::string symbol;          ///< Trading symbol (e.g., "BTC/USD").
+        std::string symbol;          ///< Trading symbol (e.g., "BTCUSD").
         std::string signal_name;     ///< Identifier of the trading strategy or signal.
         std::string user_data;       ///< User-defined metadata attached to the trade request.
         std::string comment;         ///< Optional comment for the trade.

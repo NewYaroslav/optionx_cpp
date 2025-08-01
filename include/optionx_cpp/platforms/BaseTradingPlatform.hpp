@@ -73,7 +73,7 @@ namespace optionx::platforms {
 
         /// \brief Requests the list of available trading symbols.
         /// \param callback Callback function to receive the symbol list.
-        virtual bool fetch_symbol_list(std::function<void(const std::vector<SymbolInfo>&)> callback) { return false; };  // <-- Переименовано
+        virtual bool fetch_symbol_list(std::function<void(const std::vector<SymbolInfo>&)> callback) { return false; };
 
         /// \brief Initiates a connection to the trading platform.
         /// \param callback Callback to handle connection result with error code.
@@ -132,8 +132,12 @@ namespace optionx::platforms {
             return m_account_provider.get_info<T>(currency, timestamp);
         }
 
-        /// \brief Starts the platform's event loop, allowing it to process updates and events.
-        void run() {
+        /// \brief Starts the platform's event loop and module lifecycle.
+		/// \details Adds initialization and periodic update tasks.
+		///          If use_internal_thread is true (default), TaskManager launches its own worker thread.
+		///          Otherwise, the caller must periodically call process() manually.
+		/// \param use_internal_thread Whether to use an internal background thread for updates.
+        void run(bool use_internal_thread = true) {
             m_task_manager.add_single_task([this](
                     std::shared_ptr<utils::Task> task){
                 for (auto* module : m_modules) {
@@ -141,6 +145,7 @@ namespace optionx::platforms {
                 }
                 on_once();
             });
+			
             m_task_manager.add_periodic_task(1, [this](
                     std::shared_ptr<utils::Task> task){
                 m_event_hub.process();
@@ -156,10 +161,19 @@ namespace optionx::platforms {
                     on_loop();
                 }
             });
+			
+			if (!use_internal_thread) return;
             m_task_manager.run();
         };
+		
+		/// \brief Manually processes pending tasks and events.
+		/// \details Should be called periodically if internal threading is disabled (run(false)).
+		void process() {
+			m_task_manager.process();
+		}
 
-        /// \brief Stops the platform's event loop and releases allocated resources.
+        /// \brief Shuts down the platform, stopping the event loop and tasks.
+        /// \details Always calls shutdown() on TaskManager, regardless of internal thread usage.
         void shutdown() {
             m_task_manager.shutdown();
         };
@@ -179,11 +193,11 @@ namespace optionx::platforms {
 
     protected:
         std::shared_ptr<BaseAccountInfoData> m_account_info;
-        modules::AccountInfoProvider      m_account_provider;
-        utils::EventHub                   m_event_hub;
-        utils::TaskManager                m_task_manager;
-        modules::BaseAccountInfoHandler   m_account_info_handler;
-        std::vector<modules::BaseModule*> m_modules;
+        modules::AccountInfoProvider         m_account_provider;
+        utils::EventHub                      m_event_hub;
+        utils::TaskManager                   m_task_manager;
+        modules::BaseAccountInfoHandler      m_account_info_handler;
+        std::vector<modules::BaseModule*>    m_modules;
 
         virtual void on_once() {};
 

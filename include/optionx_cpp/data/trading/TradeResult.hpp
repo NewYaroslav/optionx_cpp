@@ -16,7 +16,7 @@ namespace optionx {
     class TradeResult {
     public:
         // Unique identifier for the trade
-        uint64_t trade_id = 0;      ///< Unique ID assigned to each trade
+        uint64_t trade_id = 0;      ///< Unique ID assigned to each trade (Internal trade ID)
 
         // Trade execution metadata
         TradeErrorCode error_code = TradeErrorCode::SUCCESS;   ///< Error code for the trade result

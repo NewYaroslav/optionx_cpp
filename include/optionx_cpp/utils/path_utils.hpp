@@ -48,7 +48,7 @@ namespace optionx::utils {
         if (pos != std::wstring::npos) {
             exe_path = exe_path.substr(0, pos);
         }
-        return std::filesystem::path(exe_path).string();
+        return std::filesystem::path(exe_path).u8string();
 #       else
         char result[PATH_MAX];
         ssize_t count = readlink("/proc/self/exe", result, PATH_MAX);
