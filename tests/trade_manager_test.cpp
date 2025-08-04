@@ -10,8 +10,8 @@
 #include <thread>
 #include <atomic>
 #include <chrono>
-#include "optionx_cpp/parts/modules.hpp" // Main header including all modules
-#include "optionx_cpp/parts/platforms.hpp"
+#include "optionx_cpp/modules.hpp" // Main header including all modules
+#include "optionx_cpp/platforms.hpp"
 
 namespace optionx::modules {
 
@@ -28,8 +28,8 @@ namespace optionx::modules {
 
         void from_json(const nlohmann::json &j) override {};
 
-        bool check() const override {
-            return true;
+		std::pair<bool, std::string> validate() const override {
+            return { true, std::string() };
         }
 
         /// \brief Clones the authorization data instance to a unique pointer.
@@ -56,7 +56,7 @@ namespace optionx::modules {
 
         /// \class AccountInfoData
     /// \brief Account information data for Intrade Bar platform.
-    class AccountInfoData : public IAccountInfoData {
+    class AccountInfoData : public BaseAccountInfoData {
     public:
         // Public member variables
         int64_t         user_id         = 0;                        ///< User ID
@@ -100,14 +100,14 @@ namespace optionx::modules {
         }
 
         /// \brief Creates a unique pointer to a clone of this account info data instance.
-        /// \return Unique pointer to a cloned IAccountInfoData instance.
-        std::unique_ptr<IAccountInfoData> clone_unique() const override final {
+        /// \return Unique pointer to a cloned BaseAccountInfoData instance.
+        std::unique_ptr<BaseAccountInfoData> clone_unique() const override final {
             return std::make_unique<AccountInfoData>(*this);
         }
 
         /// \brief Creates a shared pointer to a clone of this account info data instance.
-        /// \return Shared pointer to a cloned IAccountInfoData instance.
-        std::shared_ptr<IAccountInfoData> clone_shared() const override final {
+        /// \return Shared pointer to a cloned BaseAccountInfoData instance.
+        std::shared_ptr<BaseAccountInfoData> clone_shared() const override final {
             return std::make_shared<AccountInfoData>(*this);
         }
 
@@ -116,7 +116,7 @@ namespace optionx::modules {
         /// \brief Retrieves a boolean account information based on the request type.
         /// \param request Specifies the type of account information requested.
         /// \return Boolean account information.
-        bool get_account_info_bool(const AccountInfoRequest& request) const override final {
+        bool get_info_bool(const AccountInfoRequest& request) const override final {
             switch (request.type) {
             case AccountInfoType::CONNECTION_STATUS:
                 return connect;
@@ -181,7 +181,7 @@ namespace optionx::modules {
         /// \brief Retrieves integer account information based on the request type.
         /// \param request Specifies the type of account information requested.
         /// \return Integer account information.
-        int64_t get_account_info_int64(const AccountInfoRequest& request) const override final {
+        int64_t get_info_int64(const AccountInfoRequest& request) const override final {
             switch (request.type) {
                 case AccountInfoType::USER_ID: return user_id;
                 case AccountInfoType::CONNECTION_STATUS: return static_cast<int64_t>(connect);
@@ -213,7 +213,7 @@ namespace optionx::modules {
         /// \brief Retrieves floating-point account information based on the request type.
         /// \param request Specifies the type of account information requested.
         /// \return Floating-point account information.
-        double get_account_info_f64(const AccountInfoRequest& request) const override final {
+        double get_info_f64(const AccountInfoRequest& request) const override final {
             switch (request.type) {
                 case AccountInfoType::BALANCE: return balance;
                 case AccountInfoType::PAYOUT: return get_payout(request);
@@ -227,7 +227,7 @@ namespace optionx::modules {
         /// \brief Retrieves string account information based on the request type.
         /// \param request Specifies the type of account information requested.
         /// \return String account information.
-        std::string get_account_info_str(const AccountInfoRequest& request) const override final {
+        std::string get_info_str(const AccountInfoRequest& request) const override final {
             switch (request.type) {
                 case AccountInfoType::USER_ID: return std::to_string(user_id);
                 case AccountInfoType::BALANCE: return utils::format("%.2f", balance);
@@ -236,11 +236,11 @@ namespace optionx::modules {
             return std::string();
         }
 
-        CurrencyType get_account_currency(const AccountInfoRequest& request) const override final {
+        CurrencyType get_info_currency(const AccountInfoRequest& request) const override final {
             return currency;
         }
 
-        AccountType get_account_type(const AccountInfoRequest& request) const override final {
+        AccountType get_info_account_type(const AccountInfoRequest& request) const override final {
             return account_type;
         }
 
@@ -296,14 +296,14 @@ namespace optionx::modules {
     /// \brief Test implementation of BaseTradeExecutionModule for unit testing.
     class TradeManagerTest : public BaseTradeExecutionModule {
     public:
-        TradeManagerTest(utils::EventHub& hub, std::shared_ptr<IAccountInfoData> account_info)
+        TradeManagerTest(utils::EventHub& hub, std::shared_ptr<BaseAccountInfoData> account_info)
             : BaseTradeExecutionModule(hub, std::move(account_info)) {
             subscribe<events::AuthDataEvent>(this);
         }
 
         /// \brief Overrides API type retrieval for the test.
         /// \return Dummy ApiType for testing.
-        PlatformType platform_type() override {
+        PlatformType platform_type() const override {
             return PlatformType::SIMULATOR;
         }
     };

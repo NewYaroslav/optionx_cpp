@@ -10,8 +10,8 @@
 #include <mutex>
 #include <chrono>
 #include <memory>
-#include <time_shield_cpp/time_shield.hpp>
-#include <log-it/LogIt.hpp>
+#include <time_shield.hpp>
+#include <logit_cpp/LogIt.hpp>
 
 namespace optionx::utils {
 

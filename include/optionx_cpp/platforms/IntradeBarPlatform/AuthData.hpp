@@ -17,7 +17,7 @@ namespace optionx::platforms::intrade_bar {
             user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"),
             accept_language("ru,ru-RU;q=0.9,en;q=0.8,en-US;q=0.7"),
             host("https://intrade.bar"),
-            proxy_type(kurlyk::ProxyType::HTTP) {
+            proxy_type(kurlyk::ProxyType::PROXY_HTTP) {
         }
 
         virtual ~AuthData() = default;
@@ -66,7 +66,7 @@ namespace optionx::platforms::intrade_bar {
                 int port,
                 const std::string& username,
                 const std::string& password,
-                kurlyk::ProxyType type = kurlyk::ProxyType::HTTP) {
+                kurlyk::ProxyType type = kurlyk::ProxyType::PROXY_HTTP) {
             set_proxy(ip, port);
             set_proxy_auth(username, password);
             proxy_type = type;
@@ -101,9 +101,9 @@ namespace optionx::platforms::intrade_bar {
                 j["accept_language"] = accept_language;
                 j["proxy_server"] = proxy_server;
                 j["proxy_auth"] = proxy_auth;
-                j["proxy_type"] = to_str(proxy_type);
-                j["account_type"] = to_str(account_type);
-                j["currency"] = to_str(currency);
+                j["proxy_type"] = optionx::to_str(proxy_type);
+                j["account_type"] = optionx::to_str(account_type);
+                j["currency"] = optionx::to_str(currency);
             } catch (const std::exception& ex) {
                 LOGIT_ERROR(ex);
             }
@@ -131,7 +131,7 @@ namespace optionx::platforms::intrade_bar {
                 accept_language = j.value("accept_language", accept_language);
                 proxy_server = j.value("proxy_server", proxy_server);
                 proxy_auth   = j.value("proxy_auth", proxy_auth);
-
+                proxy_type   = to_enum<kurlyk::ProxyType>(j.value("proxy_type", "HTTP"));
                 account_type = to_enum<AccountType>(j.value("account_type", "UNKNOWN"));
                 currency = to_enum<CurrencyType>(j.value("currency", "UNKNOWN"));
             } catch (const std::exception& ex) {

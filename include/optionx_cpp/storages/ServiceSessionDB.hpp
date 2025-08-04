@@ -5,7 +5,7 @@
 /// \file ServiceSessionDB.hpp
 /// \brief Provides a singleton-based class for managing session data storage and retrieval.
 
-#include <sqlite_containers/KeyValueDB.hpp>
+#include <mdbx_containers/KeyValueTable.hpp>
 #include <optional>
 #include <memory>
 #include <string>
@@ -18,11 +18,11 @@
 #   endif
 
 #   ifndef OPTIONX_DB_PATH
-#   define OPTIONX_DB_PATH OPTIONX_DATA_PATH "\\databases"
+#   define OPTIONX_DB_PATH OPTIONX_DATA_PATH "\\db"
 #   endif
 
 #   ifndef OPTIONX_SESSION_DB_FILE
-#   define OPTIONX_SESSION_DB_FILE OPTIONX_DB_PATH "\\session_data.db"
+#   define OPTIONX_SESSION_DB_FILE OPTIONX_DB_PATH "\\session_data"
 #   endif
 
 #else
@@ -32,11 +32,11 @@
 #   endif
 
 #   ifndef OPTIONX_DB_PATH
-#   define OPTIONX_DB_PATH OPTIONX_DATA_PATH "/databases"
+#   define OPTIONX_DB_PATH OPTIONX_DATA_PATH "/db"
 #   endif
 
 #   ifndef OPTIONX_SESSION_DB_FILE
-#   define OPTIONX_SESSION_DB_FILE OPTIONX_DB_PATH "/session_data.db"
+#   define OPTIONX_SESSION_DB_FILE OPTIONX_DB_PATH "/session_data"
 #   endif
 
 #endif
@@ -73,12 +73,14 @@ namespace optionx::storage {
             std::string key = platform + ":" + email;
             try {
                 std::string base64_encrypted_value;
-                if (!m_db.find(utils::Base64::encode(key), base64_encrypted_value)) return std::nullopt;
+                auto result = m_db->find(utils::Base64::encode(key));
+                if (!result) return std::nullopt;
+                base64_encrypted_value = *result;
                 if (base64_encrypted_value.empty()) return std::nullopt;
                 std::string value = m_aes.decrypt(utils::Base64::decode(base64_encrypted_value));
                 if (value.empty()) return std::nullopt;
                 return {value};
-            } catch (const sqlite_containers::sqlite_exception& ex) {
+            } catch (const mdbxc::MdbxException& ex) {
                 LOGIT_PRINT_ERROR("Database error: ", ex);
             } catch (const std::exception& ex) {
                 LOGIT_PRINT_ERROR("General error: ", ex);
@@ -95,9 +97,9 @@ namespace optionx::storage {
             std::lock_guard<std::mutex> lock(m_mutex);
             std::string key = platform + ":" + email;
             try {
-                m_db.insert(utils::Base64::encode(key), utils::Base64::encode(m_aes.encrypt(value)));
+                m_db->insert_or_assign(utils::Base64::encode(key), utils::Base64::encode(m_aes.encrypt(value)));
                 return true;
-            } catch(const sqlite_containers::sqlite_exception& ex){
+            } catch(const mdbxc::MdbxException& ex){
                 LOGIT_PRINT_ERROR("Database error: ", ex);
             } catch(const std::exception& ex){
                 LOGIT_PRINT_ERROR("General error: ", ex);
@@ -113,10 +115,9 @@ namespace optionx::storage {
             std::lock_guard<std::mutex> lock(m_mutex);
             std::string key = platform + ":" + email;
             try {
-                std::string base64_key = utils::Base64::encode(key);
-                m_db.remove(base64_key);
+                m_db->erase(utils::Base64::encode(key));
                 return true;
-            } catch(const sqlite_containers::sqlite_exception& ex){
+            } catch(const mdbxc::MdbxException& ex){
                 LOGIT_PRINT_ERROR("Database error: ", ex);
             } catch(const std::exception& ex){
                 LOGIT_PRINT_ERROR("General error: ", ex);
@@ -129,9 +130,9 @@ namespace optionx::storage {
         bool clear() {
             std::lock_guard<std::mutex> lock(m_mutex);
             try {
-                m_db.clear();
+                m_db->clear();
                 return true;
-            } catch(const sqlite_containers::sqlite_exception& ex){
+            } catch(const mdbxc::MdbxException& ex){
                 LOGIT_PRINT_ERROR("Database error: ", ex);
             } catch(const std::exception& ex){
                 LOGIT_PRINT_ERROR("General error: ", ex);
@@ -143,14 +144,14 @@ namespace optionx::storage {
         /// \details Disconnects database and clears encryption key.
         void shutdown() {
             std::lock_guard<std::mutex> lock(m_mutex);
-            m_db.disconnect();
+            m_db->disconnect();
             m_aes.clear_key();
         }
 
     private:
         std::mutex       m_mutex; ///< Mutex for thread safety.
         crypto::AESCrypt m_aes;   ///< AES encryption and decryption instance.
-        sqlite_containers::KeyValueDB<std::string, std::string> m_db; ///< The SQLite KeyValueDB instance.
+        std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>> m_db; ///< The SQLite KeyValueDB instance.
 
         /// \brief Private constructor for singleton pattern.
         ServiceSessionDB() : m_aes(crypto::AesMode::CBC_256) {
@@ -162,24 +163,13 @@ namespace optionx::storage {
             };
             m_aes.set_key(def_key);
             try {
-                sqlite_containers::Config config;
-#               if defined(_WIN32) || defined(_WIN64)
-                config.db_path = utils::get_exec_dir() + std::string("\\") + OPTIONX_SESSION_DB_FILE;
-#               else
-                config.db_path = utils:get_exec_dir() + std::string("/") + OPTIONX_SESSION_DB_FILE;
-#               endif
-                config.table_name = "sessions";
-                config.busy_timeout = 1000;               // Таймаут при блокировке базы данных.
-                config.page_size = 4096;                  // Размер страницы по умолчанию.
-                config.cache_size = 1000;                 // Небольшой кэш, так как объем данных невелик.
-                config.analysis_limit = 500;              // Уменьшить лимит анализа для оптимизации.
-                config.journal_mode = sqlite_containers::JournalMode::DELETE_MODE;
-                config.synchronous = sqlite_containers::SynchronousMode::FULL;
-                config.auto_vacuum_mode = sqlite_containers::AutoVacuumMode::FULL;
-                config.default_txn_mode = sqlite_containers::TransactionMode::DEFERRED;
-                m_db.set_config(config);
-                m_db.connect();
-            } catch(const sqlite_containers::sqlite_exception& ex){
+                mdbxc::Config config;
+                config.pathname = OPTIONX_SESSION_DB_FILE;
+                config.max_dbs = 1;
+                config.no_subdir = false;
+                config.relative_to_exe = true;
+                m_db = std::make_unique<mdbxc::KeyValueTable<std::string, std::string>>(config, "sessions");
+            } catch(const mdbxc::MdbxException& ex){
                 LOGIT_PRINT_ERROR("Database connection error: ", ex);
             } catch(const std::exception& ex){
                 LOGIT_PRINT_ERROR("General error: ", ex);

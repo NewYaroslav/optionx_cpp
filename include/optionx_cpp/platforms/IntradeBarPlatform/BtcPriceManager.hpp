@@ -35,22 +35,22 @@ namespace optionx::platforms::intrade_bar {
 
             m_websocket_client.on_event([this](std::unique_ptr<kurlyk::WebSocketEventData> event) {
                 switch (event->event_type) {
-                case kurlyk::WebSocketEventType::Open:
+                case kurlyk::WebSocketEventType::WS_OPEN:
                     LOGIT_INFO(event->status_code, event->error_code);
                     m_tick_data[0].tick.flags = 0;
                     m_tick_data[0].flags = 0;
                     m_is_error = false;
                     break;
-                case kurlyk::WebSocketEventType::Message:
+                case kurlyk::WebSocketEventType::WS_MESSAGE:
                     handle_message(event->message);
                     break;
-                case kurlyk::WebSocketEventType::Close:
+                case kurlyk::WebSocketEventType::WS_CLOSE:
                     LOGIT_INFO(event->status_code, event->error_code);
                     m_tick_data[0].tick.flags = 0;
                     m_tick_data[0].flags = 0;
                     m_is_error = false;
                     break;
-                case kurlyk::WebSocketEventType::Error:
+                case kurlyk::WebSocketEventType::WS_ERROR:
                     if (m_is_error) return;
                     LOGIT_ERROR(event->status_code, event->error_code);
                     m_tick_data[0].tick.flags = 0;

@@ -88,13 +88,13 @@ namespace optionx {
     template <>
     inline kurlyk::ProxyType to_enum<kurlyk::ProxyType>(const std::string &str) {
         static const std::map<std::string, kurlyk::ProxyType> data_str = {
-            {"HTTP", kurlyk::ProxyType::HTTP},
-            {"HTTPS", kurlyk::ProxyType::HTTPS},
-            {"HTTP_1_0", kurlyk::ProxyType::HTTP_1_0},
-            {"SOCKS4", kurlyk::ProxyType::SOCKS4},
-            {"SOCKS4A", kurlyk::ProxyType::SOCKS4A},
-            {"SOCKS5", kurlyk::ProxyType::SOCKS5},
-            {"SOCKS5_HOSTNAME", kurlyk::ProxyType::SOCKS5_HOSTNAME}
+            {"HTTP", kurlyk::ProxyType::PROXY_HTTP},
+            {"HTTPS", kurlyk::ProxyType::PROXY_HTTPS},
+            {"HTTP_1_0", kurlyk::ProxyType::PROXY_HTTP_1_0},
+            {"SOCKS4", kurlyk::ProxyType::PROXY_SOCKS4},
+            {"SOCKS4A", kurlyk::ProxyType::PROXY_SOCKS4A},
+            {"SOCKS5", kurlyk::ProxyType::PROXY_SOCKS5},
+            {"SOCKS5_HOSTNAME", kurlyk::ProxyType::PROXY_SOCKS5_HOSTNAME}
         };
 
         auto it = data_str.find(utils::to_upper_case(str));

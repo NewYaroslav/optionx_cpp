@@ -12,7 +12,8 @@
 #include "trading/enums.hpp"
 #include "trading/TradeResult.hpp"
 #include "trading/TradeRequest.hpp"
-#include "trading/TradeSignal.hpp"
+#include "trading/IMoneyManagementParams.hpp"
 #include "trading/ITradeDecisionParams.hpp"
+#include "trading/TradeSignal.hpp"
 
 #endif // _OPTIONX_TRADING_HPP_INCLUDED
