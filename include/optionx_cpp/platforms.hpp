@@ -11,5 +11,6 @@
 #include "modules.hpp"
 #include "platforms/common/BaseTradingPlatform.hpp"
 #include "platforms/IntradeBarPlatform.hpp"
+#include "platforms/TradeUpPlatform.hpp"
 
 #endif // _OPTIONX_PLATFORMS_HPP_INCLUDED
