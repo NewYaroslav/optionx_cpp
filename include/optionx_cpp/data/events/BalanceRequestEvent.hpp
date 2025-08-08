@@ -11,21 +11,17 @@ namespace optionx::events {
     /// \brief Event to request account balance information, holding pointers to trade request and result details.
     class BalanceRequestEvent : public utils::Event {
     public:
-        /*
-        std::shared_ptr<TradeRequest> request;  ///< Shared pointer to the trade request details.
-        std::shared_ptr<TradeResult>  result;   ///< Shared pointer to the trade result details.
-
-        /// \brief Constructor initializing the request and result pointers.
-        /// \param trade_request Shared pointer to the trade request details.
-        /// \param trade_result Shared pointer to the trade result details.
-        explicit BalanceRequestEvent(
-                std::shared_ptr<TradeRequest> trade_request,
-                std::shared_ptr<TradeResult> trade_result)
-            : request(std::move(trade_request)), result(std::move(trade_result)) {}
-            */
 
         /// \brief Default virtual destructor.
         virtual ~BalanceRequestEvent() = default;
+        
+        std::type_index type() const override {
+            return typeid(BalanceRequestEvent);
+        }
+
+        const char* name() const override {
+            return "BalanceRequestEvent";
+        }
     };
 
 } // namespace optionx::events

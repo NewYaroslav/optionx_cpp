@@ -9,7 +9,7 @@
 #include "data.hpp"
 #include "storages.hpp"
 #include "modules.hpp"
-#include "platforms/BaseTradingPlatform.hpp"
+#include "platforms/common/BaseTradingPlatform.hpp"
 #include "platforms/IntradeBarPlatform.hpp"
 
 #endif // _OPTIONX_PLATFORMS_HPP_INCLUDED

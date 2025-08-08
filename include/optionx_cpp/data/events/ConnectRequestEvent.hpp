@@ -20,6 +20,14 @@ namespace optionx::events {
 
         /// \brief Default virtual destructor.
         virtual ~ConnectRequestEvent() = default;
+        
+        std::type_index type() const override {
+            return typeid(ConnectRequestEvent);
+        }
+
+        const char* name() const override {
+            return "ConnectRequestEvent";
+        }
     };
 
 } // namespace optionx::events

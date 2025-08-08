@@ -25,6 +25,15 @@ namespace optionx::events {
 
         /// \brief Default virtual destructor.
         virtual ~AccountInfoUpdateEvent() = default;
+        
+        
+        std::type_index type() const override {
+            return typeid(AccountInfoUpdateEvent);
+        }
+
+        const char* name() const override {
+            return "AccountInfoUpdateEvent";
+        }
     };
 
 } // namespace optionx::events

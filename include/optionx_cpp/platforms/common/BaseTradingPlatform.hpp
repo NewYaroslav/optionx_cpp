@@ -18,14 +18,12 @@ namespace optionx::platforms {
         BaseTradingPlatform(std::shared_ptr<BaseAccountInfoData> account_info)
             : m_account_info(std::move(account_info)),
               m_account_provider(m_account_info),
-              m_event_hub(), m_task_manager(),
-              m_account_info_handler(m_event_hub) {
+              m_event_bus(), m_task_manager(),
+              m_account_info_handler(m_event_bus) {
         }
 
         virtual ~BaseTradingPlatform() {
-            LOGIT_TRACE0();
             shutdown();
-            LOGIT_TRACE0();
         }
 
         /// \brief Returns a reference to the trade result callback.
@@ -57,7 +55,7 @@ namespace optionx::platforms {
         /// \return True if the authorization data was set successfully; false otherwise.
         virtual bool configure_auth(std::unique_ptr<IAuthData> auth_data) {
             if (!auth_data) return false;
-            m_event_hub.notify_async(std::make_unique<events::AuthDataEvent>(std::move(auth_data)));
+            m_event_bus.notify_async(std::make_unique<events::AuthDataEvent>(std::move(auth_data)));
             return true;
         }
 
@@ -80,13 +78,13 @@ namespace optionx::platforms {
         /// \brief Initiates a connection to the trading platform.
         /// \param callback Callback to handle connection result with error code.
         virtual void connect(connection_callback_t callback) {
-            m_event_hub.notify_async(std::make_unique<events::ConnectRequestEvent>(std::move(callback)));
+            m_event_bus.notify_async(std::make_unique<events::ConnectRequestEvent>(std::move(callback)));
         }
 
         /// \brief Disconnects from the trading platform.
         /// \param callback Callback to handle completion of the disconnection process.
         virtual void disconnect(connection_callback_t callback) {
-            m_event_hub.notify_async(std::make_unique<events::DisconnectRequestEvent>(std::move(callback)));
+            m_event_bus.notify_async(std::make_unique<events::DisconnectRequestEvent>(std::move(callback)));
         }
 
         /// \brief Checks if the platform is connected.
@@ -147,22 +145,18 @@ namespace optionx::platforms {
                 for (auto* module : m_modules) {
                     module->initialize();
                 }
-                LOGIT_TRACE0();
                 on_once();
-                LOGIT_TRACE0();
             });
             
             m_task_manager.add_periodic_task("loop", 1, [this](
                     std::shared_ptr<utils::Task> task){
-                m_event_hub.process();
+                m_event_bus.process();
                 if (task->is_shutdown()) {
                     LOGIT_TRACE0();
                     for (auto* module : m_modules) {
                         module->shutdown();
                     }
-                    LOGIT_TRACE0();
                     on_shutdown();
-                    LOGIT_TRACE0();
                 } else {
                     for (auto* module : m_modules) {
                         module->process();
@@ -187,8 +181,8 @@ namespace optionx::platforms {
             m_task_manager.shutdown();
         };
 
-        /// \brief Returns a reference to the event hub.
-        utils::EventHub& event_hub() { return m_event_hub; }
+        /// \brief Returns a reference to the event bus.
+        utils::EventBus& event_bus() { return m_event_bus; }
 
         /// \brief Registers a module for processing.
         /// \param module The module to be registered.
@@ -203,7 +197,7 @@ namespace optionx::platforms {
     protected:
         std::shared_ptr<BaseAccountInfoData> m_account_info;
         modules::AccountInfoProvider         m_account_provider;
-        utils::EventHub                      m_event_hub;
+        utils::EventBus                      m_event_bus;
         utils::TaskManager                   m_task_manager;
         modules::BaseAccountInfoHandler      m_account_info_handler;
         std::vector<modules::BaseModule*>    m_modules;

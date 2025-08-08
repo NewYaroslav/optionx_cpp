@@ -22,8 +22,8 @@ namespace optionx::platforms::intrade_bar {
         explicit RequestManager(
                 BaseTradingPlatform& platform,
                 HttpClientModule& client)
-                : BaseModule(platform.event_hub()), m_client(client) {
-            subscribe<events::AuthDataEvent>(this);
+                : BaseModule(platform.event_bus()), m_client(client) {
+            subscribe<events::AuthDataEvent>();
 
             m_api_headers = {
                 {"Accept", "*/*"},
@@ -654,8 +654,8 @@ namespace optionx::platforms::intrade_bar {
             if (!response->ready) return;
             bool success = response->status_code == 200;
             LOGIT_PRINT_DEBUG("Current host ping check:",
-                " success =", success,
-                "; status =", response->status_code);
+                " success:", success,
+                "; status:", response->status_code);
             check_callback(success);
         };
 

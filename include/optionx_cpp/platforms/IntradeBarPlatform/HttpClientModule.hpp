@@ -29,7 +29,7 @@ namespace optionx::platforms::intrade_bar {
         /// \param platform Reference to the trading platform.
         explicit HttpClientModule(
                 BaseTradingPlatform& platform)
-                : modules::BaseHttpClientModule(platform.event_hub()) {
+                : modules::BaseHttpClientModule(platform.event_bus()) {
             set_rate_limit_rpm(RateLimitType::GENERAL, 60);
             set_rate_limit_rps(RateLimitType::TRADE_EXECUTION, 1);
             set_rate_limit_rps(RateLimitType::TRADE_RESULT, 1);

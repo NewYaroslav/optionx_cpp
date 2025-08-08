@@ -12,21 +12,17 @@ namespace optionx::modules {
     ///
     /// The `BaseModule` class provides default "do nothing" implementations for the methods `initialize`, `process`,
     /// and `shutdown`. Derived classes can override only the methods they require. This class is designed to integrate
-    /// with an `EventHub` through its base `EventMediator` class, enabling event-driven behavior.
+    /// with an `EventBus` through its base `EventMediator` class, enabling event-driven behavior.
     class BaseModule : public utils::EventMediator {
     public:
         /// \brief Constructs a `BaseModule` instance.
-        /// \param Pointer to the `EventHub` used for handling events.
-        explicit BaseModule(utils::EventHub& hub) : EventMediator(hub) {}
+        /// \param bus Pointer to the `EventBus` used for handling events.
+        explicit BaseModule(utils::EventBus& bus) : EventMediator(bus) {}
 
         /// \brief Virtual destructor.
         ///
         /// Ensures proper cleanup of resources in derived classes.
         virtual ~BaseModule() = default;
-
-        /// \brief Handles an event notification received as a shared pointer.
-        /// \param event The event received, passed as a shared pointer.
-        void on_event(const std::shared_ptr<utils::Event>& event) override {}
 
         /// \brief Handles an event notification received as a raw pointer.
         /// \param event The event received, passed as a raw pointer.

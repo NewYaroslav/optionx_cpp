@@ -26,6 +26,14 @@ namespace optionx::events {
 
         /// \brief Default virtual destructor.
         virtual ~OpenTradesEvent() = default;
+        
+        std::type_index type() const override {
+            return typeid(OpenTradesEvent);
+        }
+
+        const char* name() const override {
+            return "OpenTradesEvent";
+        }
     };
 
 } // namespace optionx::events

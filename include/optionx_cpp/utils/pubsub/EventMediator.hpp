@@ -3,75 +3,98 @@
 #define _OPTIONX_UTILS_PUBSUB_EVENT_MEDIATOR_HPP_INCLUDED
 
 /// \file EventMediator.hpp
-/// \brief Defines the EventMediator class for managing subscriptions and notifications through EventHub.
+/// \brief Defines the EventMediator class for managing subscriptions and notifications through EventBus.
 
 namespace optionx::utils {
 
     /// \class EventMediator
-    /// \brief Provides an interface for subscribing to and notifying events through EventHub.
+    /// \brief Facilitates event subscriptions and notifications through an associated EventBus.
+    ///
+    /// Provides a unified interface for modules to subscribe to, notify, and asynchronously post events.
     class EventMediator : public EventListener {
     public:
-        /// \brief Constructs EventMediator with a raw pointer to an EventHub instance.
-        /// \param hub Pointer to the EventHub instance.
-        explicit EventMediator(EventHub* hub) : m_event_hub(hub) {};
+        /// \brief Constructs EventMediator with a raw pointer to an EventBus instance.
+        /// \param bus Pointer to the EventBus instance.
+        explicit EventMediator(EventBus* bus) : m_event_bus(bus) {}
 
-        /// \brief Constructs EventMediator with a reference to an EventHub instance.
-        /// \param hub Reference to the EventHub instance.
-        explicit EventMediator(EventHub& hub) : m_event_hub(&hub) {};
+        /// \brief Constructs EventMediator with a reference to an EventBus instance.
+        /// \param bus Reference to the EventBus instance.
+        explicit EventMediator(EventBus& bus) : m_event_bus(&bus) {}
 
-        /// \brief Constructs EventMediator with a unique pointer to an EventHub instance.
-        /// \param hub Unique pointer to the EventHub instance.
-        explicit EventMediator(std::unique_ptr<EventHub>& hub) : m_event_hub(hub.get()) {};
+        /// \brief Constructs EventMediator with a unique pointer to an EventBus instance.
+        /// \param bus Unique pointer to the EventBus instance.
+        explicit EventMediator(std::unique_ptr<EventBus>& bus) : m_event_bus(bus.get()) {}
 
-        /// \brief Destructor for EventMediator.
         virtual ~EventMediator() = default;
-
-        /// \brief Subscribe to an event type with a custom callback function.
+        
+        /// \brief Subscribes to an event type with a custom callback function taking a concrete event reference.
         /// \tparam EventType Type of the event to subscribe to.
-        /// \param callback Callback function to invoke when the specified event is published.
+        /// \param callback Callback function accepting a const reference to the event.
         template <typename EventType>
-        void subscribe(std::function<void(std::shared_ptr<EventType>)> callback) {
-            m_event_hub->subscribe<EventType>(callback);
+        void subscribe(std::function<void(const EventType&)> callback) {
+            m_event_bus->subscribe<EventType>(this, std::move(callback));
         }
 
-        /// \brief Subscribe to an event type using an EventListener-derived object.
-        /// \tparam EventType Type of the event the listener subscribes to.
-        /// \param listener EventListener object to receive notifications for the specified event type.
+        /// \brief Subscribes to an event type with a generic callback function taking a base event pointer.
+        /// \tparam EventType Type of the event to subscribe to.
+        /// \param callback Callback function accepting a const pointer to the base event.
         template <typename EventType>
-        void subscribe(EventListener* listener) {
-            m_event_hub->subscribe<EventType>(listener);
+        void subscribe(std::function<void(const Event* const)> callback) {
+            m_event_bus->subscribe<EventType>(this, std::move(callback));
         }
 
-        /// \brief Notify all subscribers of an event using a shared pointer.
-        /// \param event Shared pointer to the event to be published.
-        void notify(std::shared_ptr<Event> event) const {
-            m_event_hub->notify(std::move(event));
+        /// \brief Subscribes this object as a listener to the specified event type.
+        /// \tparam EventType Type of the event to subscribe to.
+        template <typename EventType>
+        void subscribe() {
+            m_event_bus->subscribe<EventType>(this);
+        }
+        
+        /// \brief Unsubscribes this mediator from a specific event type.
+        /// \tparam EventType Type of the event to unsubscribe from.
+        template <typename EventType>
+        void unsubscribe() {
+            m_event_bus->unsubscribe<EventType>(this);
+        }
+        
+        /// \brief Unsubscribes this mediator from all event types.
+        void unsubscribe_all() {
+            m_event_bus->unsubscribe_all(this);
         }
 
-        /// \brief Notify all subscribers of an event using a raw pointer.
-        /// \param event Raw pointer to the event to be published.
+        /// \brief Notifies all subscribers of an event (shared pointer dereferenced).
+        /// \param event Shared pointer to the event.
+        void notify(const std::shared_ptr<Event>& event) const {
+            m_event_bus->notify(event.get());
+        }
+        
+        /// \brief Notifies all subscribers of an event (unique pointer dereferenced).
+        /// \param event Unique pointer to the event.
+        void notify(const std::unique_ptr<Event>& event) const {
+            m_event_bus->notify(event.get());
+        }
+
+        /// \brief Notifies all subscribers of an event (raw pointer).
+        /// \param event Raw pointer to the event.
         void notify(const Event* const event) const {
-            m_event_hub->notify(event);
+            m_event_bus->notify(event);
         }
 
-        /// \brief Notify all subscribers of an event by reference.
-        /// \param event Reference to the event to be published.
-        /// \details Internally calls the notify method with a raw pointer to the event.
+        /// \brief Notifies all subscribers of an event (reference).
+        /// \param event Reference to the event.
         void notify(const Event& event) const {
-            m_event_hub->notify(event);
+            m_event_bus->notify(event);
         }
 
-        /// \brief Adds an event to the queue for asynchronous processing.
-        /// \param event Unique pointer to the event (ensures exclusive ownership and prevents race conditions).
-        /// \details This method is useful for posting events from multiple threads while ensuring
-        ///          they are safely processed in a single-threaded execution context.
+        /// \brief Queues an event for asynchronous processing.
+        /// \param event Unique pointer to the event.
         void notify_async(std::unique_ptr<Event> event) {
-            m_event_hub->notify_async(std::move(event));
+            m_event_bus->notify_async(std::move(event));
         }
 
     private:
-        EventHub* m_event_hub; ///< Pointer to the EventHub instance for managing event subscriptions and notifications.
-    }; // EventMediator
+        EventBus* m_event_bus; ///< Associated EventBus instance.
+    };
 
 }; // namespace optionx::utils
 

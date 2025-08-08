@@ -24,18 +24,18 @@ namespace optionx::modules {
         using trade_result_callback_t = std::function<void(std::unique_ptr<TradeRequest>, std::unique_ptr<TradeResult>)>;
 
         /// \brief Constructs a TradeQueueManager instance.
-        /// \param hub Event hub for event-based communication.
+        /// \param bus Event bus for event-based communication.
         /// \param account_info Account information provider.
         /// \param trade_state_manager Manages trade state transitions.
         explicit TradeQueueManager(
-                utils::EventHub& hub,
+                utils::EventBus& bus,
                 AccountInfoProvider& account_info,
                 TradeStateManager& trade_state_manager)
-            : EventMediator(hub), m_account_info(account_info),
+            : EventMediator(bus), m_account_info(account_info),
               m_trade_state_manager(trade_state_manager) {
             m_last_order_time = std::chrono::steady_clock::now();
-            subscribe<events::PriceUpdateEvent>(this);
-            subscribe<events::DisconnectRequestEvent>(this);
+            subscribe<events::PriceUpdateEvent>();
+            subscribe<events::DisconnectRequestEvent>();
         }
 
         /// \brief Virtual destructor.

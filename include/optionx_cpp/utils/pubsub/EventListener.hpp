@@ -10,18 +10,16 @@
 namespace optionx::utils {
 
     /// \class EventListener
-    /// \brief Abstract class that serves as a base for any listener interested in receiving event notifications.
-    /// This class allows derived listeners to receive events either as shared pointers or as raw pointers.
+    /// \brief Abstract base class for receiving event notifications.
+    ///
+    /// Derived classes implement event handlers and can receive events either as shared pointers
+    /// or as raw pointers, depending on the dispatch method.
     class EventListener {
     public:
         virtual ~EventListener() = default;
 
-        /// \brief Handles an event notification received as a shared pointer.
-        /// \param event The event received, passed as a shared pointer.
-        virtual void on_event(const std::shared_ptr<Event>& event) {};
-
         /// \brief Handles an event notification received as a raw pointer.
-        /// \param event The event received, passed as a raw pointer.
+        /// \param event Raw pointer to the received event.
         virtual void on_event(const Event* const event) = 0;
 
     }; // EventListener

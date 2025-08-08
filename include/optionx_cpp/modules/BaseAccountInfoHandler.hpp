@@ -17,10 +17,10 @@ namespace optionx::modules {
     public:
 
         /// \brief Constructs the `BaseAccountInfoHandler` and subscribes to account update events.
-        /// \param hub Reference to the `EventHub` used for subscribing to events.
-        explicit BaseAccountInfoHandler(utils::EventHub& hub)
-            : BaseModule(hub) {
-           subscribe<events::AccountInfoUpdateEvent>(this);
+        /// \param bus Reference to the `EventBus` used for subscribing to events.
+        explicit BaseAccountInfoHandler(utils::EventBus& bus)
+            : BaseModule(bus) {
+           subscribe<events::AccountInfoUpdateEvent>();
         }
 
         /// \brief Virtual destructor.
@@ -51,7 +51,6 @@ namespace optionx::modules {
                 event.status,
                 event.message
             };
-
             if (m_callback) m_callback(update);
         }
     };

@@ -23,12 +23,12 @@ namespace optionx::platforms::intrade_bar {
                 BaseTradingPlatform& platform,
                 RequestManager& request_manager,
                 std::shared_ptr<BaseAccountInfoData> account_info)
-                : BaseModule(platform.event_hub()),
+                : BaseModule(platform.event_bus()),
                   m_request_manager(request_manager),
                   m_account_info(std::move(account_info))  {
-            subscribe<events::TradeRequestEvent>(this);
-            subscribe<events::TradeStatusEvent>(this);
-            subscribe<events::OpenTradesEvent>(this);
+            subscribe<events::TradeRequestEvent>();
+            subscribe<events::TradeStatusEvent>();
+            subscribe<events::OpenTradesEvent>();
             platform.register_module(this);
         }
 
@@ -182,10 +182,10 @@ namespace optionx::platforms::intrade_bar {
         LOGIT_0TRACE();
         const int64_t delay_ms = 500;
         m_task_manager.add_delayed_task(
-				"event(TradeStatusEvent)-500ms",
-				delay_ms, 
-				[this, request, result](
-					std::shared_ptr<utils::Task> task) {
+                "event(TradeStatusEvent)-500ms",
+                delay_ms, 
+                [this, request, result](
+                    std::shared_ptr<utils::Task> task) {
             LOGIT_0TRACE();
             if (task->is_shutdown()) {
                 LOGIT_INFO("Task was shut down unexpectedly for option ID: ", result->option_id);

@@ -22,10 +22,10 @@ namespace optionx::platforms::intrade_bar {
         explicit PriceManager(
                 BaseTradingPlatform& platform,
                 RequestManager& request_manager)
-                : BaseModule(platform.event_hub()), m_request_manager(request_manager) {
-            subscribe<events::ConnectRequestEvent>(this);
-            subscribe<events::DisconnectRequestEvent>(this);
-            subscribe<events::AccountInfoUpdateEvent>(this);
+                : BaseModule(platform.event_bus()), m_request_manager(request_manager) {
+            subscribe<events::ConnectRequestEvent>();
+            subscribe<events::DisconnectRequestEvent>();
+            subscribe<events::AccountInfoUpdateEvent>();
             platform.register_module(this);
         }
 

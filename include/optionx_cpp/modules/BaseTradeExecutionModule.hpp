@@ -31,22 +31,18 @@ namespace optionx::modules {
         using trade_result_callback_t = std::function<void(std::unique_ptr<TradeRequest>, std::unique_ptr<TradeResult>)>;
 
         /// \brief Constructs a `BaseTradeExecutionModule` instance.
-        /// \param hub Reference to the `EventHub` for subscribing to and emitting events.
+        /// \param bus Reference to the `EventBus` for subscribing to and emitting events.
         /// \param account_info Shared pointer to the `BaseAccountInfoData` interface for retrieving account-related information.
         explicit BaseTradeExecutionModule(
-                utils::EventHub& hub,
+                utils::EventBus& bus,
                 std::shared_ptr<BaseAccountInfoData> account_info)
-            : BaseModule(hub), m_account_info(std::move(account_info)),
+            : BaseModule(bus), m_account_info(std::move(account_info)),
               m_trade_state_manager(m_account_info),
-              m_trade_queue(hub, m_account_info, m_trade_state_manager) {
+              m_trade_queue(bus, m_account_info, m_trade_state_manager) {
         }
 
         /// \brief Default virtual destructor.
         virtual ~BaseTradeExecutionModule() = default;
-
-        /// \brief Handles an event notification received as a shared pointer.
-        /// \param event The received event.
-        void on_event(const std::shared_ptr<utils::Event>& event) override {};
 
         /// \brief Handles an event notification received as a raw pointer.
         /// \param event The received event.

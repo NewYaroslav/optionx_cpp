@@ -16,11 +16,11 @@ namespace optionx::modules {
     class BaseHttpClientModule : public modules::BaseModule {
     public:
 
-        /// \brief Constructor initializing the HTTP client module with an event hub.
-        /// \param hub Reference to the event hub for event handling.
+        /// \brief Constructor initializing the HTTP client module with an event bus.
+        /// \param bus Reference to the event bus for event handling.
         /// \param account_info Shared pointer to account information data.
-        explicit BaseHttpClientModule(utils::EventHub& hub)
-            : BaseModule(hub) {
+        explicit BaseHttpClientModule(utils::EventBus& bus)
+            : BaseModule(bus) {
         }
 
         /// \brief Default virtual destructor.
@@ -28,10 +28,6 @@ namespace optionx::modules {
             deinitialize_rate_limits();
             m_client.cancel_requests();
         }
-
-        /// \brief Handles an event notification received as a shared pointer.
-        /// \param event The event received, passed as a shared pointer.
-        void on_event(const std::shared_ptr<utils::Event>& event) override {}
 
         /// \brief Handles an event notification received as a raw pointer.
         /// \param event The event received, passed as a raw pointer.

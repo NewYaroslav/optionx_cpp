@@ -27,6 +27,14 @@ namespace optionx::events {
 
         /// \brief Default virtual destructor.
         virtual ~PriceUpdateEvent() = default;
+        
+        std::type_index type() const override {
+            return typeid(PriceUpdateEvent);
+        }
+
+        const char* name() const override {
+            return "PriceUpdateEvent";
+        }
 
         /// \brief Finds a tick by its symbol name.
         /// \param symbol The name of the symbol to find.

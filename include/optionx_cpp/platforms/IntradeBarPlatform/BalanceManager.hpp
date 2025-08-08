@@ -24,13 +24,13 @@ namespace optionx::platforms::intrade_bar {
             BaseTradingPlatform& platform,
             RequestManager& request_manager,
             std::shared_ptr<BaseAccountInfoData> account_info)
-            : BaseModule(platform.event_hub()), m_request_manager(request_manager),
+            : BaseModule(platform.event_bus()), m_request_manager(request_manager),
               m_account_info(std::move(account_info))  {
-            subscribe<events::ConnectRequestEvent>(this);
-            subscribe<events::DisconnectRequestEvent>(this);
-            subscribe<events::BalanceRequestEvent>(this);
-            subscribe<events::TradeRequestEvent>(this);
-            subscribe<events::AccountInfoUpdateEvent>(this);
+            subscribe<events::ConnectRequestEvent>();
+            subscribe<events::DisconnectRequestEvent>();
+            subscribe<events::BalanceRequestEvent>();
+            subscribe<events::TradeRequestEvent>();
+            subscribe<events::AccountInfoUpdateEvent>();
             m_request_time = m_last_trades_time =
                 time_shield::ms_to_sec(OPTIONX_TIMESTAMP_MS);
             platform.register_module(this);

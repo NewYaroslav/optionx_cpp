@@ -22,7 +22,7 @@ namespace optionx::platforms::intrade_bar {
                 BaseTradingPlatform& platform,
                 std::shared_ptr<BaseAccountInfoData> account_info)
                 : modules::BaseTradeExecutionModule(
-                    platform.event_hub(),
+                    platform.event_bus(),
                     std::move(account_info)) {
             platform.register_module(this);
         }

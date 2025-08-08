@@ -24,6 +24,14 @@ namespace optionx::events {
 
         /// \brief Default virtual destructor.
         virtual ~AuthDataEvent() = default;
+        
+        std::type_index type() const override {
+            return typeid(AuthDataEvent);
+        }
+
+        const char* name() const override {
+            return "AuthDataEvent";
+        }
     };
 
 } // namespace optionx::events

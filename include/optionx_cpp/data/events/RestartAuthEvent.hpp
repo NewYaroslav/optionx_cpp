@@ -17,6 +17,14 @@ namespace optionx::events {
 
         /// \brief Default virtual destructor.
         virtual ~RestartAuthEvent() = default;
+		
+        std::type_index type() const override {
+            return typeid(RestartAuthEvent);
+        }
+
+        const char* name() const override {
+            return "RestartAuthEvent";
+        }
     };
 
 } // namespace optionx::events

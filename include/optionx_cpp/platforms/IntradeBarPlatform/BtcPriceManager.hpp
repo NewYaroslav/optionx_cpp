@@ -20,12 +20,12 @@ namespace optionx::platforms::intrade_bar {
         /// \param platform Reference to the trading platform.
         explicit BtcPriceManager(
                 BaseTradingPlatform& platform)
-                : BaseModule(platform.event_hub()), m_websocket_client() {
-            subscribe<events::AuthDataEvent>(this);
-            subscribe<events::ConnectRequestEvent>(this);
-            subscribe<events::DisconnectRequestEvent>(this);
-            subscribe<events::AccountInfoUpdateEvent>(this);
-            subscribe<events::AutoDomainSelectedEvent>(this);
+                : BaseModule(platform.event_bus()), m_websocket_client() {
+            subscribe<events::AuthDataEvent>();
+            subscribe<events::ConnectRequestEvent>();
+            subscribe<events::DisconnectRequestEvent>();
+            subscribe<events::AccountInfoUpdateEvent>();
+            subscribe<events::AutoDomainSelectedEvent>();
             platform.register_module(this);
 
             m_tick_data.resize(1);

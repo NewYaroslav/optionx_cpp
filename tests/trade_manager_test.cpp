@@ -28,7 +28,7 @@ namespace optionx::modules {
 
         void from_json(const nlohmann::json &j) override {};
 
-		std::pair<bool, std::string> validate() const override {
+        std::pair<bool, std::string> validate() const override {
             return { true, std::string() };
         }
 
@@ -296,9 +296,9 @@ namespace optionx::modules {
     /// \brief Test implementation of BaseTradeExecutionModule for unit testing.
     class TradeManagerTest : public BaseTradeExecutionModule {
     public:
-        TradeManagerTest(utils::EventHub& hub, std::shared_ptr<BaseAccountInfoData> account_info)
-            : BaseTradeExecutionModule(hub, std::move(account_info)) {
-            subscribe<events::AuthDataEvent>(this);
+        TradeManagerTest(utils::EventBus& bus, std::shared_ptr<BaseAccountInfoData> account_info)
+            : BaseTradeExecutionModule(bus, std::move(account_info)) {
+            subscribe<events::AuthDataEvent>();
         }
 
         /// \brief Overrides API type retrieval for the test.
@@ -312,15 +312,12 @@ namespace optionx::modules {
     /// \brief Mediator module for handling test events.
     class TradeTestMediator : public utils::EventMediator {
     public:
-        explicit TradeTestMediator(utils::EventHub& hub) : utils::EventMediator(hub) {
-            subscribe<events::TradeStatusEvent>(this);
-            subscribe<events::TradeRequestEvent>(this);
-            subscribe<events::OpenTradesEvent>(this);
+        explicit TradeTestMediator(utils::EventBus& bus) 
+                : utils::EventMediator(bus) {
+            subscribe<events::TradeStatusEvent>();
+            subscribe<events::TradeRequestEvent>();
+            subscribe<events::OpenTradesEvent>();
         }
-
-        /// \brief Handles trade status events.
-        /// \param event The trade status event.
-        void on_event(const std::shared_ptr<utils::Event>& event) override {}
 
         void on_event(const utils::Event* const event) {
             if (auto status_event = dynamic_cast<const events::TradeStatusEvent*>(event)) {
@@ -440,8 +437,8 @@ protected:
 /// event. The immediate mediator updates the trade state so that the final state
 /// is expected to be WIN.
 TEST_F(TradeManagerTestFixture, ValidTradeTest) {
-    // Initialize the event hub.
-    utils::EventHub hub;
+    // Initialize the event bus.
+    utils::EventBus bus;
 
     // Create shared account info.
     auto account_info = std::make_shared<AccountInfoData>();
@@ -453,20 +450,20 @@ TEST_F(TradeManagerTestFixture, ValidTradeTest) {
     account_info->connect      = true;
 
     // Create the test TradeManager.
-    TradeManagerTest trade_manager(hub, account_info);
+    TradeManagerTest trade_manager(bus, account_info);
 
     // Create the test mediator to handle events
-    TradeTestMediator test_mediator(hub);
+    TradeTestMediator test_mediator(bus);
 
     // Atomic flag to control the processing loop
     std::atomic<bool> processing{true};
 
     // Start processing in a separate thread
-    std::thread processor([&processing, &hub, &trade_manager, &test_mediator]() {
+    std::thread processor([&processing, &bus, &trade_manager, &test_mediator]() {
         while (processing) {
             trade_manager.process();
             test_mediator.process();
-            hub.process();
+            bus.process();
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         // Finalize all trades
@@ -526,7 +523,7 @@ TEST_F(TradeManagerTestFixture, ValidTradeTest) {
     tick.flags        = optionx::TickStatusFlags::REALTIME | optionx::TickStatusFlags::INITIALIZED;
     std::vector<TickData> ticks = { tick };
 
-    hub.notify_async(std::make_unique<events::PriceUpdateEvent>(ticks));
+    bus.notify_async(std::make_unique<events::PriceUpdateEvent>(ticks));
 
     // Wait a short time for the callback to be invoked.
     int wait_iterations = 0;
@@ -545,8 +542,8 @@ TEST_F(TradeManagerTestFixture, ValidTradeTest) {
 }
 
 TEST_F(TradeManagerTestFixture, InvalidTradeTest) {
-    // Initialize the event hub.
-    utils::EventHub hub;
+    // Initialize the event bus.
+    utils::EventBus bus;
 
     // Create shared account info.
     auto account_info = std::make_shared<AccountInfoData>();
@@ -558,20 +555,20 @@ TEST_F(TradeManagerTestFixture, InvalidTradeTest) {
     account_info->connect      = true;
 
     // Create the test TradeManager.
-    TradeManagerTest trade_manager(hub, account_info);
+    TradeManagerTest trade_manager(bus, account_info);
 
     // Create the test mediator to handle events
-    TradeTestMediator test_mediator(hub);
+    TradeTestMediator test_mediator(bus);
 
     // Atomic flag to control the processing loop
     std::atomic<bool> processing{true};
 
     // Start processing in a separate thread
-    std::thread processor([&processing, &hub, &trade_manager, &test_mediator]() {
+    std::thread processor([&processing, &bus, &trade_manager, &test_mediator]() {
         while (processing) {
             trade_manager.process();
             test_mediator.process();
-            hub.process();
+            bus.process();
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         // Finalize all trades
@@ -621,7 +618,7 @@ TEST_F(TradeManagerTestFixture, InvalidTradeTest) {
     tick.flags        = optionx::TickStatusFlags::REALTIME | optionx::TickStatusFlags::INITIALIZED;
     std::vector<TickData> ticks = { tick };
 
-    hub.notify_async(std::make_unique<events::PriceUpdateEvent>(ticks));
+    bus.notify_async(std::make_unique<events::PriceUpdateEvent>(ticks));
 
     // Wait a short time for the callback to be invoked.
     int wait_iterations = 0;
@@ -642,8 +639,8 @@ TEST_F(TradeManagerTestFixture, InvalidTradeTest) {
 }
 
 TEST_F(TradeManagerTestFixture, ShutdownTest) {
-    // Initialize the event hub.
-    utils::EventHub hub;
+    // Initialize the event bus.
+    utils::EventBus bus;
 
     // Create shared account info.
     auto account_info = std::make_shared<AccountInfoData>();
@@ -655,20 +652,20 @@ TEST_F(TradeManagerTestFixture, ShutdownTest) {
     account_info->connect      = true;
 
     // Create the test TradeManager.
-    TradeManagerTest trade_manager(hub, account_info);
+    TradeManagerTest trade_manager(bus, account_info);
 
     // Create the test mediator to handle events
-    TradeTestMediator test_mediator(hub);
+    TradeTestMediator test_mediator(bus);
 
     // Atomic flag to control the processing loop
     std::atomic<bool> processing{true};
 
     // Start processing in a separate thread
-    std::thread processor([&processing, &hub, &trade_manager, &test_mediator]() {
+    std::thread processor([&processing, &bus, &trade_manager, &test_mediator]() {
         while (processing) {
             trade_manager.process();
             test_mediator.process();
-            hub.process();
+            bus.process();
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         // Finalize all trades
@@ -718,7 +715,7 @@ TEST_F(TradeManagerTestFixture, ShutdownTest) {
     tick.flags        = optionx::TickStatusFlags::REALTIME | optionx::TickStatusFlags::INITIALIZED;
     std::vector<TickData> ticks = { tick };
 
-    hub.notify_async(std::make_unique<events::PriceUpdateEvent>(ticks));
+    bus.notify_async(std::make_unique<events::PriceUpdateEvent>(ticks));
 
     // Wait a short time for the callback to be invoked.
     std::this_thread::sleep_for(std::chrono::milliseconds(5000));

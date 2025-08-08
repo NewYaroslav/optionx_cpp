@@ -24,6 +24,14 @@ namespace optionx::events {
 
         /// \brief Default virtual destructor.
         virtual ~DisconnectRequestEvent() = default;
+        
+        std::type_index type() const override {
+            return typeid(DisconnectRequestEvent);
+        }
+
+        const char* name() const override {
+            return "DisconnectRequestEvent";
+        }
     };
 
 } // namespace optionx::events

@@ -24,6 +24,14 @@ namespace optionx::events {
 
         /// \brief Default virtual destructor.
         virtual ~TradeRequestEvent() = default;
+        
+        std::type_index type() const override {
+            return typeid(TradeRequestEvent);
+        }
+
+        const char* name() const override {
+            return "TradeRequestEvent";
+        }
     };
 
 } // namespace optionx::events
