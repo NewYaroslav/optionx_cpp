@@ -18,7 +18,8 @@ namespace optionx {
         UNKNOWN = 0,    ///< Unknown platform type
         SIMULATOR,      ///< Simulation platform
         CLICKER,        ///< Click-based trading platform
-        INTRADE_BAR     ///< Intrade Bar platform
+        INTRADE_BAR,    ///< Intrade Bar platform
+        TRADEUP         ///< TradeUp platform
     };
 
 	/// \brief Converts PlatformType to its string representation.
@@ -26,9 +27,9 @@ namespace optionx {
     /// \param mode Format mode (0-uppercase, 1-lowercase, 2-title case).
     /// \return Constant reference to the corresponding string.
 	inline const std::string &to_str(PlatformType value, int mode = 0) noexcept {
-        static const std::vector<std::string> str_data_0 = {"UNKNOWN", "SIMULATOR", "CLICKER", "INTRADE_BAR"};
-        static const std::vector<std::string> str_data_1 = {"unknown", "simulator", "clicker", "intrade.bar"};
-        static const std::vector<std::string> str_data_2 = {"Unknown", "Simulator", "Clicker", "Intrade Bar"};
+        static const std::vector<std::string> str_data_0 = {"UNKNOWN", "SIMULATOR", "CLICKER", "INTRADE_BAR", "TRADEUP"};
+        static const std::vector<std::string> str_data_1 = {"unknown", "simulator", "clicker", "intrade.bar", "tradeup"};
+        static const std::vector<std::string> str_data_2 = {"Unknown", "Simulator", "Clicker", "Intrade Bar", "TradeUp"};
 
         switch (mode) {
             case 0: return str_data_0[static_cast<size_t>(value)];
@@ -48,7 +49,8 @@ namespace optionx {
             {"UNKNOWN",                 PlatformType::UNKNOWN,     },
             {"SIMULATOR",               PlatformType::SIMULATOR,   },
             {"CLICKER",                 PlatformType::CLICKER,     },
-            {"INTRADE_BAR",             PlatformType::INTRADE_BAR, }
+            {"INTRADE_BAR",             PlatformType::INTRADE_BAR, },
+            {"TRADEUP",                 PlatformType::TRADEUP,     }
         };
         auto it = str_data.find(utils::to_upper_case(str));
         if (it != str_data.end()) {
