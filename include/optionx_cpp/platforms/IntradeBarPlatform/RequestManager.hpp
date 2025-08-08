@@ -173,6 +173,7 @@ namespace optionx::platforms::intrade_bar {
             int retry_attempts,
             std::function<void(
                 bool success,
+                long status_code,
                 double price,
                 double profit)> callback_check);
 
@@ -184,6 +185,7 @@ namespace optionx::platforms::intrade_bar {
             std::shared_ptr<TradeRequest> request,
             std::function<void(
                 bool success,
+                long status_code,
                 int64_t option_id,
                 int64_t open_date,
                 double open_price,
@@ -779,6 +781,7 @@ namespace optionx::platforms::intrade_bar {
             int retry_attempts,
             std::function<void(
                 bool success,
+                long status_code,
                 double price,
                 double profit)> callback_check) {
 
@@ -800,7 +803,7 @@ namespace optionx::platforms::intrade_bar {
 
         auto callback = [this, deal_id, callback_check, retry_attempts](kurlyk::HttpResponsePtr response) {
             if (!validate_response(response)) {
-                callback_check(false, 0.0, 0.0);
+                callback_check(false, response ? response->status_code : -1, 0.0, 0.0);
                 return;
             }
 
@@ -832,7 +835,7 @@ namespace optionx::platforms::intrade_bar {
 #                   else
                     LOGIT_PRINT_ERROR("Trade check failed. Response contains 'error'.");
 #                   endif
-                    callback_check(false, 0.0, 0.0);
+                    callback_check(false, response ? response->status_code : -1, 0.0, 0.0);
                     return;
                 }
 
@@ -849,16 +852,16 @@ namespace optionx::platforms::intrade_bar {
 #                   else
                     LOGIT_PRINT_ERROR("Trade check failed. Invalid response format.");
 #                   endif
-                    callback_check(false, 0.0, 0.0);
+                    callback_check(false, response ? response->status_code : -1, 0.0, 0.0);
                     return;
                 }
 
                 double price = std::stod(content.substr(0, separator_pos));
                 double profit = std::stod(content.substr(separator_pos + 1));
-                callback_check(true, price, profit);
+                callback_check(true, response->status_code, price, profit);
             } catch (const std::exception& ex) {
                 LOGIT_ERROR("Error parsing trade check response: ", ex.what());
-                callback_check(false, 0.0, 0.0);
+                callback_check(false, response ? response->status_code : -1, 0.0, 0.0);
             }
         };
 
@@ -870,6 +873,7 @@ namespace optionx::platforms::intrade_bar {
             std::shared_ptr<TradeRequest> request,
             std::function<void(
                 bool success,
+                long status_code,
                 int64_t option_id,
                 int64_t open_date,
                 double open_price,
@@ -877,7 +881,7 @@ namespace optionx::platforms::intrade_bar {
 
         if (!request) {
             LOGIT_ERROR("TradeRequest is null.");
-            result_callback(false, 0, 0, 0, "TradeRequest is null.");
+            result_callback(false, -1, 0, 0, 0, "TradeRequest is null.");
             return;
         }
 
@@ -916,10 +920,14 @@ namespace optionx::platforms::intrade_bar {
         auto callback = [this, result_callback](kurlyk::HttpResponsePtr response) {
             if (!validate_response(response)) {
                 LOGIT_ERROR("Invalid response received for trade open request.");
-                result_callback(false, 0, 0, 0, "Trade open failed due to invalid response.");
+                result_callback(false, response ? response->status_code : -1,
+                    0, 0, 0, "Trade open failed due to invalid response.");
                 return;
             }
-            parse_execute_trade(response->content, std::move(result_callback));
+            parse_execute_trade(
+                response->content,
+                response->status_code,
+                std::move(result_callback));
         };
 
         // Add the HTTP request task

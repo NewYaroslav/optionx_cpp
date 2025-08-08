@@ -109,35 +109,49 @@ namespace optionx::platforms::intrade_bar {
         m_request_manager.request_execute_trade(
                 request, [this, request, result] (
                     bool success,
+                    long status_code,
                     int64_t option_id,
                     int64_t open_date,
                     double open_price,
                     const std::string& error_desc) {
             const int64_t timestamp = OPTIONX_TIMESTAMP_MS;
+            auto account_info  = get_account_info();
             if (!success) {
                 result->trade_state = result->live_state = TradeState::OPEN_ERROR;
                 result->error_code = TradeErrorCode::PARSING_ERROR;
-                result->error_desc = error_desc;
                 result->delay = timestamp - result->send_date;
                 result->ping = result->delay / 2;
                 result->open_date = timestamp;
                 result->close_date = request->option_type == OptionType::SPRINT
-                                     ? timestamp + time_shield::sec_to_ms(request->duration)
-                                     : time_shield::sec_to_ms(request->expiry_time);
+                 ? timestamp + time_shield::sec_to_ms(request->duration)
+                 : time_shield::sec_to_ms(request->expiry_time);
+                if (status_code == 451) {
+                    result->error_desc = "Trade request blocked (HTTP 451 - Unavailable For Legal Reasons).";
+                } else {
+                    result->error_desc = error_desc;
+                }
+                // If HTTP 451 and account is still connected, disconnect and notify.
+                if (status_code == 451 && account_info->connect) {
+                    LOGIT_0ERROR();
+                    account_info->connect = false;
+                    using Status = events::AccountInfoUpdateEvent::Status;
+                    notify(events::AccountInfoUpdateEvent(account_info, Status::DISCONNECTED, "HTTP 451 - Unavailable For Legal Reasons."));
+                }
                 return;
             }
 
             result->option_id = option_id;
             result->open_date = open_date;
             result->close_date = request->option_type == OptionType::SPRINT
-                                     ? open_date + time_shield::sec_to_ms(request->duration)
-                                     : time_shield::sec_to_ms(request->expiry_time);
-            result->delay = timestamp - result->open_date;
+             ? open_date + time_shield::sec_to_ms(request->duration)
+             : time_shield::sec_to_ms(request->expiry_time);
+            result->delay = timestamp > result->open_date ?
+                timestamp - result->open_date :
+                timestamp - result->send_date;
             result->ping = result->delay / 2;
             result->open_price = result->close_price = open_price;
             result->live_state = TradeState::STANDOFF;
             result->error_code = TradeErrorCode::SUCCESS;
-            auto account_info  = get_account_info();
             result->payout     = account_info->get_for_trade<double>(AccountInfoType::PAYOUT, request, time_shield::ms_to_sec(result->open_date));
 
             m_request_manager.request_balance(
@@ -209,6 +223,7 @@ namespace optionx::platforms::intrade_bar {
                     retry_attempts,
                     [this, request, result](
                     bool success,
+                    long status_code,
                     double price,
                     double profit) {
                 if (!success) {
@@ -224,7 +239,18 @@ namespace optionx::platforms::intrade_bar {
                          result->payout * result->amount : -result->amount);
                     result->trade_state = result->live_state = TradeState::CHECK_ERROR;
                     result->error_code = TradeErrorCode::PARSING_ERROR;
-                    result->error_desc = "Failed to retrieve trade result.";
+                    if (status_code == 451) {
+                        result->error_desc = "Trade result blocked (HTTP 451 - Unavailable For Legal Reasons).";
+                    } else {
+                        result->error_desc = "Failed to retrieve trade result.";
+                    }
+                    // If HTTP 451 and account is still connected, disconnect and notify.
+                    if (status_code == 451 && account_info->connect) {
+                        LOGIT_0ERROR();
+                        account_info->connect = false;
+                        using Status = events::AccountInfoUpdateEvent::Status;
+                        notify(events::AccountInfoUpdateEvent(account_info, Status::DISCONNECTED, "HTTP 451 - Unavailable For Legal Reasons."));
+                    }
                     return;
                 }
                 LOGIT_0TRACE();
