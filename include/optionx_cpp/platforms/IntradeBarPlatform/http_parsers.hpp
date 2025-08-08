@@ -3,7 +3,8 @@
 #define _OPTIONX_PLATFORMS_INTRADERBAR_HTTP_CLIENT_MODULE_STRING_PARSERS_HPP_INCLUDED
 
 /// \file http_parsers.hpp
-/// \brief
+/// \brief Helper functions for parsing HTTP and WebSocket responses for the
+///        IntradeBar trading platform.
 
 #include <optional>
 
@@ -39,6 +40,10 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
+    /// \brief Parses balance information and detects the currency.
+    /// \param content Raw HTML fragment containing the balance value and currency symbol.
+    /// \return Optional pair of balance amount and detected currency type. Returns
+    ///         std::nullopt if the content cannot be parsed.
     std::optional<std::pair<double, CurrencyType>> parse_balance(const std::string& content) {
         try {
             const std::string STR_RUB = u8"₽";
@@ -116,10 +121,12 @@ namespace optionx::platforms::intrade_bar {
         return {currency, account};
     }
 
-    /// \brief Parses the main page response and extracts necessary fields.
-    /// \param content The HTTP response content.
-    /// \param headers The HTTP response headers.
-    /// \return An optional tuple containing request ID, request value, and cookies. Returns std::nullopt if parsing fails.
+    /// \brief Parses the platform's main page to extract request identifiers and cookies.
+    /// \param content The raw HTML of the response body.
+    /// \param headers The HTTP headers returned with the response.
+    /// \return Optional tuple containing the request identifier, request value
+    ///         and a cookie string to be used in subsequent requests. Returns
+    ///         std::nullopt if any of the required fields cannot be found.
     std::optional<std::tuple<std::string, std::string, std::string>> parse_main_page_response(
             const std::string& content,
             const kurlyk::Headers& headers) {
