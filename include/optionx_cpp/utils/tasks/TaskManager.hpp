@@ -85,6 +85,69 @@ namespace optionx::utils {
             add_task(std::make_shared<Task>(TaskType::PERIODIC_ON_DATE, std::move(callback), 0, period_ms, timestamp_ms));
             return true;
         }
+        
+        // ---
+        
+        /// \brief Adds a single execution task.
+        /// \param name
+        /// \param callback The callback function to execute.
+        bool add_single_task(std::string name, Task::Callback callback) {
+            if (m_shutdown) return false;
+            add_task(std::make_shared<Task>(std::move(name), TaskType::SINGLE, std::move(callback)));
+            return true;
+        }
+
+        /// \brief Adds a delayed task.
+        /// \param name
+        /// \param delay_ms Delay in milliseconds before execution.
+        /// \param callback The callback function to execute.
+        bool add_delayed_task(std::string name, int64_t delay_ms, Task::Callback callback) {
+            if (m_shutdown) return false;
+            add_task(std::make_shared<Task>(std::move(name), TaskType::DELAYED_SINGLE, std::move(callback), delay_ms));
+            return true;
+        }
+
+        /// \brief Adds a periodic task.
+        /// \param name
+        /// \param period_ms Period in milliseconds between executions.
+        /// \param callback The callback function to execute.
+        bool add_periodic_task(std::string name, int64_t period_ms, Task::Callback callback) {
+            if (m_shutdown) return false;
+            add_task(std::make_shared<Task>(std::move(name), TaskType::PERIODIC, std::move(callback), 0, period_ms));
+            return true;
+        }
+
+        /// \brief Adds a delayed periodic task.
+        /// \param name
+        /// \param delay_ms Initial delay in milliseconds.
+        /// \param period_ms Period in milliseconds between executions.
+        /// \param callback The callback function to execute.
+        bool add_delayed_periodic_task(std::string name, int64_t delay_ms, int64_t period_ms, Task::Callback callback) {
+            if (m_shutdown) return false;
+            add_task(std::make_shared<Task>(std::move(name), TaskType::DELAYED_PERIODIC, std::move(callback), delay_ms, period_ms));
+            return true;
+        }
+
+        /// \brief Adds a task to execute at a specific timestamp.
+        /// \param name
+        /// \param timestamp_ms Timestamp in milliseconds for execution.
+        /// \param callback The callback function to execute.
+        bool add_on_date_task(std::string name, int64_t timestamp_ms, Task::Callback callback) {
+            if (m_shutdown) return false;
+            add_task(std::make_shared<Task>(std::move(name), TaskType::ON_DATE, std::move(callback), 0, 0, timestamp_ms));
+            return true;
+        }
+
+        /// \brief Adds a periodic task starting at a specific timestamp.
+        /// \param name
+        /// \param timestamp_ms Initial timestamp in milliseconds.
+        /// \param period_ms Period in milliseconds between executions.
+        /// \param callback The callback function to execute.
+        bool add_periodic_on_date_task(std::string name, int64_t timestamp_ms, int64_t period_ms, Task::Callback callback) {
+            if (m_shutdown) return false;
+            add_task(std::make_shared<Task>(std::move(name), TaskType::PERIODIC_ON_DATE, std::move(callback), 0, period_ms, timestamp_ms));
+            return true;
+        }
 
         /// \brief Processes and executes ready tasks.
         void process() {
@@ -104,10 +167,12 @@ namespace optionx::utils {
 
             for (auto& task : m_tasks) {
                 if (m_force_execute) {
-                    task->force_execute();
+                    LOGIT_TRACE(task->name());
+					task->force_execute();
                 }
                 if (m_shutdown) {
-                    task->shutdown();
+                    LOGIT_TRACE(task->name());
+					task->shutdown();
                 }
                 if (!task->is_completed()) {
                     task->process(now, task);
@@ -142,10 +207,13 @@ namespace optionx::utils {
 
         /// \brief Shuts down the task manager, preventing further additions.
         void shutdown() {
+            LOGIT_TRACE0();
             m_shutdown = true;
             if (m_worker_thread.joinable()) {
-                m_cv.notify_all();
+                LOGIT_TRACE0();
+				m_cv.notify_all();
                 m_worker_thread.join();
+				LOGIT_TRACE0();
             } else {
                 process();
             }
@@ -188,7 +256,7 @@ namespace optionx::utils {
         std::atomic<size_t>     m_task_count;
         std::thread             m_worker_thread;
 
-		/// \brief Adds a new task to the manager.
+        /// \brief Adds a new task to the manager.
         /// \param task A unique pointer to the task.
         void add_task(TaskPtr task) {
             std::unique_lock<std::mutex> lock(m_mutex);

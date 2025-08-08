@@ -25,6 +25,7 @@ namespace optionx::platforms::intrade_bar {
             subscribe<events::ConnectRequestEvent>(this);
             subscribe<events::DisconnectRequestEvent>(this);
             subscribe<events::AccountInfoUpdateEvent>(this);
+            subscribe<events::AutoDomainSelectedEvent>(this);
             platform.register_module(this);
 
             m_tick_data.resize(1);
@@ -102,6 +103,10 @@ namespace optionx::platforms::intrade_bar {
         /// \brief Handles an account information update event.
         /// \param event The account info update event.
         void handle_event(const events::AccountInfoUpdateEvent& event);
+        
+        /// \brief 
+        /// \param event
+        void handle_event(const events::AutoDomainSelectedEvent& event);
     };
 
     void BtcPriceManager::on_event(const utils::Event* const event) {
@@ -116,17 +121,24 @@ namespace optionx::platforms::intrade_bar {
         } else
         if (const auto* msg = dynamic_cast<const events::AccountInfoUpdateEvent*>(event)) {
             handle_event(*msg);
+        } else
+        if (const auto* msg = dynamic_cast<const events::AutoDomainSelectedEvent*>(event)) {
+            handle_event(*msg);
         }
-
     }
 
     void BtcPriceManager::handle_event(const events::AuthDataEvent& event) {
         if (auto auth_data = std::dynamic_pointer_cast<AuthData>(event.auth_data)) {
             LOGIT_TRACE0();
+
             auto [success, message] = auth_data->validate();
             if (!success) return;
-            std::string host = "wss://" + utils::remove_http_prefix(auth_data->host);
-            m_websocket_client.set_url(host, "/bapi");
+            
+            if (!auth_data->auto_find_domain) {
+                std::string host = "wss://" + utils::remove_http_prefix(auth_data->host);
+                m_websocket_client.set_url(host, "/bapi");
+            }
+
             m_websocket_client.set_user_agent(auth_data->user_agent);
             m_websocket_client.set_accept_language(auth_data->accept_language);
             m_websocket_client.set_accept_encoding(true, true, true, true);
@@ -157,6 +169,14 @@ namespace optionx::platforms::intrade_bar {
         if (event.status == Status::DISCONNECTED) {
             LOGIT_0TRACE();
             m_websocket_client.disconnect();
+        }
+    }
+    
+    void BtcPriceManager::handle_event(const events::AutoDomainSelectedEvent& event) {
+        LOGIT_0TRACE();
+        if (event.success) {
+            std::string host = "wss://" + utils::remove_http_prefix(event.selected_host);
+            m_websocket_client.set_url(host, "/bapi");
         }
     }
 

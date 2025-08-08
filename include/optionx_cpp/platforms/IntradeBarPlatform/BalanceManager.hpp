@@ -56,6 +56,7 @@ namespace optionx::platforms::intrade_bar {
         int64_t m_last_trades_time;           ///< Timestamp of the last trade activity.
         int64_t m_request_time;               ///< Timestamp of the last balance request.
         bool m_has_balance_update = false;    ///< Flag indicating if a balance update is in progress.
+        bool m_check_host_in_progress = false;
 
          /// \brief Initiates a balance update request.
         void handle_balance_update();
@@ -140,6 +141,7 @@ namespace optionx::platforms::intrade_bar {
                 double balance,
                 CurrencyType currency) {
             m_has_balance_update = false;
+            m_check_host_in_progress = false;
             auto account_info = get_account_info();
             if (!account_info) {
                 LOGIT_ERROR("Failed to get account info.");
@@ -241,27 +243,80 @@ namespace optionx::platforms::intrade_bar {
     /// \brief Handles account connection event.
     void BalanceManager::handle_connected() {
         LOGIT_TRACE0();
-        const int64_t period_ms = time_shield::MS_PER_15_MIN;
+        
         m_task_manager.add_periodic_task(
-                period_ms,
+                "connected-15min",
+                time_shield::MS_PER_15_MIN,
                 [this](std::shared_ptr<utils::Task> task){
-            LOGIT_TRACE0();
             if (task->is_shutdown()) return;
+            LOGIT_TRACE0();
             handle_balance_update();
+        });
+        
+        m_task_manager.add_periodic_task(
+                "connected-15sec",
+                time_shield::MS_PER_15_SEC,
+                [this](std::shared_ptr<utils::Task> task){
+            if (task->is_shutdown()) return;
+            if (m_check_host_in_progress) return;
+            m_check_host_in_progress = true;
+            
+            LOGIT_TRACE0();
+            m_request_manager.request_check_current_host_available([this](
+                    bool success) {
+                LOGIT_TRACE0();
+                m_check_host_in_progress = false;
+                if (!success) {
+                    auto account_info = get_account_info();
+                    if (account_info->connect) {
+                        account_info->connect = false;
+                        using Status = events::AccountInfoUpdateEvent::Status;
+                        const std::string error_text("Ping to current host failed.");
+                        LOGIT_ERROR(error_text);
+                        notify(events::AccountInfoUpdateEvent(account_info, Status::DISCONNECTED, error_text));
+                        handle_disconnected();
+                    }
+                }
+            });
         });
     }
 
     /// \brief Handles account disconnection event.
     void BalanceManager::handle_disconnected() {
         LOGIT_TRACE0();
+
         m_task_manager.shutdown();
-        const int64_t period_ms = time_shield::MS_PER_15_SEC;
         m_task_manager.add_periodic_task(
-                period_ms,
+                "disconnected-15sec",
+                time_shield::MS_PER_15_SEC,
                 [this](std::shared_ptr<utils::Task> task){
             LOGIT_TRACE0();
             if (task->is_shutdown()) return;
-            handle_balance_update();
+            if (m_check_host_in_progress) return;
+            m_check_host_in_progress = true;
+            
+            LOGIT_TRACE0();
+            m_request_manager.request_check_current_host_available([this](
+                    bool success) {
+                if (success) {
+                    handle_balance_update();
+                    return;
+                }
+                
+                m_request_manager.request_find_working_domain(
+                        [this](bool success, std::string& host) {
+                    if (!success) {
+                        m_check_host_in_progress = false;
+                        return;
+                    }
+
+                    notify(events::AutoDomainSelectedEvent(
+                        success,
+                        host));
+                                
+                    handle_balance_update();
+                });
+            });
         });
     }
 

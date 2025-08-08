@@ -23,7 +23,9 @@ namespace optionx::platforms {
         }
 
         virtual ~BaseTradingPlatform() {
+            LOGIT_TRACE0();
             shutdown();
+            LOGIT_TRACE0();
         }
 
         /// \brief Returns a reference to the trade result callback.
@@ -133,27 +135,34 @@ namespace optionx::platforms {
         }
 
         /// \brief Starts the platform's event loop and module lifecycle.
-		/// \details Adds initialization and periodic update tasks.
-		///          If use_internal_thread is true (default), TaskManager launches its own worker thread.
-		///          Otherwise, the caller must periodically call process() manually.
-		/// \param use_internal_thread Whether to use an internal background thread for updates.
+        /// \details Adds initialization and periodic update tasks.
+        ///          If use_internal_thread is true (default), TaskManager launches its own worker thread.
+        ///          Otherwise, the caller must periodically call process() manually.
+        /// \param use_internal_thread Whether to use an internal background thread for updates.
         void run(bool use_internal_thread = true) {
-            m_task_manager.add_single_task([this](
+            m_task_manager.add_single_task("initialize", [this](
                     std::shared_ptr<utils::Task> task){
+                if (task->is_shutdown()) return;
+                LOGIT_TRACE0();
                 for (auto* module : m_modules) {
                     module->initialize();
                 }
+                LOGIT_TRACE0();
                 on_once();
+                LOGIT_TRACE0();
             });
-			
-            m_task_manager.add_periodic_task(1, [this](
+            
+            m_task_manager.add_periodic_task("loop", 1, [this](
                     std::shared_ptr<utils::Task> task){
                 m_event_hub.process();
                 if (task->is_shutdown()) {
+                    LOGIT_TRACE0();
                     for (auto* module : m_modules) {
                         module->shutdown();
                     }
+                    LOGIT_TRACE0();
                     on_shutdown();
+                    LOGIT_TRACE0();
                 } else {
                     for (auto* module : m_modules) {
                         module->process();
@@ -161,16 +170,16 @@ namespace optionx::platforms {
                     on_loop();
                 }
             });
-			
-			if (!use_internal_thread) return;
+            
+            if (!use_internal_thread) return;
             m_task_manager.run();
         };
-		
-		/// \brief Manually processes pending tasks and events.
-		/// \details Should be called periodically if internal threading is disabled (run(false)).
-		void process() {
-			m_task_manager.process();
-		}
+        
+        /// \brief Manually processes pending tasks and events.
+        /// \details Should be called periodically if internal threading is disabled (run(false)).
+        void process() {
+            m_task_manager.process();
+        }
 
         /// \brief Shuts down the platform, stopping the event loop and tasks.
         /// \details Always calls shutdown() on TaskManager, regardless of internal thread usage.

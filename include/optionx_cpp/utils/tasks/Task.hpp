@@ -52,11 +52,38 @@ namespace optionx::utils {
               m_next_execution_time(get_current_time() + delay_ms),
               m_reschedule_time(0),
               m_completed(false), m_force_execute(false), m_shutdown(false) {
-		}
+        }
+        
+        /// \brief Constructs a Task object.
+        /// \param name ?
+        /// \param type The type of the task.
+        /// \param callback The callback function to execute for the task.
+        /// \param delay_ms Delay in milliseconds before execution (optional).
+        /// \param period_ms Period in milliseconds for periodic tasks (optional).
+        /// \param timestamp_ms Specific timestamp in milliseconds for tasks on a date (optional).
+        Task(std::string name,
+             TaskType type,
+             Callback callback,
+             int64_t delay_ms = 0,
+             int64_t period_ms = 0,
+             int64_t timestamp_ms = 0)
+            : m_type(type), m_callback(std::move(callback)),
+              m_delay_ms(delay_ms), m_period_ms(period_ms),
+              m_timestamp_ms(timestamp_ms),
+              m_start_time(get_current_time() + m_period_ms),
+              m_next_execution_time(get_current_time() + delay_ms),
+              m_reschedule_time(0),
+              m_completed(false), m_force_execute(false), m_shutdown(false),
+              m_name(std::move(name)) {
+        }
 
-		~Task() = default;
+        ~Task() = default;
+        
+        const std::string& name() const {
+            return m_name;
+        }
 
-		/// \brief Reschedules the task to execute at a specific time.
+        /// \brief Reschedules the task to execute at a specific time.
         /// \param new_time_ms The new timestamp in milliseconds.
         void reschedule_at(int64_t new_time_ms) {
             if (m_shutdown) return;
@@ -196,14 +223,14 @@ namespace optionx::utils {
             m_shutdown = true;
         }
 
-	protected:
+    protected:
 
         /// \brief Marks the task as completed.
         void complete() {
             m_completed = true;
         }
 
-		/// \brief Executes the task's callback.
+        /// \brief Executes the task's callback.
         void process(int64_t current_time_ms, std::shared_ptr<Task> task) {
             if (m_completed) return;
 
@@ -283,7 +310,7 @@ namespace optionx::utils {
             if (m_shutdown) m_completed = true;
         }
 
-		friend class TaskManager;
+        friend class TaskManager;
 
     private:
         mutable std::mutex m_mutex;
@@ -299,6 +326,7 @@ namespace optionx::utils {
         std::atomic<bool> m_completed;
         std::atomic<bool> m_force_execute;
         std::atomic<bool> m_shutdown;
+        std::string       m_name;
     }; // Task
 
 } // namespace optionx::utils

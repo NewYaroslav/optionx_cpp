@@ -96,9 +96,11 @@ namespace optionx::platforms::intrade_bar {
         using Status = events::AccountInfoUpdateEvent::Status;
         if (event.status == Status::CONNECTED) {
             LOGIT_0TRACE();
-            const int64_t period_ms = time_shield::MS_PER_SEC;
-            m_task_manager.add_periodic_task(period_ms, [this](
-                    std::shared_ptr<utils::Task> task){
+            m_task_manager.add_periodic_task(
+                    "event(AccountInfoUpdateEvent)-1sec",
+                    time_shield::MS_PER_SEC, 
+                    [this](
+                        std::shared_ptr<utils::Task> task){
                 if (task->is_shutdown()) {
                     m_ticks.clear();
                     return;

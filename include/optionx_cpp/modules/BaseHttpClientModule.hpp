@@ -56,8 +56,8 @@ namespace optionx::modules {
         template<class T>
         uint32_t get_rate_limit(T rate_limit_id) const {
             auto it = m_rate_limits.find(static_cast<uint32_t>(rate_limit_id));
-			if (it == m_rate_limits.end()) return 0;
-			return it->second;
+            if (it == m_rate_limits.end()) return 0;
+            return it->second;
         }
 
         /// \brief Adds a new HTTP request task to the list.
@@ -70,8 +70,8 @@ namespace optionx::modules {
         }
 
     protected:
-		kurlyk::HttpClient m_client; ///< The HTTP client for making requests.
-		std::unordered_map<uint32_t, uint32_t> m_rate_limits; ///< Rate limit handles by ID.
+        kurlyk::HttpClient m_client; ///< The HTTP client for making requests.
+        std::unordered_map<uint32_t, uint32_t> m_rate_limits; ///< Rate limit handles by ID.
 
         /// \class HttpRequestTask
         /// \brief Represents a single HTTP request task with a future and a callback.
@@ -91,8 +91,8 @@ namespace optionx::modules {
         /// \brief Deinitializes all rate limits by resetting them.
         void deinitialize_rate_limits() {
             for (auto item : m_rate_limits) {
-				kurlyk::remove_limit(item.first);
-			}
+                kurlyk::remove_limit(item.first);
+            }
         }
 
         /// \brief Creates a rate limit based on Requests Per Minute (RPM).

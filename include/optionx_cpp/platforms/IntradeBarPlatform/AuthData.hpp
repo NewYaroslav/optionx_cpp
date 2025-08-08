@@ -104,6 +104,9 @@ namespace optionx::platforms::intrade_bar {
                 j["proxy_type"] = optionx::to_str(proxy_type);
                 j["account_type"] = optionx::to_str(account_type);
                 j["currency"] = optionx::to_str(currency);
+                j["auto_find_domain"] = auto_find_domain;
+                j["domain_index_min"] = domain_index_min;
+                j["domain_index_max"] = domain_index_max;
             } catch (const std::exception& ex) {
                 LOGIT_ERROR(ex);
             }
@@ -134,6 +137,9 @@ namespace optionx::platforms::intrade_bar {
                 proxy_type   = to_enum<kurlyk::ProxyType>(j.value("proxy_type", "HTTP"));
                 account_type = to_enum<AccountType>(j.value("account_type", "UNKNOWN"));
                 currency = to_enum<CurrencyType>(j.value("currency", "UNKNOWN"));
+                auto_find_domain = j.value("auto_find_domain", auto_find_domain);
+                domain_index_min = j.value("domain_index_min", domain_index_min);
+                domain_index_max = j.value("domain_index_max", domain_index_max);
             } catch (const std::exception& ex) {
                 LOGIT_ERROR(ex);
             }
@@ -142,12 +148,24 @@ namespace optionx::platforms::intrade_bar {
         /// \brief Validates the authorization data with detailed error message.
         /// \return A pair where the first element is true if data is valid, and the second element contains an error message in case of failure.
         std::pair<bool, std::string> validate() const override {
+            // If auto domain discovery is disabled, host must be explicitly specified
+            if (!auto_find_domain && host.empty()) {
+                return { false, "Host is empty and auto_find_domain is disabled" };
+            }
+
+            // If auto domain discovery is enabled, the index range must be valid
+            if (auto_find_domain && domain_index_min > domain_index_max) {
+                return { false, "Invalid domain index range: min > max" };
+            }
+
+            // Validate required fields based on selected authentication method
             if (auth_method == AuthMethod::EMAIL_PASSWORD) {
                 if (email.empty())
                     return { false, "Email is empty" };
                 if (password.empty())
                     return { false, "Password is empty" };
-            } else if (auth_method == AuthMethod::USER_TOKEN) {
+            } else 
+            if (auth_method == AuthMethod::USER_TOKEN) {
                 if (user_id.empty())
                     return { false, "User ID is empty" };
                 if (token.empty())
@@ -176,19 +194,22 @@ namespace optionx::platforms::intrade_bar {
             return PlatformType::INTRADE_BAR;
         }
 
-        AccountType account_type = AccountType::UNKNOWN;    ///< Account type, if supported.
-        CurrencyType currency    = CurrencyType::UNKNOWN;   ///< Account currency, if supported.
-        std::string email;          ///< Email for email/password authentication.
-        std::string password;       ///< Password for email/password authentication.
-        std::string user_id;        ///< Username for user/token authentication.
-        std::string token;          ///< Token for user/token authentication.
-        std::string user_agent;     ///< User agent string for HTTP requests.
-        std::string accept_language;///< Accepted languages for HTTP requests.
-        std::string host;           ///< Host URL for the Intrade Bar platform.
-        std::string proxy_server;   ///< Proxy address in <ip:port> format.
-        std::string proxy_auth;     ///< Proxy authentication in <username:password> format.
-        kurlyk::ProxyType proxy_type; ///< Proxy type (e.g., HTTP, SOCKS).
+        AccountType account_type = AccountType::UNKNOWN;  ///< Account type, if supported.
+        CurrencyType currency    = CurrencyType::UNKNOWN; ///< Account currency, if supported.
+        std::string email;                         ///< Email for email/password authentication.
+        std::string password;                      ///< Password for email/password authentication.
+        std::string user_id;                       ///< Username for user/token authentication.
+        std::string token;                         ///< Token for user/token authentication.
+        std::string user_agent;                    ///< User agent string for HTTP requests.
+        std::string accept_language;               ///< Accepted languages for HTTP requests.
+        std::string host;                          ///< Host URL for the Intrade Bar platform.
+        std::string proxy_server;                  ///< Proxy address in <ip:port> format.
+        std::string proxy_auth;                    ///< Proxy authentication in <username:password> format.
+        kurlyk::ProxyType proxy_type;              ///< Proxy type (e.g., HTTP, SOCKS).
         AuthMethod auth_method = AuthMethod::NONE; ///< Authentication method used.
+        bool auto_find_domain  = false;            ///< Whether to perform automatic domain discovery.
+        int domain_index_min   = 0;                ///< Minimum domain index to scan (0 = intrade.bar).
+        int domain_index_max   = 1000;             ///< Maximum domain index to scan (e.g., intrade1000.bar).
     }; // AuthData
 
 } // namespace optionx::platforms::intrade_bar

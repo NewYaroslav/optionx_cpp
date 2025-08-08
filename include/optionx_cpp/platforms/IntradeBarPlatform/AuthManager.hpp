@@ -56,6 +56,13 @@ namespace optionx::platforms::intrade_bar {
         void set_auth_credentials(
                 const std::string& user_id,
                 const std::string& user_hash);
+        
+        /// \brief Handles optional domain discovery and proceeds with authentication 
+        /// \param callback Callback to be invoked with the result of the authentication process.
+        /// \param auth_func Function to perform the actual authentication (email/password or token).
+        void handle_auto_domain_and_auth(
+                connection_callback_t callback,
+                std::function<void(connection_callback_t)> auth_func);
 
         /// \brief Initiates email/password validation for authentication.
         /// \param connect_callback The callback function to notify the result.
@@ -178,12 +185,21 @@ namespace optionx::platforms::intrade_bar {
     }
 
     void AuthManager::handle_event(const events::ConnectRequestEvent& event) {
+        LOGIT_TRACE0();
         auto callback = event.callback;
-        m_task_manager.add_single_task([this, callback](std::shared_ptr<utils::Task> task) {
+        m_task_manager.add_single_task(
+                "event(ConnectRequestEvent)-single-1",
+                [this, callback](
+                    std::shared_ptr<utils::Task> task) {
+            LOGIT_TRACE0();
+
             // Отменяем все запросы
             m_request_manager.cancel_requests();
 
+            LOGIT_TRACE0();
             if (task->is_shutdown()) {
+                LOGIT_TRACE0();
+
                 using Status = events::AccountInfoUpdateEvent::Status;
                 auto account_info = get_account_info();
                 if (account_info->connect) {
@@ -197,9 +213,17 @@ namespace optionx::platforms::intrade_bar {
             }
 
             // Обработаем подключение после получения результата всех HTTP запросов
-            m_task_manager.add_single_task([this, callback](std::shared_ptr<utils::Task> task) {
+            LOGIT_TRACE0();
+            m_task_manager.add_single_task(
+                    "event(ConnectRequestEvent)-single-2",
+                    [this, callback](
+                        std::shared_ptr<utils::Task> task) {
+                LOGIT_TRACE0();
+                
                 using Status = events::AccountInfoUpdateEvent::Status;
                 if (task->is_shutdown()) {
+                    LOGIT_TRACE0();
+
                     auto account_info = get_account_info();
                     if (account_info->connect) {
                         account_info->connect = false;
@@ -211,9 +235,11 @@ namespace optionx::platforms::intrade_bar {
                     return;
                 }
 
+                LOGIT_TRACE0();
                 auto account_info = get_account_info();
 
                 if (account_info->connect) {
+                    LOGIT_TRACE0();
                     account_info->connect = false;
                     notify(events::AccountInfoUpdateEvent(
                         account_info,
@@ -222,8 +248,10 @@ namespace optionx::platforms::intrade_bar {
                 }
 
                 // Отменяем все запросы
+                LOGIT_TRACE0();
                 m_request_manager.cancel_requests();
 
+                LOGIT_TRACE0();
                 if (!m_new_auth_data) {
                     const std::string error_text("Authentication data is missing.");
                     handle_auth_failure(error_text, std::move(callback));
@@ -249,12 +277,16 @@ namespace optionx::platforms::intrade_bar {
                             error_text));
                     } break;
                 case AuthMethod::EMAIL_PASSWORD:
-                    // Process authentication via email and password
-                    validate_email_pass(std::move(callback));
+                    handle_auto_domain_and_auth(callback, [this](auto cb) {
+                        // Process authentication via email and password
+                        validate_email_pass(std::move(cb));
+                    });
                     break;
                 case AuthMethod::USER_TOKEN:
-                    // Validate user authentication token
-                    validate_user_token(std::move(callback));
+                    handle_auto_domain_and_auth(callback, [this](auto cb) {
+                        // Validate user authentication token
+                        validate_user_token(std::move(cb));
+                    });
                     break;
                 default: {
                         const std::string error_text("Unsupported authentication method.");
@@ -266,8 +298,12 @@ namespace optionx::platforms::intrade_bar {
     }
 
     void AuthManager::handle_event(const events::DisconnectRequestEvent& event) {
+        LOGIT_TRACE0();
         auto callback = event.callback;
-        m_task_manager.add_single_task([this, callback](std::shared_ptr<utils::Task> task) {
+        m_task_manager.add_single_task(
+                "event(DisconnectRequestEvent)-single-1",
+                [this, callback](
+                    std::shared_ptr<utils::Task> task) {
             LOGIT_INFO("Cancelling all pending requests before disconnecting.");
             m_request_manager.cancel_requests();
 
@@ -285,7 +321,10 @@ namespace optionx::platforms::intrade_bar {
             }
 
             // Обработаем отключение после получения результата всех HTTP запросов
-            m_task_manager.add_single_task([this, callback](std::shared_ptr<utils::Task> task) {
+            m_task_manager.add_single_task(
+                    "event(DisconnectRequestEvent)-single-2",
+                    [this, callback](
+                        std::shared_ptr<utils::Task> task) {
                 auto account_info = get_account_info();
                 if (account_info->connect) {
                     using Status = events::AccountInfoUpdateEvent::Status;
@@ -325,6 +364,35 @@ namespace optionx::platforms::intrade_bar {
                 [this](const ConnectionResult& result) {
             });
         });
+    }
+    
+    void AuthManager::handle_auto_domain_and_auth(
+            connection_callback_t callback,
+            std::function<void(connection_callback_t)> auth_func) {
+
+        if (m_auth_data->auto_find_domain) {
+            m_request_manager.request_find_working_domain(
+                [this, callback, auth_func](bool success, std::string& host) {
+                    using Status = events::AccountInfoUpdateEvent::Status;
+                    if (!success) {
+                        const std::string error_text = "No working domain found.";
+                        notify(events::AccountInfoUpdateEvent(
+                            get_account_info(),
+                            Status::FAILED_TO_CONNECT,
+                            error_text));
+                        callback({false, error_text, m_auth_data->clone_unique()});
+                        return;
+                    }
+
+                    notify(events::AutoDomainSelectedEvent(
+                        success,
+                        host));
+                            
+                    auth_func(std::move(callback));
+                });
+        } else {
+            auth_func(std::move(callback));
+        }
     }
 
     void AuthManager::validate_email_pass(connection_callback_t callback) {

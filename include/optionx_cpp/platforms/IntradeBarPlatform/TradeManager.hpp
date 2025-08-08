@@ -181,8 +181,11 @@ namespace optionx::platforms::intrade_bar {
 
         LOGIT_0TRACE();
         const int64_t delay_ms = 500;
-        m_task_manager.add_delayed_task(delay_ms, [this, request, result](
-                std::shared_ptr<utils::Task> task) {
+        m_task_manager.add_delayed_task(
+				"event(TradeStatusEvent)-500ms",
+				delay_ms, 
+				[this, request, result](
+					std::shared_ptr<utils::Task> task) {
             LOGIT_0TRACE();
             if (task->is_shutdown()) {
                 LOGIT_INFO("Task was shut down unexpectedly for option ID: ", result->option_id);

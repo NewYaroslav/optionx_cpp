@@ -374,7 +374,6 @@ namespace optionx::modules {
         lock.unlock();
 
         int64_t timestamp = OPTIONX_TIMESTAMP_MS;
-
         for (auto& transaction : pending_transactions) {
             m_trade_state_manager.finalize_transaction_with_error(transaction, TradeErrorCode::CLIENT_FORCED_CLOSE, TradeState::OPEN_ERROR, timestamp);
             dispatch_trade_event(transaction);

@@ -146,6 +146,7 @@ int main() {
         auth_data->set_email_password(email, password);
         auth_data->account_type = AccountType::DEMO;
         auth_data->currency = CurrencyType::USD;
+        auth_data->auto_find_domain = true;
 
         platform.on_account_info() = [](const AccountInfoUpdate& info) {
             LOGIT_STREAM_INFO()
@@ -173,17 +174,24 @@ int main() {
 
         // Ожидание подключения
         //std::this_thread::sleep_for(std::chrono::seconds(5));
-        std::system("pause");
+        LOGIT_TRACE0();
+        std::cin.get();
 
         // Запуск теста сделки
         test_trade(platform);
-        std::system("pause");
+        
+        LOGIT_TRACE0();
+        std::cin.get();
 
         test_trade_2(platform);
-        std::system("pause");
+        
+        LOGIT_TRACE0();
+        std::cin.get();
 
         test_trade_3(platform);
-        std::system("pause");
+        
+        LOGIT_TRACE0();
+        std::cin.get();
 
         // Деинициализация платформы
         LOGIT_INFO("Shutting down platform...");
@@ -213,6 +221,7 @@ int main() {
         auth_data2->set_email_password(email, password);
         auth_data2->account_type = AccountType::DEMO;
         auth_data2->currency = CurrencyType::RUB;
+        auth_data2->auto_find_domain = true;
 
         // Повторное подключение
         LOGIT_INFO("Reconnecting to platform...");
@@ -227,11 +236,14 @@ int main() {
         });
 
         // Ожидание подключения
-        std::system("pause");
+        LOGIT_INFO("Trade?");
+        std::cin.get();
 
         // Повторный запуск теста сделки
         test_trade(platform2);
-        std::system("pause");
+        
+        LOGIT_INFO("Disconnect?");
+        std::cin.get();
 
         // Отключение
         LOGIT_INFO("Disconnecting...");
@@ -243,7 +255,8 @@ int main() {
             }
         });
 
-        std::system("pause");
+        LOGIT_INFO("Connect?");
+        std::cin.get();
 
         // Повторное подключение
         LOGIT_INFO("Reconnecting again...");
@@ -256,13 +269,20 @@ int main() {
         });
 
         LOGIT_INFO("Deinit?");
-        std::system("pause");
+        std::cin.get();
+        
+        LOGIT_INFO("Shutting down platform...");
+        platform2.shutdown();
+        LOGIT_INFO("Shutting platform ok");
 
     } catch (const std::exception& ex) {
         LOGIT_ERROR("Exception: ", ex.what());
     }
 
+    LOGIT_TRACE0();
     kurlyk::deinit();
+    
+    LOGIT_TRACE0();
     LOGIT_WAIT();
     return 0;
 }

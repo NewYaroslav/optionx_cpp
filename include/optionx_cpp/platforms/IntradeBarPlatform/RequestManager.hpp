@@ -73,6 +73,18 @@ namespace optionx::platforms::intrade_bar {
         void cancel_requests() {
             get_http_client().cancel_requests();
         }
+        
+        /// \brief Performs a sweep over known domain variants to find a working endpoint.
+        /// \param callback Callback to receive the first working domain, if any.
+        void request_find_working_domain(
+            std::function<void(
+                bool success,
+                std::string &host)> find_callback);
+                
+        /// \brief Checks if the currently set host in the HTTP client is available.
+        /// \param check_callback Callback that receives the result: true if available, false otherwise.
+        void request_check_current_host_available(
+            std::function<void(bool success)> check_callback);
 
         /// \brief Requests user profile information.
         /// \param profile_callback Callback function to receive profile details.
@@ -183,6 +195,8 @@ namespace optionx::platforms::intrade_bar {
         std::string       m_user_id;     ///< User ID for authentication.
         std::string       m_user_hash;   ///< User authentication hash.
         std::string       m_cookies;     ///< Session cookies.
+        int m_domain_index_min = 0;      ///< Minimum domain index to scan (0 = intrade.bar).
+        int m_domain_index_max = 0;      ///< Maximum domain index to scan (e.g., intrade1000.bar).
 
         /// \brief Returns a reference to the HTTP client.
         /// \return Reference to the `kurlyk::HttpClient` instance.
@@ -195,7 +209,7 @@ namespace optionx::platforms::intrade_bar {
         /// \return The rate limit value for the specified type.
         template<class T>
         uint32_t get_rate_limit(T rate_limit_id) const {
-			return m_client.get_rate_limit<T>(rate_limit_id);
+            return m_client.get_rate_limit<T>(rate_limit_id);
         }
 
         /// \brief Adds a new HTTP request task to the list.
@@ -213,15 +227,23 @@ namespace optionx::platforms::intrade_bar {
             if (auto msg = std::dynamic_pointer_cast<AuthData>(event.auth_data)) {
                 LOGIT_TRACE0();
                 const std::string referer(msg->host + "/");
-                get_http_client().set_host(msg->host);
-                get_http_client().set_user_agent(msg->user_agent);
-                get_http_client().set_accept_language(msg->accept_language);
-                get_http_client().set_origin(msg->host);
-                get_http_client().set_referer(referer);
-                const long retry_attempts = 10;
-                const long retry_delay_ms = time_shield::MS_PER_SEC;
-                get_http_client().set_retry_attempts(retry_attempts, retry_delay_ms);
-                //get_http_client().set_verbose(true);
+                auto& client = get_http_client();
+                if (!msg->auto_find_domain) {
+                    client.set_host(msg->host);
+                    client.set_origin(msg->host);
+                } else {
+                    m_domain_index_min = std::abs(msg->domain_index_min);
+                    m_domain_index_max = std::abs(msg->domain_index_max);
+                    if (m_domain_index_min > m_domain_index_max) {
+                        std::swap(m_domain_index_min, m_domain_index_max);
+                    }
+                }
+                client.set_user_agent(msg->user_agent);
+                client.set_accept_language(msg->accept_language);
+                client.set_referer(referer);
+                client.set_retry_attempts(10, time_shield::MS_PER_SEC);
+                client.set_timeout(30);
+                client.set_connect_timeout(15);
             }
         }
 
@@ -254,6 +276,7 @@ namespace optionx::platforms::intrade_bar {
                 const std::string& cookies,
                 const std::string& reason)> result_callback) {
         LOGIT_TRACE0();
+
         // Validate email and password
         if (auth_data->email.empty() ||
             auth_data->password.empty()) {
@@ -326,6 +349,7 @@ namespace optionx::platforms::intrade_bar {
                 const std::string& cookies,
                 const std::string& reason)> result_callback) {
         LOGIT_DEBUG(req_id, req_value, cookies);
+
         // Prepare query parameters
         kurlyk::QueryParams query = {
             {"email", auth_data->email},
@@ -389,6 +413,7 @@ namespace optionx::platforms::intrade_bar {
                 bool success,
                 const std::string& reason)> result_callback) {
         LOGIT_TRACE0();
+
         // Prepare query parameters
         kurlyk::QueryParams query = {
             {"id", user_id},
@@ -430,6 +455,7 @@ namespace optionx::platforms::intrade_bar {
                 double balance,
                 CurrencyType currency)> balance_callback) {
         LOGIT_TRACE0();
+
         // Prepare query parameters
         kurlyk::QueryParams query = {
             {"user_id", m_user_id},
@@ -468,6 +494,7 @@ namespace optionx::platforms::intrade_bar {
     void RequestManager::request_switch_account_type(
             std::function<void(bool success)> switch_callback) {
         LOGIT_TRACE0();
+
         // Prepare query parameters
         kurlyk::QueryParams query = {
             {"user_id", m_user_id},
@@ -501,6 +528,7 @@ namespace optionx::platforms::intrade_bar {
     void RequestManager::request_switch_currency(
             std::function<void(bool success)> switch_callback) {
         LOGIT_TRACE0();
+    
         // Prepare query parameters
         kurlyk::QueryParams query = {
             {"user_id", m_user_id},
@@ -529,6 +557,113 @@ namespace optionx::platforms::intrade_bar {
         };
 
         add_http_request_task(std::move(future), std::move(callback));
+    }
+    
+    void RequestManager::request_find_working_domain(
+            std::function<void(
+                bool success,
+                std::string& host)> find_callback) {
+        LOGIT_TRACE0();
+        
+        const int min_index = m_domain_index_min;
+        const int max_index = m_domain_index_max;
+        int total_requests = max_index - min_index + 1 + (min_index > 0 ? 1 : 0);  // include index 0 if min > 0
+
+        struct DomainCheckState {
+            int total_requests = 0;
+            int completed_requests = 0;
+            std::vector<int> successful_indices;
+            std::function<void(bool, std::string&)> on_complete;
+        };
+
+        auto state = std::make_shared<DomainCheckState>();
+        state->total_requests = total_requests;
+        state->on_complete = std::move(find_callback);
+
+        auto& client = get_http_client();
+        client.set_head_only(true);
+        client.set_retry_attempts(3, time_shield::MS_PER_SEC);
+        client.set_timeout(5);
+        client.set_connect_timeout(5);
+
+        for (int i = 0; i <= max_index; ++i) {
+            if (i == 1 && i < min_index) i = min_index; // skip to min_index if i == 1 and < min
+            
+            std::string host = (i == 0)
+                ? "https://intrade.bar"
+                : "https://intrade" + std::to_string(i) + ".bar";
+
+            client.set_host(host);
+            auto future = client.get("/", {}, {});
+
+            auto callback = [this, state, i](kurlyk::HttpResponsePtr response) {
+                if (!response->ready) return;
+
+                if (response->status_code == 200) {
+                    state->successful_indices.push_back(i);
+                }
+
+                int finished = ++state->completed_requests;
+                if (finished == state->total_requests) {
+                    bool success = false;
+                    std::string selected_host;
+
+                    if (!state->successful_indices.empty()) {
+                        int min_index = *std::min_element(
+                            state->successful_indices.begin(), state->successful_indices.end());
+                        selected_host = (min_index == 0)
+                            ? "https://intrade.bar"
+                            : "https://intrade" + std::to_string(min_index) + ".bar";
+                        success = true;
+                    }
+
+                    LOGIT_PRINT_INFO("Auto-selected domain:", selected_host, "; success:", success);
+
+                    if (success) {
+                        get_http_client().set_host(selected_host);
+                        get_http_client().set_origin(selected_host);
+                    }
+                    
+                    state->on_complete(success, selected_host);
+                }
+            };
+            
+            add_http_request_task(std::move(future), std::move(callback));
+        }
+        
+        client.set_head_only(false);
+        client.set_retry_attempts(10, time_shield::MS_PER_SEC);
+        client.set_timeout(30);
+        client.set_connect_timeout(15);
+    }
+    
+    /// \brief Checks if the currently set host in the HTTP client is available.
+    /// \param callback Callback that receives the result: true if available, false otherwise.
+    void RequestManager::request_check_current_host_available(
+            std::function<void(bool)> check_callback) {
+        LOGIT_TRACE0();
+
+        auto& client = get_http_client();
+        client.set_head_only(true); // Use HEAD to avoid downloading body
+        client.set_retry_attempts(3, time_shield::MS_PER_SEC);
+        client.set_timeout(5);
+        client.set_connect_timeout(5);
+
+        auto future = client.get("/", {}, {});
+        auto cb = [check_callback = std::move(check_callback)](kurlyk::HttpResponsePtr response) {
+            if (!response->ready) return;
+            bool success = response->status_code == 200;
+            LOGIT_PRINT_DEBUG("Current host ping check:",
+                " success =", success,
+                "; status =", response->status_code);
+            check_callback(success);
+        };
+
+        add_http_request_task(std::move(future), std::move(cb));
+        client.set_head_only(false); // Restore to default after request
+        client.set_retry_attempts(10, time_shield::MS_PER_SEC);
+        client.set_timeout(30);
+        client.set_connect_timeout(15);
     }
 
     void RequestManager::request_profile(
