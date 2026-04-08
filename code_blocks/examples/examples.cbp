@@ -1,0 +1,830 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="examples" />
+		<Option pch_mode="2" />
+		<Option compiler="mingw_64_12_2_0" />
+		<Build>
+			<Target title="intrade_bar_api_example">
+				<Option output="intrade_bar_api_example" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="mingw_64_12_2_0" />
+				<Compiler>
+					<Add option="-O3" />
+					<Add option="-std=c++17" />
+					<Add option="-DASIO_STANDALONE" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../include" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/capi.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/dasync.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libcrypto.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/openssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/ossltest.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/padlock.lib" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.a" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.dll.a" />
+					<Add library="ws2_32" />
+					<Add library="wsock32" />
+					<Add library="crypt32" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../include" />
+				</Linker>
+			</Target>
+			<Target title="event_mediator_test">
+				<Option output="event_mediator_test" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="mingw_64_12_2_0" />
+				<Compiler>
+					<Add option="-O3" />
+					<Add option="-std=c++17" />
+					<Add option="-DASIO_STANDALONE" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../include" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/capi.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/dasync.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libcrypto.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/openssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/ossltest.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/padlock.lib" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.a" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.dll.a" />
+					<Add library="ws2_32" />
+					<Add library="wsock32" />
+					<Add library="crypt32" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../include" />
+				</Linker>
+			</Target>
+			<Target title="test_intrade_bar_http_client_module">
+				<Option output="test_intrade_bar_http_client_module" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="mingw_64_12_2_0" />
+				<Compiler>
+					<Add option="-O3" />
+					<Add option="-std=c++17" />
+					<Add option="-DASIO_STANDALONE" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../libs/sqlite-amalgamation-3460000" />
+					<Add directory="../../libs/sqlite-containers/include" />
+					<Add directory="../../libs/AES/src" />
+					<Add directory="../../include" />
+					<Add directory="../../libs" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/capi.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/dasync.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libcrypto.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/openssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/ossltest.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/padlock.lib" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.a" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.dll.a" />
+					<Add library="ws2_32" />
+					<Add library="wsock32" />
+					<Add library="crypt32" />
+					<Add library="sqlite" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../libs/sqlite-amalgamation-3460000" />
+					<Add directory="../../libs/sqlite-containers/include" />
+					<Add directory="../../libs/AES/src" />
+					<Add directory="../../include" />
+					<Add directory="../../libs" />
+				</Linker>
+			</Target>
+			<Target title="test_encryption">
+				<Option output="test_encryption" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="mingw_64_12_2_0" />
+				<Compiler>
+					<Add option="-O3" />
+					<Add option="-std=c++17" />
+					<Add option="-DASIO_STANDALONE" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../libs/sqlite-amalgamation-3460000" />
+					<Add directory="../../libs/sqlite-containers/include" />
+					<Add directory="../../libs/AES/src" />
+					<Add directory="../../include" />
+					<Add directory="../../libs" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/capi.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/dasync.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libcrypto.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/openssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/ossltest.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/padlock.lib" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.a" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.dll.a" />
+					<Add library="ws2_32" />
+					<Add library="wsock32" />
+					<Add library="crypt32" />
+					<Add library="sqlite" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../libs/sqlite-amalgamation-3460000" />
+					<Add directory="../../libs/sqlite-containers/include" />
+					<Add directory="../../libs/AES/src" />
+					<Add directory="../../include" />
+					<Add directory="../../libs" />
+				</Linker>
+			</Target>
+			<Target title="test_service_session_db">
+				<Option output="test_service_session_db" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="mingw_64_12_2_0" />
+				<Compiler>
+					<Add option="-O3" />
+					<Add option="-std=c++17" />
+					<Add option="-DASIO_STANDALONE" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../libs/sqlite-amalgamation-3460000" />
+					<Add directory="../../libs/sqlite-containers/include" />
+					<Add directory="../../libs/AES/src" />
+					<Add directory="../../include" />
+					<Add directory="../../libs" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/capi.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/dasync.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libcrypto.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/openssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/ossltest.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/padlock.lib" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.a" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.dll.a" />
+					<Add library="ws2_32" />
+					<Add library="wsock32" />
+					<Add library="crypt32" />
+					<Add library="sqlite" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../libs/sqlite-amalgamation-3460000" />
+					<Add directory="../../libs/sqlite-containers/include" />
+					<Add directory="../../libs/AES/src" />
+					<Add directory="../../include" />
+					<Add directory="../../libs" />
+				</Linker>
+			</Target>
+			<Target title="test_intrade_bar_http_client">
+				<Option output="test_intrade_bar_http_client" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="mingw_64_12_2_0" />
+				<Compiler>
+					<Add option="-O3" />
+					<Add option="-std=c++17" />
+					<Add option="-DASIO_STANDALONE" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../libs/sqlite-amalgamation-3460000" />
+					<Add directory="../../libs/sqlite-containers/include" />
+					<Add directory="../../libs/AES/src" />
+					<Add directory="../../include" />
+					<Add directory="../../libs" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/capi.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/dasync.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libcrypto.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/openssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/ossltest.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/padlock.lib" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.a" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.dll.a" />
+					<Add library="ws2_32" />
+					<Add library="wsock32" />
+					<Add library="crypt32" />
+					<Add library="sqlite" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../libs/sqlite-amalgamation-3460000" />
+					<Add directory="../../libs/sqlite-containers/include" />
+					<Add directory="../../libs/AES/src" />
+					<Add directory="../../include" />
+					<Add directory="../../libs" />
+				</Linker>
+			</Target>
+			<Target title="task_manager_example">
+				<Option output="task_manager_example" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="mingw_64_12_2_0" />
+				<Compiler>
+					<Add option="-O3" />
+					<Add option="-std=c++17" />
+					<Add option="-DASIO_STANDALONE" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../libs/sqlite-amalgamation-3460000" />
+					<Add directory="../../libs/sqlite-containers/include" />
+					<Add directory="../../libs/AES/src" />
+					<Add directory="../../include" />
+					<Add directory="../../libs" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/capi.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/dasync.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libcrypto.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/openssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/ossltest.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/padlock.lib" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.a" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.dll.a" />
+					<Add library="ws2_32" />
+					<Add library="wsock32" />
+					<Add library="crypt32" />
+					<Add library="sqlite" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../libs/sqlite-amalgamation-3460000" />
+					<Add directory="../../libs/sqlite-containers/include" />
+					<Add directory="../../libs/AES/src" />
+					<Add directory="../../include" />
+					<Add directory="../../libs" />
+				</Linker>
+			</Target>
+			<Target title="test_trade_manager_module">
+				<Option output="test_trade_manager_module" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="mingw_64_12_2_0" />
+				<Compiler>
+					<Add option="-O3" />
+					<Add option="-std=c++17" />
+					<Add option="-DASIO_STANDALONE" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../libs/sqlite-amalgamation-3460000" />
+					<Add directory="../../libs/sqlite-containers/include" />
+					<Add directory="../../libs/AES/src" />
+					<Add directory="../../include" />
+					<Add directory="../../libs" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/capi.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/dasync.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libcrypto.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/openssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/ossltest.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/padlock.lib" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.a" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.dll.a" />
+					<Add library="ws2_32" />
+					<Add library="wsock32" />
+					<Add library="crypt32" />
+					<Add library="sqlite" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../libs/sqlite-amalgamation-3460000" />
+					<Add directory="../../libs/sqlite-containers/include" />
+					<Add directory="../../libs/AES/src" />
+					<Add directory="../../include" />
+					<Add directory="../../libs" />
+				</Linker>
+			</Target>
+			<Target title="trade_manager_test">
+				<Option output="trade_manager_test" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="mingw_64_12_2_0" />
+				<Compiler>
+					<Add option="-O3" />
+					<Add option="-std=c++17" />
+					<Add option="-DASIO_STANDALONE" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../libs/sqlite-amalgamation-3460000" />
+					<Add directory="../../libs/sqlite-containers/include" />
+					<Add directory="../../libs/AES/src" />
+					<Add directory="../../libs/googletest/googletest/include" />
+					<Add directory="../../libs/googletest/build/lib" />
+					<Add directory="../../include" />
+					<Add directory="../../libs" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/capi.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/dasync.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libcrypto.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/openssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/ossltest.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/padlock.lib" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.a" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.dll.a" />
+					<Add library="ws2_32" />
+					<Add library="wsock32" />
+					<Add library="crypt32" />
+					<Add library="sqlite" />
+					<Add library="gtest" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../libs/sqlite-amalgamation-3460000" />
+					<Add directory="../../libs/sqlite-containers/include" />
+					<Add directory="../../libs/AES/src" />
+					<Add directory="../../libs/googletest/googletest/include" />
+					<Add directory="../../libs/googletest/build/lib" />
+					<Add directory="../../include" />
+					<Add directory="../../libs" />
+				</Linker>
+			</Target>
+			<Target title="intrade_bar_platform_test">
+				<Option output="intrade_bar_platform_test" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="mingw_64_12_2_0" />
+				<Compiler>
+					<Add option="-O3" />
+					<Add option="-std=c++17" />
+					<Add option="-DASIO_STANDALONE" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../libs/sqlite-amalgamation-3460000" />
+					<Add directory="../../libs/sqlite-containers/include" />
+					<Add directory="../../libs/AES/src" />
+					<Add directory="../../libs/googletest/googletest/include" />
+					<Add directory="../../libs/googletest/build/lib" />
+					<Add directory="../../include" />
+					<Add directory="../../libs" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/capi.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/dasync.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libcrypto.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/libssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/openssl.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/ossltest.lib" />
+					<Add library="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD/padlock.lib" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.a" />
+					<Add library="../../libs/curl-8.11.0_1-win64-mingw/lib/libcurl.dll.a" />
+					<Add library="ws2_32" />
+					<Add library="wsock32" />
+					<Add library="crypt32" />
+					<Add library="sqlite" />
+					<Add library="gtest" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/include" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/lib/VC/x64/MD" />
+					<Add directory="../../libs/openssl-win64-v3.4.0/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/bin" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/include" />
+					<Add directory="../../libs/curl-8.11.0_1-win64-mingw/lib" />
+					<Add directory="../../libs/asio/asio/include" />
+					<Add directory="../../libs/Simple-WebSocket-Server" />
+					<Add directory="../../libs/kurlyk/include" />
+					<Add directory="../../libs/log-it-cpp/include" />
+					<Add directory="../../libs/json/include" />
+					<Add directory="../../libs/time-shield-cpp/include" />
+					<Add directory="../../libs/sqlite-amalgamation-3460000" />
+					<Add directory="../../libs/sqlite-containers/include" />
+					<Add directory="../../libs/AES/src" />
+					<Add directory="../../libs/googletest/googletest/include" />
+					<Add directory="../../libs/googletest/build/lib" />
+					<Add directory="../../include" />
+					<Add directory="../../libs" />
+				</Linker>
+			</Target>
+		</Build>
+		<Compiler>
+			<Add option="-Wall" />
+			<Add option="-fexceptions" />
+		</Compiler>
+		<Unit filename="../../examples/event_mediator_test.cpp">
+			<Option target="event_mediator_test" />
+		</Unit>
+		<Unit filename="../../examples/intrade_bar_api_example.cpp">
+			<Option target="intrade_bar_api_example" />
+		</Unit>
+		<Unit filename="../../examples/task_manager_example.cpp">
+			<Option target="task_manager_example" />
+		</Unit>
+		<Unit filename="../../examples/test_encryption.cpp">
+			<Option target="test_encryption" />
+		</Unit>
+		<Unit filename="../../examples/test_intrade_bar_http_client.cpp">
+			<Option target="test_intrade_bar_http_client" />
+		</Unit>
+		<Unit filename="../../examples/test_intrade_bar_http_client_module.cpp">
+			<Option target="test_intrade_bar_http_client_module" />
+		</Unit>
+		<Unit filename="../../examples/test_service_session_db.cpp">
+			<Option target="test_service_session_db" />
+		</Unit>
+		<Unit filename="../../examples/test_trade_manager_module.cpp">
+			<Option target="test_trade_manager_module" />
+		</Unit>
+		<Unit filename="../../include/optionx_cpp/data.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/account.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/account/AccountInfoRequest.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/account/AccountInfoUpdate.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/account/BaseAccountInfoData.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/account/ConnectionResult.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/account/IAuthData.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/account/enums.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/bars.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/bars/Bar.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/bars/BarData.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/bars/BarHistoryRequest.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/bars/BarSequence.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/bars/flags.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/bridge.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/events.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/events/AccountInfoUpdateEvent.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/events/AuthDataEvent.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/events/BalanceRequestEvent.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/events/ConnectRequestEvent.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/events/DisconnectRequestEvent.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/events/OpenTradesEvent.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/events/PriceUpdateEvent.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/events/RestartAuthEvent.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/events/TradeRequestEvent.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/events/TradeStatusEvent.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/events/TradeTransactionEvent.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/symbol.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/symbols/SymbolInfo.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/symbols/SymbolsInfo.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/ticks.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/ticks/Tick.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/ticks/TickData.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/ticks/TickSequenceData.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/ticks/flags.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/trading.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/trading/IBridgeApi.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/trading/TradeRequest.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/trading/TradeResult.hpp" />
+		<Unit filename="../../include/optionx_cpp/data/trading/enums.hpp" />
+		<Unit filename="../../include/optionx_cpp/modules.hpp" />
+		<Unit filename="../../include/optionx_cpp/modules/BaseAccountInfoHandler.hpp" />
+		<Unit filename="../../include/optionx_cpp/modules/BaseHttpClientModule.hpp" />
+		<Unit filename="../../include/optionx_cpp/modules/BaseModule.hpp" />
+		<Unit filename="../../include/optionx_cpp/modules/BaseTradeExecutionModule.hpp" />
+		<Unit filename="../../include/optionx_cpp/modules/BaseTradeExecutionModule/AccountInfoProvider.hpp" />
+		<Unit filename="../../include/optionx_cpp/modules/BaseTradeExecutionModule/TradeQueueManager.hpp" />
+		<Unit filename="../../include/optionx_cpp/modules/BaseTradeExecutionModule/TradeStateManager.hpp" />
+		<Unit filename="../../include/optionx_cpp/optionx.hpp" />
+		<Unit filename="../../include/optionx_cpp/platforms.hpp" />
+		<Unit filename="../../include/optionx_cpp/platforms/BaseTradingPlatform.hpp" />
+		<Unit filename="../../include/optionx_cpp/platforms/IntradeBarPlatform.hpp" />
+		<Unit filename="../../include/optionx_cpp/platforms/IntradeBarPlatform/AccountInfoData.hpp" />
+		<Unit filename="../../include/optionx_cpp/platforms/IntradeBarPlatform/AuthData.hpp" />
+		<Unit filename="../../include/optionx_cpp/platforms/IntradeBarPlatform/AuthManager.hpp" />
+		<Unit filename="../../include/optionx_cpp/platforms/IntradeBarPlatform/BalanceManager.hpp" />
+		<Unit filename="../../include/optionx_cpp/platforms/IntradeBarPlatform/BtcPriceManager.hpp" />
+		<Unit filename="../../include/optionx_cpp/platforms/IntradeBarPlatform/HttpClientModule.hpp" />
+		<Unit filename="../../include/optionx_cpp/platforms/IntradeBarPlatform/PriceManager.hpp" />
+		<Unit filename="../../include/optionx_cpp/platforms/IntradeBarPlatform/RequestManager.hpp" />
+		<Unit filename="../../include/optionx_cpp/platforms/IntradeBarPlatform/TradeExecutionModule.hpp" />
+		<Unit filename="../../include/optionx_cpp/platforms/IntradeBarPlatform/TradeManager.hpp" />
+		<Unit filename="../../include/optionx_cpp/platforms/IntradeBarPlatform/http_parsers.hpp" />
+		<Unit filename="../../include/optionx_cpp/platforms/IntradeBarPlatform/http_utils.hpp" />
+		<Unit filename="../../include/optionx_cpp/storages.hpp" />
+		<Unit filename="../../include/optionx_cpp/storages/ServiceSessionDB.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/Base36.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/Base64.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/crypto.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/crypto/AESCrypt.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/crypto/AESUtils.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/crypto/SecureKey.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/enum_utils.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/fixed_point.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/http_utils.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/path_utils.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/pubsub.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/pubsub/Event.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/pubsub/EventHub.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/pubsub/EventListener.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/pubsub/EventMediator.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/string_utils.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/tasks.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/tasks/Task.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/tasks/TaskManager.hpp" />
+		<Unit filename="../../include/optionx_cpp/utils/time_utils.hpp" />
+		<Unit filename="../../libs/AES/src/AES.cpp" />
+		<Unit filename="../../libs/AES/src/AES.h" />
+		<Unit filename="../../libs/Simple-WebSocket-Server/client_ws.hpp" />
+		<Unit filename="../../libs/Simple-WebSocket-Server/client_wss.hpp" />
+		<Unit filename="../../libs/Simple-WebSocket-Server/crypto.hpp" />
+		<Unit filename="../../libs/Simple-WebSocket-Server/status_code.hpp" />
+		<Unit filename="../../libs/Simple-WebSocket-Server/utility.hpp" />
+		<Unit filename="../../libs/kurlyk/include/kurlyk.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/Enums.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/Http/Client.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/Http/Components/Cookie.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/Http/Components/Request.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/Http/Components/Response.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/Http/RequestManager.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/Http/RequestManager/MultiRequestHandler.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/Http/RequestManager/RateLimiter.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/Http/RequestManager/RequestContext.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/Http/RequestManager/RequestHandler.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/Http/Utils.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/NetworkWorker.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/Utils/CaseInsensitiveMultimap.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/Utils/CurlErrorCategory.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/Utils/EventQueue.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/WebSocket/Client.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/WebSocket/Client/BaseWebSocketClient.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/WebSocket/Client/Emscripten/EmscriptenWebSocketClientAdapter.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/WebSocket/Client/IWebSocketClient.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/WebSocket/Client/IWebSocketSender.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/WebSocket/Client/RateLimiter.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/WebSocket/Client/SimpleWeb/SocketClient.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/WebSocket/Client/SimpleWeb/WebSocketClientAdapter.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/WebSocket/Client/SimpleWeb/Worker.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/WebSocket/Components/Config.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/WebSocket/Components/EventData.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/WebSocket/Components/SendInfo.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/WebSocket/Manager.hpp" />
+		<Unit filename="../../libs/kurlyk/include/parts/utils.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/LogIt.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/LogItConfig.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/parts/Enums.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/parts/Formatter/ILogFormatter.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/parts/Formatter/SimpleLogFormatter.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/parts/Formatter/SimpleLogFormatter/PatternCompiler.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/parts/LogMacros.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/parts/LogStream.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/parts/Logger.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/parts/Logger/ConsoleLogger.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/parts/Logger/FileLogger.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/parts/Logger/ILogger.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/parts/Logger/UniqueFileLogger.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/parts/TaskExecutor.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/parts/Utils/LogRecord.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/parts/Utils/VariableValue.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/parts/Utils/argument_utils.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/parts/Utils/format.hpp" />
+		<Unit filename="../../libs/log-it-cpp/include/log-it/parts/Utils/path_utils.hpp" />
+		<Unit filename="../../libs/sqlite-containers/include/sqlite_containers/KeyDB.hpp" />
+		<Unit filename="../../libs/sqlite-containers/include/sqlite_containers/KeyMultiValueDB.hpp" />
+		<Unit filename="../../libs/sqlite-containers/include/sqlite_containers/KeyValueDB.hpp" />
+		<Unit filename="../../libs/sqlite-containers/include/sqlite_containers/parts/BaseDB.hpp" />
+		<Unit filename="../../libs/sqlite-containers/include/sqlite_containers/parts/Config.hpp" />
+		<Unit filename="../../libs/sqlite-containers/include/sqlite_containers/parts/Utils.hpp" />
+		<Unit filename="../../libs/time-shield-cpp/include/time_shield_cpp/parts/config.hpp" />
+		<Unit filename="../../libs/time-shield-cpp/include/time_shield_cpp/parts/constants.hpp" />
+		<Unit filename="../../libs/time-shield-cpp/include/time_shield_cpp/parts/date_struct.hpp" />
+		<Unit filename="../../libs/time-shield-cpp/include/time_shield_cpp/parts/date_time_struct.hpp" />
+		<Unit filename="../../libs/time-shield-cpp/include/time_shield_cpp/parts/enums.hpp" />
+		<Unit filename="../../libs/time-shield-cpp/include/time_shield_cpp/parts/time_conversions.hpp" />
+		<Unit filename="../../libs/time-shield-cpp/include/time_shield_cpp/parts/time_formatting.hpp" />
+		<Unit filename="../../libs/time-shield-cpp/include/time_shield_cpp/parts/time_parser.hpp" />
+		<Unit filename="../../libs/time-shield-cpp/include/time_shield_cpp/parts/time_struct.hpp" />
+		<Unit filename="../../libs/time-shield-cpp/include/time_shield_cpp/parts/time_utils.hpp" />
+		<Unit filename="../../libs/time-shield-cpp/include/time_shield_cpp/parts/time_zone_struct.hpp" />
+		<Unit filename="../../libs/time-shield-cpp/include/time_shield_cpp/parts/types.hpp" />
+		<Unit filename="../../libs/time-shield-cpp/include/time_shield_cpp/parts/validation.hpp" />
+		<Unit filename="../../libs/time-shield-cpp/include/time_shield_cpp/time_shield.hpp" />
+		<Unit filename="../../tests/intrade_bar_platform_test.cpp">
+			<Option target="intrade_bar_platform_test" />
+		</Unit>
+		<Unit filename="../../tests/trade_manager_test.cpp">
+			<Option target="trade_manager_test" />
+		</Unit>
+		<Unit filename="../em-4/BaseObject.hpp">
+			<Option target="&lt;{~None~}&gt;" />
+		</Unit>
+		<Unit filename="pch.hpp">
+			<Option compile="1" />
+			<Option weight="0" />
+			<Option target="&lt;{~None~}&gt;" />
+		</Unit>
+		<Extensions>
+			<DoxyBlocks>
+				<comment_style block="2" line="2" />
+				<doxyfile_project />
+				<doxyfile_build />
+				<doxyfile_warnings />
+				<doxyfile_output />
+				<doxyfile_dot />
+				<general />
+			</DoxyBlocks>
+			<lib_finder disable_auto="1" />
+		</Extensions>
+	</Project>
+</CodeBlocks_project_file>
