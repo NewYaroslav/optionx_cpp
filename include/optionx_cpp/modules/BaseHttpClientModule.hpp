@@ -24,9 +24,10 @@ namespace optionx::modules {
         }
 
         /// \brief Default virtual destructor.
-        virtual ~BaseHttpClientModule() {
+        virtual ~BaseHttpClientModule() noexcept override {
             deinitialize_rate_limits();
             m_client.cancel_requests();
+            m_http_tasks.clear();
         }
 
         /// \brief Handles an event notification received as a raw pointer.

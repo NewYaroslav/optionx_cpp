@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <vector>
 #include <queue>
+#include <memory>
 #include <mutex>
 #include <functional>
 #include <typeindex>
@@ -75,6 +76,11 @@ namespace optionx::utils {
         /// \brief Processes queued events.
         /// Should be called from the main thread to process events safely.
         void process();
+        
+        /// \brief Drain queued events in up to max_rounds passes.
+        /// \param max_rounds Maximum number of passes; each pass processes a batch.
+        /// \return Number of events processed.
+        size_t drain(size_t max_rounds = 10);
 
     private:
         std::unordered_map<std::type_index, callback_list_t> m_event_callbacks; ///< Event type -> callbacks

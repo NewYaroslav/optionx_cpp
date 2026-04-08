@@ -20,7 +20,8 @@
 #include "utils/path_utils.hpp"       ///< Filesystem path manipulation helpers
 #include "utils/fixed_point.hpp"      ///< Fixed-point arithmetic for financial calculations
 #include "utils/time_utils.hpp"       ///< Time-related utilities, including timestamp retrieval.
-#include "utils/TradeIdGenerator.hpp" ///< Unique trade identifier generator
+#include "utils/trade_id.hpp"         ///< Unique trade identifier generator
+#include "utils/correlation_id.hpp"   ///< Unique correlation identifier generator
 
 // Data encoding
 #include "utils/Base36.hpp"           ///< Base36 encoding/decoding implementation

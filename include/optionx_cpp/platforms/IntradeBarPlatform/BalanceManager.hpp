@@ -289,7 +289,7 @@ namespace optionx::platforms::intrade_bar {
         m_task_manager.add_periodic_task(
                 "disconnected-15sec",
                 time_shield::MS_PER_15_SEC,
-                [this](std::shared_ptr<utils::Task> task){
+                [this](std::shared_ptr<utils::Task> task) {
             LOGIT_TRACE0();
             if (task->is_shutdown()) return;
             if (m_check_host_in_progress) return;

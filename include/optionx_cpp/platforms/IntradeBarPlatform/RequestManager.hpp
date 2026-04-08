@@ -268,6 +268,8 @@ namespace optionx::platforms::intrade_bar {
             std::shared_ptr<AuthData> auth_data,
             connection_callback_t connect_callback);
     };
+	
+    // ------------------------------------------------------------------------
 
     void RequestManager::request_main_page(
             std::shared_ptr<AuthData> auth_data,
@@ -332,7 +334,7 @@ namespace optionx::platforms::intrade_bar {
             // Extract parsed data
             const auto& [req_id, req_value, cookies] = *parsed_data;
 
-            result_callback(true, req_id, req_value, cookies, "Failed to process server response.");
+            result_callback(true, req_id, req_value, cookies, "");
         };
 
         // Add the HTTP request task for asynchronous processing

@@ -23,7 +23,7 @@ namespace optionx {
     };
 
     /// \brief Callback type for connection-related events.
-    using connection_callback_t = std::function<void(const ConnectionResult&)>;
+    using connection_callback_t = std::function<void(ConnectionResult)>;
 
 } // namespace optionx
 

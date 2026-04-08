@@ -12,14 +12,14 @@ namespace optionx::events {
     class TradeTransactionEvent : public utils::Event {
     public:
         std::shared_ptr<TradeRequest> request;  ///< Shared pointer to the trade request details.
-        std::shared_ptr<TradeResult> result;    ///< Shared pointer to the trade result details.
+        std::shared_ptr<TradeResult>  result;   ///< Shared pointer to the trade result details.
 
         /// \brief Constructs a TradeTransactionEvent with a trade request and API type.
         /// \param trade_request A unique pointer to the trade request that initializes the event.
         /// \param platform_type
         TradeTransactionEvent(std::unique_ptr<TradeRequest> &trade_request, PlatformType platform_type) {
             result = trade_request->create_trade_result_shared();
-            result->trade_id = utils::TradeIdGenerator::instance().generate_id();
+            result->trade_id = utils::make_trade_id();
             result->place_date = OPTIONX_TIMESTAMP_MS;
             result->platform_type = platform_type;
             request = std::shared_ptr<TradeRequest>(trade_request.release());

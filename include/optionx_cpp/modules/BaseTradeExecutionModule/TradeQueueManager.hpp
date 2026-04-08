@@ -162,7 +162,7 @@ namespace optionx::modules {
             request->currency = m_account_info.get_info<CurrencyType>(AccountInfoType::CURRENCY);
         }
         auto result = request->create_trade_result_unique();
-        result->trade_id = utils::TradeIdGenerator::instance().generate_id();
+        result->trade_id = utils::make_trade_id();
         result->place_date = OPTIONX_TIMESTAMP_MS;
         result->platform_type = platform_type;
         if (!preprocess(request, result)) return false;

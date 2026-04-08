@@ -21,7 +21,8 @@ namespace optionx::platforms::intrade_bar {
                 BaseTradingPlatform& platform,
                 RequestManager& request_manager,
                 std::shared_ptr<BaseAccountInfoData> account_info)
-                : BaseModule(platform.event_bus()), m_request_manager(request_manager),
+                : BaseModule(platform.event_bus()), 
+                  m_request_manager(request_manager),
                   m_account_info(std::move(account_info))  {
             subscribe<events::AuthDataEvent>();
             subscribe<events::ConnectRequestEvent>();
@@ -47,7 +48,7 @@ namespace optionx::platforms::intrade_bar {
         RequestManager&    m_request_manager; ///< Reference to the request manager.
         utils::TaskManager m_task_manager;    ///< Task manager for handling async tasks.
         std::shared_ptr<BaseAccountInfoData> m_account_info; ///< Shared pointer to account information.
-        std::unique_ptr<AuthData> m_new_auth_data;        ///< Temporary authentication data storage.
+        std::unique_ptr<AuthData> m_temp_auth_data;        ///< Temporary authentication data storage.
         std::shared_ptr<AuthData> m_auth_data; ///< Currently active authentication data.
 
         /// \brief Stores authentication credentials after a successful login.
@@ -172,15 +173,15 @@ namespace optionx::platforms::intrade_bar {
     }
 
     void AuthManager::handle_event(const events::AuthDataEvent& event) {
-        if (auto new_auth_data = std::dynamic_pointer_cast<AuthData>(event.auth_data)) {
+        if (auto auth_data = std::dynamic_pointer_cast<AuthData>(event.auth_data)) {
             LOGIT_TRACE0();
-            auto [success, message] = new_auth_data->validate();
+            auto [success, message] = auth_data->validate();
             if (success) {
-                m_new_auth_data = std::make_unique<AuthData>(*new_auth_data.get());
+                m_temp_auth_data = std::make_unique<AuthData>(*auth_data.get());
             } else {
-                m_new_auth_data.reset();
+                m_temp_auth_data.reset();
             }
-            new_auth_data->dispatch_callbacks(true, message);
+            auth_data->dispatch_callbacks(true, message);
         }
     }
 
@@ -192,11 +193,8 @@ namespace optionx::platforms::intrade_bar {
                 [this, callback](
                     std::shared_ptr<utils::Task> task) {
             LOGIT_TRACE0();
-
-            // Отменяем все запросы
             m_request_manager.cancel_requests();
 
-            LOGIT_TRACE0();
             if (task->is_shutdown()) {
                 LOGIT_TRACE0();
 
@@ -219,7 +217,6 @@ namespace optionx::platforms::intrade_bar {
                     [this, callback](
                         std::shared_ptr<utils::Task> task) {
                 LOGIT_TRACE0();
-                
                 using Status = events::AccountInfoUpdateEvent::Status;
                 if (task->is_shutdown()) {
                     LOGIT_TRACE0();
@@ -252,20 +249,19 @@ namespace optionx::platforms::intrade_bar {
                 m_request_manager.cancel_requests();
 
                 LOGIT_TRACE0();
-                if (!m_new_auth_data) {
+                if (!m_temp_auth_data) {
                     const std::string error_text("Authentication data is missing.");
                     handle_auth_failure(error_text, std::move(callback));
                     return;
                 }
 
-                m_auth_data = std::make_shared<AuthData>(*m_new_auth_data.get());
+                m_auth_data = std::make_shared<AuthData>(*m_temp_auth_data.get());
                 account_info->account_type = m_auth_data->account_type;
                 account_info->currency     = m_auth_data->currency;
                 notify(events::AccountInfoUpdateEvent(
                     account_info,
                     Status::CONNECTING));
 
-                using AuthMethod = AuthData::AuthMethod;
                 switch (m_auth_data->auth_method) {
                 case AuthMethod::NONE: {
                         const std::string error_text("Authentication method is not specified.");

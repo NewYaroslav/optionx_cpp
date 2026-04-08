@@ -13,6 +13,7 @@
 #include "pubsub/Event.hpp"
 #include "pubsub/EventListener.hpp"
 #include "pubsub/EventBus.hpp"
+#include "pubsub/EventAwaiter.hpp"
 #include "pubsub/EventMediator.hpp"
 
 #endif // _OPTIONX_UTILS_PUBSUB_HPP_INCLUDED

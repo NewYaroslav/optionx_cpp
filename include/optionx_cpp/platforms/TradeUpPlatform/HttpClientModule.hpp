@@ -5,8 +5,6 @@
 /// \file HttpClientModule.hpp
 /// \brief Defines the HTTP client module for the TradeUp platform.
 
-#include "optionx_cpp/modules/BaseHttpClientModule.hpp"
-
 namespace optionx::platforms::tradeup {
 
     enum class RateLimitType : uint32_t {
@@ -24,18 +22,11 @@ namespace optionx::platforms::tradeup {
             set_rate_limit_rpm(RateLimitType::GENERAL, 60);
             set_rate_limit_rps(RateLimitType::AUTH, 1);
             set_rate_limit_rps(RateLimitType::BALANCE, 1);
+            get_http_client().assign_rate_limit_id(get_rate_limit(RateLimitType::GENERAL));
             platform.register_module(this);
         }
-
-        void set_auth_token(std::string token) { m_token = std::move(token); }
-        const std::string& auth_token() const { return m_token; }
-
-        void set_session_cookie(std::string cookie) { m_cookie = std::move(cookie); }
-        const std::string& session_cookie() const { return m_cookie; }
-
-    private:
-        std::string m_token;
-        std::string m_cookie;
+        
+        virtual ~HttpClientModule() = default;
     };
 
 } // namespace optionx::platforms::tradeup

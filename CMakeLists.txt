@@ -14,6 +14,9 @@ option(BUILD_EXAMPLES "Build examples" OFF)
 option(BUILD_TESTS "Build tests" OFF)
 set(DEPS_BUILD_DIR "" CACHE PATH "Path to directory where dependencies were built")
 
+set(LOGIT_BASE_PATH "${CMAKE_SOURCE_DIR}" CACHE PATH "Base path for LOGIT logs")
+file(TO_CMAKE_PATH "${LOGIT_BASE_PATH}" LOGIT_BASE_PATH_FWD)
+
 if(BUILD_DEPS)
     add_subdirectory(libs)
 endif()
@@ -59,7 +62,7 @@ if(BUILD_TESTS)
         ntdll
         bcrypt
         AES
-		gtest
+        gtest
     )
 
     file(GLOB_RECURSE PROJECT_HEADERS
@@ -81,7 +84,11 @@ if(BUILD_TESTS)
         )
 
         target_link_directories(${test_name} PRIVATE ${PROJECT_LIBRARY_DIRS})
-        target_compile_definitions(${test_name} PRIVATE ${PROJECT_DEFINES})
+        target_compile_definitions(
+            ${test_name} PRIVATE 
+            ${PROJECT_DEFINES}
+            LOGIT_BASE_PATH="${LOGIT_BASE_PATH_FWD}"
+        )
         target_link_libraries(${test_name} PRIVATE ${PROJECT_LIBS})
 
         set_source_files_properties(${PROJECT_HEADERS} PROPERTIES HEADER_FILE_ONLY ON)

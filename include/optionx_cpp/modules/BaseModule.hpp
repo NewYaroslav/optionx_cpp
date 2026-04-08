@@ -20,9 +20,8 @@ namespace optionx::modules {
         explicit BaseModule(utils::EventBus& bus) : EventMediator(bus) {}
 
         /// \brief Virtual destructor.
-        ///
         /// Ensures proper cleanup of resources in derived classes.
-        virtual ~BaseModule() = default;
+        ~BaseModule() noexcept override = default;
 
         /// \brief Handles an event notification received as a raw pointer.
         /// \param event The event received, passed as a raw pointer.

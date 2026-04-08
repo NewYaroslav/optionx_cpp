@@ -1,5 +1,5 @@
 #define SQLITE_THREADSAFE 1
-#define LOGIT_BASE_PATH "E:\\_repoz\\optionx_cpp"
+//#define LOGIT_BASE_PATH "E:\\_repoz\\optionx_cpp"
 #define OPTIONX_LOG_UNIQUE_FILE_INDEX 2
 
 #ifndef OPTIONX_TIMESTAMP_MS
