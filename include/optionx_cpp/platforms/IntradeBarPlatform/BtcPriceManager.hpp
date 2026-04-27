@@ -79,6 +79,10 @@ namespace optionx::platforms::intrade_bar {
         /// \brief Shuts down the WebSocket connection and related operations.
         void shutdown() override;
 
+        void set_max_send_queue_size(size_t max) {
+            m_websocket_client.set_max_send_queue_size(max);
+        }
+
     private:
         kurlyk::WebSocketClient m_websocket_client; ///< WebSocket client for BTCUSDT.
         std::vector<TickData>   m_tick_data;        ///< Container for tick data.

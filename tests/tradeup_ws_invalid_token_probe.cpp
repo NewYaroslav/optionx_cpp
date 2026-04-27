@@ -55,6 +55,14 @@ static std::string make_invalid_token() {
     return "9c899e0f-c8e8-4204-9f3d-ac56910f64f49";
 }
 
+static void log_ws_submit_result(
+        const char* operation,
+        const kurlyk::SubmitResult& result) {
+    if (!result) {
+        LOGIT_PRINT_ERROR(operation, " rejected: ", result.error_code.message());
+    }
+}
+
 // ---------------- main ----------------
 
 int main(int argc, char** argv) {
@@ -103,9 +111,9 @@ int main(int argc, char** argv) {
 
                     // Отправляем НЕВАЛИДНЫЙ токен
                     std::string auth = std::string("{\"x-api-token\":\"") + token + "\"}";
-                    e->sender->send_message(auth, 0, [](const std::error_code& ec){
+                    log_ws_submit_result("[REAL] send auth", e->sender->submit_message(auth, 0, [](const std::error_code& ec){
                         LOGIT_ERROR_IF(ec, "[REAL] send auth: ", ec);
-                    });
+                    }));
 
                     // Пинг каждые 30s
                     const auto epoch = ++real_ping_epoch;
@@ -114,9 +122,9 @@ int main(int argc, char** argv) {
                         if (epoch != real_ping_epoch) return;
                         if (!real_connected.load()) return;
                         static constexpr const char* kPing = R"({"id":"","param":"","operation":"PING"})";
-                        real_ws.send_message(kPing, 0, [](const std::error_code& ec){
+                        log_ws_submit_result("[REAL] ping", real_ws.submit_message(kPing, 0, [](const std::error_code& ec){
                             LOGIT_ERROR_IF(ec, "[REAL] ping: ", ec);
-                        });
+                        }));
                     });
                     break;
                 }
@@ -147,9 +155,9 @@ int main(int argc, char** argv) {
 
                     // Отправляем НЕВАЛИДНЫЙ токен
                     std::string auth = std::string("{\"x-api-token\":\"") + token + "\"}";
-                    e->sender->send_message(auth, 0, [](const std::error_code& ec){
+                    log_ws_submit_result("[DEMO] send auth", e->sender->submit_message(auth, 0, [](const std::error_code& ec){
                         LOGIT_ERROR_IF(ec, "[DEMO] send auth: ", ec);
-                    });
+                    }));
 
                     // Пинг каждые 40s
                     const auto epoch = ++demo_ping_epoch;
@@ -158,9 +166,9 @@ int main(int argc, char** argv) {
                         if (epoch != demo_ping_epoch) return;
                         if (!demo_connected.load()) return;
                         static constexpr const char* kPing = R"({"id":"","param":"","operation":"PING"})";
-                        demo_ws.send_message(kPing, 0, [](const std::error_code& ec){
+                        log_ws_submit_result("[DEMO] ping", demo_ws.submit_message(kPing, 0, [](const std::error_code& ec){
                             LOGIT_ERROR_IF(ec, "[DEMO] ping: ", ec);
-                        });
+                        }));
                     });
                     break;
                 }

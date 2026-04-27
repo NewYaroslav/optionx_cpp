@@ -25,7 +25,6 @@ namespace optionx::modules {
 
         /// \brief Default virtual destructor.
         virtual ~BaseHttpClientModule() noexcept override {
-            deinitialize_rate_limits();
             m_client.cancel_requests();
             m_http_tasks.clear();
         }
@@ -40,11 +39,16 @@ namespace optionx::modules {
         }
 
         void shutdown() override final {
+            deinitialize_rate_limits();
             m_client.cancel_requests();
         }
 
         kurlyk::HttpClient& get_http_client() {
             return m_client;
+        }
+
+        void set_max_pending_requests(size_t max) {
+            kurlyk::set_max_pending_requests(max);
         }
 
         /// \brief Gets the rate limit for the specified type.
@@ -124,9 +128,11 @@ namespace optionx::modules {
                         try {
                             auto response = std::make_unique<kurlyk::HttpResponse>();
                             response->ready = true;
+                            response->error_code = kurlyk::ClientError::AbortedDuringDestruction;
+                            response->error_message = ex.what();
                             if (it->callback) it->callback(std::move(response));
                         } catch(...) {
-                            LOGIT_ERROR("Unknown error");
+                            LOGIT_ERROR("Unknown error processing HTTP response");
                         }
                     }
 

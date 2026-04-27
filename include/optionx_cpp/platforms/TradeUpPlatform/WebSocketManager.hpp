@@ -30,9 +30,16 @@ namespace optionx::platforms::tradeup {
 
                         // Send token
                         const std::string msg = std::string("{\"x-api-token\":\"") + m_token + "\"}";
-                        e->sender->send_message(msg, 0, [](const std::error_code& ec){
+                        const auto submit_result = e->sender->submit_message(msg, 0, [](const std::error_code& ec){
                             LOGIT_ERROR_IF(ec, ec);
                         });
+                        if (!submit_result) {
+                            LOGIT_PRINT_ERROR("REAL auth message rejected: ", submit_result.error_code.message());
+                            m_is_real_connected = false;
+                            m_real_balance_ready = false;
+                            fail_open_if_needed("REAL auth message rejected: " + submit_result.error_code.message());
+                            break;
+                        }
 
                         // Start/refresh ping for REAL
                         const auto epoch = ++m_real_ping_epoch;
@@ -44,9 +51,9 @@ namespace optionx::platforms::tradeup {
                                 if (epoch != m_real_ping_epoch) return;
                                 if (!m_is_real_connected) return;
                                 static constexpr const char* kPing = R"({"id":"","param":"","operation":"PING"})";
-                                m_real_ws.send_message(kPing, 0, [](const std::error_code& ec){
+                                log_ws_submit_result("REAL ping message", m_real_ws.submit_message(kPing, 0, [](const std::error_code& ec){
                                     LOGIT_ERROR_IF(ec, ec);
-                                });
+                                }));
                             }
                         );
                         break;
@@ -91,9 +98,16 @@ namespace optionx::platforms::tradeup {
 
                         // Send token
                         const std::string msg = std::string("{\"x-api-token\":\"") + m_token + "\"}";
-                        e->sender->send_message(msg, 0, [](const std::error_code& ec){
+                        const auto submit_result = e->sender->submit_message(msg, 0, [](const std::error_code& ec){
                             LOGIT_ERROR_IF(ec, ec);
                         });
+                        if (!submit_result) {
+                            LOGIT_PRINT_ERROR("DEMO auth message rejected: ", submit_result.error_code.message());
+                            m_is_demo_connected = false;
+                            m_demo_balance_ready = false;
+                            fail_open_if_needed("DEMO auth message rejected: " + submit_result.error_code.message());
+                            break;
+                        }
 
                         // Start/refresh ping for DEMO
                         const auto epoch = ++m_demo_ping_epoch;
@@ -105,9 +119,9 @@ namespace optionx::platforms::tradeup {
                                 if (epoch != m_demo_ping_epoch) return;
                                 if (!m_is_demo_connected) return;
                                 static constexpr const char* kPing = R"({"id":"","param":"","operation":"PING"})";
-                                m_demo_ws.send_message(kPing, 0, [](const std::error_code& ec){
+                                log_ws_submit_result("DEMO ping message", m_demo_ws.submit_message(kPing, 0, [](const std::error_code& ec){
                                     LOGIT_ERROR_IF(ec, ec);
-                                });
+                                }));
                             }
                         );
                         break;
@@ -185,6 +199,11 @@ namespace optionx::platforms::tradeup {
             m_close_cid.clear();
         }
 
+        void set_max_send_queue_size(size_t max) {
+            m_real_ws.set_max_send_queue_size(max);
+            m_demo_ws.set_max_send_queue_size(max);
+        }
+
     private:
         // Sockets
         kurlyk::WebSocketClient m_real_ws;
@@ -219,6 +238,14 @@ namespace optionx::platforms::tradeup {
         // Pending CIDs
         std::vector<utils::CorrelationId> m_open_cid;
         std::vector<utils::CorrelationId> m_close_cid;
+
+        static void log_ws_submit_result(
+                const char* operation,
+                const kurlyk::SubmitResult& result) {
+            if (!result) {
+                LOGIT_PRINT_ERROR(operation, " rejected: ", result.error_code.message());
+            }
+        }
 
         // ---- Handlers ----
         void handle_real_message(const std::string& msg) {
@@ -326,9 +353,9 @@ namespace optionx::platforms::tradeup {
 							if (task->is_shutdown()) return;
 							if (!m_is_real_connected) return;
 							static constexpr const std::string ping_str("{\"id\":\"\",\"param\":\"\",\"operation\":\"PING\"}");
-							m_real_ws.send_message(ping_str, 0, [](const std::error_code& ec){
+							log_ws_submit_result("REAL scheduled ping message", m_real_ws.submit_message(ping_str, 0, [](const std::error_code& ec){
 								LOGIT_ERROR_IF(ec, ec);
-							});
+							}));
 						}
 					);
 					m_demo_tm.add_periodic_task(
@@ -338,9 +365,9 @@ namespace optionx::platforms::tradeup {
 							if (task->is_shutdown()) return;
 							if (!m_is_demo_connected) return;
 							static constexpr const std::string ping_str("{\"id\":\"\",\"param\":\"\",\"operation\":\"PING\"}");
-							m_demo_ws.send_message(ping_str, 0, [](const std::error_code& ec){
+							log_ws_submit_result("DEMO scheduled ping message", m_demo_ws.submit_message(ping_str, 0, [](const std::error_code& ec){
 								LOGIT_ERROR_IF(ec, ec);
-							});
+							}));
 						}
 					);
                 }

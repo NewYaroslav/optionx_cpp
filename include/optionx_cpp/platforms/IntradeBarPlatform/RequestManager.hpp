@@ -601,7 +601,26 @@ namespace optionx::platforms::intrade_bar {
             auto future = client.get("/", {}, {});
 
             auto callback = [this, state, i](kurlyk::HttpResponsePtr response) {
-                if (!response->ready) return;
+                if (!response || !response->ready) {
+                    LOGIT_ERROR("Domain check: response not ready or null.");
+                    int finished = ++state->completed_requests;
+                    if (finished == state->total_requests) {
+                        bool success = !state->successful_indices.empty();
+                        std::string selected_host;
+                        if (success) {
+                            int min_index = *std::min_element(
+                                state->successful_indices.begin(), state->successful_indices.end());
+                            selected_host = (min_index == 0)
+                                ? "https://intrade.bar"
+                                : "https://intrade" + std::to_string(min_index) + ".bar";
+                            get_http_client().set_host(selected_host);
+                            get_http_client().set_origin(selected_host);
+                        }
+                        LOGIT_PRINT_INFO("Auto-selected domain:", selected_host, "; success:", success);
+                        state->on_complete(success, selected_host);
+                    }
+                    return;
+                }
 
                 if (response->status_code == 200) {
                     state->successful_indices.push_back(i);
@@ -655,7 +674,11 @@ namespace optionx::platforms::intrade_bar {
 
         auto future = client.get("/", {}, {});
         auto cb = [check_callback = std::move(check_callback)](kurlyk::HttpResponsePtr response) {
-            if (!response->ready) return;
+            if (!response || !response->ready) {
+                LOGIT_ERROR("Host availability check: response not ready or null.");
+                check_callback(false);
+                return;
+            }
             bool success = response->status_code == 200;
             LOGIT_PRINT_DEBUG("Current host ping check:",
                 " success:", success,

@@ -11,7 +11,7 @@
 #include <chrono>
 #include <memory>
 #include <time_shield.hpp>
-#include <logit_cpp/LogIt.hpp>
+#include <logit_cpp/logit.hpp>
 
 namespace optionx::utils {
 

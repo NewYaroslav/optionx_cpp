@@ -22,7 +22,7 @@
 #endif
 
 #include <kurlyk.hpp>
-#include <logit_cpp/LogIt.hpp>
+#include <logit_cpp/logit.hpp>
 
 namespace optionx::utils {
 
@@ -52,6 +52,34 @@ namespace optionx::utils {
 
         return modified_url;
     }
+
+    /// \brief Builds a user-facing error string from an HTTP response.
+    /// \param response The HTTP response object.
+    /// \param fallback Fallback text used when the response has no detailed error.
+    /// \return Detailed error text suitable for callbacks and logs.
+    std::string describe_response_error(
+            const kurlyk::HttpResponsePtr& response,
+            const std::string& fallback = "HTTP request failed.") {
+        if (!response) {
+            return "No response received from the server.";
+        }
+        if (response->error_code) {
+            const std::string details = !response->error_message.empty()
+                ? response->error_message
+                : response->error_code.message();
+            return fallback + " Error: " + details;
+        }
+        if (!response->ready) {
+            return fallback + " Response is not ready.";
+        }
+        if (response->status_code != 200) {
+            if (fallback.find("status code") != std::string::npos) {
+                return fallback + std::to_string(response->status_code) + ".";
+            }
+            return fallback + " Unexpected status code: " + std::to_string(response->status_code) + ".";
+        }
+        return fallback;
+    }
     
     /// \brief Validates the HTTP response for an unexpected status code.
     /// \details Logs an error if the response is null or the status code is not 200.
@@ -62,21 +90,21 @@ namespace optionx::utils {
             const kurlyk::HttpResponsePtr& response,
             const std::string& log_message) {
         if (!response || response->status_code != 200) {
+            const std::string error_text = describe_response_error(response, log_message);
 #           ifdef OPTIONX_LOG_UNIQUE_FILE_INDEX
             const int log_index = OPTIONX_LOG_UNIQUE_FILE_INDEX;
             LOGIT_STREAM_ERROR_TO(log_index) << (response ? response->content : "Empty response");
             LOGIT_PRINT_ERROR(
-                log_message,
-                (response ? response->status_code : -1),
+                error_text,
                 "; Content log was written to file: ",
                 LOGIT_GET_LAST_FILE_NAME(log_index)
             );
 #           else
-            LOGIT_STREAM_INFO() << response->error_code;
-            LOGIT_PRINT_ERROR(
-                log_message,
-                (response ? response->status_code : -1)
-            );
+            if (response && response->error_code) {
+                LOGIT_PRINT_ERROR(error_text, "; error_code: ", response->error_code);
+            } else {
+                LOGIT_PRINT_ERROR(error_text);
+            }
 #           endif
             return false;
         }
@@ -88,7 +116,7 @@ namespace optionx::utils {
     /// \param response The HTTP response object.
     /// \return True if the response status code is 200; otherwise, false.
     bool validate_status(const kurlyk::HttpResponsePtr& response) {
-        return validate_status(response, "Unexpected status code: ");
+        return validate_status(response, "HTTP request failed.");
     }
     
     /// \brief Checks if the HTTP response content indicates DDoS protection.
@@ -128,7 +156,7 @@ namespace optionx::utils {
             return false;
         }
         if (!validate_status(response)) {
-            callback("Invalid status code received from the server.");
+            callback(describe_response_error(response, "Invalid HTTP response."));
             return false;
         }
         if (!validate_ddos_protection(response)) {

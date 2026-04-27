@@ -22,7 +22,11 @@ namespace optionx::platforms::intrade_bar {
             return false;
         }
         if (!::optionx::utils::validate_status(response)) {
-            callback({false, "Unexpected status code: " + std::to_string((response ? response->status_code : -1)) + ".", auth_data->clone_unique()});
+            callback({
+                false,
+                ::optionx::utils::describe_response_error(response, "Invalid HTTP response."),
+                auth_data->clone_unique()
+            });
             return false;
         }
         if (!::optionx::utils::validate_ddos_protection(response)) {
