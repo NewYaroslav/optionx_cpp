@@ -54,22 +54,17 @@ The project uses **CMake** (≥3.18).
 - Many headers include Doxygen comments.  Documentation can be generated with
   `doxygen` if a configuration file is available.
 
+## Agent Instructions
+
+- Follow the coding-agent workflow in `agents/coding-agent-workflow.md`.
+  It defines four core principles: think before code, simplicity first,
+  surgical edits, and goal-driven execution.
+- Follow commit message rules in `agents/commit-conventions.md` when creating
+  commits.
+
 ## Code Style
 
 - Use `///` Doxygen comments with `\file`, `\class`, `\brief` and related
   tags for public headers.
 - Prefer C++17 features and keep modules header‑only when possible.
-- Follow the [Conventional Commits](https://www.conventionalcommits.org/)
-  style for commit messages:
-
-  | Type | Description |
-  |------|-------------|
-  | `feat:` | new features |
-  | `fix:` | bug fixes |
-  | `docs:` | documentation changes |
-  | `refactor:` | refactoring without behaviour changes |
-  | `test:` | adding or modifying tests |
-
-  Format: `type(scope): short description` where the scope is optional and the
-  message is written in the imperative mood.
 
