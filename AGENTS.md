@@ -1,70 +1,40 @@
 # AGENTS.md
 
-## Overview
+Этот файл намеренно короткий. Это индекс для AI coding agents, которые
+работают в `optionx_cpp`; открывай только те документы, которые нужны для
+текущей задачи.
 
-**optionx_cpp** is a modular C++ library for connecting trading systems and
-broker APIs.  It provides building blocks for automated trading strategies and
-bridges between MetaTrader, binary options platforms and other services.  The
-library is organised as a set of header-only modules that communicate through an
-internal publish–subscribe bus and share utility helpers for cryptography,
-networking and task scheduling.
+## Read First
 
-## Features
+- [Coding agent workflow](agents/coding-agent-workflow.md) - базовый процесс для
+  задач с изменением файлов.
+- [Project overview](agents/project-overview.md) - назначение библиотеки,
+  публичная поверхность, основные домены и поток выполнения.
+- [Platform API guide](agents/platform-api-guide.md) - практический справочник
+  по платформам, модулям, событиям, DTO, storage и bridge API.
+- [Codebase orientation](agents/codebase-orientation.md) - карта проекта,
+  DDD-слои, зависимости, расширение и безопасные точки входа.
+- [Build and test](agents/build-and-test.md) - CMake options, зависимости,
+  локальные проверки, примеры и generated output.
+- [Implementation notes](agents/implementation-notes.md) - lifecycle, pub-sub,
+  task scheduling, HTTP/WebSocket, trade queue, session DB и ограничения.
+- [Coding style](agents/coding-style.md) - naming, namespace, Doxygen,
+  обработка ошибок, ownership и header-only правила.
+- [Commit conventions](agents/commit-conventions.md) - формат коммитов, если
+  пользователь просит создать commit.
 
-- Publish–subscribe event system (`utils/pubsub.hpp`) for decoupled modules.
-- Base modules for trade execution, HTTP clients and account information
-  handling (`modules/Base*`).
-- Task scheduling utilities (`utils/tasks`) with support for delayed and
-  periodic jobs.
-- AES‑encrypted session storage built on top of mdbx
-  (`storages/ServiceSessionDB.hpp`).
-- Common trading data structures for accounts, symbols, tick/bars and
-  trade requests/results (`data/`).
-- Bridge interface for integrating external platforms (`bridges/BaseBridge.hpp`).
-- Helper utilities for cryptography, fixed‑point math, strings, paths and time
-  operations (`utils/`).
+## Critical Defaults
 
-## Directory Layout
-
-| Directory | Purpose |
-|-----------|---------|
-| `include/optionx_cpp` | Library headers organised by module. |
-| `libs/` | Third‑party dependencies and CMake scripts to install them. |
-| `examples/` | Sample programs illustrating usage. |
-| `tests/` | GoogleTest‑based tests. |
-
-## Installation & Build
-
-The project uses **CMake** (≥3.18).
-
-- **Build dependencies** (OpenSSL, curl, gtest, etc.) using the scripts in
-  `libs/` or pass an existing build through `DEPS_BUILD_DIR`.
-- Configure and build the library and tests:
-  ```bash
-  cmake -S . -B build -DBUILD_DEPS=ON -DBUILD_TESTS=ON
-  cmake --build build
-  ctest --test-dir build
-  ```
-- Examples can be enabled with `-DBUILD_EXAMPLES=ON` and built with
-  `cmake --build build --target <example_name>`.
-
-## Testing & Documentation
-
-- Run `ctest --test-dir build` after building to execute the test suite.
-- Many headers include Doxygen comments.  Documentation can be generated with
-  `doxygen` if a configuration file is available.
-
-## Agent Instructions
-
-- Follow the coding-agent workflow in `agents/coding-agent-workflow.md`.
-  It defines four core principles: think before code, simplicity first,
-  surgical edits, and goal-driven execution.
-- Follow commit message rules in `agents/commit-conventions.md` when creating
-  commits.
-
-## Code Style
-
-- Use `///` Doxygen comments with `\file`, `\class`, `\brief` and related
-  tags for public headers.
-- Prefer C++17 features and keep modules header‑only when possible.
-
+- Перед правками проверь `git status --short` и не перетирай чужие изменения.
+- Для поиска по репозиторию используй `rg` / `rg --files`.
+- Держи библиотеку header-only, если задача явно не требует нового `.cpp`.
+- Проект ориентирован на C++17 и CMake `>= 3.18`.
+- Переиспользуй `utils::EventBus`, `utils::EventMediator`, `utils::TaskManager`
+  и `Base*Module` вместо локальных аналогов pub-sub, loop и task queue.
+- Не меняй account/trade/session state напрямую, если для этого уже есть event,
+  manager или provider.
+- В async/HTTP/WebSocket коде сохраняй lifecycle: `run()` -> periodic
+  `process()` -> `shutdown()`/drain/cancel.
+- Для публичных headers сохраняй Doxygen `///` с `\file`, `\class`, `\brief`.
+- Для code changes запускай самые узкие релевантные tests/examples; для
+  documentation-only изменений достаточно Markdown/link smoke-check.
