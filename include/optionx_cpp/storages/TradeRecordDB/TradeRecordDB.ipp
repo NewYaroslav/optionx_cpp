@@ -344,7 +344,7 @@ namespace optionx::storage {
             m_uid_index.reset();
             m_meta.reset();
             if (m_connection && m_connection->is_connected()) {
-                m_connection->disconnect();
+                m_connection->shutdown();
             }
             m_connection.reset();
         } catch (const mdbxc::MdbxException& ex) {
