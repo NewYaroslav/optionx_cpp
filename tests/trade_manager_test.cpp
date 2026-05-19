@@ -731,6 +731,89 @@ TEST_F(TradeManagerTestFixture, ShutdownTest) {
     LOGIT_WAIT();
 }
 
+TEST_F(TradeManagerTestFixture, TradeResultFactoriesCopyTradeId) {
+    TradeRequest request;
+    request.trade_id = 1234;
+
+    auto unique_result = request.create_trade_result_unique();
+    auto shared_result = request.create_trade_result_shared();
+
+    ASSERT_NE(unique_result, nullptr);
+    ASSERT_NE(shared_result, nullptr);
+    EXPECT_EQ(unique_result->trade_id, request.trade_id);
+    EXPECT_EQ(shared_result->trade_id, request.trade_id);
+}
+
+TEST_F(TradeManagerTestFixture, TradeTransactionEventPreservesRequestTradeId) {
+    auto request = std::make_unique<TradeRequest>();
+    request->trade_id = 555;
+
+    events::TradeTransactionEvent event(request, PlatformType::SIMULATOR);
+
+    ASSERT_NE(event.request, nullptr);
+    ASSERT_NE(event.result, nullptr);
+    EXPECT_EQ(event.request->trade_id, 555u);
+    EXPECT_EQ(event.result->trade_id, 555u);
+}
+
+TEST_F(TradeManagerTestFixture, TradeIdProviderInitializesEmptyRequestId) {
+    utils::EventBus bus;
+    auto account_info = std::make_shared<AccountInfoData>();
+    account_info->currency = CurrencyType::USD;
+    account_info->account_type = AccountType::DEMO;
+    account_info->connect = true;
+
+    TradeManagerTest trade_manager(bus, account_info);
+    trade_manager.on_trade_id() = [] { return std::uint64_t{777}; };
+
+    std::uint64_t callback_request_id = 0;
+    std::uint64_t callback_result_id = 0;
+    auto trade_request = std::make_unique<TradeRequest>();
+    trade_request->symbol = "EURUSD";
+    trade_request->amount = 100.0;
+    trade_request->option_type = OptionType::SPRINT;
+    trade_request->order_type = OrderType::BUY;
+    trade_request->duration = 10;
+    trade_request->add_callback([&](std::unique_ptr<TradeRequest> req, std::unique_ptr<TradeResult> res) {
+        callback_request_id = req->trade_id;
+        callback_result_id = res->trade_id;
+    });
+
+    ASSERT_TRUE(trade_manager.place_trade(std::move(trade_request)));
+    trade_manager.shutdown();
+
+    EXPECT_EQ(callback_request_id, 777u);
+    EXPECT_EQ(callback_result_id, 777u);
+}
+
+TEST_F(TradeManagerTestFixture, TradeIdFallbackInitializesEmptyRequestId) {
+    utils::EventBus bus;
+    auto account_info = std::make_shared<AccountInfoData>();
+    account_info->currency = CurrencyType::USD;
+    account_info->account_type = AccountType::DEMO;
+    account_info->connect = true;
+
+    TradeManagerTest trade_manager(bus, account_info);
+
+    std::uint64_t callback_request_id = 0;
+    std::uint64_t callback_result_id = 0;
+    auto trade_request = std::make_unique<TradeRequest>();
+    trade_request->symbol = "EURUSD";
+    trade_request->amount = 100.0;
+    trade_request->option_type = OptionType::SPRINT;
+    trade_request->order_type = OrderType::BUY;
+    trade_request->duration = 10;
+    trade_request->add_callback([&](std::unique_ptr<TradeRequest> req, std::unique_ptr<TradeResult> res) {
+        callback_request_id = req->trade_id;
+        callback_result_id = res->trade_id;
+    });
+
+    ASSERT_TRUE(trade_manager.place_trade(std::move(trade_request)));
+    trade_manager.shutdown();
+
+    EXPECT_GT(callback_request_id, 0u);
+    EXPECT_EQ(callback_result_id, callback_request_id);
+}
 
 /// \brief Main entry point for GoogleTest.
 int main(int argc, char **argv) {

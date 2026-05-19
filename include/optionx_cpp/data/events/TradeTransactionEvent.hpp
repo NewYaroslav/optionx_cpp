@@ -18,8 +18,10 @@ namespace optionx::events {
         /// \param trade_request A unique pointer to the trade request that initializes the event.
         /// \param platform_type
         TradeTransactionEvent(std::unique_ptr<TradeRequest> &trade_request, PlatformType platform_type) {
+            if (trade_request && trade_request->trade_id == 0) {
+                trade_request->trade_id = utils::make_trade_id();
+            }
             result = trade_request->create_trade_result_shared();
-            result->trade_id = utils::make_trade_id();
             result->place_date = OPTIONX_TIMESTAMP_MS;
             result->platform_type = platform_type;
             request = std::shared_ptr<TradeRequest>(trade_request.release());

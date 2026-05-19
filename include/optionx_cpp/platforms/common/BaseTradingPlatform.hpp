@@ -12,6 +12,7 @@ namespace optionx::platforms {
     class BaseTradingPlatform {
     public:
         using trade_result_callback_t = std::function<void(std::unique_ptr<TradeRequest>, std::unique_ptr<TradeResult>)>;
+        using trade_id_provider_t = std::function<std::uint64_t()>;
         using bars_callback_t  = std::function<void(const std::vector<BarData>&)>;
         using ticks_callback_t = std::function<void(const std::vector<TickData>&)>;
 
@@ -31,6 +32,13 @@ namespace optionx::platforms {
         virtual trade_result_callback_t& on_trade_result() {
             static trade_result_callback_t null_callback;
             return null_callback;
+        }
+
+        /// \brief Returns provider used by concrete platforms to initialize TradeRequest::trade_id.
+        /// \return Mutable provider callback, or a null provider for base platforms.
+        virtual trade_id_provider_t& on_trade_id() {
+            static trade_id_provider_t null_provider;
+            return null_provider;
         }
 
         /// \brief Returns a reference to the account info callback.

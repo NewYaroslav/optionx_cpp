@@ -16,7 +16,7 @@ namespace optionx {
     class TradeResult {
     public:
         // Unique identifier for the trade
-        uint64_t trade_id = 0;      ///< Unique ID assigned to each trade (Internal trade ID)
+        uint64_t trade_id = 0;      ///< Persistent trade ID copied from TradeRequest and used by TradeRecordDB.
 
         // Trade execution metadata
         TradeErrorCode error_code = TradeErrorCode::SUCCESS;   ///< Error code for the trade result
@@ -68,6 +68,7 @@ namespace optionx {
         // JSON serialization/deserialization
         NLOHMANN_DEFINE_TYPE_INTRUSIVE(
             TradeResult,
+            trade_id,
             error_code,
             error_desc,
             option_hash,

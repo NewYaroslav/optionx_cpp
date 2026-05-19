@@ -63,6 +63,18 @@ namespace optionx::platforms {
             return m_trade_execution.place_trade(std::move(trade_request));
         }
 
+        /// \brief Returns the platform-level trade result callback.
+        /// \return Mutable callback reference from the trade execution module.
+        trade_result_callback_t& on_trade_result() override {
+            return m_trade_execution.on_trade_result();
+        }
+
+        /// \brief Returns provider used to reserve persistent trade IDs before broker execution.
+        /// \return Mutable provider callback from the trade execution module.
+        trade_id_provider_t& on_trade_id() override {
+            return m_trade_execution.on_trade_id();
+        }
+
         /// \brief Returns the platform type.
         /// \return Platform type identifier (`PlatformType::INTRADE_BAR`).
         PlatformType platform_type() const override {

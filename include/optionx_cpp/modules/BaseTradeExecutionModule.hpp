@@ -29,6 +29,7 @@ namespace optionx::modules {
     class BaseTradeExecutionModule : public BaseModule {
     public:
         using trade_result_callback_t = std::function<void(std::unique_ptr<TradeRequest>, std::unique_ptr<TradeResult>)>;
+        using trade_id_provider_t = std::function<std::uint64_t()>;
 
         /// \brief Constructs a `BaseTradeExecutionModule` instance.
         /// \param bus Reference to the `EventBus` for subscribing to and emitting events.
@@ -54,8 +55,16 @@ namespace optionx::modules {
             m_trade_queue.set_trade_result_callback(callback);
         }
 
+        /// \brief Returns the trade result callback slot.
+        /// \return Mutable callback reference invoked for trade state updates.
         trade_result_callback_t& on_trade_result() {
             return m_trade_queue.on_trade_result();
+        }
+
+        /// \brief Returns provider used to reserve persistent trade IDs before execution.
+        /// \return Mutable provider callback. Leave empty to use the process-local fallback generator.
+        trade_id_provider_t& on_trade_id() {
+            return m_trade_queue.on_trade_id();
         }
 
         /// \brief Validates and places a trade request into the pending queue.
