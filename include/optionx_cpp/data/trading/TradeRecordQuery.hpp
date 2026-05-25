@@ -81,6 +81,7 @@ namespace optionx {
 
         bool fix_stale_status = true;        ///< Apply stale-status correction to results.
         std::int64_t wait_status_sec = 30;   ///< Staleness threshold in seconds.
+        std::int64_t coarse_expansion_ms = 86400000; ///< Scan expansion for non-AUTO time_field (default 24h).
     };
 
 } // namespace optionx

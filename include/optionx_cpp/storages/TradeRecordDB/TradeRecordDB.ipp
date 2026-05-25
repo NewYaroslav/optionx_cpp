@@ -10,6 +10,8 @@
 #include <limits>
 #include <utility>
 
+#include <time_shield.hpp>
+
 #include "optionx_cpp/utils.hpp"
 
 namespace optionx::storage {
@@ -796,13 +798,15 @@ namespace optionx::storage {
             coarse_start_ms = 0;
             coarse_stop_ms = std::numeric_limits<std::int64_t>::max();
         } else if (query.time_field != optionx::TradeRecordTimeField::AUTO &&
-                   query.time_field != optionx::TradeRecordTimeField::OPEN_DATE) {
-            // Composite key is built from selected_timestamp_ms (open_date fallback).
-            // When the user queries by a different field, the index may be imprecise.
-            // Scan from 0 up to stop_ms as a coarse heuristic.
-            coarse_start_ms = 0;
-            if (query.stop_ms > 0) {
-                coarse_stop_ms = query.stop_ms;
+                   query.time_field != optionx::TradeRecordTimeField::PLACE_DATE) {
+            // Composite key is built from selected_timestamp_ms (place_date first).
+            // When the user queries by a different field, the record's composite key
+            // bucket may differ from the queried timestamp. Expand scan by
+            // coarse_expansion_ms on both sides to avoid missing records.
+            const auto exp = query.coarse_expansion_ms;
+            coarse_start_ms = (query.start_ms > exp) ? (query.start_ms - exp) : 0LL;
+            if (query.stop_ms < std::numeric_limits<std::int64_t>::max() - exp) {
+                coarse_stop_ms = query.stop_ms + exp;
             } else {
                 coarse_stop_ms = std::numeric_limits<std::int64_t>::max();
             }
@@ -873,8 +877,8 @@ namespace optionx::storage {
 
         // Convert day_start_ms to local time, snap to local midnight, then back to UTC.
         const auto local_ms = day_start_ms + time_zone_sec * 1000;
-        const auto day_start_local = local_ms - (local_ms % 86400000);
-        const auto day_end_local = day_start_local + 86400000;
+        const auto day_start_local = time_shield::start_of_day_ms(local_ms);
+        const auto day_end_local = day_start_local + time_shield::MS_PER_DAY;
         query.start_ms = day_start_local - time_zone_sec * 1000;
         query.stop_ms = day_end_local - time_zone_sec * 1000;
 

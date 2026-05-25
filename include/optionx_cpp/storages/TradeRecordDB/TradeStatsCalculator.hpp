@@ -180,11 +180,11 @@ namespace optionx::storage {
                     // Daily / hourly profit buckets
                     if (curve_ts > 0) {
                         const auto local_ms = curve_ts + config.time_zone_sec * 1000;
-                        const auto day_start_local = local_ms - (local_ms % 86400000);
+                        const auto day_start_local = time_shield::start_of_day_ms(local_ms);
                         const auto day_utc = day_start_local - config.time_zone_sec * 1000;
                         daily_profit_map[day_utc] += profit;
 
-                        const auto hour_start_local = local_ms - (local_ms % 3600000);
+                        const auto hour_start_local = time_shield::start_of_hour_ms(local_ms);
                         const auto hour_utc = hour_start_local - config.time_zone_sec * 1000;
                         hourly_profit_map[hour_utc] += profit;
                     }
