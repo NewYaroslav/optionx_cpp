@@ -93,10 +93,10 @@ namespace optionx::storage {
             return upsert_no_lock(std::move(record));
         } catch (const mdbxc::MdbxException& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB upsert database error: ", ex);
-            return trade_record_db_detail::write_error(TradeRecordDBStatus::DB_ERROR, std::move(record), ex.what());
+            return detail::write_error(TradeRecordDBStatus::DB_ERROR, std::move(record), ex.what());
         } catch (const std::exception& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB upsert error: ", ex);
-            return trade_record_db_detail::write_error(TradeRecordDBStatus::DB_ERROR, std::move(record), ex.what());
+            return detail::write_error(TradeRecordDBStatus::DB_ERROR, std::move(record), ex.what());
         }
     }
 
@@ -106,10 +106,10 @@ namespace optionx::storage {
             return write_no_lock(std::move(record));
         } catch (const mdbxc::MdbxException& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB write database error: ", ex);
-            return trade_record_db_detail::write_error(TradeRecordDBStatus::DB_ERROR, std::move(record), ex.what());
+            return detail::write_error(TradeRecordDBStatus::DB_ERROR, std::move(record), ex.what());
         } catch (const std::exception& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB write error: ", ex);
-            return trade_record_db_detail::write_error(TradeRecordDBStatus::DB_ERROR, std::move(record), ex.what());
+            return detail::write_error(TradeRecordDBStatus::DB_ERROR, std::move(record), ex.what());
         }
     }
 
@@ -119,10 +119,10 @@ namespace optionx::storage {
             return find_by_trade_id_no_lock(trade_id);
         } catch (const mdbxc::MdbxException& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB find_by_trade_id database error: ", ex);
-            return trade_record_db_detail::read_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+            return detail::read_error(TradeRecordDBStatus::DB_ERROR, ex.what());
         } catch (const std::exception& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB find_by_trade_id error: ", ex);
-            return trade_record_db_detail::read_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+            return detail::read_error(TradeRecordDBStatus::DB_ERROR, ex.what());
         }
     }
 
@@ -132,10 +132,10 @@ namespace optionx::storage {
             return find_by_uid_no_lock(request_unique_id);
         } catch (const mdbxc::MdbxException& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB find_by_uid database error: ", ex);
-            return trade_record_db_detail::read_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+            return detail::read_error(TradeRecordDBStatus::DB_ERROR, ex.what());
         } catch (const std::exception& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB find_by_uid error: ", ex);
-            return trade_record_db_detail::read_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+            return detail::read_error(TradeRecordDBStatus::DB_ERROR, ex.what());
         }
     }
 
@@ -145,10 +145,10 @@ namespace optionx::storage {
             return find_by_timestamp_no_lock(timestamp_ms);
         } catch (const mdbxc::MdbxException& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB find_by_timestamp database error: ", ex);
-            return trade_record_db_detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+            return detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
         } catch (const std::exception& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB find_by_timestamp error: ", ex);
-            return trade_record_db_detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+            return detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
         }
     }
 
@@ -158,10 +158,10 @@ namespace optionx::storage {
             return find_range_no_lock(start_ms, stop_ms);
         } catch (const mdbxc::MdbxException& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB find_range database error: ", ex);
-            return trade_record_db_detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+            return detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
         } catch (const std::exception& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB find_range error: ", ex);
-            return trade_record_db_detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+            return detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
         }
     }
 
@@ -171,10 +171,10 @@ namespace optionx::storage {
             return find_records_no_lock(query);
         } catch (const mdbxc::MdbxException& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB find_records database error: ", ex);
-            return trade_record_db_detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+            return detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
         } catch (const std::exception& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB find_records error: ", ex);
-            return trade_record_db_detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+            return detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
         }
     }
 
@@ -192,10 +192,10 @@ namespace optionx::storage {
             return find_today_no_lock(now_ms, time_zone_sec);
         } catch (const mdbxc::MdbxException& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB find_today database error: ", ex);
-            return trade_record_db_detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+            return detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
         } catch (const std::exception& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB find_today error: ", ex);
-            return trade_record_db_detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+            return detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
         }
     }
 
@@ -205,10 +205,10 @@ namespace optionx::storage {
             return find_day_no_lock(day_start_ms, time_zone_sec);
         } catch (const mdbxc::MdbxException& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB find_day database error: ", ex);
-            return trade_record_db_detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+            return detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
         } catch (const std::exception& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB find_day error: ", ex);
-            return trade_record_db_detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+            return detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
         }
     }
 
@@ -460,7 +460,7 @@ namespace optionx::storage {
 
     inline void TradeRecordDB::update_last_update_no_lock(MDBX_txn* txn) {
         auto meta = m_meta->get_or(TradeRecordDBMeta{}, txn);
-        meta.last_update_ms = trade_record_db_detail::now_ms();
+        meta.last_update_ms = time_shield::timestamp_ms();
         m_meta->set(meta, txn);
     }
 
@@ -508,25 +508,25 @@ namespace optionx::storage {
 
     inline TradeRecordDBWriteResult TradeRecordDB::write_no_lock(TradeRecord record) {
         if (!is_open_no_lock()) {
-            return trade_record_db_detail::write_error(
+            return detail::write_error(
                 TradeRecordDBStatus::NOT_OPEN,
                 std::move(record),
                 "TradeRecordDB is not open");
         }
         if (m_read_only) {
-            return trade_record_db_detail::write_error(
+            return detail::write_error(
                 TradeRecordDBStatus::READ_ONLY,
                 std::move(record),
                 "TradeRecordDB is read-only");
         }
         if (record.trade_id == 0) {
-            return trade_record_db_detail::write_error(
+            return detail::write_error(
                 TradeRecordDBStatus::INVALID_ARGUMENT,
                 std::move(record),
                 "TradeRecord trade_id is required");
         }
         if (record.trade_id > std::numeric_limits<std::uint32_t>::max()) {
-            return trade_record_db_detail::write_error(
+            return detail::write_error(
                 TradeRecordDBStatus::INVALID_ARGUMENT,
                 std::move(record),
                 "TradeRecord trade_id exceeds 32-bit limit");
@@ -535,9 +535,9 @@ namespace optionx::storage {
         auto txn = m_connection->transaction(mdbxc::TransactionMode::WRITABLE);
 
         const auto existing_composite_opt = m_trade_id_index->find(record.trade_id, txn);
-        const auto ts_ms = trade_record_db_detail::selected_timestamp_ms(record);
+        const auto ts_ms = detail::selected_timestamp_ms(record);
         const auto unix_minutes = static_cast<std::int32_t>(ts_ms / 60000);
-        const auto new_composite_key = trade_record_db_detail::make_composite_key(
+        const auto new_composite_key = detail::make_composite_key(
             unix_minutes,
             static_cast<std::uint32_t>(record.trade_id));
 
@@ -559,18 +559,18 @@ namespace optionx::storage {
         update_last_update_no_lock(txn.handle());
         txn.commit();
 
-        return trade_record_db_detail::write_success(std::move(record));
+        return detail::write_success(std::move(record));
     }
 
     inline TradeRecordDBWriteResult TradeRecordDB::upsert_no_lock(TradeRecord record) {
         if (!is_open_no_lock()) {
-            return trade_record_db_detail::write_error(
+            return detail::write_error(
                 TradeRecordDBStatus::NOT_OPEN,
                 std::move(record),
                 "TradeRecordDB is not open");
         }
         if (m_read_only) {
-            return trade_record_db_detail::write_error(
+            return detail::write_error(
                 TradeRecordDBStatus::READ_ONLY,
                 std::move(record),
                 "TradeRecordDB is read-only");
@@ -599,14 +599,14 @@ namespace optionx::storage {
         if (selected_trade_id == 0) {
             selected_trade_id = reserve_trade_id_no_lock(txn.handle());
             if (selected_trade_id == 0) {
-                return trade_record_db_detail::write_error(
+                return detail::write_error(
                     TradeRecordDBStatus::DB_ERROR,
                     std::move(record),
                     "TradeRecordDB could not reserve a trade_id");
             }
         }
         if (selected_trade_id > std::numeric_limits<std::uint32_t>::max()) {
-            return trade_record_db_detail::write_error(
+            return detail::write_error(
                 TradeRecordDBStatus::INVALID_ARGUMENT,
                 std::move(record),
                 "TradeRecord trade_id exceeds 32-bit limit");
@@ -615,9 +615,9 @@ namespace optionx::storage {
         record.trade_id = selected_trade_id;
 
         const auto existing_composite_opt = m_trade_id_index->find(selected_trade_id, txn);
-        const auto ts_ms = trade_record_db_detail::selected_timestamp_ms(record);
+        const auto ts_ms = detail::selected_timestamp_ms(record);
         const auto unix_minutes = static_cast<std::int32_t>(ts_ms / 60000);
-        const auto new_composite_key = trade_record_db_detail::make_composite_key(
+        const auto new_composite_key = detail::make_composite_key(
             unix_minutes,
             static_cast<std::uint32_t>(selected_trade_id));
 
@@ -639,31 +639,31 @@ namespace optionx::storage {
         update_last_update_no_lock(txn.handle());
         txn.commit();
 
-        return trade_record_db_detail::write_success(std::move(record));
+        return detail::write_success(std::move(record));
     }
 
     inline TradeRecordDBReadResult TradeRecordDB::find_by_trade_id_no_lock(std::uint64_t trade_id) const {
         if (!is_open_no_lock()) {
-            return trade_record_db_detail::read_error(TradeRecordDBStatus::NOT_OPEN, "TradeRecordDB is not open");
+            return detail::read_error(TradeRecordDBStatus::NOT_OPEN, "TradeRecordDB is not open");
         }
         if (trade_id == 0) {
-            return trade_record_db_detail::read_error(TradeRecordDBStatus::INVALID_ARGUMENT, "TradeRecord trade_id is required");
+            return detail::read_error(TradeRecordDBStatus::INVALID_ARGUMENT, "TradeRecord trade_id is required");
         }
         if (trade_id > std::numeric_limits<std::uint32_t>::max()) {
-            return trade_record_db_detail::read_error(TradeRecordDBStatus::NOT_FOUND, "TradeRecord trade_id exceeds 32-bit limit");
+            return detail::read_error(TradeRecordDBStatus::NOT_FOUND, "TradeRecord trade_id exceeds 32-bit limit");
         }
 
         auto txn = m_connection->transaction(mdbxc::TransactionMode::READ_ONLY);
         const auto composite_opt = m_trade_id_index->find(trade_id, txn);
         if (!composite_opt) {
             txn.commit();
-            return trade_record_db_detail::read_error(TradeRecordDBStatus::NOT_FOUND, "TradeRecord was not found");
+            return detail::read_error(TradeRecordDBStatus::NOT_FOUND, "TradeRecord was not found");
         }
 
         const auto record = m_records->find(*composite_opt, txn);
         txn.commit();
         if (!record) {
-            return trade_record_db_detail::read_error(TradeRecordDBStatus::NOT_FOUND, "TradeRecord index points to missing record");
+            return detail::read_error(TradeRecordDBStatus::NOT_FOUND, "TradeRecord index points to missing record");
         }
 
         TradeRecordDBReadResult result;
@@ -675,10 +675,10 @@ namespace optionx::storage {
 
     inline TradeRecordDBReadResult TradeRecordDB::find_by_uid_no_lock(std::int64_t request_unique_id) const {
         if (!is_open_no_lock()) {
-            return trade_record_db_detail::read_error(TradeRecordDBStatus::NOT_OPEN, "TradeRecordDB is not open");
+            return detail::read_error(TradeRecordDBStatus::NOT_OPEN, "TradeRecordDB is not open");
         }
         if (request_unique_id <= 0) {
-            return trade_record_db_detail::read_error(
+            return detail::read_error(
                 TradeRecordDBStatus::INVALID_ARGUMENT,
                 "TradeRecord request_unique_id is required");
         }
@@ -687,7 +687,7 @@ namespace optionx::storage {
         const auto composite_opt = m_uid_index->find(request_unique_id, txn);
         if (!composite_opt) {
             txn.commit();
-            return trade_record_db_detail::read_error(
+            return detail::read_error(
                 TradeRecordDBStatus::NOT_FOUND,
                 "TradeRecord UID index entry was not found");
         }
@@ -695,12 +695,12 @@ namespace optionx::storage {
         const auto record = m_records->find(*composite_opt, txn);
         txn.commit();
         if (!record) {
-            return trade_record_db_detail::read_error(
+            return detail::read_error(
                 TradeRecordDBStatus::NOT_FOUND,
                 "TradeRecord UID index points to missing record");
         }
         if (record->request_unique_id != request_unique_id) {
-            return trade_record_db_detail::read_error(
+            return detail::read_error(
                 TradeRecordDBStatus::NOT_FOUND,
                 "TradeRecord UID index points to a different request_unique_id");
         }
@@ -714,22 +714,22 @@ namespace optionx::storage {
 
     inline TradeRecordDBListResult TradeRecordDB::find_by_timestamp_no_lock(std::int64_t timestamp_ms) const {
         if (!is_open_no_lock()) {
-            return trade_record_db_detail::list_error(TradeRecordDBStatus::NOT_OPEN, "TradeRecordDB is not open");
+            return detail::list_error(TradeRecordDBStatus::NOT_OPEN, "TradeRecordDB is not open");
         }
         if (timestamp_ms < 0) {
-            return trade_record_db_detail::list_error(TradeRecordDBStatus::INVALID_ARGUMENT, "TradeRecord timestamp is invalid");
+            return detail::list_error(TradeRecordDBStatus::INVALID_ARGUMENT, "TradeRecord timestamp is invalid");
         }
 
         const auto target_min = static_cast<std::int32_t>(timestamp_ms / 60000);
-        const auto start_key = trade_record_db_detail::make_composite_key(target_min, 0);
-        const auto stop_key = trade_record_db_detail::make_composite_key(target_min, 0xFFFFFFFFu);
+        const auto start_key = detail::make_composite_key(target_min, 0);
+        const auto stop_key = detail::make_composite_key(target_min, 0xFFFFFFFFu);
 
         auto txn = m_connection->transaction(mdbxc::TransactionMode::READ_ONLY);
         TradeRecordDBListResult result;
         result.status = TradeRecordDBStatus::SUCCESS;
 
         m_records->range(start_key, stop_key, [&result, timestamp_ms](const std::uint64_t&, const TradeRecord& rec) {
-            if (trade_record_db_detail::selected_timestamp_ms(rec) == timestamp_ms) {
+            if (detail::selected_timestamp_ms(rec) == timestamp_ms) {
                 result.records.push_back(rec);
             }
         }, txn.handle());
@@ -737,8 +737,8 @@ namespace optionx::storage {
         txn.commit();
 
         std::sort(result.records.begin(), result.records.end(), [](const TradeRecord& lhs, const TradeRecord& rhs) {
-            const auto lhs_timestamp = trade_record_db_detail::selected_timestamp_ms(lhs);
-            const auto rhs_timestamp = trade_record_db_detail::selected_timestamp_ms(rhs);
+            const auto lhs_timestamp = detail::selected_timestamp_ms(lhs);
+            const auto rhs_timestamp = detail::selected_timestamp_ms(rhs);
             if (lhs_timestamp != rhs_timestamp) return lhs_timestamp < rhs_timestamp;
             return lhs.trade_id < rhs.trade_id;
         });
@@ -747,23 +747,23 @@ namespace optionx::storage {
 
     inline TradeRecordDBListResult TradeRecordDB::find_range_no_lock(std::int64_t start_ms, std::int64_t stop_ms) const {
         if (!is_open_no_lock()) {
-            return trade_record_db_detail::list_error(TradeRecordDBStatus::NOT_OPEN, "TradeRecordDB is not open");
+            return detail::list_error(TradeRecordDBStatus::NOT_OPEN, "TradeRecordDB is not open");
         }
         if (start_ms < 0 || stop_ms < 0 || start_ms > stop_ms) {
-            return trade_record_db_detail::list_error(TradeRecordDBStatus::INVALID_ARGUMENT, "TradeRecord timestamp range is invalid");
+            return detail::list_error(TradeRecordDBStatus::INVALID_ARGUMENT, "TradeRecord timestamp range is invalid");
         }
 
         const auto start_min = static_cast<std::int32_t>(start_ms / 60000);
         const auto stop_min = static_cast<std::int32_t>(stop_ms / 60000);
-        const auto start_key = trade_record_db_detail::make_composite_key(start_min, 0);
-        const auto stop_key = trade_record_db_detail::make_composite_key(stop_min, 0xFFFFFFFFu);
+        const auto start_key = detail::make_composite_key(start_min, 0);
+        const auto stop_key = detail::make_composite_key(stop_min, 0xFFFFFFFFu);
 
         auto txn = m_connection->transaction(mdbxc::TransactionMode::READ_ONLY);
         TradeRecordDBListResult result;
         result.status = TradeRecordDBStatus::SUCCESS;
 
         m_records->range(start_key, stop_key, [&result, start_ms, stop_ms](const std::uint64_t&, const TradeRecord& rec) {
-            const auto timestamp = trade_record_db_detail::selected_timestamp_ms(rec);
+            const auto timestamp = detail::selected_timestamp_ms(rec);
             if (timestamp >= start_ms && timestamp <= stop_ms) {
                 result.records.push_back(rec);
             }
@@ -772,8 +772,8 @@ namespace optionx::storage {
         txn.commit();
 
         std::sort(result.records.begin(), result.records.end(), [](const TradeRecord& lhs, const TradeRecord& rhs) {
-            const auto lhs_timestamp = trade_record_db_detail::selected_timestamp_ms(lhs);
-            const auto rhs_timestamp = trade_record_db_detail::selected_timestamp_ms(rhs);
+            const auto lhs_timestamp = detail::selected_timestamp_ms(lhs);
+            const auto rhs_timestamp = detail::selected_timestamp_ms(rhs);
             if (lhs_timestamp != rhs_timestamp) return lhs_timestamp < rhs_timestamp;
             return lhs.trade_id < rhs.trade_id;
         });
@@ -782,7 +782,7 @@ namespace optionx::storage {
 
     inline TradeRecordDBListResult TradeRecordDB::find_records_no_lock(const optionx::TradeRecordQuery& query) const {
         if (!is_open_no_lock()) {
-            return trade_record_db_detail::list_error(TradeRecordDBStatus::NOT_OPEN, "TradeRecordDB is not open");
+            return detail::list_error(TradeRecordDBStatus::NOT_OPEN, "TradeRecordDB is not open");
         }
 
         TradeRecordDBListResult result;
@@ -810,8 +810,8 @@ namespace optionx::storage {
 
         const auto start_min = static_cast<std::int32_t>(coarse_start_ms / 60000);
         const auto stop_min = static_cast<std::int32_t>(coarse_stop_ms / 60000);
-        const auto start_key = trade_record_db_detail::make_composite_key(start_min, 0);
-        const auto stop_key = trade_record_db_detail::make_composite_key(stop_min, 0xFFFFFFFFu);
+        const auto start_key = detail::make_composite_key(start_min, 0);
+        const auto stop_key = detail::make_composite_key(stop_min, 0xFFFFFFFFu);
 
         auto txn = m_connection->transaction(mdbxc::TransactionMode::READ_ONLY);
 

@@ -15,7 +15,7 @@ namespace {
 using optionx::TradeRecord;
 using optionx::storage::TradeRecordDB;
 using optionx::storage::TradeRecordDBStatus;
-using optionx::storage::trade_record_db_detail::selected_timestamp_ms;
+using optionx::storage::detail::selected_timestamp_ms;
 
 std::string unique_db_path(const std::string& name) {
     static std::atomic<std::uint64_t> counter{0};
@@ -65,8 +65,8 @@ TradeRecord make_record(
     record.close_price = 1.12400;
     record.delay = 30;
     record.ping = 15;
-    record.place_date = open_date - 100;
-    record.send_date = open_date - 50;
+    record.place_date = open_date;
+    record.send_date = open_date;
     record.open_date = open_date;
     record.close_date = open_date + 60000;
     record.expiry_date = open_date + 60000;

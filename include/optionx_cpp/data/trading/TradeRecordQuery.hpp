@@ -53,9 +53,9 @@ namespace optionx {
                 return record.expiry_date;
             case TradeRecordTimeField::AUTO:
             default:
-                if (record.open_date > 0) return record.open_date;
                 if (record.place_date > 0) return record.place_date;
                 if (record.send_date > 0) return record.send_date;
+                if (record.open_date > 0) return record.open_date;
                 if (record.close_date > 0) return record.close_date;
                 if (record.expiry_date > 0) return record.expiry_date;
                 return 0;

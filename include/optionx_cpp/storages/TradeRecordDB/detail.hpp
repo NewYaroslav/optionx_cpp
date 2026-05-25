@@ -1,55 +1,29 @@
 #pragma once
-#ifndef _OPTIONX_STORAGE_TRADE_RECORD_DB_UTILS_HPP_INCLUDED
-#define _OPTIONX_STORAGE_TRADE_RECORD_DB_UTILS_HPP_INCLUDED
+#ifndef _OPTIONX_STORAGE_TRADE_RECORD_DB_DETAIL_HPP_INCLUDED
+#define _OPTIONX_STORAGE_TRADE_RECORD_DB_DETAIL_HPP_INCLUDED
 
-/// \file utils.hpp
-/// \brief Defines internal helpers used only by TradeRecordDB.
+/// \file detail.hpp
+/// \brief Internal helpers used only by TradeRecordDB.
 
-#include <chrono>
 #include <cstdint>
 #include <string>
 #include <utility>
 
 #include "data.hpp"
 
-namespace optionx::storage::trade_record_db_detail {
+namespace optionx::storage::detail {
 
     /// \brief Selects canonical timestamp used by TradeRecordDB timestamp queries.
+    ///
+    /// Order of precedence for AUTO mode: place_date -> send_date -> open_date -> close_date -> expiry_date.
+    /// The backend must set place_date before writing a record; otherwise the record may not be found by range queries.
     inline std::int64_t selected_timestamp_ms(const TradeRecord& record) noexcept {
-        if (record.open_date > 0) return record.open_date;
         if (record.place_date > 0) return record.place_date;
         if (record.send_date > 0) return record.send_date;
+        if (record.open_date > 0) return record.open_date;
         if (record.close_date > 0) return record.close_date;
         if (record.expiry_date > 0) return record.expiry_date;
         return 0;
-    }
-
-    /// \brief Returns current wall-clock time in milliseconds.
-    inline std::int64_t now_ms() noexcept {
-        return std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-    }
-
-    /// \brief Parses an integer or returns fallback when the string is malformed.
-    inline std::int64_t parse_int_or(const std::string& value, std::int64_t fallback) noexcept {
-        try {
-            std::size_t pos = 0;
-            const auto parsed = std::stoll(value, &pos);
-            return pos == value.size() ? parsed : fallback;
-        } catch (...) {
-            return fallback;
-        }
-    }
-
-    /// \brief Parses an unsigned integer or returns fallback when the string is malformed.
-    inline std::uint64_t parse_uint_or(const std::string& value, std::uint64_t fallback) noexcept {
-        try {
-            std::size_t pos = 0;
-            const auto parsed = std::stoull(value, &pos);
-            return pos == value.size() ? parsed : fallback;
-        } catch (...) {
-            return fallback;
-        }
     }
 
     constexpr std::uint32_t kMinutesBias = 0x80000000u;
@@ -112,6 +86,6 @@ namespace optionx::storage::trade_record_db_detail {
         return result;
     }
 
-} // namespace optionx::storage::trade_record_db_detail
+} // namespace optionx::storage::detail
 
-#endif // _OPTIONX_STORAGE_TRADE_RECORD_DB_UTILS_HPP_INCLUDED
+#endif // _OPTIONX_STORAGE_TRADE_RECORD_DB_DETAIL_HPP_INCLUDED

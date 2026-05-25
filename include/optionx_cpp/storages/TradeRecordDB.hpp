@@ -21,7 +21,7 @@
 #include "optionx_cpp/data/trading.hpp"
 #include "TradeRecordDB/enums.hpp"
 #include "TradeRecordDB/data.hpp"
-#include "TradeRecordDB/utils.hpp"
+#include "TradeRecordDB/detail.hpp"
 #include "TradeRecordDB/TradeRecordFilterMatcher.hpp"
 #include "TradeRecordDB/TradeRecordStatusFixer.hpp"
 #include "TradeRecordDB/TradeStatsCalculator.hpp"
@@ -72,6 +72,10 @@ namespace optionx::storage {
     /// Buffered methods enqueue work with enqueue_*(); process() executes queued work
     /// on the caller thread when no worker is running, run() starts a worker, flush()
     /// waits for queued work, and shutdown() stops intake and closes storage.
+    ///
+    /// For correct chronological ordering and range queries, callers should set
+    /// TradeRecord::place_date before writing. The AUTO timestamp selector uses
+    /// place_date as the first priority (place -> send -> open -> close -> expiry).
     ///
     /// Callbacks are delivered only by process(), flush(), or shutdown() on the
     /// calling thread. For broker execution, either call assign_trade_id() before
