@@ -5,56 +5,15 @@
 /// \file TradeRecord.hpp
 /// \brief Defines the TradeRecord DTO used for persistent trade storage.
 
+#include "SpreadPack.hpp"
+
 namespace optionx {
 
     /// \class TradeRecord
     /// \brief Flat persistent representation of a trade for MDBX key-value storage.
     class TradeRecord {
     public:
-        /// \brief Number of low bits reserved for the legacy per-millisecond sequence.
-        ///
-        /// TradeRecordDB uses a linear persistent record_id. These packed-key helpers are
-        /// kept for legacy tools/tests that still need to decode old timestamp+sequence keys.
-        static constexpr std::uint64_t sequence_bits = 16;
-
-        /// \brief Maximum sequence value inside a single millisecond for legacy packed keys.
-        static constexpr std::uint64_t max_sequence =
-            (std::uint64_t{1} << sequence_bits) - 1;
-
-        /// \brief Maximum millisecond timestamp value that can be packed into a legacy key.
-        static constexpr std::uint64_t max_timestamp_ms =
-            (std::uint64_t{1} << (64 - sequence_bits)) - 1;
-
-        /// \brief Packs a millisecond timestamp and sequence into a legacy 64-bit storage key.
-        /// \param timestamp_ms Unix timestamp in milliseconds.
-        /// \param sequence Unique sequence number inside \p timestamp_ms.
-        /// \return Packed 64-bit trade record key.
-        static std::uint64_t make_record_key(std::int64_t timestamp_ms, std::uint64_t sequence) {
-            if (timestamp_ms < 0) {
-                throw std::out_of_range("TradeRecord key timestamp must be non-negative");
-            }
-            const auto timestamp = static_cast<std::uint64_t>(timestamp_ms);
-            if (timestamp > max_timestamp_ms) {
-                throw std::out_of_range("TradeRecord key timestamp does not fit into 48 bits");
-            }
-            if (sequence > max_sequence) {
-                throw std::out_of_range("TradeRecord key sequence does not fit into 16 bits");
-            }
-            return (timestamp << sequence_bits) | sequence;
-        }
-
-        /// \brief Extracts the millisecond timestamp from a legacy packed trade record key.
-        static std::uint64_t record_key_timestamp_ms(std::uint64_t key) noexcept {
-            return key >> sequence_bits;
-        }
-
-        /// \brief Extracts the per-millisecond sequence from a legacy packed trade record key.
-        static std::uint16_t record_key_sequence(std::uint64_t key) noexcept {
-            return static_cast<std::uint16_t>(key & max_sequence);
-        }
-
         // Storage identity
-        std::uint64_t record_id = 0;          ///< Linear persistent storage key.
         std::uint64_t trade_id = 0;           ///< Linear persistent trade ID.
         std::int64_t request_unique_id = 0;   ///< Unique ID from TradeRequest.
         std::string request_unique_hash;      ///< Unique hash from TradeRequest.
@@ -109,6 +68,9 @@ namespace optionx {
         std::string decision_params_json;                   ///< Serialized decision params.
         std::string metadata_json;                          ///< Future extension data.
 
+        // Spread
+        SpreadPack spread_pack;                              ///< Packed open/close spread data.
+
         /// \brief Copies request-side fields into this record.
         void assign_request(const TradeRequest& request) {
             trade_id = request.trade_id;
@@ -154,6 +116,7 @@ namespace optionx {
             account_type = result.account_type;
             currency = result.currency;
             platform_type = result.platform_type;
+            spread_pack = result.spread_pack;
         }
 
         /// \brief Copies request and money-management fields from a signal.
@@ -194,34 +157,6 @@ namespace optionx {
             return record;
         }
 
-        /// \brief Builds a record from a trade request with a precomputed record ID.
-        static TradeRecord from_trade(std::uint64_t id, const TradeRequest& request) {
-            TradeRecord record = from_trade(request);
-            record.record_id = id;
-            return record;
-        }
-
-        /// \brief Builds a record from a request and result with a precomputed record ID.
-        static TradeRecord from_trade(std::uint64_t id, const TradeRequest& request, const TradeResult& result) {
-            TradeRecord record = from_trade(request, result);
-            record.record_id = id;
-            return record;
-        }
-
-        /// \brief Builds a record from a signal with a precomputed record ID.
-        static TradeRecord from_trade(std::uint64_t id, const TradeSignal& signal) {
-            TradeRecord record = from_trade(signal);
-            record.record_id = id;
-            return record;
-        }
-
-        /// \brief Builds a record from a signal and result with a precomputed record ID.
-        static TradeRecord from_trade(std::uint64_t id, const TradeSignal& signal, const TradeResult& result) {
-            TradeRecord record = from_trade(signal, result);
-            record.record_id = id;
-            return record;
-        }
-
         /// \brief Returns true when the record has a broker-side order identity.
         bool has_broker_identity() const noexcept {
             return option_id != 0 || !option_hash.empty();
@@ -246,7 +181,7 @@ namespace optionx {
             return same_numeric_id || same_string_id;
         }
 
-        /// \brief Serializes the record using the Binary v1 storage format.
+        /// \brief Serializes the record using the Binary v2 storage format.
         std::vector<std::uint8_t> to_bytes() const {
             std::vector<std::uint8_t> bytes;
             bytes.reserve(512 + request_unique_hash.size() + option_hash.size() +
@@ -258,7 +193,6 @@ namespace optionx {
             append_value(bytes, kBinaryMagic);
             append_value(bytes, kBinaryVersion);
 
-            append_value(bytes, record_id);
             append_value(bytes, trade_id);
             append_value(bytes, request_unique_id);
             append_string(bytes, request_unique_hash);
@@ -308,10 +242,13 @@ namespace optionx {
             append_string(bytes, decision_params_json);
             append_string(bytes, metadata_json);
 
+            append_value(bytes, spread_pack.raw);
+            append_value(bytes, spread_pack.digits);
+
             return bytes;
         }
 
-        /// \brief Deserializes a Binary v1 trade record.
+        /// \brief Deserializes a Binary v2 trade record.
         static TradeRecord from_bytes(const void* data, std::size_t size) {
             BinaryReader reader(data, size);
 
@@ -326,7 +263,6 @@ namespace optionx {
             }
 
             TradeRecord record;
-            record.record_id = reader.read<std::uint64_t>();
             record.trade_id = reader.read<std::uint64_t>();
             record.request_unique_id = reader.read<std::int64_t>();
             record.request_unique_hash = reader.read_string();
@@ -376,13 +312,15 @@ namespace optionx {
             record.decision_params_json = reader.read_string();
             record.metadata_json = reader.read_string();
 
+            record.spread_pack.raw = reader.read<std::uint64_t>();
+            record.spread_pack.digits = reader.read<std::uint8_t>();
+
             reader.ensure_finished();
             return record;
         }
 
         bool operator==(const TradeRecord& other) const {
-            return record_id == other.record_id &&
-                   trade_id == other.trade_id &&
+            return trade_id == other.trade_id &&
                    request_unique_id == other.request_unique_id &&
                    request_unique_hash == other.request_unique_hash &&
                    account_id == other.account_id &&
@@ -424,7 +362,9 @@ namespace optionx {
                    mm_group_name == other.mm_group_name &&
                    mm_params_json == other.mm_params_json &&
                    decision_params_json == other.decision_params_json &&
-                   metadata_json == other.metadata_json;
+                   metadata_json == other.metadata_json &&
+                   spread_pack.raw == other.spread_pack.raw &&
+                   spread_pack.digits == other.spread_pack.digits;
         }
 
         bool operator!=(const TradeRecord& other) const {
@@ -433,7 +373,7 @@ namespace optionx {
 
     private:
         static constexpr std::uint32_t kBinaryMagic = 0x5254584fU; // "OXTR" on little-endian hosts.
-        static constexpr std::uint16_t kBinaryVersion = 1;
+        static constexpr std::uint16_t kBinaryVersion = 2;
 
         template<typename T>
         static bool same_known(T lhs, T rhs, T unknown) noexcept {

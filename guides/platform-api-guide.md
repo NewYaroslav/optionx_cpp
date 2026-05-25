@@ -227,7 +227,7 @@ callbacks в `TradeQueueManager`.
 Поля:
 
 - identity/meta: `symbol`, `signal_name`, `user_data`, `comment`,
-  `unique_hash`, `unique_id`, `account_id`
+  `unique_hash`, `trade_id`, `unique_id`, `account_id`
 - enums: `option_type`, `order_type`, `account_type`, `currency`
 - money: `amount`, `refund`, `min_payout`
 - timing: `duration`, `expiry_time`
@@ -239,6 +239,13 @@ callbacks в `TradeQueueManager`.
 - `create_trade_result_unique/shared()`
 - `clone_unique/shared()`
 - JSON serialization через `NLOHMANN_DEFINE_TYPE_INTRUSIVE`
+
+Persistent storage:
+
+- Use `trade_id` as the DB/callback identity and propagate it into `TradeResult::trade_id`.
+- Reserve `trade_id` before broker execution through `TradeRecordDB::assign_trade_id()` or a platform
+  `on_trade_id()` provider.
+- Do not use `unique_id` as TradeRecordDB identity, and do not derive primary trade IDs from timestamps.
 
 Ownership:
 

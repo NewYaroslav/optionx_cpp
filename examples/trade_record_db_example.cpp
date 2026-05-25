@@ -50,7 +50,7 @@ optionx::TradeRecord make_closed_record(optionx::TradeRecord record, std::int64_
 int main() {
     mdbxc::Config config = optionx::storage::TradeRecordDB::default_config();
     config.pathname = "data/examples/trade_record_db";
-    config.max_dbs = 3;
+    config.max_dbs = 4;
     config.no_subdir = false;
     config.relative_to_exe = true;
 
@@ -89,10 +89,9 @@ int main() {
     }
 
     std::cout << "Reserved trade ID: " << request.trade_id << std::endl;
-    std::cout << "Stored record_id: " << open_write.record.record_id << std::endl;
     std::cout << "Stored trade_id: " << open_write.record.trade_id << std::endl;
 
-    auto found_by_id = db.find(request.trade_id);
+    auto found_by_id = db.find_by_trade_id(request.trade_id);
     if (found_by_id.ok()) {
         std::cout << "Found by trade ID, symbol: " << found_by_id.record.symbol << std::endl;
     }
@@ -113,10 +112,10 @@ int main() {
     std::cout << "Records in range: " << records_in_range.records.size() << std::endl;
 
     bool callback_called = false;
-    db.enqueue_find(request.trade_id, [&](optionx::storage::TradeRecordDBReadResult result) {
+    db.enqueue_find_by_trade_id(request.trade_id, [&](optionx::storage::TradeRecordDBReadResult result) {
         callback_called = true;
         if (result.ok()) {
-            std::cout << "Buffered read callback, record_id: " << result.record.record_id << std::endl;
+            std::cout << "Buffered read callback, trade_id: " << result.record.trade_id << std::endl;
         }
     });
     db.process();

@@ -17,7 +17,7 @@ namespace optionx::storage {
     inline mdbxc::Config TradeRecordDB::default_config() {
         mdbxc::Config config;
         config.pathname = OPTIONX_TRADE_RECORD_DB_FILE;
-        config.max_dbs = 3;
+        config.max_dbs = 4;
         config.no_subdir = false;
         config.relative_to_exe = true;
         return config;
@@ -30,10 +30,12 @@ namespace optionx::storage {
         mdbxc::Config config,
         std::string records_table,
         std::string uid_index_table,
+        std::string trade_id_index_table,
         std::string meta_table)
         : m_config(std::move(config)),
           m_records_table_name(std::move(records_table)),
           m_uid_index_table_name(std::move(uid_index_table)),
+          m_trade_id_index_table_name(std::move(trade_id_index_table)),
           m_meta_table_name(std::move(meta_table)) {
         open();
     }
@@ -111,15 +113,15 @@ namespace optionx::storage {
         }
     }
 
-    inline TradeRecordDBReadResult TradeRecordDB::find(std::uint64_t record_id) const {
+    inline TradeRecordDBReadResult TradeRecordDB::find_by_trade_id(std::uint64_t trade_id) const {
         std::lock_guard<std::mutex> lock(m_db_mutex);
         try {
-            return find_no_lock(record_id);
+            return find_by_trade_id_no_lock(trade_id);
         } catch (const mdbxc::MdbxException& ex) {
-            LOGIT_PRINT_ERROR("TradeRecordDB find database error: ", ex);
+            LOGIT_PRINT_ERROR("TradeRecordDB find_by_trade_id database error: ", ex);
             return trade_record_db_detail::read_error(TradeRecordDBStatus::DB_ERROR, ex.what());
         } catch (const std::exception& ex) {
-            LOGIT_PRINT_ERROR("TradeRecordDB find error: ", ex);
+            LOGIT_PRINT_ERROR("TradeRecordDB find_by_trade_id error: ", ex);
             return trade_record_db_detail::read_error(TradeRecordDBStatus::DB_ERROR, ex.what());
         }
     }
@@ -163,14 +165,61 @@ namespace optionx::storage {
         }
     }
 
-    inline TradeRecordDBStatus TradeRecordDB::erase(std::uint64_t record_id) {
+    inline TradeRecordDBListResult TradeRecordDB::find_records(const optionx::TradeRecordQuery& query) const {
         std::lock_guard<std::mutex> lock(m_db_mutex);
         try {
-            return erase_no_lock(record_id);
+            return find_records_no_lock(query);
         } catch (const mdbxc::MdbxException& ex) {
-            LOGIT_PRINT_ERROR("TradeRecordDB erase database error: ", ex);
+            LOGIT_PRINT_ERROR("TradeRecordDB find_records database error: ", ex);
+            return trade_record_db_detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
         } catch (const std::exception& ex) {
-            LOGIT_PRINT_ERROR("TradeRecordDB erase error: ", ex);
+            LOGIT_PRINT_ERROR("TradeRecordDB find_records error: ", ex);
+            return trade_record_db_detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+        }
+    }
+
+    inline std::vector<optionx::TradeRecord> TradeRecordDB::find_records_vector(const optionx::TradeRecordQuery& query) const {
+        auto result = find_records(query);
+        if (!result.ok()) {
+            return {};
+        }
+        return std::move(result.records);
+    }
+
+    inline TradeRecordDBListResult TradeRecordDB::find_today(std::int64_t now_ms, std::int64_t time_zone_sec) const {
+        std::lock_guard<std::mutex> lock(m_db_mutex);
+        try {
+            return find_today_no_lock(now_ms, time_zone_sec);
+        } catch (const mdbxc::MdbxException& ex) {
+            LOGIT_PRINT_ERROR("TradeRecordDB find_today database error: ", ex);
+            return trade_record_db_detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+        } catch (const std::exception& ex) {
+            LOGIT_PRINT_ERROR("TradeRecordDB find_today error: ", ex);
+            return trade_record_db_detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+        }
+    }
+
+    inline TradeRecordDBListResult TradeRecordDB::find_day(std::int64_t day_start_ms, std::int64_t time_zone_sec) const {
+        std::lock_guard<std::mutex> lock(m_db_mutex);
+        try {
+            return find_day_no_lock(day_start_ms, time_zone_sec);
+        } catch (const mdbxc::MdbxException& ex) {
+            LOGIT_PRINT_ERROR("TradeRecordDB find_day database error: ", ex);
+            return trade_record_db_detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+        } catch (const std::exception& ex) {
+            LOGIT_PRINT_ERROR("TradeRecordDB find_day error: ", ex);
+            return trade_record_db_detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
+        }
+    }
+
+    inline TradeRecordDBStatus TradeRecordDB::erase_by_trade_id(std::uint64_t trade_id) {
+        std::lock_guard<std::mutex> lock(m_db_mutex);
+        try {
+            return erase_by_trade_id_no_lock(trade_id);
+        } catch (const mdbxc::MdbxException& ex) {
+            LOGIT_PRINT_ERROR("TradeRecordDB erase_by_trade_id database error: ", ex);
+        } catch (const std::exception& ex) {
+            LOGIT_PRINT_ERROR("TradeRecordDB erase_by_trade_id error: ", ex);
         }
         return TradeRecordDBStatus::DB_ERROR;
     }
@@ -218,9 +267,9 @@ namespace optionx::storage {
         });
     }
 
-    inline TradeRecordDBStatus TradeRecordDB::enqueue_find(std::uint64_t record_id, read_callback_t callback) {
-        return enqueue_command([this, record_id, callback = std::move(callback)]() mutable {
-            auto result = find(record_id);
+    inline TradeRecordDBStatus TradeRecordDB::enqueue_find_by_trade_id(std::uint64_t trade_id, read_callback_t callback) {
+        return enqueue_command([this, trade_id, callback = std::move(callback)]() mutable {
+            auto result = find_by_trade_id(trade_id);
             enqueue_callback([callback = std::move(callback), result = std::move(result)]() mutable {
                 if (callback) callback(std::move(result));
             });
@@ -261,9 +310,18 @@ namespace optionx::storage {
         });
     }
 
-    inline TradeRecordDBStatus TradeRecordDB::enqueue_erase(std::uint64_t record_id, status_callback_t callback) {
-        return enqueue_command([this, record_id, callback = std::move(callback)]() mutable {
-            auto status = erase(record_id);
+    inline TradeRecordDBStatus TradeRecordDB::enqueue_find_records(optionx::TradeRecordQuery query, list_callback_t callback) {
+        return enqueue_command([this, query = std::move(query), callback = std::move(callback)]() mutable {
+            auto result = find_records(query);
+            enqueue_callback([callback = std::move(callback), result = std::move(result)]() mutable {
+                if (callback) callback(std::move(result));
+            });
+        });
+    }
+
+    inline TradeRecordDBStatus TradeRecordDB::enqueue_erase_by_trade_id(std::uint64_t trade_id, status_callback_t callback) {
+        return enqueue_command([this, trade_id, callback = std::move(callback)]() mutable {
+            auto status = erase_by_trade_id(trade_id);
             enqueue_callback([callback = std::move(callback), status]() mutable {
                 if (callback) callback(status);
             });
@@ -342,6 +400,7 @@ namespace optionx::storage {
         try {
             m_records.reset();
             m_uid_index.reset();
+            m_trade_id_index.reset();
             m_meta.reset();
             if (m_connection && m_connection->is_connected()) {
                 m_connection->shutdown();
@@ -358,13 +417,14 @@ namespace optionx::storage {
     inline void TradeRecordDB::open() {
         std::lock_guard<std::mutex> lock(m_db_mutex);
         try {
-            if (m_config.max_dbs < 3) {
-                m_config.max_dbs = 3;
+            if (m_config.max_dbs < 4) {
+                m_config.max_dbs = 4;
             }
             m_read_only = m_config.read_only;
             m_connection = mdbxc::Connection::create(m_config);
             m_records = std::make_unique<records_table_t>(m_connection, m_records_table_name);
             m_uid_index = std::make_unique<uid_index_table_t>(m_connection, m_uid_index_table_name);
+            m_trade_id_index = std::make_unique<trade_id_index_table_t>(m_connection, m_trade_id_index_table_name);
             m_meta = std::make_unique<meta_table_t>(m_connection, m_meta_table_name);
             m_open = true;
 
@@ -384,55 +444,65 @@ namespace optionx::storage {
 
     inline bool TradeRecordDB::is_open_no_lock() const noexcept {
         return m_open && m_connection && m_connection->is_connected() &&
-               m_records && m_uid_index && m_meta;
-    }
-
-    inline std::uint64_t TradeRecordDB::get_meta_uint_no_lock(
-        const std::string& key,
-        std::uint64_t fallback,
-        MDBX_txn* txn) const {
-        const auto value = m_meta->find(key, txn);
-        if (!value) return fallback;
-        return trade_record_db_detail::parse_uint_or(*value, fallback);
+               m_records && m_uid_index && m_trade_id_index && m_meta;
     }
 
     inline void TradeRecordDB::init_meta_no_lock(MDBX_txn* txn) {
-        if (!m_meta->contains(kMetaDbVersion, txn)) {
-            m_meta->insert_or_assign(kMetaDbVersion, kMetaDbVersionValue, txn);
+        auto meta = m_meta->get_or(TradeRecordDBMeta{}, txn);
+        if (meta.db_version == 0) {
+            meta.db_version = 1;
         }
-        if (!m_meta->contains(kMetaNextTradeUid, txn)) {
-            m_meta->insert_or_assign(kMetaNextTradeUid, std::string("1"), txn);
+        if (meta.next_trade_uid == 0) {
+            meta.next_trade_uid = 1;
         }
-        if (!m_meta->contains(kMetaLastUpdateMs, txn)) {
-            m_meta->insert_or_assign(kMetaLastUpdateMs, std::to_string(trade_record_db_detail::now_ms()), txn);
-        }
+        m_meta->set(meta, txn);
     }
 
     inline void TradeRecordDB::update_last_update_no_lock(MDBX_txn* txn) {
-        m_meta->insert_or_assign(kMetaLastUpdateMs, std::to_string(trade_record_db_detail::now_ms()), txn);
+        auto meta = m_meta->get_or(TradeRecordDBMeta{}, txn);
+        meta.last_update_ms = trade_record_db_detail::now_ms();
+        m_meta->set(meta, txn);
     }
 
     inline std::uint64_t TradeRecordDB::reserve_trade_id_no_lock(MDBX_txn* txn) {
-        const auto max_id = std::numeric_limits<std::uint64_t>::max();
-        auto candidate = get_meta_uint_no_lock(kMetaNextTradeUid, 1, txn);
+        constexpr auto max_id = std::numeric_limits<std::uint32_t>::max();
+        auto meta = m_meta->get_or(TradeRecordDBMeta{}, txn);
+        auto candidate = meta.next_trade_uid;
         if (candidate == 0) candidate = 1;
 
-        while (candidate != 0 && candidate != max_id && m_records->contains(candidate, txn)) {
-            ++candidate;
+        const auto start = candidate;
+        bool wrapped = false;
+        while (candidate != 0 && m_trade_id_index->contains(candidate, txn)) {
+            if (++candidate == 0) {
+                candidate = 1;
+                wrapped = true;
+            }
+            if (wrapped && candidate == start) {
+                return 0;
+            }
         }
-        if (candidate == 0 || candidate == max_id) return 0;
+        if (candidate == 0) return 0;
 
-        m_meta->insert_or_assign(kMetaNextTradeUid, std::to_string(candidate + 1), txn);
+        meta.next_trade_uid = candidate + 1;
+        if (meta.next_trade_uid == 0) meta.next_trade_uid = 1;
+        m_meta->set(meta, txn);
         return candidate;
     }
 
     inline void TradeRecordDB::bump_next_trade_id_no_lock(std::uint64_t used_trade_id, MDBX_txn* txn) {
-        if (used_trade_id == 0 || used_trade_id == std::numeric_limits<std::uint64_t>::max()) return;
+        constexpr auto max_uint32 = std::numeric_limits<std::uint32_t>::max();
+        if (used_trade_id == 0 || used_trade_id > max_uint32) return;
 
-        auto next_trade_id = get_meta_uint_no_lock(kMetaNextTradeUid, 1, txn);
-        if (next_trade_id == 0) next_trade_id = 1;
-        if (next_trade_id <= used_trade_id) {
-            m_meta->insert_or_assign(kMetaNextTradeUid, std::to_string(used_trade_id + 1), txn);
+        auto meta = m_meta->get_or(TradeRecordDBMeta{}, txn);
+        if (meta.next_trade_uid == 0) meta.next_trade_uid = 1;
+        const auto next = static_cast<std::uint64_t>(meta.next_trade_uid);
+        if (next <= used_trade_id) {
+            if (used_trade_id == max_uint32) {
+                meta.next_trade_uid = 1;
+            } else {
+                meta.next_trade_uid = static_cast<std::uint32_t>(used_trade_id + 1);
+            }
+            m_meta->set(meta, txn);
         }
     }
 
@@ -449,34 +519,43 @@ namespace optionx::storage {
                 std::move(record),
                 "TradeRecordDB is read-only");
         }
-        if (record.record_id == 0 && record.trade_id != 0) {
-            record.record_id = record.trade_id;
-        }
-        if (record.trade_id == 0 && record.record_id != 0) {
-            record.trade_id = record.record_id;
-        }
-        if (record.record_id != 0) {
-            record.trade_id = record.record_id;
-        }
-        if (record.record_id == 0) {
+        if (record.trade_id == 0) {
             return trade_record_db_detail::write_error(
                 TradeRecordDBStatus::INVALID_ARGUMENT,
                 std::move(record),
-                "TradeRecord record_id is required");
+                "TradeRecord trade_id is required");
+        }
+        if (record.trade_id > std::numeric_limits<std::uint32_t>::max()) {
+            return trade_record_db_detail::write_error(
+                TradeRecordDBStatus::INVALID_ARGUMENT,
+                std::move(record),
+                "TradeRecord trade_id exceeds 32-bit limit");
         }
 
         auto txn = m_connection->transaction(mdbxc::TransactionMode::WRITABLE);
-        const auto existing = m_records->find(record.record_id, txn);
-        if (existing && existing->request_unique_id > 0 &&
-            existing->request_unique_id != record.request_unique_id) {
-            m_uid_index->erase(existing->request_unique_id, txn);
+
+        const auto existing_composite_opt = m_trade_id_index->find(record.trade_id, txn);
+        const auto ts_ms = trade_record_db_detail::selected_timestamp_ms(record);
+        const auto unix_minutes = static_cast<std::int32_t>(ts_ms / 60000);
+        const auto new_composite_key = trade_record_db_detail::make_composite_key(
+            unix_minutes,
+            static_cast<std::uint32_t>(record.trade_id));
+
+        if (existing_composite_opt && *existing_composite_opt != new_composite_key) {
+            const auto old_record = m_records->find(*existing_composite_opt, txn);
+            if (old_record && old_record->request_unique_id > 0 &&
+                old_record->request_unique_id != record.request_unique_id) {
+                m_uid_index->erase(old_record->request_unique_id, txn);
+            }
+            m_records->erase(*existing_composite_opt, txn);
         }
 
-        m_records->insert_or_assign(record.record_id, record, txn);
+        m_records->insert_or_assign(new_composite_key, record, txn);
         if (record.request_unique_id > 0) {
-            m_uid_index->insert_or_assign(record.request_unique_id, record.record_id, txn);
+            m_uid_index->insert_or_assign(record.request_unique_id, new_composite_key, txn);
         }
-        bump_next_trade_id_no_lock(record.record_id, txn.handle());
+        m_trade_id_index->insert_or_assign(record.trade_id, new_composite_key, txn);
+        bump_next_trade_id_no_lock(record.trade_id, txn.handle());
         update_last_update_no_lock(txn.handle());
         txn.commit();
 
@@ -499,70 +578,92 @@ namespace optionx::storage {
 
         auto txn = m_connection->transaction(mdbxc::TransactionMode::WRITABLE);
 
-        std::uint64_t selected_key = record.record_id;
-        if (selected_key == 0 && record.trade_id != 0) {
-            selected_key = record.trade_id;
-        }
+        std::uint64_t selected_trade_id = record.trade_id;
 
-        if (selected_key == 0 && record.request_unique_id > 0) {
-            const auto indexed_key = m_uid_index->find(record.request_unique_id, txn);
-            if (indexed_key) {
-                const auto indexed_record = m_records->find(*indexed_key, txn);
-                if (indexed_record) {
-                    selected_key = *indexed_key;
+        if (selected_trade_id == 0 && record.request_unique_id > 0) {
+            const auto existing_composite = m_uid_index->find(record.request_unique_id, txn);
+            if (existing_composite) {
+                const auto existing_record = m_records->find(*existing_composite, txn);
+                if (existing_record) {
+                    selected_trade_id = existing_record->trade_id;
                 } else {
                     m_uid_index->erase(record.request_unique_id, txn);
                 }
             }
         }
 
-        if (selected_key == 0 && record.has_broker_identity()) {
-            selected_key = find_broker_identity_key_no_lock(record, txn.handle());
+        if (selected_trade_id == 0 && record.has_broker_identity()) {
+            selected_trade_id = find_broker_identity_key_no_lock(record, txn.handle());
         }
 
-        if (selected_key == 0) {
-            selected_key = reserve_trade_id_no_lock(txn.handle());
-            if (selected_key == 0) {
+        if (selected_trade_id == 0) {
+            selected_trade_id = reserve_trade_id_no_lock(txn.handle());
+            if (selected_trade_id == 0) {
                 return trade_record_db_detail::write_error(
                     TradeRecordDBStatus::DB_ERROR,
                     std::move(record),
                     "TradeRecordDB could not reserve a trade_id");
             }
         }
-
-        record.record_id = selected_key;
-        record.trade_id = selected_key;
-
-        const auto existing_at_target = m_records->find(selected_key, txn);
-        if (existing_at_target && existing_at_target->request_unique_id > 0 &&
-            existing_at_target->request_unique_id != record.request_unique_id) {
-            m_uid_index->erase(existing_at_target->request_unique_id, txn);
+        if (selected_trade_id > std::numeric_limits<std::uint32_t>::max()) {
+            return trade_record_db_detail::write_error(
+                TradeRecordDBStatus::INVALID_ARGUMENT,
+                std::move(record),
+                "TradeRecord trade_id exceeds 32-bit limit");
         }
 
-        m_records->insert_or_assign(record.record_id, record, txn);
+        record.trade_id = selected_trade_id;
+
+        const auto existing_composite_opt = m_trade_id_index->find(selected_trade_id, txn);
+        const auto ts_ms = trade_record_db_detail::selected_timestamp_ms(record);
+        const auto unix_minutes = static_cast<std::int32_t>(ts_ms / 60000);
+        const auto new_composite_key = trade_record_db_detail::make_composite_key(
+            unix_minutes,
+            static_cast<std::uint32_t>(selected_trade_id));
+
+        if (existing_composite_opt && *existing_composite_opt != new_composite_key) {
+            const auto old_record = m_records->find(*existing_composite_opt, txn);
+            if (old_record && old_record->request_unique_id > 0 &&
+                old_record->request_unique_id != record.request_unique_id) {
+                m_uid_index->erase(old_record->request_unique_id, txn);
+            }
+            m_records->erase(*existing_composite_opt, txn);
+        }
+
+        m_records->insert_or_assign(new_composite_key, record, txn);
         if (record.request_unique_id > 0) {
-            m_uid_index->insert_or_assign(record.request_unique_id, record.record_id, txn);
+            m_uid_index->insert_or_assign(record.request_unique_id, new_composite_key, txn);
         }
-        bump_next_trade_id_no_lock(record.record_id, txn.handle());
+        m_trade_id_index->insert_or_assign(selected_trade_id, new_composite_key, txn);
+        bump_next_trade_id_no_lock(selected_trade_id, txn.handle());
         update_last_update_no_lock(txn.handle());
         txn.commit();
 
         return trade_record_db_detail::write_success(std::move(record));
     }
 
-    inline TradeRecordDBReadResult TradeRecordDB::find_no_lock(std::uint64_t record_id) const {
+    inline TradeRecordDBReadResult TradeRecordDB::find_by_trade_id_no_lock(std::uint64_t trade_id) const {
         if (!is_open_no_lock()) {
             return trade_record_db_detail::read_error(TradeRecordDBStatus::NOT_OPEN, "TradeRecordDB is not open");
         }
-        if (record_id == 0) {
-            return trade_record_db_detail::read_error(TradeRecordDBStatus::INVALID_ARGUMENT, "TradeRecord record_id is required");
+        if (trade_id == 0) {
+            return trade_record_db_detail::read_error(TradeRecordDBStatus::INVALID_ARGUMENT, "TradeRecord trade_id is required");
+        }
+        if (trade_id > std::numeric_limits<std::uint32_t>::max()) {
+            return trade_record_db_detail::read_error(TradeRecordDBStatus::NOT_FOUND, "TradeRecord trade_id exceeds 32-bit limit");
         }
 
         auto txn = m_connection->transaction(mdbxc::TransactionMode::READ_ONLY);
-        const auto record = m_records->find(record_id, txn);
+        const auto composite_opt = m_trade_id_index->find(trade_id, txn);
+        if (!composite_opt) {
+            txn.commit();
+            return trade_record_db_detail::read_error(TradeRecordDBStatus::NOT_FOUND, "TradeRecord was not found");
+        }
+
+        const auto record = m_records->find(*composite_opt, txn);
         txn.commit();
         if (!record) {
-            return trade_record_db_detail::read_error(TradeRecordDBStatus::NOT_FOUND, "TradeRecord was not found");
+            return trade_record_db_detail::read_error(TradeRecordDBStatus::NOT_FOUND, "TradeRecord index points to missing record");
         }
 
         TradeRecordDBReadResult result;
@@ -583,15 +684,15 @@ namespace optionx::storage {
         }
 
         auto txn = m_connection->transaction(mdbxc::TransactionMode::READ_ONLY);
-        const auto indexed_key = m_uid_index->find(request_unique_id, txn);
-        if (!indexed_key) {
+        const auto composite_opt = m_uid_index->find(request_unique_id, txn);
+        if (!composite_opt) {
             txn.commit();
             return trade_record_db_detail::read_error(
                 TradeRecordDBStatus::NOT_FOUND,
                 "TradeRecord UID index entry was not found");
         }
 
-        const auto record = m_records->find(*indexed_key, txn);
+        const auto record = m_records->find(*composite_opt, txn);
         txn.commit();
         if (!record) {
             return trade_record_db_detail::read_error(
@@ -619,23 +720,27 @@ namespace optionx::storage {
             return trade_record_db_detail::list_error(TradeRecordDBStatus::INVALID_ARGUMENT, "TradeRecord timestamp is invalid");
         }
 
-        auto txn = m_connection->transaction(mdbxc::TransactionMode::READ_ONLY);
-        std::vector<std::pair<std::uint64_t, TradeRecord>> rows;
-        m_records->load(rows, txn);
-        txn.commit();
+        const auto target_min = static_cast<std::int32_t>(timestamp_ms / 60000);
+        const auto start_key = trade_record_db_detail::make_composite_key(target_min, 0);
+        const auto stop_key = trade_record_db_detail::make_composite_key(target_min, 0xFFFFFFFFu);
 
+        auto txn = m_connection->transaction(mdbxc::TransactionMode::READ_ONLY);
         TradeRecordDBListResult result;
         result.status = TradeRecordDBStatus::SUCCESS;
-        for (const auto& row : rows) {
-            if (trade_record_db_detail::selected_timestamp_ms(row.second) == timestamp_ms) {
-                result.records.push_back(row.second);
+
+        m_records->range(start_key, stop_key, [&result, timestamp_ms](const std::uint64_t&, const TradeRecord& rec) {
+            if (trade_record_db_detail::selected_timestamp_ms(rec) == timestamp_ms) {
+                result.records.push_back(rec);
             }
-        }
+        }, txn.handle());
+
+        txn.commit();
+
         std::sort(result.records.begin(), result.records.end(), [](const TradeRecord& lhs, const TradeRecord& rhs) {
             const auto lhs_timestamp = trade_record_db_detail::selected_timestamp_ms(lhs);
             const auto rhs_timestamp = trade_record_db_detail::selected_timestamp_ms(rhs);
             if (lhs_timestamp != rhs_timestamp) return lhs_timestamp < rhs_timestamp;
-            return lhs.record_id < rhs.record_id;
+            return lhs.trade_id < rhs.trade_id;
         });
         return result;
     }
@@ -647,43 +752,154 @@ namespace optionx::storage {
         if (start_ms < 0 || stop_ms < 0 || start_ms > stop_ms) {
             return trade_record_db_detail::list_error(TradeRecordDBStatus::INVALID_ARGUMENT, "TradeRecord timestamp range is invalid");
         }
-        auto txn = m_connection->transaction(mdbxc::TransactionMode::READ_ONLY);
-        std::vector<std::pair<std::uint64_t, TradeRecord>> rows;
-        m_records->load(rows, txn);
-        txn.commit();
 
+        const auto start_min = static_cast<std::int32_t>(start_ms / 60000);
+        const auto stop_min = static_cast<std::int32_t>(stop_ms / 60000);
+        const auto start_key = trade_record_db_detail::make_composite_key(start_min, 0);
+        const auto stop_key = trade_record_db_detail::make_composite_key(stop_min, 0xFFFFFFFFu);
+
+        auto txn = m_connection->transaction(mdbxc::TransactionMode::READ_ONLY);
         TradeRecordDBListResult result;
         result.status = TradeRecordDBStatus::SUCCESS;
-        for (const auto& row : rows) {
-            const auto timestamp = trade_record_db_detail::selected_timestamp_ms(row.second);
+
+        m_records->range(start_key, stop_key, [&result, start_ms, stop_ms](const std::uint64_t&, const TradeRecord& rec) {
+            const auto timestamp = trade_record_db_detail::selected_timestamp_ms(rec);
             if (timestamp >= start_ms && timestamp <= stop_ms) {
-                result.records.push_back(row.second);
+                result.records.push_back(rec);
             }
-        }
+        }, txn.handle());
+
+        txn.commit();
+
         std::sort(result.records.begin(), result.records.end(), [](const TradeRecord& lhs, const TradeRecord& rhs) {
             const auto lhs_timestamp = trade_record_db_detail::selected_timestamp_ms(lhs);
             const auto rhs_timestamp = trade_record_db_detail::selected_timestamp_ms(rhs);
             if (lhs_timestamp != rhs_timestamp) return lhs_timestamp < rhs_timestamp;
-            return lhs.record_id < rhs.record_id;
+            return lhs.trade_id < rhs.trade_id;
         });
         return result;
     }
 
-    inline TradeRecordDBStatus TradeRecordDB::erase_no_lock(std::uint64_t record_id) {
+    inline TradeRecordDBListResult TradeRecordDB::find_records_no_lock(const optionx::TradeRecordQuery& query) const {
+        if (!is_open_no_lock()) {
+            return trade_record_db_detail::list_error(TradeRecordDBStatus::NOT_OPEN, "TradeRecordDB is not open");
+        }
+
+        TradeRecordDBListResult result;
+        result.status = TradeRecordDBStatus::SUCCESS;
+
+        // Determine coarse scan range for the MDBX composite-key index.
+        std::int64_t coarse_start_ms = query.start_ms;
+        std::int64_t coarse_stop_ms = query.stop_ms;
+
+        if (query.range_mode == optionx::TimeRangeMode::NONE) {
+            coarse_start_ms = 0;
+            coarse_stop_ms = std::numeric_limits<std::int64_t>::max();
+        } else if (query.time_field != optionx::TradeRecordTimeField::AUTO &&
+                   query.time_field != optionx::TradeRecordTimeField::OPEN_DATE) {
+            // Composite key is built from selected_timestamp_ms (open_date fallback).
+            // When the user queries by a different field, the index may be imprecise.
+            // Scan from 0 up to stop_ms as a coarse heuristic.
+            coarse_start_ms = 0;
+            if (query.stop_ms > 0) {
+                coarse_stop_ms = query.stop_ms;
+            } else {
+                coarse_stop_ms = std::numeric_limits<std::int64_t>::max();
+            }
+        }
+
+        const auto start_min = static_cast<std::int32_t>(coarse_start_ms / 60000);
+        const auto stop_min = static_cast<std::int32_t>(coarse_stop_ms / 60000);
+        const auto start_key = trade_record_db_detail::make_composite_key(start_min, 0);
+        const auto stop_key = trade_record_db_detail::make_composite_key(stop_min, 0xFFFFFFFFu);
+
+        auto txn = m_connection->transaction(mdbxc::TransactionMode::READ_ONLY);
+
+        m_records->range(start_key, stop_key, [&](const std::uint64_t&, const TradeRecord& rec) {
+            if (TradeRecordFilterMatcher::match(rec, query)) {
+                result.records.push_back(rec);
+            }
+        }, txn.handle());
+
+        txn.commit();
+
+        // Apply stale-status correction in-memory.
+        if (query.fix_stale_status) {
+            TradeRecordStatusFixer::fix_stale_statuses(result.records, query.wait_status_sec * 1000);
+        }
+
+        // Sort by the user-selected timestamp.
+        if (query.ascending) {
+            std::sort(result.records.begin(), result.records.end(),
+                [&query](const TradeRecord& lhs, const TradeRecord& rhs) {
+                    const auto lhs_ts = optionx::select_timestamp_ms(lhs, query.time_field);
+                    const auto rhs_ts = optionx::select_timestamp_ms(rhs, query.time_field);
+                    if (lhs_ts != rhs_ts) return lhs_ts < rhs_ts;
+                    return lhs.trade_id < rhs.trade_id;
+                });
+        } else {
+            std::sort(result.records.begin(), result.records.end(),
+                [&query](const TradeRecord& lhs, const TradeRecord& rhs) {
+                    const auto lhs_ts = optionx::select_timestamp_ms(lhs, query.time_field);
+                    const auto rhs_ts = optionx::select_timestamp_ms(rhs, query.time_field);
+                    if (lhs_ts != rhs_ts) return lhs_ts > rhs_ts;
+                    return lhs.trade_id > rhs.trade_id;
+                });
+        }
+
+        // Apply offset / limit pagination.
+        if (query.offset > 0) {
+            if (query.offset >= result.records.size()) {
+                result.records.clear();
+            } else {
+                result.records.erase(result.records.begin(), result.records.begin() + query.offset);
+            }
+        }
+        if (query.limit > 0 && result.records.size() > query.limit) {
+            result.records.resize(query.limit);
+        }
+
+        return result;
+    }
+
+    inline TradeRecordDBListResult TradeRecordDB::find_today_no_lock(std::int64_t now_ms, std::int64_t time_zone_sec) const {
+        return find_day_no_lock(now_ms, time_zone_sec);
+    }
+
+    inline TradeRecordDBListResult TradeRecordDB::find_day_no_lock(std::int64_t day_start_ms, std::int64_t time_zone_sec) const {
+        optionx::TradeRecordQuery query;
+        query.time_field = optionx::TradeRecordTimeField::AUTO;
+        query.range_mode = optionx::TimeRangeMode::HALF_OPEN;
+
+        // Convert day_start_ms to local time, snap to local midnight, then back to UTC.
+        const auto local_ms = day_start_ms + time_zone_sec * 1000;
+        const auto day_start_local = local_ms - (local_ms % 86400000);
+        const auto day_end_local = day_start_local + 86400000;
+        query.start_ms = day_start_local - time_zone_sec * 1000;
+        query.stop_ms = day_end_local - time_zone_sec * 1000;
+
+        return find_records_no_lock(query);
+    }
+
+    inline TradeRecordDBStatus TradeRecordDB::erase_by_trade_id_no_lock(std::uint64_t trade_id) {
         if (!is_open_no_lock()) return TradeRecordDBStatus::NOT_OPEN;
         if (m_read_only) return TradeRecordDBStatus::READ_ONLY;
-        if (record_id == 0) return TradeRecordDBStatus::INVALID_ARGUMENT;
+        if (trade_id == 0) return TradeRecordDBStatus::INVALID_ARGUMENT;
+        if (trade_id > std::numeric_limits<std::uint32_t>::max()) return TradeRecordDBStatus::NOT_FOUND;
 
         auto txn = m_connection->transaction(mdbxc::TransactionMode::WRITABLE);
-        const auto record = m_records->find(record_id, txn);
-        if (!record) {
+        const auto composite_opt = m_trade_id_index->find(trade_id, txn);
+        if (!composite_opt) {
             txn.commit();
             return TradeRecordDBStatus::NOT_FOUND;
         }
-        if (record->request_unique_id > 0) {
+
+        const auto record = m_records->find(*composite_opt, txn);
+        if (record && record->request_unique_id > 0) {
             m_uid_index->erase(record->request_unique_id, txn);
         }
-        m_records->erase(record_id, txn);
+        m_records->erase(*composite_opt, txn);
+        m_trade_id_index->erase(trade_id, txn);
         update_last_update_no_lock(txn.handle());
         txn.commit();
         return TradeRecordDBStatus::SUCCESS;
@@ -696,6 +912,7 @@ namespace optionx::storage {
         auto txn = m_connection->transaction(mdbxc::TransactionMode::WRITABLE);
         m_records->clear(txn);
         m_uid_index->clear(txn);
+        m_trade_id_index->clear(txn);
         m_meta->clear(txn);
         init_meta_no_lock(txn.handle());
         update_last_update_no_lock(txn.handle());
@@ -710,7 +927,7 @@ namespace optionx::storage {
         m_records->load(rows, txn);
         for (const auto& row : rows) {
             if (record.same_broker_identity(row.second)) {
-                return row.first;
+                return row.second.trade_id;
             }
         }
         return 0;

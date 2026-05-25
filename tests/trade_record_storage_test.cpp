@@ -99,10 +99,8 @@ optionx::TradeResult make_result() {
 }
 
 optionx::TradeRecord make_record() {
-    auto record = optionx::TradeRecord::from_trade(
-        optionx::TradeRecord::make_record_key(1712345600100, 65535),
-        make_request(),
-        make_result());
+    auto record = optionx::TradeRecord::from_trade(make_request(), make_result());
+    record.trade_id = 1;
 
     record.mm_type = optionx::MmSystemType::SKU_SYMBOL;
     record.mm_step = 4;
@@ -117,22 +115,7 @@ optionx::TradeRecord make_record() {
 
 } // namespace
 
-TEST(TradeRecordKeyTest, PacksTimestampAndSequence) {
-    const std::int64_t timestamp_ms = 1712345600100;
-    const auto key = optionx::TradeRecord::make_record_key(timestamp_ms, 65535);
-
-    EXPECT_EQ(optionx::TradeRecord::record_key_timestamp_ms(key), static_cast<std::uint64_t>(timestamp_ms));
-    EXPECT_EQ(optionx::TradeRecord::record_key_sequence(key), 65535);
-
-    EXPECT_THROW(optionx::TradeRecord::make_record_key(-1, 0), std::out_of_range);
-    EXPECT_THROW(optionx::TradeRecord::make_record_key(timestamp_ms, 65536), std::out_of_range);
-    EXPECT_THROW(
-        optionx::TradeRecord::make_record_key(
-            static_cast<std::int64_t>(optionx::TradeRecord::max_timestamp_ms + 1), 0),
-        std::out_of_range);
-}
-
-TEST(TradeRecordSerializationTest, RoundTripsBinaryV1) {
+TEST(TradeRecordSerializationTest, RoundTripsBinaryV2) {
     const auto record = make_record();
     const auto bytes = record.to_bytes();
     const auto restored = optionx::TradeRecord::from_bytes(bytes.data(), bytes.size());
@@ -159,10 +142,10 @@ TEST(TradeRecordFactoryTest, AssignsRequestResultAndSignalData) {
     signal.set_money_management(std::make_unique<TestMoneyManagementParams>(3));
     signal.decision_params = std::make_unique<TestDecisionParams>(0.65);
 
-    const auto record_id = optionx::TradeRecord::make_record_key(1712345600100, 7);
-    const auto record = optionx::TradeRecord::from_trade(record_id, signal, make_result());
+    auto record = optionx::TradeRecord::from_trade(signal, make_result());
+    record.trade_id = 7;
 
-    EXPECT_EQ(record.record_id, record_id);
+    EXPECT_EQ(record.trade_id, 7u);
     EXPECT_EQ(record.symbol, "EURUSD");
     EXPECT_EQ(record.signal_name, "mean-reversion");
     EXPECT_EQ(record.request_unique_id, 42);
@@ -178,7 +161,7 @@ TEST(TradeRecordFactoryTest, AssignsRequestResultAndSignalData) {
 TEST(TradeRecordIdentityTest, MatchesBrokerIdentityWithKnownContext) {
     auto first = make_record();
     auto second = make_record();
-    second.record_id = optionx::TradeRecord::make_record_key(1712345600100, 2);
+    second.trade_id = 2;
 
     EXPECT_TRUE(first.has_broker_identity());
     EXPECT_TRUE(first.same_broker_identity(second));
@@ -199,14 +182,14 @@ TEST(TradeRecordStorageTest, StoresInMdbxKeyValueTable) {
     table.clear();
 
     const auto record = make_record();
-    table.insert_or_assign(record.record_id, record);
+    table.insert_or_assign(record.trade_id, record);
 
 #if __cplusplus >= 201703L
-    const auto stored = table.find(record.record_id);
+    const auto stored = table.find(record.trade_id);
     ASSERT_TRUE(stored.has_value());
     EXPECT_EQ(*stored, record);
 #else
-    const auto stored = table.find_compat(record.record_id);
+    const auto stored = table.find_compat(record.trade_id);
     ASSERT_TRUE(stored.first);
     EXPECT_EQ(stored.second, record);
 #endif

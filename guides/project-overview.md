@@ -108,10 +108,10 @@ Enums живут рядом с доменом и имеют `to_str`, `to_enum`,
 
 | Задача | Сначала открыть |
 |---|---|
-| Добавить новую платформу | `BaseTradingPlatform.hpp`, `IntradeBarPlatform.hpp`, `agents/platform-api-guide.md` |
+| Добавить новую платформу | `BaseTradingPlatform.hpp`, `IntradeBarPlatform.hpp`, `guides/platform-api-guide.md` |
 | Добавить manager/module | `BaseModule.hpp`, ближайший manager в platform folder |
 | Добавить событие | `data/events/*.hpp`, `utils/pubsub/Event.hpp` |
 | Добавить DTO/enum | `data/<domain>/*.hpp`, `data/trading/enums.hpp` |
 | Изменить HTTP flow | `BaseHttpClientModule.hpp`, platform `HttpClientModule.hpp`, `http_utils.hpp` |
 | Изменить trade lifecycle | `BaseTradeExecutionModule.hpp`, `TradeQueueManager.hpp`, `TradeStateManager.hpp` |
-| Изменить build/tests | `CMakeLists.txt`, `libs/`, `tests/`, `agents/build-and-test.md` |
+| Изменить build/tests | `CMakeLists.txt`, `libs/`, `tests/`, `guides/build-and-test.md` |

@@ -13,6 +13,16 @@
 
 namespace optionx::storage {
 
+    /// \struct TradeRecordDBMeta
+    /// \brief Singleton metadata stored via ValueTable in TradeRecordDB.
+    struct TradeRecordDBMeta {
+        std::uint64_t db_version = 1;      ///< Database schema version.
+        std::uint32_t next_trade_uid = 1;  ///< Next monotonic trade index (low 32 bits of composite key).
+        std::int64_t  last_update_ms = 0;  ///< Last wall-clock update time in milliseconds.
+    };
+    static_assert(std::is_trivially_copyable_v<TradeRecordDBMeta>,
+                  "TradeRecordDBMeta must be trivially copyable for ValueTable storage");
+
     /// \struct TradeRecordDBWriteResult
     /// \brief Result of a TradeRecord write operation.
     struct TradeRecordDBWriteResult {

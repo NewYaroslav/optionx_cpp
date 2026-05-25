@@ -6,21 +6,21 @@
 
 ## Read First
 
-- [Coding agent workflow](agents/coding-agent-workflow.md) - базовый процесс для
+- [Coding agent workflow](guides/coding-agent-workflow.md) - базовый процесс для
   задач с изменением файлов.
-- [Project overview](agents/project-overview.md) - назначение библиотеки,
+- [Project overview](guides/project-overview.md) - назначение библиотеки,
   публичная поверхность, основные домены и поток выполнения.
-- [Platform API guide](agents/platform-api-guide.md) - практический справочник
+- [Platform API guide](guides/platform-api-guide.md) - практический справочник
   по платформам, модулям, событиям, DTO, storage и bridge API.
-- [Codebase orientation](agents/codebase-orientation.md) - карта проекта,
+- [Codebase orientation](guides/codebase-orientation.md) - карта проекта,
   DDD-слои, зависимости, расширение и безопасные точки входа.
-- [Build and test](agents/build-and-test.md) - CMake options, зависимости,
+- [Build and test](guides/build-and-test.md) - CMake options, зависимости,
   локальные проверки, примеры и generated output.
-- [Implementation notes](agents/implementation-notes.md) - lifecycle, pub-sub,
+- [Implementation notes](guides/implementation-notes.md) - lifecycle, pub-sub,
   task scheduling, HTTP/WebSocket, trade queue, session DB и ограничения.
-- [Coding style](agents/coding-style.md) - naming, namespace, Doxygen,
+- [Coding style](guides/coding-style.md) - naming, namespace, Doxygen,
   обработка ошибок, ownership и header-only правила.
-- [Commit conventions](agents/commit-conventions.md) - формат коммитов, если
+- [Commit conventions](guides/commit-conventions.md) - формат коммитов, если
   пользователь просит создать commit.
 
 ## Critical Defaults
@@ -28,6 +28,8 @@
 - Перед правками проверь `git status --short` и не перетирай чужие изменения.
 - Для поиска по репозиторию используй `rg` / `rg --files`.
 - Держи библиотеку header-only, если задача явно не требует нового `.cpp`.
+- Для публичных data/module/platform domains используй ближайший aggregate
+  include point вместо ручного восстановления порядка зависимостей в leaf headers.
 - Проект ориентирован на C++17 и CMake `>= 3.18`.
 - Переиспользуй `utils::EventBus`, `utils::EventMediator`, `utils::TaskManager`
   и `Base*Module` вместо локальных аналогов pub-sub, loop и task queue.

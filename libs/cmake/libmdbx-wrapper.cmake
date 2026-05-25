@@ -26,6 +26,9 @@ foreach(target mdbx-static)
             LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
             ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
         )
+        if(MINGW)
+            target_compile_definitions(${target} PRIVATE ERROR_UNHANDLED_EXCEPTION=574)
+        endif()
     endif()
 endforeach()
 

@@ -16,11 +16,16 @@
 #include <thread>
 
 #include <mdbx_containers/KeyValueTable.hpp>
+#include <mdbx_containers/ValueTable.hpp>
 
 #include "optionx_cpp/data/trading.hpp"
 #include "TradeRecordDB/enums.hpp"
 #include "TradeRecordDB/data.hpp"
 #include "TradeRecordDB/utils.hpp"
+#include "TradeRecordDB/TradeRecordFilterMatcher.hpp"
+#include "TradeRecordDB/TradeRecordStatusFixer.hpp"
+#include "TradeRecordDB/TradeStatsCalculator.hpp"
+#include "TradeRecordDB/TradeMetaStatsCalculator.hpp"
 
 #if defined(_WIN32) || defined(_WIN64)
 
@@ -58,7 +63,9 @@ namespace optionx::storage {
     /// \brief Header-only MDBX-backed storage service for TradeRecord objects.
     ///
     /// TradeRecordDB owns the persistent linear trade ID sequence used by
-    /// TradeRequest::trade_id, TradeResult::trade_id and TradeRecord::record_id.
+    /// TradeRequest::trade_id, TradeResult::trade_id and TradeRecord::trade_id.
+    /// The internal primary key is a composite uint64_t: high 32 bits store
+    /// biased unix minutes, low 32 bits store the monotonic trade index.
     /// Direct methods execute synchronously and return result/status immediately.
     /// Buffered methods enqueue work with enqueue_*(); process() executes queued work
     /// on the caller thread when no worker is running, run() starts a worker, flush()
@@ -77,7 +84,7 @@ namespace optionx::storage {
         using status_callback_t = std::function<void(TradeRecordDBStatus)>;
 
         /// \brief Creates default MDBX configuration for the trade records database.
-        /// \return MDBX config using OPTIONX_TRADE_RECORD_DB_FILE and at least three named databases.
+        /// \return MDBX config using OPTIONX_TRADE_RECORD_DB_FILE and at least four named databases.
         static mdbxc::Config default_config();
 
         /// \brief Constructs storage with the default configuration and table names.
@@ -85,13 +92,15 @@ namespace optionx::storage {
 
         /// \brief Constructs storage with custom MDBX configuration and optional table names.
         /// \param config MDBX connection configuration.
-        /// \param records_table Main table name for record_id -> TradeRecord.
-        /// \param uid_index_table Optional request_unique_id -> record_id index table.
+        /// \param records_table Main table name for composite_key -> TradeRecord.
+        /// \param uid_index_table Optional request_unique_id -> composite_key index table.
+        /// \param trade_id_index_table Optional trade_id -> composite_key index table.
         /// \param meta_table Metadata table for version and next trade ID.
         explicit TradeRecordDB(
             mdbxc::Config config,
             std::string records_table = "trade_records",
             std::string uid_index_table = "trade_record_uid_index",
+            std::string trade_id_index_table = "trade_record_trade_id_index",
             std::string meta_table = "trade_record_meta");
 
         ~TradeRecordDB();
@@ -129,53 +138,74 @@ namespace optionx::storage {
         /// \return True when request.trade_id is positive after the call.
         bool assign_trade_uid(TradeRequest& request);
 
-        /// \brief Inserts or updates a trade record, allocating or reusing record_id as needed.
+        /// \brief Inserts or updates a trade record, allocating or reusing trade_id as needed.
         /// \param record Full trade snapshot to store.
         /// \return Write result with the normalized record.
         ///
-        /// Match order is: explicit record_id, explicit trade_id, request_unique_id
-        /// index, broker identity, then a newly reserved linear trade_id. The stored
-        /// snapshot is not field-merged; incoming data replaces the previous record.
+        /// Match order is: explicit trade_id, request_unique_id index, broker identity,
+        /// then a newly reserved linear trade_id. The stored snapshot is not field-merged;
+        /// incoming data replaces the previous record.
         TradeRecordDBWriteResult upsert(TradeRecord record);
 
-        /// \brief Writes a record that already has a record_id.
+        /// \brief Writes a record that already has a trade_id.
         /// \param record Full trade snapshot to store.
         /// \return Write result with the normalized record.
         ///
-        /// If exactly one of record_id/trade_id is set, the other is copied from it.
-        /// If both are set, record_id is authoritative and trade_id is normalized to it.
+        /// The record must have a positive trade_id.
         TradeRecordDBWriteResult write(TradeRecord record);
 
-        /// \brief Finds a record by its linear record_id.
-        /// \param record_id Persistent linear record key.
+        /// \brief Finds a record by its trade_id.
+        /// \param trade_id Persistent linear trade ID.
         /// \return Read result with found=true when the record exists.
-        TradeRecordDBReadResult find(std::uint64_t record_id) const;
+        TradeRecordDBReadResult find_by_trade_id(std::uint64_t trade_id) const;
 
         /// \brief Finds a record through the optional request_unique_id index.
         /// \param request_unique_id Legacy/request-side ID copied from TradeRequest::unique_id.
         /// \return Read result with found=true when an index entry and record exist.
         ///
-        /// TradeRequest::unique_id is not the database identity. Prefer find(record_id)
+        /// TradeRequest::unique_id is not the database identity. Prefer find_by_trade_id(trade_id)
         /// for persistent trade lookup.
         TradeRecordDBReadResult find_by_uid(std::int64_t request_unique_id) const;
 
         /// \brief Finds all records whose selected trade timestamp equals timestamp_ms.
         /// \param timestamp_ms Millisecond timestamp matched against open/place/send/close/expiry date.
-        /// \return List result sorted by selected timestamp and record_id.
+        /// \return List result sorted by selected timestamp and trade_id.
         TradeRecordDBListResult find_by_timestamp(std::int64_t timestamp_ms) const;
 
         /// \brief Finds all records whose selected trade timestamp is inside [start_ms, stop_ms].
         /// \param start_ms Inclusive range start in milliseconds.
         /// \param stop_ms Inclusive range end in milliseconds.
-        /// \return List result sorted by selected timestamp and record_id.
+        /// \return List result sorted by selected timestamp and trade_id.
         TradeRecordDBListResult find_range(std::int64_t start_ms, std::int64_t stop_ms) const;
 
-        /// \brief Erases a record by record_id and removes its UID index entry when present.
-        /// \param record_id Persistent linear record key.
-        /// \return Operation status.
-        TradeRecordDBStatus erase(std::uint64_t record_id);
+        /// \brief Finds records matching an advanced query with filters, offset, limit, and status fixing.
+        /// \param query Query parameters including time range, field selection, filter, and pagination.
+        /// \return List result sorted according to query.ascending.
+        TradeRecordDBListResult find_records(const optionx::TradeRecordQuery& query) const;
 
-        /// \brief Clears records, UID index and meta table, then re-initializes meta keys.
+        /// \brief Convenience overload returning only the record vector.
+        /// \param query Query parameters.
+        /// \return Vector of matched records.
+        std::vector<optionx::TradeRecord> find_records_vector(const optionx::TradeRecordQuery& query) const;
+
+        /// \brief Finds all records for the current calendar day (local time).
+        /// \param now_ms Current wall-clock time in milliseconds (UTC).
+        /// \param time_zone_sec Time zone offset in seconds.
+        /// \return List result for the day containing now_ms in local time.
+        TradeRecordDBListResult find_today(std::int64_t now_ms, std::int64_t time_zone_sec = 0) const;
+
+        /// \brief Finds all records for the calendar day containing day_start_ms.
+        /// \param day_start_ms Any timestamp within the target day (UTC).
+        /// \param time_zone_sec Time zone offset in seconds.
+        /// \return List result for that calendar day.
+        TradeRecordDBListResult find_day(std::int64_t day_start_ms, std::int64_t time_zone_sec = 0) const;
+
+        /// \brief Erases a record by trade_id and removes its UID index entry when present.
+        /// \param trade_id Persistent linear trade ID.
+        /// \return Operation status.
+        TradeRecordDBStatus erase_by_trade_id(std::uint64_t trade_id);
+
+        /// \brief Clears records, indices and meta table, then re-initializes meta.
         /// \return Operation status; on success the next generated trade ID starts from 1 again.
         TradeRecordDBStatus clear();
 
@@ -195,11 +225,11 @@ namespace optionx::storage {
         /// \return SUCCESS when the command was accepted, QUEUE_CLOSED otherwise.
         TradeRecordDBStatus enqueue_write(TradeRecord record, write_callback_t callback = {});
 
-        /// \brief Enqueues a find operation.
-        /// \param record_id Persistent linear record key.
+        /// \brief Enqueues a find-by-trade-id operation.
+        /// \param trade_id Persistent linear trade ID.
         /// \param callback Optional callback delivered by process(), flush() or shutdown().
         /// \return SUCCESS when the command was accepted, QUEUE_CLOSED otherwise.
-        TradeRecordDBStatus enqueue_find(std::uint64_t record_id, read_callback_t callback = {});
+        TradeRecordDBStatus enqueue_find_by_trade_id(std::uint64_t trade_id, read_callback_t callback = {});
 
         /// \brief Enqueues a find-by-UID operation.
         /// \param request_unique_id Legacy/request-side ID copied from TradeRequest::unique_id.
@@ -220,11 +250,17 @@ namespace optionx::storage {
         /// \return SUCCESS when the command was accepted, QUEUE_CLOSED otherwise.
         TradeRecordDBStatus enqueue_find_range(std::int64_t start_ms, std::int64_t stop_ms, list_callback_t callback = {});
 
-        /// \brief Enqueues an erase operation.
-        /// \param record_id Persistent linear record key.
+        /// \brief Enqueues an advanced filtered query operation.
+        /// \param query Query parameters.
         /// \param callback Optional callback delivered by process(), flush() or shutdown().
         /// \return SUCCESS when the command was accepted, QUEUE_CLOSED otherwise.
-        TradeRecordDBStatus enqueue_erase(std::uint64_t record_id, status_callback_t callback = {});
+        TradeRecordDBStatus enqueue_find_records(optionx::TradeRecordQuery query, list_callback_t callback = {});
+
+        /// \brief Enqueues an erase-by-trade-id operation.
+        /// \param trade_id Persistent linear trade ID.
+        /// \param callback Optional callback delivered by process(), flush() or shutdown().
+        /// \return SUCCESS when the command was accepted, QUEUE_CLOSED otherwise.
+        TradeRecordDBStatus enqueue_erase_by_trade_id(std::uint64_t trade_id, status_callback_t callback = {});
 
         /// \brief Enqueues a clear operation.
         /// \param callback Optional callback delivered by process(), flush() or shutdown().
@@ -258,24 +294,22 @@ namespace optionx::storage {
         void shutdown();
 
     private:
-        static constexpr const char* kMetaDbVersion = "db_version";
-        static constexpr const char* kMetaDbVersionValue = "1";
-        static constexpr const char* kMetaNextTradeUid = "next_trade_uid";
-        static constexpr const char* kMetaLastUpdateMs = "last_update_ms";
-
         using records_table_t = mdbxc::KeyValueTable<std::uint64_t, TradeRecord>;
         using uid_index_table_t = mdbxc::KeyValueTable<std::int64_t, std::uint64_t>;
-        using meta_table_t = mdbxc::KeyValueTable<std::string, std::string>;
+        using trade_id_index_table_t = mdbxc::KeyValueTable<std::uint64_t, std::uint64_t>;
+        using meta_table_t = mdbxc::ValueTable<TradeRecordDBMeta>;
 
         mdbxc::Config m_config;
         std::string m_records_table_name;
         std::string m_uid_index_table_name;
+        std::string m_trade_id_index_table_name;
         std::string m_meta_table_name;
 
         mutable std::mutex m_db_mutex;
         std::shared_ptr<mdbxc::Connection> m_connection;
         std::unique_ptr<records_table_t> m_records;
         std::unique_ptr<uid_index_table_t> m_uid_index;
+        std::unique_ptr<trade_id_index_table_t> m_trade_id_index;
         std::unique_ptr<meta_table_t> m_meta;
         bool m_open = false;
         bool m_read_only = false;
@@ -295,7 +329,6 @@ namespace optionx::storage {
 
         void open();
         bool is_open_no_lock() const noexcept;
-        std::uint64_t get_meta_uint_no_lock(const std::string& key, std::uint64_t fallback, MDBX_txn* txn) const;
         void init_meta_no_lock(MDBX_txn* txn);
         void update_last_update_no_lock(MDBX_txn* txn);
         std::uint64_t reserve_trade_id_no_lock(MDBX_txn* txn);
@@ -303,11 +336,14 @@ namespace optionx::storage {
 
         TradeRecordDBWriteResult write_no_lock(TradeRecord record);
         TradeRecordDBWriteResult upsert_no_lock(TradeRecord record);
-        TradeRecordDBReadResult find_no_lock(std::uint64_t record_id) const;
+        TradeRecordDBReadResult find_by_trade_id_no_lock(std::uint64_t trade_id) const;
         TradeRecordDBReadResult find_by_uid_no_lock(std::int64_t request_unique_id) const;
         TradeRecordDBListResult find_by_timestamp_no_lock(std::int64_t timestamp_ms) const;
         TradeRecordDBListResult find_range_no_lock(std::int64_t start_ms, std::int64_t stop_ms) const;
-        TradeRecordDBStatus erase_no_lock(std::uint64_t record_id);
+        TradeRecordDBListResult find_records_no_lock(const optionx::TradeRecordQuery& query) const;
+        TradeRecordDBListResult find_today_no_lock(std::int64_t now_ms, std::int64_t time_zone_sec) const;
+        TradeRecordDBListResult find_day_no_lock(std::int64_t day_start_ms, std::int64_t time_zone_sec) const;
+        TradeRecordDBStatus erase_by_trade_id_no_lock(std::uint64_t trade_id);
         TradeRecordDBStatus clear_no_lock();
 
         std::uint64_t find_broker_identity_key_no_lock(

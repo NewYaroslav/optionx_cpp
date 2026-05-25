@@ -9,6 +9,8 @@
 #include <string>
 #include <memory>
 
+#include "SpreadPack.hpp"
+
 namespace optionx {
 
     /// \class TradeResult
@@ -53,6 +55,9 @@ namespace optionx {
         CurrencyType currency      = CurrencyType::UNKNOWN;	///< Account currency type
         PlatformType platform_type = PlatformType::UNKNOWN; ///< API protocol version
 
+        // Spread
+        SpreadPack spread_pack;                                ///< Packed open/close spread data
+
         /// \brief Creates a unique pointer to a copy of this TradeResult
         virtual std::unique_ptr<TradeResult> clone_unique() const {
             return std::make_unique<TradeResult>(*this);
@@ -89,7 +94,9 @@ namespace optionx {
             live_state,
             account_type,
             currency,
-            platform_type
+            platform_type,
+            spread_pack.raw,
+            spread_pack.digits
         )
     };
 

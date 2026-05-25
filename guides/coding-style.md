@@ -10,6 +10,12 @@
 - Public headers используют `#pragma once` и macro guard:
   `_OPTIONX_<AREA>_<NAME>_HPP_INCLUDED`.
 - Public aggregate headers лежат в `include/optionx_cpp/*.hpp`.
+- Prefer the nearest aggregate header for public-domain and cross-domain
+  dependencies; do not rebuild aggregate include order inside leaf DTO headers.
+- Do not use `../` in `#include` directives.
+- Avoid broad or implementation-only includes in leaf headers. Direct leaf
+  includes are acceptable for white-box/internal tests, not the main public
+  include contract.
 - Platform-specific files лежат в папке платформы и подключаются относительными
   includes из facade header.
 

@@ -15,6 +15,7 @@ namespace {
 using optionx::TradeRecord;
 using optionx::storage::TradeRecordDB;
 using optionx::storage::TradeRecordDBStatus;
+using optionx::storage::trade_record_db_detail::selected_timestamp_ms;
 
 std::string unique_db_path(const std::string& name) {
     static std::atomic<std::uint64_t> counter{0};
@@ -26,7 +27,7 @@ std::string unique_db_path(const std::string& name) {
 mdbxc::Config make_config(const std::string& name) {
     mdbxc::Config config;
     config.pathname = unique_db_path(name);
-    config.max_dbs = 3;
+    config.max_dbs = 4;
     config.no_subdir = false;
     config.relative_to_exe = true;
     return config;
@@ -125,42 +126,40 @@ TEST(TradeRecordDBTest, UpsertFindMigrateEraseClearAndCount) {
     auto first = make_record(42, ts, 1001, "broker-a");
     auto write = db.upsert(first);
     ASSERT_TRUE(write.ok()) << write.message;
-    EXPECT_EQ(write.record.record_id, 1u);
-    EXPECT_EQ(write.record.trade_id, write.record.record_id);
+    EXPECT_EQ(write.record.trade_id, 1u);
     EXPECT_EQ(db.count(), 1u);
 
-    const auto first_id = write.record.record_id;
-    auto by_id = db.find(first_id);
+    const auto first_id = write.record.trade_id;
+    auto by_id = db.find_by_trade_id(first_id);
     ASSERT_TRUE(by_id.ok()) << by_id.message;
     EXPECT_EQ(by_id.record.request_unique_id, 42);
 
     auto by_uid = db.find_by_uid(42);
     ASSERT_TRUE(by_uid.ok()) << by_uid.message;
-    EXPECT_EQ(by_uid.record.record_id, first_id);
+    EXPECT_EQ(by_uid.record.trade_id, first_id);
 
     auto updated = make_record(42, ts, 1001, "broker-a");
     updated.profit = 20.5;
     auto update = db.upsert(updated);
     ASSERT_TRUE(update.ok()) << update.message;
-    EXPECT_EQ(update.record.record_id, first_id);
-    EXPECT_DOUBLE_EQ(db.find(first_id).record.profit, 20.5);
+    EXPECT_EQ(update.record.trade_id, first_id);
+    EXPECT_DOUBLE_EQ(db.find_by_trade_id(first_id).record.profit, 20.5);
 
     auto migrated = make_record(42, ts + 1, 1001, "broker-a");
     migrated.profit = 30.0;
     auto migration = db.upsert(migrated);
     ASSERT_TRUE(migration.ok()) << migration.message;
-    EXPECT_EQ(migration.record.record_id, first_id);
-    ASSERT_TRUE(db.find(first_id).ok());
+    EXPECT_EQ(migration.record.trade_id, first_id);
+    ASSERT_TRUE(db.find_by_trade_id(first_id).ok());
     ASSERT_TRUE(db.find_by_uid(42).ok());
-    EXPECT_EQ(db.find_by_uid(42).record.record_id, migration.record.record_id);
+    EXPECT_EQ(db.find_by_uid(42).record.trade_id, migration.record.trade_id);
     EXPECT_EQ(db.count(), 1u);
 
     auto second = make_record(43, ts + 1, 1002, "broker-b");
     auto second_write = db.upsert(second);
     ASSERT_TRUE(second_write.ok()) << second_write.message;
-    EXPECT_NE(second_write.record.record_id, migration.record.record_id);
-    EXPECT_EQ(second_write.record.record_id, 2u);
-    EXPECT_EQ(second_write.record.trade_id, second_write.record.record_id);
+    EXPECT_NE(second_write.record.trade_id, migration.record.trade_id);
+    EXPECT_EQ(second_write.record.trade_id, 2u);
     EXPECT_EQ(db.count(), 2u);
 
     auto by_timestamp = db.find_by_timestamp(ts + 1);
@@ -173,7 +172,7 @@ TEST(TradeRecordDBTest, UpsertFindMigrateEraseClearAndCount) {
     ASSERT_TRUE(range.ok()) << range.message;
     EXPECT_EQ(range.records.size(), 2u);
 
-    EXPECT_EQ(db.erase(migration.record.record_id), TradeRecordDBStatus::SUCCESS);
+    EXPECT_EQ(db.erase_by_trade_id(migration.record.trade_id), TradeRecordDBStatus::SUCCESS);
     EXPECT_EQ(db.find_by_uid(42).status, TradeRecordDBStatus::NOT_FOUND);
     EXPECT_EQ(db.count(), 1u);
 
@@ -188,27 +187,24 @@ TEST(TradeRecordDBTest, WriteRemovesStaleUidIndexWhenUidChanges) {
     ASSERT_TRUE(db.is_open());
 
     auto original = make_record(50, 1712345600125, 1501, "stale-uid");
-    original.record_id = 10;
     original.trade_id = 10;
     ASSERT_TRUE(db.write(original).ok());
 
     auto updated = make_record(51, 1712345600125, 1501, "stale-uid");
-    updated.record_id = 10;
     updated.trade_id = 10;
     ASSERT_TRUE(db.write(updated).ok());
 
     EXPECT_EQ(db.find_by_uid(50).status, TradeRecordDBStatus::NOT_FOUND);
     ASSERT_TRUE(db.find_by_uid(51).ok());
-    EXPECT_EQ(db.find_by_uid(51).record.record_id, 10u);
+    EXPECT_EQ(db.find_by_uid(51).record.trade_id, 10u);
 }
 
-TEST(TradeRecordDBTest, WriteBumpsNextTradeIdPastManualRecordId) {
+TEST(TradeRecordDBTest, WriteBumpsNextTradeIdPastManualTradeId) {
     const auto config = make_config("trade_record_db_manual_id");
     TradeRecordDB db(config);
     ASSERT_TRUE(db.is_open());
 
     auto manual = make_record(0, 1712345600130, 1601, "manual-id");
-    manual.record_id = 25;
     manual.trade_id = 25;
     ASSERT_TRUE(db.write(manual).ok());
 
@@ -226,9 +222,8 @@ TEST(TradeRecordDBTest, UpsertAllocatesLinearIdWithoutTimestamp) {
 
     auto write = db.upsert(record);
     ASSERT_TRUE(write.ok()) << write.message;
-    EXPECT_EQ(write.record.record_id, 1u);
     EXPECT_EQ(write.record.trade_id, 1u);
-    EXPECT_TRUE(db.find(write.record.record_id).ok());
+    EXPECT_TRUE(db.find_by_trade_id(write.record.trade_id).ok());
 }
 
 TEST(TradeRecordDBTest, SameMillisecondTradesGetDifferentLinearIds) {
@@ -242,9 +237,7 @@ TEST(TradeRecordDBTest, SameMillisecondTradesGetDifferentLinearIds) {
 
     ASSERT_TRUE(first.ok()) << first.message;
     ASSERT_TRUE(second.ok()) << second.message;
-    EXPECT_NE(first.record.record_id, second.record.record_id);
-    EXPECT_EQ(first.record.trade_id, first.record.record_id);
-    EXPECT_EQ(second.record.trade_id, second.record.record_id);
+    EXPECT_NE(first.record.trade_id, second.record.trade_id);
 
     auto by_timestamp = db.find_by_timestamp(ts);
     ASSERT_TRUE(by_timestamp.ok()) << by_timestamp.message;
@@ -264,10 +257,10 @@ TEST(TradeRecordDBTest, BrokerIdentityUpdatesExistingTimestampRecord) {
     same_broker.profit = -15.0;
     auto update = db.upsert(same_broker);
     ASSERT_TRUE(update.ok()) << update.message;
-    EXPECT_EQ(update.record.record_id, original.record.record_id);
+    EXPECT_EQ(update.record.trade_id, original.record.trade_id);
     EXPECT_EQ(db.count(), 1u);
     ASSERT_TRUE(db.find_by_uid(77).ok());
-    EXPECT_DOUBLE_EQ(db.find(original.record.record_id).record.profit, -15.0);
+    EXPECT_DOUBLE_EQ(db.find_by_trade_id(original.record.trade_id).record.profit, -15.0);
 }
 
 TEST(TradeRecordDBTest, ProcessRunsQueuedWorkOnCallerThread) {
@@ -337,6 +330,83 @@ TEST(TradeRecordDBTest, ShutdownRejectsQueuedWork) {
     db.shutdown();
     EXPECT_EQ(db.enqueue_upsert(make_record(12, 1712345600500)), TradeRecordDBStatus::QUEUE_CLOSED);
     EXPECT_EQ(db.find_by_uid(12).status, TradeRecordDBStatus::NOT_OPEN);
+}
+
+TEST(SpreadPackTest, PacksAndUnpacksValues) {
+    optionx::SpreadPack pack;
+    pack.set_open_spread(0.00015, 5);
+    pack.set_close_spread(-0.00010, 5);
+
+    EXPECT_DOUBLE_EQ(pack.open_spread(), 0.00015);
+    EXPECT_DOUBLE_EQ(pack.close_spread(), -0.00010);
+    EXPECT_DOUBLE_EQ(pack.spread_difference(), -0.00025);
+    EXPECT_TRUE(pack.is_open_spread_positive());
+    EXPECT_FALSE(pack.is_close_spread_positive());
+}
+
+TEST(SpreadPackTest, HandlesZeroAndEdgeValues) {
+    optionx::SpreadPack pack;
+    pack.set_open_spread(0.0, 0);
+    pack.set_close_spread(0.0, 0);
+    EXPECT_DOUBLE_EQ(pack.open_spread(), 0.0);
+    EXPECT_DOUBLE_EQ(pack.close_spread(), 0.0);
+}
+
+TEST(CompositeKeyTest, OrdersAcrossMinuteBuckets) {
+    const auto config = make_config("trade_record_db_minute_buckets");
+    TradeRecordDB db(config);
+    ASSERT_TRUE(db.is_open());
+
+    const std::int64_t ts_bucket0 = 59999;   // minute 0
+    const std::int64_t ts_bucket1 = 60000;   // minute 1
+    const std::int64_t ts_bucket2 = 120000;  // minute 2
+
+    auto r0 = db.upsert(make_record(100, ts_bucket0, 3000, "bucket-0"));
+    auto r1 = db.upsert(make_record(101, ts_bucket1, 3001, "bucket-1"));
+    auto r2 = db.upsert(make_record(102, ts_bucket2, 3002, "bucket-2"));
+
+    ASSERT_TRUE(r0.ok()) << r0.message;
+    ASSERT_TRUE(r1.ok()) << r1.message;
+    ASSERT_TRUE(r2.ok()) << r2.message;
+
+    auto range = db.find_range(0, 130000);
+    ASSERT_TRUE(range.ok()) << range.message;
+    ASSERT_EQ(range.records.size(), 3u);
+
+    // Should be sorted by timestamp ascending, trade_id ascending
+    EXPECT_EQ(selected_timestamp_ms(range.records[0]), ts_bucket0);
+    EXPECT_EQ(selected_timestamp_ms(range.records[1]), ts_bucket1);
+    EXPECT_EQ(selected_timestamp_ms(range.records[2]), ts_bucket2);
+}
+
+TEST(CompositeKeyTest, UpdateMovesBetweenMinuteBuckets) {
+    const auto config = make_config("trade_record_db_move_bucket");
+    TradeRecordDB db(config);
+    ASSERT_TRUE(db.is_open());
+
+    const std::int64_t ts_old = 60000;
+    const std::int64_t ts_new = 120000;
+
+    auto original = make_record(200, ts_old, 4000, "move-bucket");
+    auto write = db.upsert(original);
+    ASSERT_TRUE(write.ok()) << write.message;
+    const auto trade_id = write.record.trade_id;
+
+    // Same trade_id, different minute bucket
+    auto moved = make_record(200, ts_new, 4000, "move-bucket");
+    moved.trade_id = trade_id;
+    auto update = db.write(moved);
+    ASSERT_TRUE(update.ok()) << update.message;
+
+    auto old_range = db.find_range(0, 65000);
+    ASSERT_TRUE(old_range.ok()) << old_range.message;
+    EXPECT_EQ(old_range.records.size(), 0u);
+
+    auto new_range = db.find_range(60000, 130000);
+    ASSERT_TRUE(new_range.ok()) << new_range.message;
+    ASSERT_EQ(new_range.records.size(), 1u);
+    EXPECT_EQ(new_range.records[0].trade_id, trade_id);
+    EXPECT_EQ(selected_timestamp_ms(new_range.records[0]), ts_new);
 }
 
 int main(int argc, char** argv) {

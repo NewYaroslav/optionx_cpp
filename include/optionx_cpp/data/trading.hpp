@@ -35,5 +35,8 @@
 #include "trading/ITradeDecisionParams.hpp"
 #include "trading/TradeSignal.hpp"
 #include "trading/TradeRecord.hpp"
+#include "trading/TradeRecordFilter.hpp"
+#include "trading/TradeRecordQuery.hpp"
+#include "trading/TradeStats.hpp"
 
 #endif // _OPTIONX_TRADING_HPP_INCLUDED

@@ -21,6 +21,75 @@ if(BUILD_DEPS)
     add_subdirectory(libs)
 endif()
 
+if(BUILD_EXAMPLES)
+    if(BUILD_DEPS)
+        set(EXAMPLE_BUILD_LIBS_DIR ${CMAKE_BINARY_DIR})
+    else()
+        if(NOT DEPS_BUILD_DIR)
+            message(FATAL_ERROR "BUILD_DEPS is OFF, but DEPS_BUILD_DIR is not set")
+        endif()
+        set(EXAMPLE_BUILD_LIBS_DIR ${DEPS_BUILD_DIR})
+    endif()
+
+    set(EXAMPLE_INCLUDE_DIRS
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+
+    set(EXAMPLE_DEPS_INCLUDE_DIRS
+        ${EXAMPLE_BUILD_LIBS_DIR}/include
+    )
+
+    set(EXAMPLE_LIBRARY_DIRS
+        ${EXAMPLE_BUILD_LIBS_DIR}/lib
+        ${EXAMPLE_BUILD_LIBS_DIR}/bin
+    )
+
+    file(GLOB EXAMPLE_DLL_FILES "${EXAMPLE_LIBRARY_DIRS}/*.dll")
+
+    set(EXAMPLE_DEFINES
+        ASIO_STANDALONE
+    )
+
+    set(EXAMPLE_LIBS
+        ws2_32
+        wsock32
+        crypt32
+        ssl
+        crypto
+        curl
+        mdbx
+        ntdll
+        bcrypt
+        AES
+    )
+
+    add_executable(trade_record_db_example examples/trade_record_db_example.cpp)
+
+    target_include_directories(trade_record_db_example PRIVATE
+        ${EXAMPLE_INCLUDE_DIRS}
+        ${EXAMPLE_DEPS_INCLUDE_DIRS}
+    )
+
+    target_link_directories(trade_record_db_example PRIVATE ${EXAMPLE_LIBRARY_DIRS})
+    target_compile_definitions(
+        trade_record_db_example PRIVATE
+        ${EXAMPLE_DEFINES}
+        LOGIT_BASE_PATH="${LOGIT_BASE_PATH_FWD}"
+    )
+    target_link_libraries(trade_record_db_example PRIVATE ${EXAMPLE_LIBS})
+
+    if(BUILD_DEPS)
+        add_dependencies(trade_record_db_example mdbx-static AES)
+    endif()
+
+    foreach(dll ${EXAMPLE_DLL_FILES})
+        add_custom_command(TARGET trade_record_db_example POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${dll}" "$<TARGET_FILE_DIR:trade_record_db_example>"
+        )
+    endforeach()
+endif()
+
 if(BUILD_TESTS)
     if(BUILD_DEPS)
         set(BUILD_LIBS_DIR ${CMAKE_BINARY_DIR})

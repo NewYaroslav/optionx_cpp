@@ -102,9 +102,9 @@ Compile definition: `ASIO_STANDALONE`. Для tests также задается
 
 ## Documentation-Only Checks
 
-Для изменений только в `agents/*.md` и `AGENTS.md` достаточно:
+Для изменений только в `guides/*.md` и `AGENTS.md` достаточно:
 
-1. Проверить `git diff -- AGENTS.md agents`.
+1. Проверить `git diff -- AGENTS.md guides`.
 2. Проверить, что ссылки из `AGENTS.md` ведут на существующие файлы.
 3. Выполнить smoke-check по ключевым темам:
    - есть build/test инструкция;

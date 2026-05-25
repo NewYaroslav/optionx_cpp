@@ -9,6 +9,12 @@
 - Headers используют `#pragma once` и macro include guard.
 - Aggregate headers (`optionx.hpp`, `utils.hpp`, `data.hpp`, `modules.hpp`,
   `platforms.hpp`) формируют публичную поверхность.
+- Public domains use an aggregate-first include model: users include the nearest
+  aggregate header first, and that header prepares shared std/third-party/domain
+  prerequisites in the intended order.
+- Domain aggregates such as `data/trading.hpp` own common include context for
+  their leaf DTO headers. Leaf DTO headers should not recreate sibling include
+  order or pull broad dependencies unless that leaf truly owns the dependency.
 - При добавлении public header обновляй ближайший aggregate header; при
   внутреннем helper не расширяй public surface.
 
@@ -127,10 +133,15 @@ facade lifecycle или остаться probe/internal component.
 - Queue manager создает/ведет transaction event/result.
 - State manager отвечает за допустимые переходы и проверки.
 - Trade result callbacks вызываются через queue/result flow.
+- Persistent trade storage uses TradeRequest::trade_id, not unique_id.
 
 Инварианты:
 
 - Не создавай trade result callback вручную в обход queue manager.
+- Для сохраняемых сделок резервируй trade_id до отправки брокеру.
+- Не используй TradeRequest::unique_id как DB identity.
+- Не строй primary ID сделки из даты или timestamp bucket.
+- Сохраняй propagation TradeRequest::trade_id -> TradeResult::trade_id.
 - Не меняй active/pending trades напрямую из platform manager.
 - Preprocess hook должен вернуть `false` и заполнить result error, если request
   невалиден.

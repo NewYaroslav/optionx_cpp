@@ -13,6 +13,7 @@
 #include <sstream>
 #include <regex>
 #include <cstdarg>
+#include <cstdint>
 
 namespace optionx::utils {
 
