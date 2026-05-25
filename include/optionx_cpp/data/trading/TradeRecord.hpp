@@ -14,7 +14,7 @@ namespace optionx {
     class TradeRecord {
     public:
         // Storage identity
-        std::uint64_t trade_id = 0;           ///< Linear persistent trade ID.
+        std::uint64_t trade_id = 0;           ///< 32-bit linear persistent trade ID (low 32 bits of composite key).
         std::int64_t request_unique_id = 0;   ///< Unique ID from TradeRequest.
         std::string request_unique_hash;      ///< Unique hash from TradeRequest.
         std::int64_t account_id = 0;          ///< Trading account ID.

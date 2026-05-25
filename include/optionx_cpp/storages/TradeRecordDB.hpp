@@ -64,8 +64,10 @@ namespace optionx::storage {
     ///
     /// TradeRecordDB owns the persistent linear trade ID sequence used by
     /// TradeRequest::trade_id, TradeResult::trade_id and TradeRecord::trade_id.
-    /// The internal primary key is a composite uint64_t: high 32 bits store
-    /// biased unix minutes, low 32 bits store the monotonic trade index.
+    /// The trade_id itself is a 32-bit monotonic value (1..UINT32_MAX) stored
+    /// in the low 32 bits of the composite uint64_t primary key (high 32 bits
+    /// store biased unix minutes). Public API uses uint64_t for type consistency,
+    /// but values above UINT32_MAX are rejected.
     /// Direct methods execute synchronously and return result/status immediately.
     /// Buffered methods enqueue work with enqueue_*(); process() executes queued work
     /// on the caller thread when no worker is running, run() starts a worker, flush()

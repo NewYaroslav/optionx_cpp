@@ -7,11 +7,12 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <ctime>
 #include <functional>
 #include <limits>
 #include <map>
 #include <memory>
+
+#include <time_shield.hpp>
 
 #include "optionx_cpp/data/trading/TradeStats.hpp"
 #include "optionx_cpp/data/trading/TradeRecordQuery.hpp"
@@ -95,10 +96,10 @@ namespace optionx::storage {
                     const auto ts = optionx::select_timestamp_ms(rec, optionx::TradeRecordTimeField::AUTO);
                     if (ts > 0) {
                         const auto local_ms = ts + config.time_zone_sec * 1000;
-                        const auto sec = static_cast<std::time_t>(local_ms / 1000);
-                        const auto tm = *std::gmtime(&sec);
-                        const auto sec_of_day = tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec;
-                        const auto min_of_day = tm.tm_hour * 60 + tm.tm_min;
+                        const auto sec = static_cast<time_shield::ts_t>(local_ms / 1000);
+                        const auto dt = time_shield::to_date_time<time_shield::DateTimeStruct>(sec);
+                        const auto sec_of_day = dt.hour * 3600 + dt.min * 60 + dt.sec;
+                        const auto min_of_day = dt.hour * 60 + dt.min;
 
                         if (sec_of_day >= 0 && sec_of_day < 86400) {
                             stats.by_sec[static_cast<std::size_t>(sec_of_day)].add(rec);
@@ -106,20 +107,21 @@ namespace optionx::storage {
                         if (min_of_day >= 0 && min_of_day < 1440) {
                             stats.by_min[static_cast<std::size_t>(min_of_day)].add(rec);
                         }
-                        if (tm.tm_hour >= 0 && tm.tm_hour < 24) {
-                            stats.by_hour[static_cast<std::size_t>(tm.tm_hour)].add(rec);
+                        if (dt.hour >= 0 && dt.hour < 24) {
+                            stats.by_hour[static_cast<std::size_t>(dt.hour)].add(rec);
                         }
-                        if (tm.tm_wday >= 0 && tm.tm_wday < 7) {
-                            stats.by_weekday[static_cast<std::size_t>(tm.tm_wday)].add(rec);
+                        const auto weekday = time_shield::weekday_of_ts(sec);
+                        if (weekday >= 0 && weekday < 7) {
+                            stats.by_weekday[static_cast<std::size_t>(weekday)].add(rec);
                         }
-                        if (tm.tm_mday >= 1 && tm.tm_mday <= 31) {
-                            stats.by_month_day[static_cast<std::size_t>(tm.tm_mday - 1)].add(rec);
+                        if (dt.day >= 1 && dt.day <= 31) {
+                            stats.by_month_day[static_cast<std::size_t>(dt.day - 1)].add(rec);
                         }
-                        if (tm.tm_mon >= 0 && tm.tm_mon < 12) {
-                            stats.by_month[static_cast<std::size_t>(tm.tm_mon)].add(rec);
+                        if (dt.mon >= 1 && dt.mon <= 12) {
+                            stats.by_month[static_cast<std::size_t>(dt.mon - 1)].add(rec);
                         }
-                        if (tm.tm_sec >= 0 && tm.tm_sec < 60) {
-                            stats.by_second[static_cast<std::size_t>(tm.tm_sec)].add(rec);
+                        if (dt.sec >= 0 && dt.sec < 60) {
+                            stats.by_second[static_cast<std::size_t>(dt.sec)].add(rec);
                         }
                     }
 

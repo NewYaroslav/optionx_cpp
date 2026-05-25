@@ -7,8 +7,9 @@
 
 #include <cstdint>
 #include <cstddef>
-#include <ctime>
 #include <chrono>
+
+#include <time_shield.hpp>
 
 #include "optionx_cpp/data/trading/TradeRecordQuery.hpp"
 #include "optionx_cpp/data/trading/TradeRecordFilter.hpp"
@@ -104,15 +105,15 @@ namespace optionx::storage {
             }
             if (selected_ms > 0) {
                 const auto local_ms = selected_ms + time_zone_sec * 1000;
-                const auto sec = static_cast<std::time_t>(local_ms / 1000);
-                const auto gm = *std::gmtime(&sec);
+                const auto sec = static_cast<time_shield::ts_t>(local_ms / 1000);
+                const auto dt = time_shield::to_date_time<time_shield::DateTimeStruct>(sec);
 
-                const auto hour = static_cast<std::uint32_t>(gm.tm_hour);
-                const auto weekday = static_cast<std::uint32_t>(gm.tm_wday);
-                const auto month_day = static_cast<std::uint32_t>(gm.tm_mday);
-                const auto month = static_cast<std::uint32_t>(gm.tm_mon + 1);
+                const auto hour = static_cast<std::uint32_t>(dt.hour);
+                const auto weekday = static_cast<std::uint32_t>(time_shield::weekday_of_ts(sec));
+                const auto month_day = static_cast<std::uint32_t>(dt.day);
+                const auto month = static_cast<std::uint32_t>(dt.mon);
                 const auto second_of_day = static_cast<std::int64_t>(
-                    gm.tm_hour * 3600 + gm.tm_min * 60 + gm.tm_sec);
+                    dt.hour * 3600 + dt.min * 60 + dt.sec);
 
                 if (!filter.hours.empty() && !filter.hours.match(hour)) return false;
                 if (!filter.weekdays.empty() && !filter.weekdays.match(weekday)) return false;
