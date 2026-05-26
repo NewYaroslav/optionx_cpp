@@ -72,6 +72,14 @@ namespace optionx {
         std::uint8_t flags = 0;                             ///< Bit flags (bit 0 = last_in_group).
         static constexpr std::uint8_t FLAG_LAST_IN_GROUP = 0x01;
 
+        /// \brief Returns true if this record is the last in its money-management group.
+        bool last_in_group() const noexcept { return (flags & FLAG_LAST_IN_GROUP) != 0; }
+
+        /// \brief Sets or clears the last-in-group flag.
+        void set_last_in_group(bool v) noexcept {
+            flags = v ? (flags | FLAG_LAST_IN_GROUP) : (flags & ~FLAG_LAST_IN_GROUP);
+        }
+
         // Spread
         SpreadPack spread_pack;                              ///< Packed open/close spread data.
 

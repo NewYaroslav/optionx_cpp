@@ -73,7 +73,7 @@ namespace optionx::storage {
                     include_outcome = false;
                 }
                 if (config.selection == optionx::TradeStatsSelection::LAST_IN_GROUP) {
-                    if ((rec.flags & optionx::TradeRecord::FLAG_LAST_IN_GROUP) == 0) {
+                    if (!rec.last_in_group()) {
                         include_outcome = false;
                     }
                 }
@@ -345,7 +345,7 @@ namespace optionx::storage {
                 return false;
             }
             if (config.selection == optionx::TradeStatsSelection::LAST_IN_GROUP) {
-                if ((rec.flags & optionx::TradeRecord::FLAG_LAST_IN_GROUP) == 0) {
+                if (!rec.last_in_group()) {
                     return false;
                 }
             }
