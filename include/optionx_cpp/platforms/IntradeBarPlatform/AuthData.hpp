@@ -12,23 +12,32 @@ namespace optionx::platforms::intrade_bar {
     class AuthData : public IAuthData {
     public:
         using json = nlohmann::json;
+        
+        AccountType account_type = AccountType::UNKNOWN;  ///< Account type, if supported.
+        CurrencyType currency    = CurrencyType::UNKNOWN; ///< Account currency, if supported.
+        std::string email;                         ///< Email for email/password authentication.
+        std::string password;                      ///< Password for email/password authentication.
+        std::string user_id;                       ///< Username for user/token authentication.
+        std::string token;                         ///< Token for user/token authentication.
+        std::string user_agent;                    ///< User agent string for HTTP requests.
+        std::string accept_language;               ///< Accepted languages for HTTP requests.
+        std::string host;                          ///< Host URL for the Intrade Bar platform.
+        std::string proxy_server;                  ///< Proxy address in <ip:port> format.
+        std::string proxy_auth;                    ///< Proxy authentication in <username:password> format.
+        kurlyk::ProxyType proxy_type;              ///< Proxy type (e.g., HTTP, SOCKS).
+        AuthMethod auth_method = AuthMethod::NONE; ///< Authentication method used.
+        bool auto_find_domain  = false;            ///< Whether to perform automatic domain discovery.
+        int domain_index_min   = 0;                ///< Minimum domain index to scan (0 = intrade.bar).
+        int domain_index_max   = 1000;             ///< Maximum domain index to scan (e.g., intrade1000.bar).
 
         AuthData() :
             user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"),
             accept_language("ru,ru-RU;q=0.9,en;q=0.8,en-US;q=0.7"),
             host("https://intrade.bar"),
-            proxy_type(kurlyk::ProxyType::PROXY_HTTP) {
+            proxy_type(::kurlyk::ProxyType::PROXY_HTTP) {
         }
 
         virtual ~AuthData() = default;
-
-        /// \enum AuthMethod
-        /// \brief Specifies the authentication method used.
-        enum class AuthMethod {
-            NONE,           ///< No authentication method specified.
-            EMAIL_PASSWORD, ///< Authorization via email and password.
-            USER_TOKEN      ///< Authorization via username and token.
-        };
 
         /// \brief Sets authorization data using email and password.
         /// \param email Email address.
@@ -193,23 +202,6 @@ namespace optionx::platforms::intrade_bar {
         PlatformType platform_type() const override {
             return PlatformType::INTRADE_BAR;
         }
-
-        AccountType account_type = AccountType::UNKNOWN;  ///< Account type, if supported.
-        CurrencyType currency    = CurrencyType::UNKNOWN; ///< Account currency, if supported.
-        std::string email;                         ///< Email for email/password authentication.
-        std::string password;                      ///< Password for email/password authentication.
-        std::string user_id;                       ///< Username for user/token authentication.
-        std::string token;                         ///< Token for user/token authentication.
-        std::string user_agent;                    ///< User agent string for HTTP requests.
-        std::string accept_language;               ///< Accepted languages for HTTP requests.
-        std::string host;                          ///< Host URL for the Intrade Bar platform.
-        std::string proxy_server;                  ///< Proxy address in <ip:port> format.
-        std::string proxy_auth;                    ///< Proxy authentication in <username:password> format.
-        kurlyk::ProxyType proxy_type;              ///< Proxy type (e.g., HTTP, SOCKS).
-        AuthMethod auth_method = AuthMethod::NONE; ///< Authentication method used.
-        bool auto_find_domain  = false;            ///< Whether to perform automatic domain discovery.
-        int domain_index_min   = 0;                ///< Minimum domain index to scan (0 = intrade.bar).
-        int domain_index_max   = 1000;             ///< Maximum domain index to scan (e.g., intrade1000.bar).
     }; // AuthData
 
 } // namespace optionx::platforms::intrade_bar

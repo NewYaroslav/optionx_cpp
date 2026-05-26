@@ -5,5 +5,6 @@
 #include "crypto.hpp"
 #include "utils.hpp"
 #include "storages/ServiceSessionDB.hpp"
+#include "storages/TradeRecordDB.hpp"
 
 #endif // _OPTIONX_STORAGES_HPP_INCLUDED

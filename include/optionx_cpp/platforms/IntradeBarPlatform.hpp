@@ -5,6 +5,11 @@
 /// \file IntradeBarPlatform.hpp
 /// \brief Defines the IntradeBarPlatform class, which provides an implementation of the trading platform API.
 
+#include <optionx_cpp/utils.hpp>
+#include <optionx_cpp/data.hpp>
+#include <optionx_cpp/storages.hpp>
+#include <optionx_cpp/modules.hpp>
+
 #include "common/BaseTradingPlatform.hpp"
 #include "IntradeBarPlatform/AuthData.hpp"
 #include "IntradeBarPlatform/AccountInfoData.hpp"
@@ -56,6 +61,18 @@ namespace optionx::platforms {
         /// \return True if the trade was placed successfully; false otherwise.
         bool place_trade(std::unique_ptr<TradeRequest> trade_request) override {
             return m_trade_execution.place_trade(std::move(trade_request));
+        }
+
+        /// \brief Returns the platform-level trade result callback.
+        /// \return Mutable callback reference from the trade execution module.
+        trade_result_callback_t& on_trade_result() override {
+            return m_trade_execution.on_trade_result();
+        }
+
+        /// \brief Returns provider used to reserve persistent trade IDs before broker execution.
+        /// \return Mutable provider callback from the trade execution module.
+        trade_id_provider_t& on_trade_id() override {
+            return m_trade_execution.on_trade_id();
         }
 
         /// \brief Returns the platform type.

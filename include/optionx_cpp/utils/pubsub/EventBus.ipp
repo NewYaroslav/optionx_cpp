@@ -126,5 +126,24 @@ namespace optionx::utils {
             local_queue.pop();
         }
     }
+    
+    inline size_t EventBus::drain(size_t max_rounds) {
+        size_t total = 0;
+        for (size_t round = 0; round < max_rounds; ++round)  {
+            std::queue<std::unique_ptr<Event>> local;
+
+            std::unique_lock<std::mutex> lock(m_queue_mutex);
+            if (m_event_queue.empty()) break;
+            std::swap(local, m_event_queue);
+            lock.unlock();
+
+            while (!local.empty()) {
+                notify(local.front().get());
+                local.pop();
+                ++total;
+            }
+        }
+        return total;
+    }
 
 } // namespace optionx::utils

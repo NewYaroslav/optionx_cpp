@@ -37,6 +37,7 @@ namespace optionx::platforms::intrade_bar {
             set_rate_limit_rpm(RateLimitType::ACCOUNT_INFO, 6);
             set_rate_limit_rpm(RateLimitType::ACCOUNT_SETTINGS, 12);
             set_rate_limit_rps(RateLimitType::TICK_DATA, 1);
+			get_http_client().assign_rate_limit_id(get_rate_limit(RateLimitType::GENERAL));
             platform.register_module(this);
         }
 

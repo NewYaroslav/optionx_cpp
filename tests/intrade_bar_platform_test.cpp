@@ -1,12 +1,8 @@
-#define LOGIT_BASE_PATH "E:\\_repoz\\optionx_cpp"
+//#define LOGIT_BASE_PATH "E:\\_repoz\\optionx_cpp"
 #define OPTIONX_LOG_UNIQUE_FILE_INDEX 2
-#define SQLITE_THREADSAFE 1
 
 #include <iostream>
-//#include <thread>
-//#include <chrono>
-//#include <atomic>
-#include "optionx_cpp/optionx.hpp"
+#include <optionx_cpp/platforms/IntradeBarPlatform.hpp>
 
 using namespace optionx;
 using namespace optionx::platforms;

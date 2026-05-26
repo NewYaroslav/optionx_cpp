@@ -36,4 +36,4 @@
 	url = https://github.com/NewYaroslav/mdbx-containers.git
 [submodule "libs/libmdbx"]
 	path = libs/libmdbx
-	url = https://github.com/erthink/libmdbx.git
+	url = https://github.com/Mithril-mine/libmdbx.git

@@ -24,9 +24,9 @@ namespace optionx::modules {
         }
 
         /// \brief Default virtual destructor.
-        virtual ~BaseHttpClientModule() {
-            deinitialize_rate_limits();
+        virtual ~BaseHttpClientModule() noexcept override {
             m_client.cancel_requests();
+            m_http_tasks.clear();
         }
 
         /// \brief Handles an event notification received as a raw pointer.
@@ -39,11 +39,16 @@ namespace optionx::modules {
         }
 
         void shutdown() override final {
+            deinitialize_rate_limits();
             m_client.cancel_requests();
         }
 
         kurlyk::HttpClient& get_http_client() {
             return m_client;
+        }
+
+        void set_max_pending_requests(size_t max) {
+            kurlyk::set_max_pending_requests(max);
         }
 
         /// \brief Gets the rate limit for the specified type.
@@ -53,7 +58,7 @@ namespace optionx::modules {
         uint32_t get_rate_limit(T rate_limit_id) const {
             auto it = m_rate_limits.find(static_cast<uint32_t>(rate_limit_id));
             if (it == m_rate_limits.end()) return 0;
-            return it->second;
+            return it->second ? static_cast<uint32_t>(it->second->id()) : 0;
         }
 
         /// \brief Adds a new HTTP request task to the list.
@@ -67,7 +72,7 @@ namespace optionx::modules {
 
     protected:
         kurlyk::HttpClient m_client; ///< The HTTP client for making requests.
-        std::unordered_map<uint32_t, uint32_t> m_rate_limits; ///< Rate limit handles by ID.
+        std::unordered_map<uint32_t, kurlyk::HttpRateLimitHandlePtr> m_rate_limits; ///< Rate limit handles by ID.
 
         /// \class HttpRequestTask
         /// \brief Represents a single HTTP request task with a future and a callback.
@@ -87,7 +92,7 @@ namespace optionx::modules {
         /// \brief Deinitializes all rate limits by resetting them.
         void deinitialize_rate_limits() {
             for (auto item : m_rate_limits) {
-                kurlyk::remove_limit(item.first);
+                kurlyk::remove_limit(item.second);
             }
         }
 
@@ -123,9 +128,12 @@ namespace optionx::modules {
                         try {
                             auto response = std::make_unique<kurlyk::HttpResponse>();
                             response->ready = true;
+                            response->error_code = kurlyk::utils::make_error_code(
+                                kurlyk::utils::ClientError::AbortedDuringDestruction);
+                            response->error_message = ex.what();
                             if (it->callback) it->callback(std::move(response));
                         } catch(...) {
-                            LOGIT_ERROR("Unknown error");
+                            LOGIT_ERROR("Unknown error processing HTTP response");
                         }
                     }
 

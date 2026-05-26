@@ -22,6 +22,7 @@ namespace optionx::modules {
     public:
         using transaction_t = std::shared_ptr<events::TradeTransactionEvent>;
         using trade_result_callback_t = std::function<void(std::unique_ptr<TradeRequest>, std::unique_ptr<TradeResult>)>;
+        using trade_id_provider_t = std::function<std::uint64_t()>;
 
         /// \brief Constructs a TradeQueueManager instance.
         /// \param bus Event bus for event-based communication.
@@ -72,6 +73,12 @@ namespace optionx::modules {
         /// \return
         trade_result_callback_t& on_trade_result() {
             return m_trade_result_callback;
+        }
+
+        /// \brief Returns provider used to initialize empty TradeRequest::trade_id values.
+        /// \return Mutable provider callback. Return 0 from the provider to use the local fallback generator.
+        trade_id_provider_t& on_trade_id() {
+            return m_trade_id_provider;
         }
 
         /// \brief Processes all pending, closing, and finalizing transactions.
@@ -129,6 +136,7 @@ namespace optionx::modules {
         TradeStateManager&       m_trade_state_manager; ///< Manages trade states and transitions.
         mutable std::mutex       m_trade_result_mutex;  ///< Mutex for the trade result callback.
         trade_result_callback_t  m_trade_result_callback; ///< Callback for handling trade results.
+        trade_id_provider_t      m_trade_id_provider;
         std::mutex               m_pending_mutex;      ///< Mutex for pending transactions list.
         std::list<transaction_t> m_pending_transactions; ///< List of pending transactions.
         std::list<transaction_t> m_open_transactions;  ///< List of open transactions.
@@ -161,8 +169,13 @@ namespace optionx::modules {
         if (request->currency == CurrencyType::UNKNOWN) {
             request->currency = m_account_info.get_info<CurrencyType>(AccountInfoType::CURRENCY);
         }
+        if (request->trade_id == 0 && m_trade_id_provider) {
+            request->trade_id = m_trade_id_provider();
+        }
+        if (request->trade_id == 0) {
+            request->trade_id = utils::make_trade_id();
+        }
         auto result = request->create_trade_result_unique();
-        result->trade_id = utils::TradeIdGenerator::instance().generate_id();
         result->place_date = OPTIONX_TIMESTAMP_MS;
         result->platform_type = platform_type;
         if (!preprocess(request, result)) return false;

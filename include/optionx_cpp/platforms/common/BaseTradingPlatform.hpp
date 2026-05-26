@@ -12,6 +12,7 @@ namespace optionx::platforms {
     class BaseTradingPlatform {
     public:
         using trade_result_callback_t = std::function<void(std::unique_ptr<TradeRequest>, std::unique_ptr<TradeResult>)>;
+        using trade_id_provider_t = std::function<std::uint64_t()>;
         using bars_callback_t  = std::function<void(const std::vector<BarData>&)>;
         using ticks_callback_t = std::function<void(const std::vector<TickData>&)>;
 
@@ -22,7 +23,7 @@ namespace optionx::platforms {
               m_account_info_handler(m_event_bus) {
         }
 
-        virtual ~BaseTradingPlatform() {
+        virtual ~BaseTradingPlatform() noexcept {
             shutdown();
         }
 
@@ -31,6 +32,13 @@ namespace optionx::platforms {
         virtual trade_result_callback_t& on_trade_result() {
             static trade_result_callback_t null_callback;
             return null_callback;
+        }
+
+        /// \brief Returns provider used by concrete platforms to initialize TradeRequest::trade_id.
+        /// \return Mutable provider callback, or a null provider for base platforms.
+        virtual trade_id_provider_t& on_trade_id() {
+            static trade_id_provider_t null_provider;
+            return null_provider;
         }
 
         /// \brief Returns a reference to the account info callback.
@@ -134,17 +142,21 @@ namespace optionx::platforms {
 
         /// \brief Starts the platform's event loop and module lifecycle.
         /// \details Adds initialization and periodic update tasks.
-        ///          If use_internal_thread is true (default), TaskManager launches its own worker thread.
+        ///          If start_worker_thread is true (default), TaskManager launches its own worker thread.
         ///          Otherwise, the caller must periodically call process() manually.
-        /// \param use_internal_thread Whether to use an internal background thread for updates.
-        void run(bool use_internal_thread = true) {
+        /// \param start_worker_thread  Whether to use an internal background thread for updates.
+        void run(bool start_worker_thread  = true) {
+            if (m_stopping.load(std::memory_order_acquire) ||
+                m_stopped .load(std::memory_order_acquire)) {
+                LOGIT_WARN("run() after shutdown()");
+                return;
+            }
+            
             m_task_manager.add_single_task("initialize", [this](
                     std::shared_ptr<utils::Task> task){
                 if (task->is_shutdown()) return;
                 LOGIT_TRACE0();
-                for (auto* module : m_modules) {
-                    module->initialize();
-                }
+                for (auto* module : m_modules) module->initialize();
                 on_once();
             });
             
@@ -153,20 +165,15 @@ namespace optionx::platforms {
                 m_event_bus.process();
                 if (task->is_shutdown()) {
                     LOGIT_TRACE0();
-                    for (auto* module : m_modules) {
-                        module->shutdown();
-                    }
-                    on_shutdown();
-                } else {
-                    for (auto* module : m_modules) {
-                        module->process();
-                    }
-                    on_loop();
+                    return;
                 }
+                for (auto* module : m_modules) module->process();
+                on_loop();
             });
             
-            if (!use_internal_thread) return;
-            m_task_manager.run();
+            if (start_worker_thread) {
+                m_task_manager.run();
+            }
         };
         
         /// \brief Manually processes pending tasks and events.
@@ -177,8 +184,22 @@ namespace optionx::platforms {
 
         /// \brief Shuts down the platform, stopping the event loop and tasks.
         /// \details Always calls shutdown() on TaskManager, regardless of internal thread usage.
-        void shutdown() {
+        void shutdown() noexcept {
+            if (m_stopped.load(std::memory_order_acquire)) return;
+            
+            if (m_stopping.exchange(true, std::memory_order_acq_rel)) return;
+            
             m_task_manager.shutdown();
+            
+            for (auto* module : m_modules) {
+                if (module) {
+                    module->shutdown();
+                }
+            }
+            on_shutdown();
+
+            m_event_bus.drain();
+            m_stopped.store(true, std::memory_order_release);
         };
 
         /// \brief Returns a reference to the event bus.
@@ -201,6 +222,8 @@ namespace optionx::platforms {
         utils::TaskManager                   m_task_manager;
         modules::BaseAccountInfoHandler      m_account_info_handler;
         std::vector<modules::BaseModule*>    m_modules;
+        std::atomic<bool>                    m_stopping{false};
+        std::atomic<bool>                    m_stopped{false};
 
         virtual void on_once() {};
 

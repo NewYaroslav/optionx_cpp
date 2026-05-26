@@ -9,6 +9,8 @@
 #include <string>
 #include <memory>
 
+#include "SpreadPack.hpp"
+
 namespace optionx {
 
     /// \class TradeResult
@@ -16,7 +18,7 @@ namespace optionx {
     class TradeResult {
     public:
         // Unique identifier for the trade
-        uint64_t trade_id = 0;      ///< Unique ID assigned to each trade (Internal trade ID)
+        uint64_t trade_id = 0;      ///< Persistent trade ID copied from TradeRequest and used by TradeRecordDB.
 
         // Trade execution metadata
         TradeErrorCode error_code = TradeErrorCode::SUCCESS;   ///< Error code for the trade result
@@ -53,6 +55,9 @@ namespace optionx {
         CurrencyType currency      = CurrencyType::UNKNOWN;	///< Account currency type
         PlatformType platform_type = PlatformType::UNKNOWN; ///< API protocol version
 
+        // Spread
+        SpreadPack spread_pack;                                ///< Packed open/close spread data
+
         /// \brief Creates a unique pointer to a copy of this TradeResult
         virtual std::unique_ptr<TradeResult> clone_unique() const {
             return std::make_unique<TradeResult>(*this);
@@ -68,6 +73,7 @@ namespace optionx {
         // JSON serialization/deserialization
         NLOHMANN_DEFINE_TYPE_INTRUSIVE(
             TradeResult,
+            trade_id,
             error_code,
             error_desc,
             option_hash,
@@ -88,7 +94,9 @@ namespace optionx {
             live_state,
             account_type,
             currency,
-            platform_type
+            platform_type,
+            spread_pack.raw,
+            spread_pack.digits
         )
     };
 

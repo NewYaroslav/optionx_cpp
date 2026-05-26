@@ -5,9 +5,6 @@
 /// \file AccountInfoData.hpp
 /// \brief Contains the AccountInfoData class for TradeUp platform account information.
 
-#include "optionx_cpp/data/account/BaseAccountInfoData.hpp"
-#include "optionx_cpp/data/trading/enums.hpp"
-
 namespace optionx::platforms::tradeup {
 
     /// \class AccountInfoData
@@ -16,8 +13,8 @@ namespace optionx::platforms::tradeup {
     public:
         std::string   user_id;                      ///< User identifier
         double        balance      = 0.0;           ///< Account balance
-        CurrencyType  currency     = CurrencyType::UNKNOWN; ///< Account currency
-        AccountType   account_type = AccountType::UNKNOWN;  ///< Account type
+        const CurrencyType currency = CurrencyType::USD;   ///< Account currency
+        AccountType   account_type = AccountType::UNKNOWN; ///< Account type
         bool          connect      = false;         ///< Connection status flag
 
         const PlatformType platform_type() const override { return PlatformType::TRADEUP; }

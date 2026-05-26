@@ -9,11 +9,34 @@
 /// and enumerations, including trade request and result structures, 
 /// trade signals, and decision-making parameters.
 
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <functional>
+#include <limits>
+#include <list>
+#include <map>
+#include <memory>
+#include <nlohmann/json.hpp>
+#include <ostream>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <unordered_map>
+#include <vector>
+
+#include "optionx_cpp/utils/enum_utils.hpp"
+#include "optionx_cpp/utils/string_utils.hpp"
+
 #include "trading/enums.hpp"
 #include "trading/TradeResult.hpp"
 #include "trading/TradeRequest.hpp"
 #include "trading/IMoneyManagementParams.hpp"
 #include "trading/ITradeDecisionParams.hpp"
 #include "trading/TradeSignal.hpp"
+#include "trading/TradeRecord.hpp"
+#include "trading/TradeRecordFilter.hpp"
+#include "trading/TradeRecordQuery.hpp"
+#include "trading/TradeStats.hpp"
 
 #endif // _OPTIONX_TRADING_HPP_INCLUDED

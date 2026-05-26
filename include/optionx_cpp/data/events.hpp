@@ -11,6 +11,10 @@
 
 #include "events/AuthDataEvent.hpp"
 #include "events/RestartAuthEvent.hpp"
+#include "events/WebSocketAuthDataEvent.hpp"
+#include "events/WebSocketAuthAppliedEvent.hpp"
+#include "events/WebSocketRequestEvent.hpp"
+#include "events/WebSocketResultEvent.hpp"
 #include "events/AutoDomainSelectedEvent.hpp"
 #include "events/AccountInfoUpdateEvent.hpp"
 #include "events/BalanceRequestEvent.hpp"

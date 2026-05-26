@@ -115,13 +115,13 @@ namespace optionx {
         type = optionx::to_enum<kurlyk::ProxyType>(j.get<std::string>());
     }
 
-	/// \brief Stream output operator for kurlyk::ProxyType.
-	std::ostream& operator<<(std::ostream& os, kurlyk::ProxyType value) {
+    /// \brief Stream output operator for kurlyk::ProxyType.
+    std::ostream& operator<<(std::ostream& os, kurlyk::ProxyType value) {
         os << optionx::to_str(value);
         return os;
     }
 
-//------------------------------------------------------------------------------
+    //-------------------------------------------------------------------------
 
     /// \enum AccountUpdateStatus
     /// \brief Represents the type of account update or status change.
@@ -140,7 +140,7 @@ namespace optionx {
     /// \brief Converts AccountUpdateStatus to its string representation.
     /// \param value The AccountUpdateStatus enumeration value.
     /// \return Constant reference to the corresponding string.
-	inline const std::string &to_str(AccountUpdateStatus value) noexcept {
+    inline const std::string &to_str(AccountUpdateStatus value) noexcept {
         static const std::vector<std::string> str_data = {
             "UNKNOWN",
             "BALANCE_UPDATED",
@@ -151,14 +151,14 @@ namespace optionx {
             "CONNECTED",
             "DISCONNECTED",
             "FAILED_TO_CONNECT"};
-		return str_data[static_cast<size_t>(value)];
+        return str_data[static_cast<size_t>(value)];
     };
 
-	/// \brief Converts string to AccountUpdateStatus enumeration.
+    /// \brief Converts string to AccountUpdateStatus enumeration.
     /// \param str Input string to convert.
     /// \param value Output enumeration value.
     /// \return True if conversion succeeded.
-	inline const bool to_enum(const std::string &str, AccountUpdateStatus &value) noexcept {
+    inline const bool to_enum(const std::string &str, AccountUpdateStatus &value) noexcept {
         static const std::unordered_map<std::string, AccountUpdateStatus> str_data = {
             {"UNKNOWN",              AccountUpdateStatus::UNKNOWN             },
             {"BALANCE_UPDATED",      AccountUpdateStatus::BALANCE_UPDATED     },
@@ -178,17 +178,17 @@ namespace optionx {
         return false;
     }
 
-	/// \brief Template specialization for AccountUpdateStatus enum conversion.
-	template <>
+    /// \brief Template specialization for AccountUpdateStatus enum conversion.
+    template <>
     inline AccountUpdateStatus to_enum<AccountUpdateStatus>(const std::string &str) {
         AccountUpdateStatus value;
         if (!to_enum(str, value)) {
             throw std::invalid_argument("Invalid AccountUpdateStatus string: " + str);
         }
-		return value;
+        return value;
     }
 
-	/// \brief Converts AccountUpdateStatus to JSON.
+    /// \brief Converts AccountUpdateStatus to JSON.
     inline void to_json(nlohmann::json& j, const AccountUpdateStatus& type) {
         j = optionx::to_str(type);
     }
@@ -198,8 +198,73 @@ namespace optionx {
         type = optionx::to_enum<AccountUpdateStatus>(j.get<std::string>());
     }
 
-	/// \brief Stream output operator for AccountUpdateStatus.
-	std::ostream& operator<<(std::ostream& os, AccountUpdateStatus value) {
+    /// \brief Stream output operator for AccountUpdateStatus.
+    std::ostream& operator<<(std::ostream& os, AccountUpdateStatus value) {
+        os << optionx::to_str(value);
+        return os;
+    }
+    
+    //-------------------------------------------------------------------------
+    
+    /// \enum AuthMethod
+    /// \brief Specifies the authentication method used.
+    enum class AuthMethod {
+        NONE,           ///< No authentication method specified.
+        EMAIL_PASSWORD, ///< Authorization via email and password.
+        USER_TOKEN      ///< Authorization via username and token.
+    };
+    
+    /// \brief Converts AuthMethod to its string representation.
+    /// \param value The AuthMethod enumeration value.
+    /// \return Constant reference to the corresponding string.
+    inline const std::string &to_str(AuthMethod value) noexcept {
+        static const std::vector<std::string> str_data = {
+            "NONE",
+            "EMAIL_PASSWORD",
+            "USER_TOKEN"};
+        return str_data[static_cast<size_t>(value)];
+    };
+
+    /// \brief Converts string to AuthMethod enumeration.
+    /// \param str Input string to convert.
+    /// \param value Output enumeration value.
+    /// \return True if conversion succeeded.
+    inline const bool to_enum(const std::string &str, AuthMethod &value) noexcept {
+        static const std::unordered_map<std::string, AuthMethod> str_data = {
+            {"NONE",           AuthMethod::NONE           },
+            {"EMAIL_PASSWORD", AuthMethod::EMAIL_PASSWORD },
+            {"USER_TOKEN",     AuthMethod::USER_TOKEN     }
+        };
+        auto it = str_data.find(utils::to_upper_case(str));
+        if (it != str_data.end()) {
+            value = it->second;
+            return true;
+        }
+        return false;
+    }
+
+    /// \brief Template specialization for AuthMethod enum conversion.
+    template <>
+    inline AuthMethod to_enum<AuthMethod>(const std::string &str) {
+        AuthMethod value;
+        if (!to_enum(str, value)) {
+            throw std::invalid_argument("Invalid AuthMethod string: " + str);
+        }
+        return value;
+    }
+
+    /// \brief Converts AuthMethod to JSON.
+    inline void to_json(nlohmann::json& j, const AuthMethod& type) {
+        j = optionx::to_str(type);
+    }
+
+    /// \brief Converts JSON to AuthMethod.
+    inline void from_json(const nlohmann::json& j, AuthMethod& type) {
+        type = optionx::to_enum<AuthMethod>(j.get<std::string>());
+    }
+
+    /// \brief Stream output operator for AuthMethod.
+    std::ostream& operator<<(std::ostream& os, AuthMethod value) {
         os << optionx::to_str(value);
         return os;
     }

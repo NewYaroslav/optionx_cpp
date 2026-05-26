@@ -7,18 +7,12 @@
 
 #include <string>
 #include <algorithm>
-#include "optionx_cpp/data/account/ConnectionResult.hpp"
-#include "optionx_cpp/utils/string_utils.hpp"
 
 namespace optionx::platforms::tradeup {
 
-    inline bool validate_status(const kurlyk::HttpResponsePtr& response) {
-        return response && response->status_code == 200;
-    }
-
-    inline bool validate_response(const kurlyk::HttpResponsePtr& response) {
-        return validate_status(response);
-    }
+    using ::optionx::utils::validate_status;
+    using ::optionx::utils::validate_ddos_protection;
+    using ::optionx::utils::validate_response;
 
     /// \brief Extracts a cookie value from HTTP headers.
     inline std::string extract_cookie(const kurlyk::Headers& headers, const std::string& name) {
@@ -35,6 +29,14 @@ namespace optionx::platforms::tradeup {
             }
         }
         return {};
+    }
+    
+    void collect_set_cookie(const Headers& headers, ::kurlyk::Cookies& out) {
+        auto [it, end] = headers.equal_range("set-cookie");
+        for (; it != end; ++it) {
+            ::kurlyk::Cookies c = ::kurlyk::utils::parse_cookie(it->second);
+            out.insert(c.begin(), c.end());
+        }
     }
 
 } // namespace optionx::platforms::tradeup

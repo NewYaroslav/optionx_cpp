@@ -5,15 +5,6 @@
 /// \file BalanceManager.hpp
 /// \brief Handles balance updates for the TradeUp platform.
 
-#include "optionx_cpp/platforms/TradeUpPlatform/HttpClientModule.hpp"
-#include "optionx_cpp/platforms/TradeUpPlatform/http_parsers.hpp"
-#include "optionx_cpp/platforms/TradeUpPlatform/http_utils.hpp"
-#include "optionx_cpp/platforms/TradeUpPlatform/AccountInfoData.hpp"
-#include "optionx_cpp/data/events/BalanceRequestEvent.hpp"
-#include "optionx_cpp/data/events/AccountInfoUpdateEvent.hpp"
-#include "optionx_cpp/modules/BaseModule.hpp"
-#include "optionx_cpp/platforms/common/BaseTradingPlatform.hpp"
-
 namespace optionx::platforms::tradeup {
 
     /// \class BalanceManager

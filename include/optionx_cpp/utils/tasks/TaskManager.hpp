@@ -168,11 +168,11 @@ namespace optionx::utils {
             for (auto& task : m_tasks) {
                 if (m_force_execute) {
                     LOGIT_TRACE(task->name());
-					task->force_execute();
+                    task->force_execute();
                 }
                 if (m_shutdown) {
                     LOGIT_TRACE(task->name());
-					task->shutdown();
+                    task->shutdown();
                 }
                 if (!task->is_completed()) {
                     task->process(now, task);
@@ -211,9 +211,9 @@ namespace optionx::utils {
             m_shutdown = true;
             if (m_worker_thread.joinable()) {
                 LOGIT_TRACE0();
-				m_cv.notify_all();
+                m_cv.notify_all();
                 m_worker_thread.join();
-				LOGIT_TRACE0();
+                LOGIT_TRACE0();
             } else {
                 process();
             }

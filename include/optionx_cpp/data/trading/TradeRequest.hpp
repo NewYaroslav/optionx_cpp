@@ -19,8 +19,9 @@ namespace optionx {
         std::string unique_hash;     ///< Unique hash to prevent duplicate trade execution.
 
         // Identifiers
-        int64_t unique_id   = 0;     ///< Unique identifier of the trade request.
-        int64_t account_id  = 0;     ///< Identifier of the associated trading account.
+        std::uint64_t trade_id = 0; ///< Persistent trade record ID propagated into TradeResult::trade_id.
+        int64_t unique_id   = 0;    ///< Unique identifier of the trade request.
+        int64_t account_id  = 0;    ///< Identifier of the associated trading account.
 
         // Trading enums
         OptionType option_type = OptionType::UNKNOWN;   ///< Option type (e.g., SPRINT or CLASSIC).
@@ -65,6 +66,7 @@ namespace optionx {
         /// \return A unique pointer to a new `TradeResult` instance.
         virtual std::unique_ptr<TradeResult> create_trade_result_unique() const {
             auto result = std::make_unique<TradeResult>();
+            result->trade_id = trade_id;
             result->account_type = account_type;
             result->currency = currency;
             result->amount = amount;
@@ -77,6 +79,7 @@ namespace optionx {
         /// \return A shared pointer to a new `TradeResult` instance.
         virtual std::shared_ptr<TradeResult> create_trade_result_shared() const {
             auto result = std::make_shared<TradeResult>();
+            result->trade_id = trade_id;
             result->account_type = account_type;
             result->currency = currency;
             result->amount = amount;
@@ -106,6 +109,7 @@ namespace optionx {
             user_data,
             comment,
             unique_hash,
+            trade_id,
             unique_id,
             account_id,
             option_type,
