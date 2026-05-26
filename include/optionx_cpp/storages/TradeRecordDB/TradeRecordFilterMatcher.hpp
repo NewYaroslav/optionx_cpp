@@ -80,9 +80,6 @@ namespace optionx::storage {
             if (filter.only_non_terminal && optionx::is_terminal_trade_state(record.trade_state)) return false;
 
             if (filter.only_first_mm_step && record.mm_step != 0) return false;
-            if (filter.only_last_in_group) {
-                // Reserved for future group-aware logic.
-            }
 
             // Scalar range checks
             if (filter.min_amount > 0.0 && record.amount < filter.min_amount) return false;

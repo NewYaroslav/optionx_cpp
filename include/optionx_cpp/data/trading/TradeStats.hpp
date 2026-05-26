@@ -20,11 +20,11 @@
 namespace optionx {
 
     /// \enum TradeStatsSelection
-    /// \brief Controls which subset of trades contributes to statistics.
+    /// \brief Controls which subset of trades contributes to outcome statistics.
     enum class TradeStatsSelection {
         ALL_TRADES,      ///< Include every trade.
         FIRST_MM_STEP,   ///< Include only trades with mm_step == 0.
-        LAST_IN_GROUP    ///< Reserved for future group-aware filtering.
+        LAST_IN_GROUP    ///< Include only trades with the last-in-group flag set.
     };
 
     /// \class TradeWinrateStats
@@ -134,13 +134,32 @@ namespace optionx {
         double max_relative_drawdown = 0.0;
         std::int64_t max_drawdown_date = 0;
 
+        double max_absolute_drawdown_free = 0.0;
+        double max_relative_drawdown_free = 0.0;
+        std::int64_t max_drawdown_date_free = 0;
+
         TradeChartData equity_curve;
+        TradeChartData free_funds_curve;
         TradeChartData profit_curve;
         TradeChartData daily_profit;
         TradeChartData hourly_profit;
 
         TradeSeriesStats series;
         TradePingStats ping;
+    };
+
+    /// \enum TradeStatsBalanceMode
+    /// \brief Controls how equity / drawdown curves are computed.
+    enum class TradeStatsBalanceMode {
+        SIMPLE,     ///< Classic realized-profit curve (balance += profit on close).
+        SWEEP_LINE  ///< Event-driven free-funds curve (locks amount on open, releases on close).
+    };
+
+    /// \enum TradeStatsInputOrder
+    /// \brief Hint about the order of input records.
+    enum class TradeStatsInputOrder {
+        AS_IS,           ///< Records may be in any order; sweep-line sorts internally.
+        PLACE_DATE_ASC   ///< Records are already sorted by place_date ascending.
     };
 
     /// \class TradeStatsConfig
@@ -154,6 +173,8 @@ namespace optionx {
         bool include_errors = false;
         bool include_non_terminal = false;
         std::function<double(double value, CurrencyType from)> convert; ///< Optional currency converter.
+        TradeStatsBalanceMode balance_mode = TradeStatsBalanceMode::SWEEP_LINE;
+        TradeStatsInputOrder input_order = TradeStatsInputOrder::AS_IS;
     };
 
     /// \class TradeMetaStats

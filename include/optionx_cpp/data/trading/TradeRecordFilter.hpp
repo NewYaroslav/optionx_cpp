@@ -108,7 +108,6 @@ namespace optionx {
         bool only_non_terminal = false;  ///< Match only non-terminal trade states.
 
         bool only_first_mm_step = false; ///< Match only records with mm_step == 0.
-        bool only_last_in_group = false; ///< Reserved for future use.
     };
 
     /// \brief Matches a second-of-day value against a range that may cross midnight.

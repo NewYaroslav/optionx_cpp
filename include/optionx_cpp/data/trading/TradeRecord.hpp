@@ -68,6 +68,10 @@ namespace optionx {
         std::string decision_params_json;                   ///< Serialized decision params.
         std::string metadata_json;                          ///< Future extension data.
 
+        // Flags
+        std::uint8_t flags = 0;                             ///< Bit flags (bit 0 = last_in_group).
+        static constexpr std::uint8_t FLAG_LAST_IN_GROUP = 0x01;
+
         // Spread
         SpreadPack spread_pack;                              ///< Packed open/close spread data.
 
@@ -193,23 +197,23 @@ namespace optionx {
             append_value(bytes, kBinaryMagic);
             append_value(bytes, kBinaryVersion);
 
-            append_value(bytes, trade_id);
+            append_value(bytes, static_cast<std::uint32_t>(trade_id));
             append_value(bytes, request_unique_id);
             append_string(bytes, request_unique_hash);
             append_value(bytes, account_id);
             append_value(bytes, option_id);
             append_string(bytes, option_hash);
 
-            append_enum(bytes, platform_type);
-            append_enum(bytes, account_type);
-            append_enum(bytes, currency);
+            append_enum8(bytes, platform_type);
+            append_enum8(bytes, account_type);
+            append_enum8(bytes, currency);
             append_string(bytes, symbol);
             append_string(bytes, signal_name);
             append_string(bytes, user_data);
             append_string(bytes, comment);
 
-            append_enum(bytes, option_type);
-            append_enum(bytes, order_type);
+            append_enum8(bytes, option_type);
+            append_enum8(bytes, order_type);
             append_value(bytes, amount);
             append_value(bytes, refund);
             append_value(bytes, min_payout);
@@ -217,9 +221,9 @@ namespace optionx {
             append_value(bytes, profit);
             append_value(bytes, balance);
 
-            append_enum(bytes, trade_state);
-            append_enum(bytes, live_state);
-            append_enum(bytes, error_code);
+            append_enum8(bytes, trade_state);
+            append_enum8(bytes, live_state);
+            append_enum8(bytes, error_code);
             append_string(bytes, error_desc);
 
             append_value(bytes, open_price);
@@ -233,7 +237,7 @@ namespace optionx {
             append_value(bytes, expiry_date);
             append_value(bytes, duration);
 
-            append_enum(bytes, mm_type);
+            append_enum8(bytes, mm_type);
             append_value(bytes, mm_step);
             append_value(bytes, mm_group_id);
             append_string(bytes, mm_group_hash);
@@ -242,6 +246,7 @@ namespace optionx {
             append_string(bytes, decision_params_json);
             append_string(bytes, metadata_json);
 
+            append_value(bytes, flags);
             append_value(bytes, spread_pack.raw);
             append_value(bytes, spread_pack.digits);
 
@@ -263,23 +268,23 @@ namespace optionx {
             }
 
             TradeRecord record;
-            record.trade_id = reader.read<std::uint64_t>();
+            record.trade_id = reader.read<std::uint32_t>();
             record.request_unique_id = reader.read<std::int64_t>();
             record.request_unique_hash = reader.read_string();
             record.account_id = reader.read<std::int64_t>();
             record.option_id = reader.read<std::int64_t>();
             record.option_hash = reader.read_string();
 
-            record.platform_type = reader.read_enum<PlatformType>();
-            record.account_type = reader.read_enum<AccountType>();
-            record.currency = reader.read_enum<CurrencyType>();
+            record.platform_type = reader.read_enum8<PlatformType>();
+            record.account_type = reader.read_enum8<AccountType>();
+            record.currency = reader.read_enum8<CurrencyType>();
             record.symbol = reader.read_string();
             record.signal_name = reader.read_string();
             record.user_data = reader.read_string();
             record.comment = reader.read_string();
 
-            record.option_type = reader.read_enum<OptionType>();
-            record.order_type = reader.read_enum<OrderType>();
+            record.option_type = reader.read_enum8<OptionType>();
+            record.order_type = reader.read_enum8<OrderType>();
             record.amount = reader.read<double>();
             record.refund = reader.read<double>();
             record.min_payout = reader.read<double>();
@@ -287,9 +292,9 @@ namespace optionx {
             record.profit = reader.read<double>();
             record.balance = reader.read<double>();
 
-            record.trade_state = reader.read_enum<TradeState>();
-            record.live_state = reader.read_enum<TradeState>();
-            record.error_code = reader.read_enum<TradeErrorCode>();
+            record.trade_state = reader.read_enum8<TradeState>();
+            record.live_state = reader.read_enum8<TradeState>();
+            record.error_code = reader.read_enum8<TradeErrorCode>();
             record.error_desc = reader.read_string();
 
             record.open_price = reader.read<double>();
@@ -303,7 +308,7 @@ namespace optionx {
             record.expiry_date = reader.read<std::int64_t>();
             record.duration = reader.read<std::int64_t>();
 
-            record.mm_type = reader.read_enum<MmSystemType>();
+            record.mm_type = reader.read_enum8<MmSystemType>();
             record.mm_step = reader.read<std::int32_t>();
             record.mm_group_id = reader.read<std::int64_t>();
             record.mm_group_hash = reader.read_string();
@@ -311,6 +316,8 @@ namespace optionx {
             record.mm_params_json = reader.read_string();
             record.decision_params_json = reader.read_string();
             record.metadata_json = reader.read_string();
+
+            record.flags = reader.read<std::uint8_t>();
 
             record.spread_pack.raw = reader.read<std::uint64_t>();
             record.spread_pack.digits = reader.read<std::uint8_t>();
@@ -363,6 +370,7 @@ namespace optionx {
                    mm_params_json == other.mm_params_json &&
                    decision_params_json == other.decision_params_json &&
                    metadata_json == other.metadata_json &&
+                   flags == other.flags &&
                    spread_pack.raw == other.spread_pack.raw &&
                    spread_pack.digits == other.spread_pack.digits;
         }
@@ -373,7 +381,7 @@ namespace optionx {
 
     private:
         static constexpr std::uint32_t kBinaryMagic = 0x5254584fU; // "OXTR" on little-endian hosts.
-        static constexpr std::uint16_t kBinaryVersion = 2;
+        static constexpr std::uint16_t kBinaryVersion = 3;
 
         template<typename T>
         static bool same_known(T lhs, T rhs, T unknown) noexcept {
@@ -394,6 +402,16 @@ namespace optionx {
         template<typename EnumType>
         static void append_enum(std::vector<std::uint8_t>& bytes, EnumType value) {
             append_value(bytes, static_cast<std::int32_t>(value));
+        }
+
+        template<typename EnumType>
+        static void append_enum8(std::vector<std::uint8_t>& bytes, EnumType value) {
+            using underlying = typename std::underlying_type<EnumType>::type;
+            auto v = static_cast<underlying>(value);
+            if (v > std::numeric_limits<std::uint8_t>::max()) {
+                throw std::runtime_error("TradeRecord: enum value exceeds uint8_t range");
+            }
+            append_value(bytes, static_cast<std::uint8_t>(v));
         }
 
         static void append_string(std::vector<std::uint8_t>& bytes, const std::string& value) {
@@ -428,6 +446,11 @@ namespace optionx {
             template<typename EnumType>
             EnumType read_enum() {
                 return static_cast<EnumType>(read<std::int32_t>());
+            }
+
+            template<typename EnumType>
+            EnumType read_enum8() {
+                return static_cast<EnumType>(read<std::uint8_t>());
             }
 
             std::string read_string() {

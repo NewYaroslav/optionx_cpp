@@ -11,6 +11,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <queue>
 
 #include <time_shield.hpp>
 
@@ -48,30 +49,46 @@ namespace optionx::storage {
             std::uint64_t current_series = 0;
             bool current_is_win = false;
 
+            std::uint64_t volume_trade_count = 0;
+
+            struct Event {
+                std::int64_t ts;
+                double delta;
+                bool operator<(const Event& other) const noexcept {
+                    return ts > other.ts; // min-heap for std::priority_queue
+                }
+            };
+            std::vector<Event> events;
+            events.reserve(records.size() * 2);
+
             for (const auto& rec : records) {
-                // 1. Filter predicate
+                // 1. Filter predicate (applies to both outcome and monetary)
                 if (!TradeRecordFilterMatcher::match_filter(rec, config.filter, config.time_zone_sec)) {
                     continue;
                 }
 
-                // 2. Selection filter
+                // 2. Determine if this record contributes to OUTCOME statistics
+                bool include_outcome = true;
                 if (config.selection == optionx::TradeStatsSelection::FIRST_MM_STEP && rec.mm_step != 0) {
-                    continue;
+                    include_outcome = false;
                 }
                 if (config.selection == optionx::TradeStatsSelection::LAST_IN_GROUP) {
-                    // Reserved for future group-aware logic.
-                    continue;
+                    if ((rec.flags & optionx::TradeRecord::FLAG_LAST_IN_GROUP) == 0) {
+                        include_outcome = false;
+                    }
                 }
 
-                // 3. Error / terminal inclusion
-                if (!config.include_errors && optionx::is_error_trade_state(rec.trade_state)) {
-                    continue;
-                }
-                if (!config.include_non_terminal && !optionx::is_terminal_trade_state(rec.trade_state)) {
-                    continue;
+                // 3. Error / terminal inclusion for outcome stats
+                if (include_outcome) {
+                    if (!config.include_errors && optionx::is_error_trade_state(rec.trade_state)) {
+                        include_outcome = false;
+                    }
+                    if (!config.include_non_terminal && !optionx::is_terminal_trade_state(rec.trade_state)) {
+                        include_outcome = false;
+                    }
                 }
 
-                // 4. Currency conversion
+                // 4. Currency conversion (for monetary stats)
                 double amount = rec.amount;
                 double profit = rec.profit;
                 if (config.convert) {
@@ -79,8 +96,67 @@ namespace optionx::storage {
                     profit = config.convert(profit, rec.currency);
                 }
 
-                // 5. Winrate aggregations (terminal trades only)
-                if (optionx::is_terminal_trade_state(rec.trade_state)) {
+                // 5. Monetary aggregations (all result-state trades always contribute)
+                if (optionx::is_result_state(rec.trade_state)) {
+                    ++volume_trade_count;
+                    stats.total_volume += amount;
+                    stats.total_profit += profit;
+                    if (profit > 0.0) stats.gross_profit += profit;
+                    if (profit < 0.0) stats.gross_loss += -profit;
+
+                    stats.max_profit_trade = std::max(stats.max_profit_trade, profit);
+                    stats.max_loss_trade = std::min(stats.max_loss_trade, profit);
+
+                    // Equity / profit curves (classic realized-profit mode)
+                    const auto curve_ts = rec.close_date > 0 ? rec.close_date : rec.open_date;
+                    running_balance += profit;
+                    peak_balance = std::max(peak_balance, running_balance);
+
+                    if (curve_ts > 0) {
+                        stats.equity_curve.x_time.push_back(curve_ts);
+                        stats.equity_curve.y_value.push_back(running_balance);
+                        stats.profit_curve.x_time.push_back(curve_ts);
+                        stats.profit_curve.y_value.push_back(stats.total_profit);
+
+                        // Daily / hourly profit buckets
+                        const auto local_ms = curve_ts + config.time_zone_sec * 1000;
+                        const auto day_start_local = time_shield::start_of_day_ms(local_ms);
+                        const auto day_utc = day_start_local - config.time_zone_sec * 1000;
+                        daily_profit_map[day_utc] += profit;
+
+                        const auto hour_start_local = time_shield::start_of_hour_ms(local_ms);
+                        const auto hour_utc = hour_start_local - config.time_zone_sec * 1000;
+                        hourly_profit_map[hour_utc] += profit;
+                    }
+
+                    // Drawdown (classic)
+                    const auto dd = peak_balance - running_balance;
+                    if (dd > stats.max_absolute_drawdown) {
+                        stats.max_absolute_drawdown = dd;
+                        stats.max_drawdown_date = curve_ts;
+                    }
+                    if (peak_balance > 0.0) {
+                        stats.max_relative_drawdown = std::max(stats.max_relative_drawdown, dd / peak_balance);
+                    }
+
+                    // Ping stats
+                    if (rec.ping > 0) {
+                        stats.ping.by_ping_ms[rec.ping].add(rec);
+                    }
+
+                    // Sweep-line events for free-funds curve
+                    if (config.balance_mode == optionx::TradeStatsBalanceMode::SWEEP_LINE) {
+                        if (rec.open_date > 0) {
+                            events.push_back({rec.open_date, -amount});
+                        }
+                        if (curve_ts > 0) {
+                            events.push_back({curve_ts, amount + profit});
+                        }
+                    }
+                }
+
+                // 6. Winrate / outcome aggregations (terminal trades only, subject to selection)
+                if (include_outcome && optionx::is_terminal_trade_state(rec.trade_state)) {
                     stats.total.add(rec);
                     if (rec.order_type == optionx::OrderType::BUY) stats.buy.add(rec);
                     else if (rec.order_type == optionx::OrderType::SELL) stats.sell.add(rec);
@@ -133,7 +209,7 @@ namespace optionx::storage {
                         }
                         current_is_win = true;
                         ++current_series;
-                        win_series_total_len += current_series; // will recompute at end
+                        win_series_total_len += current_series;
                     } else if (rec.trade_state == optionx::TradeState::LOSS) {
                         if (current_is_win && current_series > 0) {
                             ++win_series_count;
@@ -156,54 +232,6 @@ namespace optionx::storage {
                         current_series = 0;
                     }
                 }
-
-                // 6. Monetary aggregations (only result-state trades contribute to PnL)
-                if (optionx::is_result_state(rec.trade_state)) {
-                    stats.total_volume += amount;
-                    stats.total_profit += profit;
-                    if (profit > 0.0) stats.gross_profit += profit;
-                    if (profit < 0.0) stats.gross_loss += -profit;
-
-                    stats.max_profit_trade = std::max(stats.max_profit_trade, profit);
-                    stats.max_loss_trade = std::min(stats.max_loss_trade, profit);
-
-                    // Equity / profit curves
-                    const auto curve_ts = rec.close_date > 0 ? rec.close_date : rec.open_date;
-                    running_balance += profit;
-                    peak_balance = std::max(peak_balance, running_balance);
-
-                    stats.equity_curve.x_time.push_back(curve_ts);
-                    stats.equity_curve.y_value.push_back(running_balance);
-                    stats.profit_curve.x_time.push_back(curve_ts);
-                    stats.profit_curve.y_value.push_back(stats.total_profit);
-
-                    // Daily / hourly profit buckets
-                    if (curve_ts > 0) {
-                        const auto local_ms = curve_ts + config.time_zone_sec * 1000;
-                        const auto day_start_local = time_shield::start_of_day_ms(local_ms);
-                        const auto day_utc = day_start_local - config.time_zone_sec * 1000;
-                        daily_profit_map[day_utc] += profit;
-
-                        const auto hour_start_local = time_shield::start_of_hour_ms(local_ms);
-                        const auto hour_utc = hour_start_local - config.time_zone_sec * 1000;
-                        hourly_profit_map[hour_utc] += profit;
-                    }
-
-                    // Drawdown
-                    const auto dd = peak_balance - running_balance;
-                    if (dd > stats.max_absolute_drawdown) {
-                        stats.max_absolute_drawdown = dd;
-                        stats.max_drawdown_date = curve_ts;
-                    }
-                    if (peak_balance > 0.0) {
-                        stats.max_relative_drawdown = std::max(stats.max_relative_drawdown, dd / peak_balance);
-                    }
-
-                    // Ping stats
-                    if (rec.ping > 0) {
-                        stats.ping.by_ping_ms[rec.ping].add(rec);
-                    }
-                }
             }
 
             // Finalize open series
@@ -218,7 +246,6 @@ namespace optionx::storage {
             stats.series.current_is_win = current_is_win;
 
             // Recount series properly for averages
-            // (The loop above double-counts; do a second pass for clean series data.)
             recount_series(records, config, stats.series);
 
             // Finalize winrate stats
@@ -247,8 +274,10 @@ namespace optionx::storage {
                     ? std::numeric_limits<double>::infinity()
                     : 0.0);
 
+            if (volume_trade_count > 0) {
+                stats.average_amount = stats.total_volume / static_cast<double>(volume_trade_count);
+            }
             if (stats.total.trades > 0) {
-                stats.average_amount = stats.total_volume / static_cast<double>(stats.total.trades);
                 stats.average_profit_per_trade = stats.total_profit / static_cast<double>(stats.total.trades);
             }
 
@@ -268,10 +297,67 @@ namespace optionx::storage {
                 stats.hourly_profit.y_value.push_back(kv.second);
             }
 
+            // Sweep-line free-funds curve
+            if (config.balance_mode == optionx::TradeStatsBalanceMode::SWEEP_LINE && !events.empty()) {
+                std::sort(events.begin(), events.end(), [](const Event& a, const Event& b) {
+                    return a.ts < b.ts;
+                });
+
+                double free_funds = config.start_balance;
+                double peak_free = config.start_balance;
+                std::int64_t last_ts = events.front().ts;
+
+                for (const auto& ev : events) {
+                    if (ev.ts != last_ts) {
+                        stats.free_funds_curve.x_time.push_back(last_ts);
+                        stats.free_funds_curve.y_value.push_back(free_funds);
+                        last_ts = ev.ts;
+                    }
+                    free_funds += ev.delta;
+                    peak_free = std::max(peak_free, free_funds);
+
+                    const auto dd = peak_free - free_funds;
+                    if (dd > stats.max_absolute_drawdown_free) {
+                        stats.max_absolute_drawdown_free = dd;
+                        stats.max_drawdown_date_free = ev.ts;
+                    }
+                    if (peak_free > 0.0) {
+                        stats.max_relative_drawdown_free = std::max(
+                            stats.max_relative_drawdown_free, dd / peak_free);
+                    }
+                }
+                // Push final point
+                stats.free_funds_curve.x_time.push_back(last_ts);
+                stats.free_funds_curve.y_value.push_back(free_funds);
+            }
+
             return stats_ptr;
         }
 
     private:
+        static bool include_outcome(
+                const optionx::TradeRecord& rec,
+                const optionx::TradeStatsConfig& config) noexcept {
+            if (!TradeRecordFilterMatcher::match_filter(rec, config.filter, config.time_zone_sec)) {
+                return false;
+            }
+            if (config.selection == optionx::TradeStatsSelection::FIRST_MM_STEP && rec.mm_step != 0) {
+                return false;
+            }
+            if (config.selection == optionx::TradeStatsSelection::LAST_IN_GROUP) {
+                if ((rec.flags & optionx::TradeRecord::FLAG_LAST_IN_GROUP) == 0) {
+                    return false;
+                }
+            }
+            if (!config.include_errors && optionx::is_error_trade_state(rec.trade_state)) {
+                return false;
+            }
+            if (!config.include_non_terminal && !optionx::is_terminal_trade_state(rec.trade_state)) {
+                return false;
+            }
+            return true;
+        }
+
         static void recount_series(
                 const std::vector<optionx::TradeRecord>& records,
                 const optionx::TradeStatsConfig& config,
@@ -282,11 +368,7 @@ namespace optionx::storage {
             std::uint64_t total_w_len = 0, total_l_len = 0;
 
             for (const auto& rec : records) {
-                if (!TradeRecordFilterMatcher::match_filter(rec, config.filter, config.time_zone_sec)) continue;
-                if (config.selection == optionx::TradeStatsSelection::FIRST_MM_STEP && rec.mm_step != 0) continue;
-                if (config.selection == optionx::TradeStatsSelection::LAST_IN_GROUP) continue;
-                if (!config.include_errors && optionx::is_error_trade_state(rec.trade_state)) continue;
-                if (!config.include_non_terminal && !optionx::is_terminal_trade_state(rec.trade_state)) continue;
+                if (!include_outcome(rec, config)) continue;
                 if (!optionx::is_terminal_trade_state(rec.trade_state)) continue;
 
                 if (rec.trade_state == optionx::TradeState::WIN) {
