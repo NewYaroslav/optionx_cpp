@@ -28,6 +28,7 @@ namespace optionx::platforms::intrade_bar {
               m_account_info(std::move(account_info))  {
             subscribe<events::ConnectRequestEvent>();
             subscribe<events::DisconnectRequestEvent>();
+            subscribe<events::AuthDataEvent>();
             subscribe<events::BalanceRequestEvent>();
             subscribe<events::TradeRequestEvent>();
             subscribe<events::AccountInfoUpdateEvent>();
@@ -55,6 +56,7 @@ namespace optionx::platforms::intrade_bar {
         std::shared_ptr<BaseAccountInfoData> m_account_info; ///< Shared pointer to account information.
         int64_t m_last_trades_time;           ///< Timestamp of the last trade activity.
         int64_t m_request_time;               ///< Timestamp of the last balance request.
+        int64_t m_balance_check_period_ms = time_shield::MS_PER_15_MIN;
         bool m_has_balance_update = false;    ///< Flag indicating if a balance update is in progress.
         bool m_check_host_in_progress = false;
 
@@ -87,6 +89,10 @@ namespace optionx::platforms::intrade_bar {
         /// \param event The balance request event.
         void handle_event(const events::BalanceRequestEvent& event);
 
+        /// \brief Handles updated auth/settings data.
+        /// \param event The auth data event.
+        void handle_event(const events::AuthDataEvent& event);
+
         /// \brief Handles an event triggered when a trade request is received.
         /// \param event The trade request event.
         void handle_event(const events::TradeRequestEvent& event);
@@ -113,6 +119,9 @@ namespace optionx::platforms::intrade_bar {
         if (const auto* msg = dynamic_cast<const events::DisconnectRequestEvent*>(event)) {
             handle_event(*msg);
         } else
+        if (const auto* msg = dynamic_cast<const events::AuthDataEvent*>(event)) {
+            handle_event(*msg);
+        } else
         if (const auto* msg = dynamic_cast<const events::TradeRequestEvent*>(event)) {
             handle_event(*msg);
         } else
@@ -136,6 +145,7 @@ namespace optionx::platforms::intrade_bar {
     void BalanceManager::handle_balance_update() {
         if (m_has_balance_update) return;
         m_has_balance_update = true;
+        LOGIT_INFO("Intrade Bar balance: requesting balance snapshot.");
         m_request_manager.request_balance([this](
                 bool success,
                 double balance,
@@ -149,8 +159,14 @@ namespace optionx::platforms::intrade_bar {
             }
 
             if (success) {
+                LOGIT_INFO(
+                    "Intrade Bar balance: snapshot received. currency=",
+                    to_str(currency),
+                    ", balance=",
+                    balance);
                 process_balance_success(balance, currency, account_info);
             } else {
+                LOGIT_WARN("Intrade Bar balance: snapshot request failed.");
                 process_balance_failure(account_info);
             }
         });
@@ -203,6 +219,17 @@ namespace optionx::platforms::intrade_bar {
         handle_balance_update();
     }
 
+    void BalanceManager::handle_event(const events::AuthDataEvent& event) {
+        if (auto auth_data = std::dynamic_pointer_cast<AuthData>(event.auth_data)) {
+            if (auth_data->balance_check_period_ms > 0) {
+                m_balance_check_period_ms = auth_data->balance_check_period_ms;
+                LOGIT_INFO(
+                    "Intrade Bar balance: configured balance check period ms=",
+                    m_balance_check_period_ms);
+            }
+        }
+    }
+
     void BalanceManager::handle_event(const events::TradeRequestEvent& event) {
         m_last_trades_time = time_shield::ms_to_sec(OPTIONX_TIMESTAMP_MS);
         auto request = event.request;
@@ -244,9 +271,13 @@ namespace optionx::platforms::intrade_bar {
     void BalanceManager::handle_connected() {
         LOGIT_TRACE0();
         
+        LOGIT_INFO(
+            "Intrade Bar balance: starting connected balance polling. period_ms=",
+            m_balance_check_period_ms);
+
         m_task_manager.add_periodic_task(
-                "connected-15min",
-                time_shield::MS_PER_15_MIN,
+                "connected-balance-check",
+                m_balance_check_period_ms,
                 [this](std::shared_ptr<utils::Task> task){
             if (task->is_shutdown()) return;
             LOGIT_TRACE0();

@@ -47,6 +47,10 @@ list(FILTER CURL_STATIC_LIBS EXCLUDE REGEX ".*libcrypto.a$")
 install_lib_files_to_lib(${CURL_STATIC_LIBS})
 # install_static_libs_to_lib(${CMAKE_CURRENT_LIST_DIR}/curl-8.11.0_1-win64-mingw/lib)
 install_runtime_dlls_to_bin(${CMAKE_CURRENT_LIST_DIR}/curl-8.11.0_1-win64-mingw/bin)
+file(COPY
+    ${CMAKE_CURRENT_LIST_DIR}/curl-8.11.0_1-win64-mingw/bin/curl-ca-bundle.crt
+    DESTINATION ${CMAKE_BINARY_DIR}/bin
+)
 
 # AES
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/AES)

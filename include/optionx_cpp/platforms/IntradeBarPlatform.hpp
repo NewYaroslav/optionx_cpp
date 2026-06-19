@@ -13,6 +13,7 @@
 #include "common/BaseTradingPlatform.hpp"
 #include "IntradeBarPlatform/AuthData.hpp"
 #include "IntradeBarPlatform/AccountInfoData.hpp"
+#include "IntradeBarPlatform/ApiResponses.hpp"
 #include "IntradeBarPlatform/http_utils.hpp"
 #include "IntradeBarPlatform/http_parsers.hpp"
 #include "IntradeBarPlatform/HttpClientModule.hpp"

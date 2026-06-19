@@ -1,5 +1,6 @@
 /build-libs/
 /build-tests/
+/build-codex/
 /code_blocks/
 /logs (4)/
 
@@ -13,3 +14,6 @@
 /tradeup.txt
 /tradeup2.txt
 /tradeup3.txt
+
+# Local broker smoke-test credentials. Keep real auth/proxy data out of git.
+/tests/intrade_bar_api/*.local.env

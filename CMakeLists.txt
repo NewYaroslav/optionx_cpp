@@ -48,6 +48,7 @@ if(BUILD_EXAMPLES)
 
     set(EXAMPLE_DEFINES
         ASIO_STANDALONE
+        KURLYK_OAUTH_SUPPORT=0
     )
 
     set(EXAMPLE_LIBS
@@ -118,6 +119,7 @@ if(BUILD_TESTS)
 
     set(PROJECT_DEFINES
         ASIO_STANDALONE
+        KURLYK_OAUTH_SUPPORT=0
     )
 
     set(PROJECT_LIBS
@@ -140,7 +142,7 @@ if(BUILD_TESTS)
     )
     add_custom_target(project_headers SOURCES ${PROJECT_HEADERS})
 
-    file(GLOB TEST_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tests/*.cpp)
+    file(GLOB_RECURSE TEST_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tests/*.cpp)
 
     foreach(test_src ${TEST_SOURCES})
         get_filename_component(test_name ${test_src} NAME_WE)
@@ -160,6 +162,14 @@ if(BUILD_TESTS)
         )
         target_link_libraries(${test_name} PRIVATE ${PROJECT_LIBS})
 
+        if(BUILD_DEPS)
+            foreach(test_dep mdbx-static AES gtest)
+                if(TARGET ${test_dep})
+                    add_dependencies(${test_name} ${test_dep})
+                endif()
+            endforeach()
+        endif()
+
         set_source_files_properties(${PROJECT_HEADERS} PROPERTIES HEADER_FILE_ONLY ON)
         target_sources(${test_name} PRIVATE ${PROJECT_HEADERS})
 
@@ -169,6 +179,14 @@ if(BUILD_TESTS)
                 "${dll}" "$<TARGET_FILE_DIR:${test_name}>"
             )
         endforeach()
+
+        if(WIN32)
+            add_custom_command(TARGET ${test_name} POST_BUILD
+                COMMAND ${CMAKE_COMMAND}
+                    -DOPTIONX_RUNTIME_DLL_DIR="${BUILD_LIBS_DIR}/bin"
+                    -DOPTIONX_RUNTIME_TARGET_DIR="$<TARGET_FILE_DIR:${test_name}>"
+                    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy_runtime_dlls.cmake"
+            )
+        endif()
     endforeach()
 endif()
-

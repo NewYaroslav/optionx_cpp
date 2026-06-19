@@ -101,12 +101,45 @@ namespace optionx::platforms::intrade_bar {
             CurrencyType currency,
             connection_callback_t callback);
 
+        /// \brief Attempts an account type switch and retries while broker reports active trades.
+        /// \param currency Current currency from the profile response.
+        /// \param callback The callback function to notify the result.
+        /// \param started_ms First attempt timestamp.
+        /// \param attempt Attempt number.
+        void handle_account_type_switch_attempt(
+            CurrencyType currency,
+            connection_callback_t callback,
+            int64_t started_ms,
+            int attempt);
+
         /// \brief Handles currency switch during authentication.
         /// \param currency The new currency type.
         /// \param callback The callback function to notify the result.
         void handle_currency_switch(
             CurrencyType currency,
             connection_callback_t callback);
+
+        /// \brief Attempts a currency switch and retries while broker reports active trades.
+        /// \param callback The callback function to notify the result.
+        /// \param started_ms First attempt timestamp.
+        /// \param attempt Attempt number.
+        void handle_currency_switch_attempt(
+            connection_callback_t callback,
+            int64_t started_ms,
+            int attempt);
+
+        /// \brief Schedules retry for a broker settings switch after inspecting active trades.
+        /// \param operation_name Human-readable operation name.
+        /// \param started_ms First attempt timestamp.
+        /// \param attempt Failed attempt number.
+        /// \param callback The callback function to notify the result.
+        /// \param retry Retry function.
+        void schedule_settings_switch_retry(
+            std::string operation_name,
+            int64_t started_ms,
+            int attempt,
+            connection_callback_t callback,
+            std::function<void()> retry);
 
         /// \brief Performs a multi-step authentication flow, making HTTP requests in sequence.
         /// \details Steps:
@@ -367,6 +400,11 @@ namespace optionx::platforms::intrade_bar {
             std::function<void(connection_callback_t)> auth_func) {
 
         if (m_auth_data->auto_find_domain) {
+            LOGIT_INFO(
+                "Intrade Bar auth: auto domain discovery enabled. range=",
+                m_auth_data->domain_index_min,
+                "-",
+                m_auth_data->domain_index_max);
             m_request_manager.request_find_working_domain(
                 [this, callback, auth_func](bool success, std::string& host) {
                     using Status = events::AccountInfoUpdateEvent::Status;
@@ -383,10 +421,12 @@ namespace optionx::platforms::intrade_bar {
                     notify(events::AutoDomainSelectedEvent(
                         success,
                         host));
+                    LOGIT_INFO("Intrade Bar auth: selected host=", host);
                             
                     auth_func(std::move(callback));
                 });
         } else {
+            LOGIT_INFO("Intrade Bar auth: using configured host.");
             auth_func(std::move(callback));
         }
     }
@@ -409,12 +449,14 @@ namespace optionx::platforms::intrade_bar {
             m_auth_data->email);
 
         if (!session) {
-            LOGIT_PRINT_TRACE("Session not found for email: ", m_auth_data->email);
+            LOGIT_INFO("Intrade Bar auth: saved session not found, starting fresh login flow.");
+            LOGIT_TRACE("Session not found for configured Intrade Bar account.");
             execute_authentication_flow(std::move(callback));
             return;
         }
 
-        LOGIT_PRINT_TRACE("Session retrieved for email: ", m_auth_data->email);
+        LOGIT_INFO("Intrade Bar auth: saved session found, validating it.");
+        LOGIT_TRACE("Session retrieved for configured Intrade Bar account.");
 
         // Set cookies from the session
         std::string cookies = *session;
@@ -505,6 +547,7 @@ namespace optionx::platforms::intrade_bar {
             std::function<void(
                 bool success,
                 const std::string& reason)> result_callback) {
+        LOGIT_SCOPE_INFO("intradebar.auth.fresh_login_flow");
         LOGIT_TRACE0();
 
         // Step 3: Handle authentication response
@@ -515,11 +558,13 @@ namespace optionx::platforms::intrade_bar {
                     const std::string& cookies,
                     const std::string& reason) {
             if (!success) {
+                LOGIT_WARN("Intrade Bar auth: auth endpoint rejected fresh credentials.");
                 result_callback(false, reason);
                 return;
             }
 
             // Store authentication details
+            LOGIT_INFO("Intrade Bar auth: fresh credentials accepted, storing session.");
             LOGIT_PRINT_TRACE("Authentication successful. User ID: ", user_id);
             set_auth_credentials(user_id, user_hash);
             result_callback(true, std::string());
@@ -533,11 +578,13 @@ namespace optionx::platforms::intrade_bar {
                 const std::string& cookies,
                 const std::string& reason) {
             if (!success) {
+                LOGIT_WARN("Intrade Bar auth: login step failed.");
                 handle_auth_response(false, std::string(), std::string(), std::string(), reason);
                 return;
             }
 
             // Proceed to authentication
+            LOGIT_INFO("Intrade Bar auth: login step succeeded, checking auth endpoint.");
             m_request_manager.request_auth(user_id, user_hash, cookies, m_auth_data,
                 [handle_auth_response, user_id, user_hash, cookies](
                         bool success,
@@ -554,11 +601,13 @@ namespace optionx::platforms::intrade_bar {
                     const std::string& cookies,
                     const std::string& reason) {
             if (!success) {
+                LOGIT_WARN("Intrade Bar auth: main page challenge step failed.");
                 handle_login_response(false, std::string(), std::string(), std::string(), reason);
                 return;
             }
 
             // Proceed to login
+            LOGIT_INFO("Intrade Bar auth: main page challenge succeeded, sending login.");
             m_request_manager.request_login(req_id, req_value, cookies, m_auth_data,
                 [handle_login_response](
                         bool success,
@@ -571,11 +620,13 @@ namespace optionx::platforms::intrade_bar {
         };
 
         // Start the authentication process
+        LOGIT_INFO("Intrade Bar auth: requesting main page challenge.");
         m_request_manager.request_main_page(m_auth_data, handle_main_page_response);
     }
 
     void AuthManager::start_authentication(connection_callback_t callback) {
         LOGIT_TRACE0();
+        LOGIT_INFO("Intrade Bar auth: requesting profile.");
         m_request_manager.request_profile([this, callback](
                 bool success,
                 CurrencyType currency,
@@ -596,23 +647,54 @@ namespace optionx::platforms::intrade_bar {
             connection_callback_t callback) {
         LOGIT_TRACE0();
         if (m_auth_data->account_type != account_type) {
-            m_request_manager.request_switch_account_type([this, currency, callback](bool success) {
-                if (!success) {
-                    LOGIT_ERROR("Failed to switch account type.");
-                    callback({false, "Failed to switch account type.", m_auth_data->clone_unique()});
-                    return;
-                }
-
-                using Status = events::AccountInfoUpdateEvent::Status;
-                auto account_info = get_account_info();
-                account_info->account_type = m_auth_data->account_type;
-                notify(events::AccountInfoUpdateEvent(account_info, Status::ACCOUNT_TYPE_CHANGED));
-
-                handle_currency_switch(currency, std::move(callback));
-            });
+            LOGIT_INFO(
+                "Intrade Bar auth: switching account type from ",
+                to_str(account_type),
+                " to ",
+                to_str(m_auth_data->account_type));
+            handle_account_type_switch_attempt(
+                currency,
+                std::move(callback),
+                OPTIONX_TIMESTAMP_MS,
+                1);
         } else {
             handle_currency_switch(currency, std::move(callback));
         }
+    }
+
+    void AuthManager::handle_account_type_switch_attempt(
+            CurrencyType currency,
+            connection_callback_t callback,
+            int64_t started_ms,
+            int attempt) {
+        LOGIT_INFO(
+            "Intrade Bar auth: account type switch attempt=",
+            attempt);
+        m_request_manager.request_switch_account_type([this, currency, callback, started_ms, attempt](bool success) {
+            if (!success) {
+                LOGIT_WARN("Intrade Bar auth: account type switch rejected by broker.");
+                schedule_settings_switch_retry(
+                    "account type",
+                    started_ms,
+                    attempt,
+                    callback,
+                    [this, currency, callback, started_ms, attempt]() {
+                        handle_account_type_switch_attempt(
+                            currency,
+                            callback,
+                            started_ms,
+                            attempt + 1);
+                    });
+                return;
+            }
+
+            using Status = events::AccountInfoUpdateEvent::Status;
+            auto account_info = get_account_info();
+            account_info->account_type = m_auth_data->account_type;
+            notify(events::AccountInfoUpdateEvent(account_info, Status::ACCOUNT_TYPE_CHANGED));
+
+            handle_currency_switch(currency, std::move(callback));
+        });
     }
 
     void AuthManager::handle_currency_switch(
@@ -620,27 +702,136 @@ namespace optionx::platforms::intrade_bar {
             connection_callback_t callback) {
         LOGIT_TRACE0();
         if (m_auth_data->currency != currency) {
-            m_request_manager.request_switch_currency([this, callback](bool success) {
-                if (!success) {
-                    LOGIT_ERROR("Failed to switch currency.");
-                    callback({false, "Failed to switch currency.", m_auth_data->clone_unique()});
-                    return;
-                }
-
-                using Status = events::AccountInfoUpdateEvent::Status;
-                auto account_info = get_account_info();
-                account_info->currency = m_auth_data->currency;
-                notify(events::AccountInfoUpdateEvent(account_info, Status::CURRENCY_CHANGED));
-
-                callback({true, std::string(), m_auth_data->clone_unique()});
-            });
+            LOGIT_INFO(
+                "Intrade Bar auth: switching currency from ",
+                to_str(currency),
+                " to ",
+                to_str(m_auth_data->currency));
+            handle_currency_switch_attempt(
+                std::move(callback),
+                OPTIONX_TIMESTAMP_MS,
+                1);
         } else {
             callback({true, std::string(), m_auth_data->clone_unique()});
         }
     }
 
+    void AuthManager::handle_currency_switch_attempt(
+            connection_callback_t callback,
+            int64_t started_ms,
+            int attempt) {
+        LOGIT_INFO(
+            "Intrade Bar auth: currency switch attempt=",
+            attempt);
+        m_request_manager.request_switch_currency([this, callback, started_ms, attempt](bool success) {
+            if (!success) {
+                LOGIT_WARN("Intrade Bar auth: currency switch rejected by broker.");
+                schedule_settings_switch_retry(
+                    "currency",
+                    started_ms,
+                    attempt,
+                    callback,
+                    [this, callback, started_ms, attempt]() {
+                        handle_currency_switch_attempt(
+                            callback,
+                            started_ms,
+                            attempt + 1);
+                    });
+                return;
+            }
+
+            using Status = events::AccountInfoUpdateEvent::Status;
+            auto account_info = get_account_info();
+            account_info->currency = m_auth_data->currency;
+            notify(events::AccountInfoUpdateEvent(account_info, Status::CURRENCY_CHANGED));
+
+            callback({true, std::string(), m_auth_data->clone_unique()});
+        });
+    }
+
+    void AuthManager::schedule_settings_switch_retry(
+            std::string operation_name,
+            int64_t started_ms,
+            int attempt,
+            connection_callback_t callback,
+            std::function<void()> retry) {
+        const int64_t now_ms = OPTIONX_TIMESTAMP_MS;
+        const int64_t timeout_ms = m_auth_data->settings_switch_retry_timeout_ms;
+        if ((now_ms - started_ms) >= timeout_ms) {
+            const std::string error_text =
+                "Failed to switch " + operation_name + " before retry timeout.";
+            LOGIT_ERROR(error_text);
+            callback({false, error_text, m_auth_data->clone_unique()});
+            return;
+        }
+
+        m_request_manager.request_active_trades_snapshot_result(
+            [this, operation_name = std::move(operation_name), started_ms, attempt, callback, retry = std::move(retry)](
+                    ActiveTradesSnapshotResult snapshot) mutable {
+                const int64_t now_ms = OPTIONX_TIMESTAMP_MS;
+                const int64_t timeout_ms = m_auth_data->settings_switch_retry_timeout_ms;
+                int64_t delay_ms = m_auth_data->settings_switch_retry_delay_ms;
+                int64_t latest_close_ms = 0;
+                std::size_t active_count = 0;
+
+                if (snapshot) {
+                    active_count = snapshot.value.trades.size();
+                    for (const auto& trade : snapshot.value.trades) {
+                        if (trade.close_time_ms > latest_close_ms) {
+                            latest_close_ms = trade.close_time_ms;
+                        }
+                    }
+
+                    if (latest_close_ms > now_ms) {
+                        delay_ms = latest_close_ms - now_ms +
+                            m_auth_data->settings_switch_active_trade_buffer_ms;
+                    }
+
+                    LOGIT_INFO(
+                        "Intrade Bar auth: settings switch retry after broker rejection. operation=",
+                        operation_name,
+                        ", attempt=",
+                        attempt,
+                        ", active_trades=",
+                        active_count,
+                        ", latest_close_ms=",
+                        latest_close_ms,
+                        ", delay_ms=",
+                        delay_ms);
+                } else {
+                    LOGIT_WARN(
+                        "Intrade Bar auth: active trades snapshot failed; using fallback retry delay. operation=",
+                        operation_name,
+                        ", attempt=",
+                        attempt,
+                        ", delay_ms=",
+                        delay_ms);
+                }
+
+                if (delay_ms < 1000) delay_ms = 1000;
+
+                const int64_t remaining_ms = timeout_ms - (now_ms - started_ms);
+                if (remaining_ms <= 0 || delay_ms > remaining_ms) {
+                    const std::string error_text =
+                        "Failed to switch " + operation_name + " before retry timeout.";
+                    LOGIT_ERROR(error_text);
+                    callback({false, error_text, m_auth_data->clone_unique()});
+                    return;
+                }
+
+                m_task_manager.add_delayed_task(
+                    "settings-switch-retry",
+                    delay_ms,
+                    [retry = std::move(retry)](std::shared_ptr<utils::Task> task) mutable {
+                        if (task->is_shutdown()) return;
+                        retry();
+                    });
+            });
+    }
+
     void AuthManager::finalize_authentication(connection_callback_t callback) {
         LOGIT_TRACE0();
+        LOGIT_INFO("Intrade Bar auth: requesting final balance.");
         m_request_manager.request_balance([this, callback](
                 bool success,
                 double balance,

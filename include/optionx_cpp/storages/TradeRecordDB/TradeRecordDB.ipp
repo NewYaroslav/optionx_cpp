@@ -730,10 +730,11 @@ namespace optionx::storage {
         TradeRecordDBListResult result;
         result.status = TradeRecordDBStatus::SUCCESS;
 
-        m_records->range(start_key, stop_key, [&result, timestamp_ms](const std::uint64_t&, const TradeRecord& rec) {
+        m_records->for_each_range(start_key, stop_key, [&result, timestamp_ms](const std::uint64_t&, const TradeRecord& rec) {
             if (detail::selected_timestamp_ms(rec) == timestamp_ms) {
                 result.records.push_back(rec);
             }
+            return true;
         }, txn.handle());
 
         txn.commit();
@@ -764,11 +765,12 @@ namespace optionx::storage {
         TradeRecordDBListResult result;
         result.status = TradeRecordDBStatus::SUCCESS;
 
-        m_records->range(start_key, stop_key, [&result, start_ms, stop_ms](const std::uint64_t&, const TradeRecord& rec) {
+        m_records->for_each_range(start_key, stop_key, [&result, start_ms, stop_ms](const std::uint64_t&, const TradeRecord& rec) {
             const auto timestamp = detail::selected_timestamp_ms(rec);
             if (timestamp >= start_ms && timestamp <= stop_ms) {
                 result.records.push_back(rec);
             }
+            return true;
         }, txn.handle());
 
         txn.commit();
@@ -819,10 +821,11 @@ namespace optionx::storage {
 
         auto txn = m_connection->transaction(mdbxc::TransactionMode::READ_ONLY);
 
-        m_records->range(start_key, stop_key, [&](const std::uint64_t&, const TradeRecord& rec) {
+        m_records->for_each_range(start_key, stop_key, [&](const std::uint64_t&, const TradeRecord& rec) {
             if (TradeRecordFilterMatcher::match(rec, query)) {
                 result.records.push_back(rec);
             }
+            return true;
         }, txn.handle());
 
         txn.commit();

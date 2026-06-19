@@ -21,6 +21,10 @@
     #include <unistd.h>
 #endif
 
+#ifndef KURLYK_OAUTH_SUPPORT
+#   define KURLYK_OAUTH_SUPPORT 0
+#endif
+
 #include <kurlyk.hpp>
 #include <logit_cpp/logit.hpp>
 

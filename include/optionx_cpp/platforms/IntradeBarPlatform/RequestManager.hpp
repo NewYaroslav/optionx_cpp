@@ -5,6 +5,8 @@
 /// \file RequestManager.hpp
 /// \brief Handles HTTP requests for user authentication, trade execution, balance updates, and market data retrieval.
 
+#include "ApiResponses.hpp"
+
 namespace optionx::platforms::intrade_bar {
 
     /// \class RequestManager
@@ -80,11 +82,19 @@ namespace optionx::platforms::intrade_bar {
             std::function<void(
                 bool success,
                 std::string &host)> find_callback);
+
+        /// \brief Typed variant of request_find_working_domain.
+        void request_find_working_domain_result(
+            std::function<void(DomainSelectionResult)> find_callback);
                 
         /// \brief Checks if the currently set host in the HTTP client is available.
         /// \param check_callback Callback that receives the result: true if available, false otherwise.
         void request_check_current_host_available(
             std::function<void(bool success)> check_callback);
+
+        /// \brief Typed variant of request_check_current_host_available.
+        void request_check_current_host_available_result(
+            std::function<void(HostAvailabilityResult)> check_callback);
 
         /// \brief Requests user profile information.
         /// \param profile_callback Callback function to receive profile details.
@@ -93,6 +103,10 @@ namespace optionx::platforms::intrade_bar {
                 bool success,
                 CurrencyType currency,
                 AccountType account)> profile_callback);
+
+        /// \brief Typed variant of request_profile.
+        void request_profile_result(
+            std::function<void(ProfileInfoResult)> profile_callback);
 
         /// \brief Requests the main page to extract authentication parameters.
         /// \param auth_data Shared pointer to authentication data.
@@ -105,6 +119,22 @@ namespace optionx::platforms::intrade_bar {
                 const std::string& req_value,
                 const std::string& cookies,
                 const std::string& reason)> callback);
+
+        /// \brief Typed variant of request_main_page.
+        void request_main_page_result(
+            std::shared_ptr<AuthData> auth_data,
+            std::function<void(MainPageChallengeResult)> callback);
+
+        /// \brief Requests active trades from the authenticated main page.
+        /// \param callback Callback function to receive active trades.
+        void request_active_trades_snapshot(
+            std::function<void(
+                bool success,
+                std::vector<ActiveTradeInfo> trades)> callback);
+
+        /// \brief Typed variant of request_active_trades_snapshot.
+        void request_active_trades_snapshot_result(
+            std::function<void(ActiveTradesSnapshotResult)> callback);
 
         /// \brief Sends login credentials for authentication.
         /// \param req_id The request ID obtained from the main page.
@@ -124,6 +154,14 @@ namespace optionx::platforms::intrade_bar {
                 const std::string& cookies,
                 const std::string& reason)> result_callback);
 
+        /// \brief Typed variant of request_login.
+        void request_login_result(
+            const std::string& req_id,
+            const std::string& req_value,
+            const std::string& cookies,
+            std::shared_ptr<AuthData> auth_data,
+            std::function<void(LoginCredentialsResult)> result_callback);
+
         /// \brief Performs authentication using user credentials.
         /// \param user_id The user ID.
         /// \param user_hash The authentication hash.
@@ -139,6 +177,14 @@ namespace optionx::platforms::intrade_bar {
                 bool success,
                 const std::string& reason)> result_callback);
 
+        /// \brief Typed variant of request_auth.
+        void request_auth_result(
+            const std::string& user_id,
+            const std::string& user_hash,
+            const std::string& cookies,
+            std::shared_ptr<AuthData> auth_data,
+            std::function<void(AuthCheckResult)> result_callback);
+
         /// \brief Requests the user's account balance.
         /// \param balance_callback Callback function to receive the balance data.
         void request_balance(
@@ -147,15 +193,27 @@ namespace optionx::platforms::intrade_bar {
                 double balance,
                 CurrencyType currency)> balance_callback);
 
+        /// \brief Typed variant of request_balance.
+        void request_balance_result(
+            std::function<void(BalanceInfoResult)> balance_callback);
+
         /// \brief Switches between real and demo account types.
         /// \param switch_callback Callback function to receive switch result.
         void request_switch_account_type(
             std::function<void(bool success)> switch_callback);
 
+        /// \brief Typed variant of request_switch_account_type.
+        void request_switch_account_type_result(
+            std::function<void(SettingsSwitchResult)> switch_callback);
+
         /// \brief Switches the account's currency.
         /// \param switch_callback Callback function to receive switch result.
         void request_switch_currency(
             std::function<void(bool success)> switch_callback);
+
+        /// \brief Typed variant of request_switch_currency.
+        void request_switch_currency_result(
+            std::function<void(SettingsSwitchResult)> switch_callback);
 
         /// \brief Requests the latest price updates.
         /// \param price_callback Callback function to receive tick data.
@@ -163,6 +221,10 @@ namespace optionx::platforms::intrade_bar {
             std::function<void(
                 bool success,
                 std::vector<TickData> ticks)> price_callback);
+
+        /// \brief Typed variant of request_price.
+        void request_price_result(
+            std::function<void(PriceSnapshotResult)> price_callback);
 
         /// \brief Requests the trade check result.
         /// \param deal_id The deal ID to check.
@@ -177,6 +239,12 @@ namespace optionx::platforms::intrade_bar {
                 double price,
                 double profit)> callback_check);
 
+        /// \brief Typed variant of request_trade_check.
+        void request_trade_check_result(
+            int64_t deal_id,
+            int retry_attempts,
+            std::function<void(TradeCheckResult)> callback_check);
+
         /// \brief Sends a trade execution request.
         /// \param request Shared pointer to the trade request.
         /// \param result Shared pointer to the trade result.
@@ -190,6 +258,11 @@ namespace optionx::platforms::intrade_bar {
                 int64_t open_date,
                 double open_price,
                 const std::string& error_desc)> result_callback);
+
+        /// \brief Typed variant of request_execute_trade.
+        void request_execute_trade_result(
+            std::shared_ptr<TradeRequest> request,
+            std::function<void(TradeOpenResult)> result_callback);
 
     private:
         HttpClientModule& m_client;      ///< Reference to the HTTP client module.
@@ -242,6 +315,14 @@ namespace optionx::platforms::intrade_bar {
                 }
                 client.set_user_agent(msg->user_agent);
                 client.set_accept_language(msg->accept_language);
+                client.set_proxy_server(msg->proxy_server);
+                client.set_proxy_auth(msg->proxy_auth);
+                client.set_proxy_type(msg->proxy_type);
+                LOGIT_INFO(
+                    "Intrade Bar HTTP client configured. host=",
+                    referer,
+                    ", proxy_enabled=",
+                    (!msg->proxy_server.empty()));
                 client.set_referer(referer);
                 client.set_retry_attempts(10, time_shield::MS_PER_SEC);
                 client.set_timeout(30);
@@ -339,6 +420,41 @@ namespace optionx::platforms::intrade_bar {
 
         // Add the HTTP request task for asynchronous processing
         add_http_request_task(std::move(future), std::move(callback));
+    }
+
+    void RequestManager::request_active_trades_snapshot(
+            std::function<void(
+                bool success,
+                std::vector<ActiveTradeInfo> trades)> callback) {
+        LOGIT_TRACE0();
+
+        auto future = get_http_client().get(
+            "/",
+            kurlyk::QueryParams(),
+            {
+                {"Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0"},
+                {"Content-Type", "application/x-www-form-urlencoded"},
+                {"Upgrade-Insecure-Requests", "1"},
+                {"Cookie", m_cookies}
+            },
+            get_rate_limit(RateLimitType::ACCOUNT_INFO)
+        );
+
+        auto response_callback = [callback](kurlyk::HttpResponsePtr response) {
+            if (!validate_response(response)) {
+                callback(false, {});
+                return;
+            }
+
+            try {
+                callback(true, parse_active_trades_snapshot(response->content));
+            } catch (const std::exception& ex) {
+                LOGIT_ERROR("Failed to parse active trades snapshot: ", ex.what());
+                callback(false, {});
+            }
+        };
+
+        add_http_request_task(std::move(future), std::move(response_callback));
     }
 
     void RequestManager::request_login(
@@ -957,6 +1073,238 @@ namespace optionx::platforms::intrade_bar {
 
         // Add the HTTP request task
         add_http_request_task(std::move(future), std::move(callback));
+    }
+
+    void RequestManager::request_find_working_domain_result(
+            std::function<void(DomainSelectionResult)> find_callback) {
+        request_find_working_domain(
+            [find_callback = std::move(find_callback)](
+                    bool success,
+                    std::string& host) {
+                if (!find_callback) return;
+                if (!success) {
+                    find_callback(DomainSelectionResult::fail("No working domain found."));
+                    return;
+                }
+                find_callback(DomainSelectionResult::ok(DomainSelection{host}));
+            });
+    }
+
+    void RequestManager::request_check_current_host_available_result(
+            std::function<void(HostAvailabilityResult)> check_callback) {
+        request_check_current_host_available(
+            [check_callback = std::move(check_callback)](bool success) {
+                if (!check_callback) return;
+                if (!success) {
+                    check_callback(HostAvailabilityResult::fail("Current host is unavailable."));
+                    return;
+                }
+                check_callback(HostAvailabilityResult::ok(HostAvailability{true}));
+            });
+    }
+
+    void RequestManager::request_profile_result(
+            std::function<void(ProfileInfoResult)> profile_callback) {
+        request_profile(
+            [profile_callback = std::move(profile_callback)](
+                    bool success,
+                    CurrencyType currency,
+                    AccountType account_type) {
+                if (!profile_callback) return;
+                if (!success) {
+                    profile_callback(ProfileInfoResult::fail("Failed to retrieve profile information."));
+                    return;
+                }
+                profile_callback(ProfileInfoResult::ok(ProfileInfo{currency, account_type}));
+            });
+    }
+
+    void RequestManager::request_main_page_result(
+            std::shared_ptr<AuthData> auth_data,
+            std::function<void(MainPageChallengeResult)> callback) {
+        request_main_page(
+            std::move(auth_data),
+            [callback = std::move(callback)](
+                    bool success,
+                    const std::string& req_id,
+                    const std::string& req_value,
+                    const std::string& cookies,
+                    const std::string& reason) {
+                if (!callback) return;
+                if (!success) {
+                    callback(MainPageChallengeResult::fail(reason));
+                    return;
+                }
+                callback(MainPageChallengeResult::ok(MainPageChallenge{req_id, req_value, cookies}));
+            });
+    }
+
+    void RequestManager::request_active_trades_snapshot_result(
+            std::function<void(ActiveTradesSnapshotResult)> callback) {
+        request_active_trades_snapshot(
+            [callback = std::move(callback)](
+                    bool success,
+                    std::vector<ActiveTradeInfo> trades) {
+                if (!callback) return;
+                if (!success) {
+                    callback(ActiveTradesSnapshotResult::fail("Failed to retrieve active trades snapshot."));
+                    return;
+                }
+                callback(ActiveTradesSnapshotResult::ok(ActiveTradesSnapshot{std::move(trades)}));
+            });
+    }
+
+    void RequestManager::request_login_result(
+            const std::string& req_id,
+            const std::string& req_value,
+            const std::string& cookies,
+            std::shared_ptr<AuthData> auth_data,
+            std::function<void(LoginCredentialsResult)> result_callback) {
+        request_login(
+            req_id,
+            req_value,
+            cookies,
+            std::move(auth_data),
+            [result_callback = std::move(result_callback)](
+                    bool success,
+                    const std::string& user_id,
+                    const std::string& user_hash,
+                    const std::string& response_cookies,
+                    const std::string& reason) {
+                if (!result_callback) return;
+                if (!success) {
+                    result_callback(LoginCredentialsResult::fail(reason));
+                    return;
+                }
+                result_callback(LoginCredentialsResult::ok(
+                    LoginCredentials{user_id, user_hash, response_cookies}));
+            });
+    }
+
+    void RequestManager::request_auth_result(
+            const std::string& user_id,
+            const std::string& user_hash,
+            const std::string& cookies,
+            std::shared_ptr<AuthData> auth_data,
+            std::function<void(AuthCheckResult)> result_callback) {
+        request_auth(
+            user_id,
+            user_hash,
+            cookies,
+            std::move(auth_data),
+            [result_callback = std::move(result_callback)](
+                    bool success,
+                    const std::string& reason) {
+                if (!result_callback) return;
+                if (!success) {
+                    result_callback(AuthCheckResult::fail(reason));
+                    return;
+                }
+                result_callback(AuthCheckResult::ok(AuthCheck{}));
+            });
+    }
+
+    void RequestManager::request_balance_result(
+            std::function<void(BalanceInfoResult)> balance_callback) {
+        request_balance(
+            [balance_callback = std::move(balance_callback)](
+                    bool success,
+                    double balance,
+                    CurrencyType currency) {
+                if (!balance_callback) return;
+                if (!success) {
+                    balance_callback(BalanceInfoResult::fail("Failed to retrieve balance."));
+                    return;
+                }
+                balance_callback(BalanceInfoResult::ok(BalanceInfo{balance, currency}));
+            });
+    }
+
+    void RequestManager::request_switch_account_type_result(
+            std::function<void(SettingsSwitchResult)> switch_callback) {
+        request_switch_account_type(
+            [switch_callback = std::move(switch_callback)](bool success) {
+                if (!switch_callback) return;
+                if (!success) {
+                    switch_callback(SettingsSwitchResult::fail("Failed to switch account type."));
+                    return;
+                }
+                switch_callback(SettingsSwitchResult::ok(SettingsSwitch{}));
+            });
+    }
+
+    void RequestManager::request_switch_currency_result(
+            std::function<void(SettingsSwitchResult)> switch_callback) {
+        request_switch_currency(
+            [switch_callback = std::move(switch_callback)](bool success) {
+                if (!switch_callback) return;
+                if (!success) {
+                    switch_callback(SettingsSwitchResult::fail("Failed to switch currency."));
+                    return;
+                }
+                switch_callback(SettingsSwitchResult::ok(SettingsSwitch{}));
+            });
+    }
+
+    void RequestManager::request_price_result(
+            std::function<void(PriceSnapshotResult)> price_callback) {
+        request_price(
+            [price_callback = std::move(price_callback)](
+                    bool success,
+                    std::vector<TickData> ticks) {
+                if (!price_callback) return;
+                if (!success) {
+                    price_callback(PriceSnapshotResult::fail("Failed to retrieve price snapshot."));
+                    return;
+                }
+                price_callback(PriceSnapshotResult::ok(PriceSnapshot{std::move(ticks)}));
+            });
+    }
+
+    void RequestManager::request_trade_check_result(
+            int64_t deal_id,
+            int retry_attempts,
+            std::function<void(TradeCheckResult)> callback_check) {
+        request_trade_check(
+            deal_id,
+            retry_attempts,
+            [callback_check = std::move(callback_check)](
+                    bool success,
+                    long status_code,
+                    double price,
+                    double profit) {
+                if (!callback_check) return;
+                if (!success) {
+                    callback_check(TradeCheckResult::fail(
+                        "Failed to retrieve trade result.",
+                        status_code));
+                    return;
+                }
+                callback_check(TradeCheckResult::ok(TradeCheckInfo{price, profit}, status_code));
+            });
+    }
+
+    void RequestManager::request_execute_trade_result(
+            std::shared_ptr<TradeRequest> request,
+            std::function<void(TradeOpenResult)> result_callback) {
+        request_execute_trade(
+            std::move(request),
+            [result_callback = std::move(result_callback)](
+                    bool success,
+                    long status_code,
+                    int64_t option_id,
+                    int64_t open_date,
+                    double open_price,
+                    const std::string& error_desc) {
+                if (!result_callback) return;
+                if (!success) {
+                    result_callback(TradeOpenResult::fail(error_desc, status_code));
+                    return;
+                }
+                result_callback(TradeOpenResult::ok(
+                    TradeOpenInfo{option_id, open_date, open_price},
+                    status_code));
+            });
     }
 
 } // namespace optionx::platforms::intrade_bar
