@@ -52,8 +52,10 @@ namespace optionx::platforms {
               m_trade_manager(*this, m_request_manager, m_account_info) {
         }
 
-        /// \brief Default destructor.
-        virtual ~IntradeBarPlatform() = default;
+        /// \brief Shuts down modules while platform-owned module instances are still alive.
+        ~IntradeBarPlatform() override {
+            shutdown();
+        }
 
         /// \brief Places a trade on the platform.
         ///

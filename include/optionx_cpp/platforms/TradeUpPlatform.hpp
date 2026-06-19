@@ -32,7 +32,9 @@ namespace optionx::platforms {
               m_balance_manager(*this, m_http_client, m_account_info) {
         }
 
-        virtual ~TradeUpPlatform() = default;
+        ~TradeUpPlatform() override {
+            shutdown();
+        }
 
         bool place_trade(std::unique_ptr<TradeRequest> trade_request) override {
             (void)trade_request;
