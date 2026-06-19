@@ -83,6 +83,39 @@ TEST(IntradeBarApiResponses, ParsesActiveTradesAndLatestCloseTime) {
     EXPECT_EQ(latest_close_ms, time_shield::sec_to_ms(1781850940));
 }
 
+TEST(IntradeBarApiResponses, RejectsActiveTradesPageWithoutActiveBlock) {
+    const std::string html = R"HTML(
+        <tbody class="table_tbody" id="trade_history">
+            <tr id="trade_inv_224130999" data-id="224130999" data-option="BTCUSDT" data-rate="62830.01" data-timeopen="1781850574">
+                <script async>
+                    timer224130999 = setInterval(showRemaining, 1000, "timer_224130999", 1, 224130999,'1', '1781850874');
+                </script>
+            </tr>
+        </tbody>
+    )HTML";
+
+    EXPECT_THROW(
+        static_cast<void>(parse_active_trades_snapshot(html)),
+        std::runtime_error);
+}
+
+TEST(IntradeBarApiResponses, IgnoresTradeRowsOutsideActiveBlock) {
+    const std::string html = R"HTML(
+        <tbody class="table_tbody" id="trade_history">
+            <tr id="trade_inv_224130999" data-id="224130999" data-option="BTCUSDT" data-rate="62830.01" data-timeopen="1781850574">
+                <script async>
+                    timer224130999 = setInterval(showRemaining, 1000, "timer_224130999", 1, 224130999,'1', '1781850874');
+                </script>
+            </tr>
+        </tbody>
+        <tbody class="table_tbody" id="trade_active">
+        </tbody>
+    )HTML";
+
+    const auto trades = parse_active_trades_snapshot(html);
+    EXPECT_TRUE(trades.empty());
+}
+
 TEST(IntradeBarApiResponses, EmptyTradeOpenResponseHasSpecificError) {
     bool called = false;
     bool success = true;

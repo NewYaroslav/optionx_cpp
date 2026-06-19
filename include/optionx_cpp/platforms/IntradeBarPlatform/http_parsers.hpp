@@ -10,6 +10,7 @@
 #include <cctype>
 #include <optional>
 #include <regex>
+#include <stdexcept>
 
 #include "ApiResponses.hpp"
 
@@ -276,15 +277,14 @@ namespace optionx::platforms::intrade_bar {
 
         std::string active_html;
         const std::size_t active_id = content.find("id=\"trade_active\"");
-        if (active_id != std::string::npos) {
-            std::size_t block_start = content.rfind("<tbody", active_id);
-            if (block_start == std::string::npos) block_start = active_id;
-            std::size_t block_end = content.find("</tbody>", active_id);
-            if (block_end == std::string::npos) block_end = content.size();
-            active_html = content.substr(block_start, block_end - block_start);
-        } else {
-            active_html = content;
+        if (active_id == std::string::npos) {
+            throw std::runtime_error("Authenticated active trades block not found.");
         }
+        std::size_t block_start = content.rfind("<tbody", active_id);
+        if (block_start == std::string::npos) block_start = active_id;
+        std::size_t block_end = content.find("</tbody>", active_id);
+        if (block_end == std::string::npos) block_end = content.size();
+        active_html = content.substr(block_start, block_end - block_start);
 
         std::size_t pos = 0;
         for (;;) {
