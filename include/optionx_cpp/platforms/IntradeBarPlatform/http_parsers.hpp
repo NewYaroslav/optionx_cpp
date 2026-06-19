@@ -8,6 +8,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <limits>
 #include <optional>
 #include <regex>
 #include <stdexcept>
@@ -178,16 +180,54 @@ namespace optionx::platforms::intrade_bar {
             return value;
         }
 
+        inline std::optional<int64_t> parse_i64_strict(const std::string& value) {
+            if (value.empty()) return std::nullopt;
+            if (!std::all_of(value.begin(), value.end(), [](unsigned char ch) {
+                    return std::isdigit(ch) != 0;
+                })) {
+                return std::nullopt;
+            }
+            try {
+                return std::stoll(value);
+            } catch (...) {
+                return std::nullopt;
+            }
+        }
+
+        inline std::optional<int> parse_int_strict(const std::string& value) {
+            const auto parsed = parse_i64_strict(value);
+            if (!parsed ||
+                *parsed > static_cast<int64_t>(std::numeric_limits<int>::max())) {
+                return std::nullopt;
+            }
+            return static_cast<int>(*parsed);
+        }
+
+        inline std::optional<double> parse_double_strict(const std::string& value) {
+            if (value.empty()) return std::nullopt;
+            if (std::any_of(value.begin(), value.end(), [](unsigned char ch) {
+                    return std::isspace(ch) != 0;
+                })) {
+                return std::nullopt;
+            }
+            try {
+                std::size_t parsed = 0;
+                const double result = std::stod(value, &parsed);
+                if (parsed != value.size() || !std::isfinite(result)) {
+                    return std::nullopt;
+                }
+                return result;
+            } catch (...) {
+                return std::nullopt;
+            }
+        }
+
         inline std::optional<int64_t> parse_i64_attr(
                 const std::string& html,
                 const std::string& attr_name) {
             auto value = extract_html_attr(html, attr_name);
             if (!value) return std::nullopt;
-            try {
-                return std::stoll(*value);
-            } catch (...) {
-                return std::nullopt;
-            }
+            return parse_i64_strict(*value);
         }
 
         inline std::optional<int> parse_int_attr(
@@ -195,11 +235,7 @@ namespace optionx::platforms::intrade_bar {
                 const std::string& attr_name) {
             auto value = extract_html_attr(html, attr_name);
             if (!value) return std::nullopt;
-            try {
-                return std::stoi(*value);
-            } catch (...) {
-                return std::nullopt;
-            }
+            return parse_int_strict(*value);
         }
 
         inline std::optional<double> parse_double_attr(
@@ -207,11 +243,7 @@ namespace optionx::platforms::intrade_bar {
                 const std::string& attr_name) {
             auto value = extract_html_attr(html, attr_name);
             if (!value) return std::nullopt;
-            try {
-                return std::stod(*value);
-            } catch (...) {
-                return std::nullopt;
-            }
+            return parse_double_strict(*value);
         }
 
         inline std::optional<int64_t> parse_active_trade_close_time_ms(
@@ -221,21 +253,19 @@ namespace optionx::platforms::intrade_bar {
             static const std::regex close_time_regex(
                 R"(setInterval\s*\(\s*showRemaining[^;]*'([0-9]+)'\s*\))");
             if (std::regex_search(row, match, close_time_regex) && match.size() >= 2) {
-                try {
-                    return time_shield::sec_to_ms(std::stoll(match[1].str()));
-                } catch (...) {
-                    return std::nullopt;
+                if (auto close_time = parse_i64_strict(match[1].str())) {
+                    return time_shield::sec_to_ms(*close_time);
                 }
+                return std::nullopt;
             }
 
             const std::regex remaining_regex(
-                "time_time_" + std::to_string(trade_id) + R"(\s*=\s*([0-9]+))");
+                "time_time_" + std::to_string(trade_id) + R"(\s*=\s*([0-9]+)\s*(?:;|$))");
             if (std::regex_search(row, match, remaining_regex) && match.size() >= 2) {
-                try {
-                    return OPTIONX_TIMESTAMP_MS + time_shield::sec_to_ms(std::stoll(match[1].str()));
-                } catch (...) {
-                    return std::nullopt;
+                if (auto remaining_sec = parse_i64_strict(match[1].str())) {
+                    return OPTIONX_TIMESTAMP_MS + time_shield::sec_to_ms(*remaining_sec);
                 }
+                return std::nullopt;
             }
 
             return std::nullopt;

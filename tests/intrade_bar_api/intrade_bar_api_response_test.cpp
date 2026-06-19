@@ -116,6 +116,40 @@ TEST(IntradeBarApiResponses, IgnoresTradeRowsOutsideActiveBlock) {
     EXPECT_TRUE(trades.empty());
 }
 
+TEST(IntradeBarApiResponses, SkipsActiveTradeRowsWithMalformedId) {
+    const std::string html = R"HTML(
+        <tbody class="table_tbody" id="trade_active">
+            <tr id="trade_inv_224130651" data-id="224130651junk" data-option="BTCUSDT" data-rate="62830.01" data-timeopen="1781850574" data-status="1" data-contract="0">
+            </tr>
+        </tbody>
+    )HTML";
+
+    const auto trades = parse_active_trades_snapshot(html);
+    EXPECT_TRUE(trades.empty());
+}
+
+TEST(IntradeBarApiResponses, RejectsPartialNumericActiveTradeFields) {
+    const std::string html = R"HTML(
+        <tbody class="table_tbody" id="trade_active">
+            <tr id="trade_inv_224130651" data-id="224130651" data-option="BTCUSDT" data-rate="62830.01junk" data-timeopen="1781850574x" data-status="1x" data-contract="0x">
+                <script async>
+                    time_time_224130651 = 283x;
+                </script>
+            </tr>
+        </tbody>
+    )HTML";
+
+    const auto trades = parse_active_trades_snapshot(html);
+    ASSERT_EQ(trades.size(), 1u);
+    EXPECT_EQ(trades[0].id, 224130651);
+    EXPECT_EQ(trades[0].symbol, "BTCUSDT");
+    EXPECT_DOUBLE_EQ(trades[0].open_price, 0.0);
+    EXPECT_EQ(trades[0].open_time_ms, 0);
+    EXPECT_EQ(trades[0].status, 0);
+    EXPECT_EQ(trades[0].contract, 0);
+    EXPECT_EQ(trades[0].close_time_ms, 0);
+}
+
 TEST(IntradeBarApiResponses, EmptyTradeOpenResponseHasSpecificError) {
     bool called = false;
     bool success = true;
