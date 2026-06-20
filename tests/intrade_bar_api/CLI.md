@@ -127,6 +127,14 @@ OPTIONX_INTRADE_BAR_DOMAIN_MIN=0
 OPTIONX_INTRADE_BAR_DOMAIN_MAX=1000
 ```
 
+Use a negative `domain-min` when the primary `https://intrade.bar` domain must
+be excluded from discovery:
+
+```powershell
+.\build-codex\intrade_bar_smoke_cli.exe domain-check --domain-min=-1 --domain-max=1000
+.\build-codex\intrade_bar_smoke_cli.exe domain-check --domain-min=-35 --domain-max=35
+```
+
 Get one quote snapshot:
 
 ```powershell

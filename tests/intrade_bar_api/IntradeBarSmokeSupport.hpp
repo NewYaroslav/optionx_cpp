@@ -23,6 +23,7 @@ using optionx::tests::smoke::config_value;
 using optionx::tests::smoke::getenv_or_empty;
 using optionx::tests::smoke::option_double_or;
 using optionx::tests::smoke::option_i64_or;
+using optionx::tests::smoke::option_signed_int_or;
 using optionx::tests::smoke::option_value_or;
 using optionx::tests::smoke::opposite_account_type;
 using optionx::tests::smoke::opposite_currency;
@@ -31,6 +32,7 @@ using optionx::tests::smoke::parse_double;
 using optionx::tests::smoke::parse_enum_or;
 using optionx::tests::smoke::parse_i64;
 using optionx::tests::smoke::parse_int;
+using optionx::tests::smoke::parse_signed_int;
 using optionx::tests::smoke::read_env_file;
 using optionx::tests::smoke::trim;
 
@@ -123,7 +125,7 @@ inline IntradeBarSmokeConfig load_config() {
     config.auto_find_domain = parse_bool(
         config_value(file_values, "OPTIONX_INTRADE_BAR_AUTO_FIND_DOMAIN", "0"),
         false);
-    config.domain_index_min = parse_int(
+    config.domain_index_min = parse_signed_int(
         config_value(file_values, "OPTIONX_INTRADE_BAR_DOMAIN_MIN", "0"),
         0);
     config.domain_index_max = parse_int(

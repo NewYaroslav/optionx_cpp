@@ -27,7 +27,7 @@ namespace optionx::platforms::intrade_bar {
         kurlyk::ProxyType proxy_type;              ///< Proxy type (e.g., HTTP, SOCKS).
         AuthMethod auth_method = AuthMethod::NONE; ///< Authentication method used.
         bool auto_find_domain  = false;            ///< Whether to perform automatic domain discovery.
-        int domain_index_min   = 0;                ///< Minimum domain index to scan (0 = intrade.bar).
+        int domain_index_min   = 0;                ///< Minimum domain index to scan (negative excludes intrade.bar).
         int domain_index_max   = 1000;             ///< Maximum domain index to scan (e.g., intrade1000.bar).
         int64_t balance_check_period_ms = time_shield::MS_PER_15_MIN; ///< Connected balance polling period.
         int64_t settings_switch_retry_timeout_ms = time_shield::MS_PER_10_MIN; ///< Max time to retry broker settings switches.

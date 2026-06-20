@@ -120,10 +120,10 @@ int run_domain_check(smoke::IntradeBarSmokeConfig config, const CliOptions& opti
     if (!smoke::require_live_config(config, std::cerr)) return 2;
 
     config.auto_find_domain = true;
-    config.domain_index_min = static_cast<int>(smoke::option_i64_or(
+    config.domain_index_min = smoke::option_signed_int_or(
         options.values,
         "domain-min",
-        config.domain_index_min));
+        config.domain_index_min);
     config.domain_index_max = static_cast<int>(smoke::option_i64_or(
         options.values,
         "domain-max",

@@ -272,6 +272,7 @@ namespace optionx::platforms::intrade_bar {
         std::string       m_cookies;     ///< Session cookies.
         int m_domain_index_min = 0;      ///< Minimum domain index to scan (0 = intrade.bar).
         int m_domain_index_max = 0;      ///< Maximum domain index to scan (e.g., intrade1000.bar).
+        bool m_domain_include_primary = true; ///< Whether to include https://intrade.bar in domain discovery.
 
         /// \brief Returns a reference to the HTTP client.
         /// \return Reference to the `kurlyk::HttpClient` instance.
@@ -307,6 +308,7 @@ namespace optionx::platforms::intrade_bar {
                     client.set_host(msg->host);
                     client.set_origin(msg->host);
                 } else {
+                    m_domain_include_primary = msg->domain_index_min >= 0;
                     m_domain_index_min = std::abs(msg->domain_index_min);
                     m_domain_index_max = std::abs(msg->domain_index_max);
                     if (m_domain_index_min > m_domain_index_max) {
@@ -691,6 +693,7 @@ namespace optionx::platforms::intrade_bar {
         
         const int min_index = m_domain_index_min;
         const int max_index = m_domain_index_max;
+        const bool include_primary = m_domain_include_primary;
 
         struct DomainCheckState {
             std::vector<int> indices;
@@ -702,7 +705,9 @@ namespace optionx::platforms::intrade_bar {
 
         auto state = std::make_shared<DomainCheckState>();
         state->on_complete = std::move(find_callback);
-        state->indices.push_back(0);
+        if (include_primary) {
+            state->indices.push_back(0);
+        }
         for (int i = std::max(1, min_index); i <= max_index; ++i) {
             state->indices.push_back(i);
         }

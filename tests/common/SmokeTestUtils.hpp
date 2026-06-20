@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
+#include <limits>
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -72,6 +73,23 @@ inline int parse_int(const std::string& value, int fallback) {
     return parsed.value_or(fallback);
 }
 
+inline int parse_signed_int(const std::string& value, int fallback) {
+    const auto trimmed = trim(value);
+    if (trimmed.empty()) return fallback;
+    try {
+        std::size_t parsed = 0;
+        const auto result = std::stoll(trimmed, &parsed);
+        if (parsed != trimmed.size() ||
+            result < static_cast<int64_t>(std::numeric_limits<int>::min()) ||
+            result > static_cast<int64_t>(std::numeric_limits<int>::max())) {
+            return fallback;
+        }
+        return static_cast<int>(result);
+    } catch (...) {
+        return fallback;
+    }
+}
+
 inline int64_t parse_i64(const std::string& value, int64_t fallback) {
     const auto trimmed = trim(value);
     if (trimmed.empty()) return fallback;
@@ -118,6 +136,14 @@ inline int64_t option_i64_or(
         int64_t fallback) {
     auto it = values.find(key);
     return it == values.end() ? fallback : parse_i64(it->second, fallback);
+}
+
+inline int option_signed_int_or(
+        const std::map<std::string, std::string>& values,
+        const std::string& key,
+        int fallback) {
+    auto it = values.find(key);
+    return it == values.end() ? fallback : parse_signed_int(it->second, fallback);
 }
 
 inline optionx::AccountType opposite_account_type(optionx::AccountType value) {
