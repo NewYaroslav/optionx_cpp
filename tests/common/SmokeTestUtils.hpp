@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <utility>
 
-namespace optionx::tests::intrade_bar_smoke {
+namespace optionx::tests::smoke {
 
 inline std::string trim(std::string value) {
     return optionx::utils::trim_copy(value);
@@ -130,4 +130,4 @@ inline optionx::CurrencyType opposite_currency(optionx::CurrencyType value) {
         optionx::CurrencyType::RUB : optionx::CurrencyType::USD;
 }
 
-} // namespace optionx::tests::intrade_bar_smoke
+} // namespace optionx::tests::smoke

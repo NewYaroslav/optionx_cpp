@@ -2,7 +2,7 @@
 
 #include <optionx_cpp/platforms/IntradeBarPlatform.hpp>
 
-#include "IntradeBarSmokeUtils.hpp"
+#include "../common/SmokeTestUtils.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -19,6 +19,20 @@
 namespace optionx::tests::intrade_bar_smoke {
 
 using Platform = optionx::platforms::IntradeBarPlatform;
+using optionx::tests::smoke::config_value;
+using optionx::tests::smoke::getenv_or_empty;
+using optionx::tests::smoke::option_double_or;
+using optionx::tests::smoke::option_i64_or;
+using optionx::tests::smoke::option_value_or;
+using optionx::tests::smoke::opposite_account_type;
+using optionx::tests::smoke::opposite_currency;
+using optionx::tests::smoke::parse_bool;
+using optionx::tests::smoke::parse_double;
+using optionx::tests::smoke::parse_enum_or;
+using optionx::tests::smoke::parse_i64;
+using optionx::tests::smoke::parse_int;
+using optionx::tests::smoke::read_env_file;
+using optionx::tests::smoke::trim;
 
 struct IntradeBarSmokeConfig {
     std::string email;
