@@ -80,6 +80,18 @@ TEST(IntradeBarApiResponses, ClassifiesBrokerRejectedSettingsSwitchAsRetryable) 
     EXPECT_NE(result.error_message.find("active trades"), std::string::npos);
 }
 
+TEST(IntradeBarApiResponses, TrimsSettingsSwitchResponseBeforeClassification) {
+    const auto ok_result = parse_settings_switch_response(" ok\n", 200, "currency");
+    ASSERT_TRUE(ok_result);
+    EXPECT_EQ(ok_result.value.failure_reason, SettingsSwitchFailureReason::NONE);
+
+    const auto error_result = parse_settings_switch_response(" error\r\n", 200, "account type");
+    EXPECT_FALSE(error_result);
+    EXPECT_EQ(error_result.value.failure_reason, SettingsSwitchFailureReason::BROKER_REJECTED);
+    EXPECT_TRUE(error_result.value.should_retry());
+    EXPECT_EQ(error_result.value.response_body, " error\r\n");
+}
+
 TEST(IntradeBarApiResponses, ClassifiesUnexpectedSettingsSwitchResponseAsNonRetryable) {
     const auto result = parse_settings_switch_response("session expired", 200, "currency");
 
@@ -126,6 +138,32 @@ TEST(IntradeBarApiResponses, ParsesActiveTradesAndLatestCloseTime) {
         }
     }
     EXPECT_EQ(latest_close_ms, time_shield::sec_to_ms(1781850940));
+}
+
+TEST(IntradeBarApiResponses, ParsesActiveTradeRowsWithFlexibleTrAttributes) {
+    const std::string html = R"HTML(
+        <tbody class="table_tbody" id="trade_active">
+            <tr class="trade_graph_tick" data-id = "224130651" id="trade_inv_224130651" data-option = "BTCUSDT" data-rate = "62830.01" data-timeopen = "1781850574" data-status = "1" data-contract = "0">
+            </tr>
+            <tr  id='trade_inv_224130777' data-id='224130777' data-option='BTCUSDT' data-rate='62831.25' data-timeopen='1781850580' data-status='2' data-contract='0'>
+            </tr>
+            <tr class="ignored" id="not_trade_inv_224130999" data-id="224130999">
+            </tr>
+        </tbody>
+    )HTML";
+
+    const auto trades = parse_active_trades_snapshot(html);
+    ASSERT_EQ(trades.size(), 2u);
+
+    EXPECT_EQ(trades[0].id, 224130651);
+    EXPECT_EQ(trades[0].symbol, "BTCUSDT");
+    EXPECT_DOUBLE_EQ(trades[0].open_price, 62830.01);
+    EXPECT_EQ(trades[0].status, 1);
+
+    EXPECT_EQ(trades[1].id, 224130777);
+    EXPECT_EQ(trades[1].symbol, "BTCUSDT");
+    EXPECT_DOUBLE_EQ(trades[1].open_price, 62831.25);
+    EXPECT_EQ(trades[1].status, 2);
 }
 
 TEST(IntradeBarApiResponses, RejectsActiveTradesPageWithoutActiveBlock) {

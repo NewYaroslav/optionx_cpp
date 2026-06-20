@@ -13,22 +13,71 @@
 #include <optional>
 #include <string>
 
-#include "string_utils.hpp"
-
 namespace optionx::utils {
 
-    /// \brief Extracts a double-quoted HTML/XML attribute value.
+    /// \brief Returns a copy without leading or trailing whitespace.
+    /// \param value Source string.
+    /// \return Trimmed copy of the source string.
+    inline std::string trim_copy(const std::string& value) {
+        auto first = std::find_if_not(value.begin(), value.end(), [](unsigned char ch) {
+            return std::isspace(ch) != 0;
+        });
+        if (first == value.end()) return {};
+
+        auto last = std::find_if_not(value.rbegin(), value.rend(), [](unsigned char ch) {
+            return std::isspace(ch) != 0;
+        }).base();
+        return std::string(first, last);
+    }
+
+    /// \brief Extracts a quoted HTML/XML attribute value.
     /// \param html Source markup fragment.
-    /// \param attr_name Attribute name.
+    /// \param attr_name Attribute name. Matching is case-sensitive.
     /// \return Attribute value or std::nullopt when the attribute is missing.
     inline std::optional<std::string> extract_html_attr(
             const std::string& html,
             const std::string& attr_name) {
-        std::string value;
-        if (extract_between(html, attr_name + "=\"", "\"", value) == std::string::npos) {
-            return std::nullopt;
+        if (attr_name.empty()) return std::nullopt;
+
+        std::size_t pos = 0;
+        while ((pos = html.find(attr_name, pos)) != std::string::npos) {
+            if (pos > 0) {
+                const unsigned char prev = static_cast<unsigned char>(html[pos - 1]);
+                if (std::isspace(prev) == 0 && html[pos - 1] != '<' && html[pos - 1] != '/') {
+                    pos += attr_name.size();
+                    continue;
+                }
+            }
+
+            const std::size_t attr_end = pos + attr_name.size();
+            std::size_t cursor = attr_end;
+            while (cursor < html.size() && std::isspace(static_cast<unsigned char>(html[cursor])) != 0) {
+                ++cursor;
+            }
+            if (cursor >= html.size() || html[cursor] != '=') {
+                pos = attr_end;
+                continue;
+            }
+
+            ++cursor;
+            while (cursor < html.size() && std::isspace(static_cast<unsigned char>(html[cursor])) != 0) {
+                ++cursor;
+            }
+            if (cursor >= html.size()) return std::nullopt;
+
+            const char quote = html[cursor];
+            if (quote != '"' && quote != '\'') {
+                pos = attr_end;
+                continue;
+            }
+
+            const std::size_t value_start = cursor + 1;
+            const std::size_t value_end = html.find(quote, value_start);
+            if (value_end == std::string::npos) return std::nullopt;
+            return html.substr(value_start, value_end - value_start);
         }
-        return value;
+
+        return std::nullopt;
     }
 
     /// \brief Parses a non-negative decimal int64_t value and rejects partial parses.

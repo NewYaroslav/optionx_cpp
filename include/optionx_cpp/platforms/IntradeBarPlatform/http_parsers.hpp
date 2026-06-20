@@ -7,6 +7,7 @@
 ///        IntradeBar trading platform.
 
 #include <algorithm>
+#include <cctype>
 #include <optional>
 #include <regex>
 #include <stdexcept>
@@ -234,13 +235,25 @@ namespace optionx::platforms::intrade_bar {
 
         std::size_t pos = 0;
         for (;;) {
-            const std::size_t row_start = active_html.find("<tr id=\"trade_inv_", pos);
+            const std::size_t row_start = active_html.find("<tr", pos);
             if (row_start == std::string::npos) break;
+            if (row_start + 3 < active_html.size()) {
+                const unsigned char after_tr = static_cast<unsigned char>(active_html[row_start + 3]);
+                if (std::isspace(after_tr) == 0 &&
+                    active_html[row_start + 3] != '>' &&
+                    active_html[row_start + 3] != '/') {
+                    pos = row_start + 3;
+                    continue;
+                }
+            }
 
             const std::size_t row_end = active_html.find("</tr>", row_start);
             if (row_end == std::string::npos) break;
             const std::string row = active_html.substr(row_start, row_end - row_start);
             pos = row_end + 5;
+
+            auto row_id = utils::extract_html_attr(row, "id");
+            if (!row_id || row_id->rfind("trade_inv_", 0) != 0) continue;
 
             auto id = utils::parse_i64_attr(row, "data-id");
             if (!id || *id <= 0) continue;
@@ -281,10 +294,11 @@ namespace optionx::platforms::intrade_bar {
             const std::string& content,
             long status_code,
             const std::string& operation_name) {
-        if (content == "ok") {
+        const std::string normalized = utils::trim_copy(content);
+        if (normalized == "ok") {
             return SettingsSwitchResult::ok(SettingsSwitch{}, status_code);
         }
-        if (content == "error") {
+        if (normalized == "error") {
             return make_settings_switch_failure(
                 SettingsSwitchFailureReason::BROKER_REJECTED,
                 "Broker rejected " + operation_name +
