@@ -44,6 +44,30 @@ Lifecycle:
 - Registered modules хранятся как raw pointers; concrete platform должна
   владеть ими как fields и гарантировать lifetime.
 
+### IntradeBar Delayed Retry Lifecycle Note
+
+Do not report a use-after-free risk for the current IntradeBar settings-switch
+delayed retry flow unless you find a new path that bypasses the shutdown chain
+below or removes the task shutdown guard.
+
+Current chain:
+
+1. The delayed retry task is owned by `AuthManager::m_task_manager`.
+2. `AuthManager::shutdown()` calls `m_task_manager.shutdown()`.
+3. `TaskManager::shutdown()` marks tasks as shutdown and runs a final
+   `process()`.
+4. The delayed retry callback receives the `Task` and checks
+   `task->is_shutdown()` before invoking the lambda that captures `this`.
+5. `IntradeBarPlatform::~IntradeBarPlatform()` calls `shutdown()` while
+   derived members still exist. The later `BaseTradingPlatform` destructor call
+   is a no-op because platform shutdown is idempotent.
+
+So the reviewed IntradeBar delayed settings-switch retry path does not
+dereference a destroyed `AuthManager` during normal platform shutdown. For new
+platforms or future lifecycle changes, verify that the concrete platform calls
+`shutdown()` while its module fields are still alive, and that delayed callbacks
+guard on `task->is_shutdown()` before using captured owners.
+
 ## Pub-Sub
 
 Опорные файлы: `utils/pubsub/EventBus.hpp`, `EventMediator.hpp`,
