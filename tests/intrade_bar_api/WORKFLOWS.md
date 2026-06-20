@@ -45,6 +45,17 @@ Used by `AuthManager` for `AuthMethod::USER_TOKEN`.
    `request_profile` -> optional `request_switch_account_type` ->
    optional `request_switch_currency` -> `request_balance`.
 
+## Settings Switch Acknowledgement
+
+For Intrade Bar, `ok` from the account-type or currency switch endpoint is
+treated as broker acknowledgement. The auth workflow updates local account info
+and continues without an immediate second `request_profile`.
+
+This is intentional: live smoke coverage validates the broker contract, and an
+extra profile request would add latency and request pressure to every successful
+switch. If a future smoke test shows `ok` without an actual settings change,
+add verification then.
+
 ## Connected Maintenance
 
 Started after `AccountInfoUpdateEvent::CONNECTED`.

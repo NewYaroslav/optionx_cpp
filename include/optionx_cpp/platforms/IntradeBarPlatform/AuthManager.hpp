@@ -710,6 +710,10 @@ namespace optionx::platforms::intrade_bar {
 
                 using Status = events::AccountInfoUpdateEvent::Status;
                 auto account_info = get_account_info();
+                // Intrade Bar "ok" is treated as broker acknowledgement of the switch.
+                // We intentionally avoid an extra profile request here; smoke coverage
+                // validates this broker contract, and balance/profile polling can detect
+                // a future mismatch without adding latency to every successful switch.
                 account_info->account_type = m_auth_data->account_type;
                 notify(events::AccountInfoUpdateEvent(account_info, Status::ACCOUNT_TYPE_CHANGED));
 
@@ -782,6 +786,10 @@ namespace optionx::platforms::intrade_bar {
 
                 using Status = events::AccountInfoUpdateEvent::Status;
                 auto account_info = get_account_info();
+                // Intrade Bar "ok" is treated as broker acknowledgement of the switch.
+                // We intentionally avoid an extra profile request here; smoke coverage
+                // validates this broker contract, and balance/profile polling can detect
+                // a future mismatch without adding latency to every successful switch.
                 account_info->currency = m_auth_data->currency;
                 notify(events::AccountInfoUpdateEvent(account_info, Status::CURRENCY_CHANGED));
 
