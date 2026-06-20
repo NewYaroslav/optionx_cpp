@@ -24,6 +24,7 @@ void print_usage(std::ostream& out) {
         << "  intrade_bar_smoke_cli auth\n"
         << "  intrade_bar_smoke_cli auth-cache\n"
         << "  intrade_bar_smoke_cli show-account\n"
+        << "  intrade_bar_smoke_cli domain-check [--domain-min=0] [--domain-max=1000]\n"
         << "  intrade_bar_smoke_cli quotes [--symbol=EURUSD]\n"
         << "  intrade_bar_smoke_cli switch-check --confirm [--account-type=DEMO] [--currency=USD]\n"
         << "  intrade_bar_smoke_cli open-trade --confirm [--symbol=EURUSD] [--amount=1] [--duration=60] [--buy|--sell]\n"
@@ -113,6 +114,50 @@ int run_auth_cache(smoke::IntradeBarSmokeConfig config) {
               << " faster=" << (cached.elapsed_ms < fresh.elapsed_ms)
               << '\n';
     return cached.elapsed_ms < fresh.elapsed_ms ? 0 : 3;
+}
+
+int run_domain_check(smoke::IntradeBarSmokeConfig config, const CliOptions& options) {
+    if (!smoke::require_live_config(config, std::cerr)) return 2;
+
+    config.auto_find_domain = true;
+    config.domain_index_min = static_cast<int>(smoke::option_i64_or(
+        options.values,
+        "domain-min",
+        config.domain_index_min));
+    config.domain_index_max = static_cast<int>(smoke::option_i64_or(
+        options.values,
+        "domain-max",
+        config.domain_index_max));
+    const int64_t timeout_ms = smoke::option_i64_or(
+        options.values,
+        "timeout-ms",
+        config.auth_timeout_ms);
+
+    std::cout << "domain_check auto_find_domain=" << config.auto_find_domain
+              << " domain_min=" << config.domain_index_min
+              << " domain_max=" << config.domain_index_max
+              << " timeout_ms=" << timeout_ms << '\n';
+
+    smoke::IntradeBarSmokeRuntime runtime(config);
+    const auto connect = runtime.connect(timeout_ms);
+    std::cout << "auth callback=" << connect.callback_received
+              << " success=" << connect.success
+              << " elapsed_ms=" << connect.elapsed_ms << '\n';
+
+    const auto selection = runtime.latest_domain_selection();
+    std::cout << "domain selected=" << selection.received
+              << " success=" << selection.success
+              << " host=" << selection.selected_host << '\n';
+
+    if (!connect.success) {
+        std::cerr << "auth failed: " << connect.reason << '\n';
+        runtime.disconnect();
+        return 1;
+    }
+
+    smoke::print_account(std::cout, runtime.platform());
+    runtime.disconnect();
+    return selection.received && selection.success ? 0 : 1;
 }
 
 int run_quotes(smoke::IntradeBarSmokeConfig config, const CliOptions& options) {
@@ -347,6 +392,8 @@ int main(int argc, char** argv) {
         result = run_auth_cache(std::move(config));
     } else if (options.command == "show-account") {
         result = run_auth(std::move(config));
+    } else if (options.command == "domain-check") {
+        result = run_domain_check(std::move(config), options);
     } else if (options.command == "quotes") {
         result = run_quotes(std::move(config), options);
     } else if (options.command == "switch-check") {

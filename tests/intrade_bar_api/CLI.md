@@ -100,6 +100,33 @@ auth callback=1 success=1 elapsed_ms=3468
 connected=1 account_type=DEMO currency=USD balance=10000 open_trades=0
 ```
 
+Check automatic domain discovery:
+
+```powershell
+.\build-codex\intrade_bar_smoke_cli.exe domain-check --domain-min=0 --domain-max=1000
+```
+
+`domain-check` temporarily enables `auto_find_domain`, runs the normal
+authorization flow through proxy, and prints the selected host reported by the
+platform's `AutoDomainSelectedEvent`.
+
+Expected output shape:
+
+```text
+domain_check auto_find_domain=1 domain_min=0 domain_max=1000 timeout_ms=90000
+auth callback=1 success=1 elapsed_ms=4200
+domain selected=1 success=1 host=https://intrade.bar
+connected=1 account_type=DEMO currency=USD balance=10000 open_trades=0
+```
+
+The same range can be configured without CLI flags:
+
+```text
+OPTIONX_INTRADE_BAR_AUTO_FIND_DOMAIN=1
+OPTIONX_INTRADE_BAR_DOMAIN_MIN=0
+OPTIONX_INTRADE_BAR_DOMAIN_MAX=1000
+```
+
 Get one quote snapshot:
 
 ```powershell

@@ -45,7 +45,7 @@ struct IntradeBarSmokeConfig {
     optionx::CurrencyType currency = optionx::CurrencyType::USD;
     bool auto_find_domain = false;
     int domain_index_min = 0;
-    int domain_index_max = 0;
+    int domain_index_max = 1000;
     int64_t auth_timeout_ms = 90000;
     int64_t price_timeout_ms = 30000;
     int64_t trade_open_timeout_ms = 45000;
@@ -127,8 +127,8 @@ inline IntradeBarSmokeConfig load_config() {
         config_value(file_values, "OPTIONX_INTRADE_BAR_DOMAIN_MIN", "0"),
         0);
     config.domain_index_max = parse_int(
-        config_value(file_values, "OPTIONX_INTRADE_BAR_DOMAIN_MAX", "0"),
-        0);
+        config_value(file_values, "OPTIONX_INTRADE_BAR_DOMAIN_MAX", "1000"),
+        1000);
     config.auth_timeout_ms = parse_i64(
         config_value(file_values, "OPTIONX_INTRADE_BAR_AUTH_TIMEOUT_MS", "90000"),
         90000);
@@ -226,6 +226,12 @@ bool pump_until(
     return predicate();
 }
 
+struct AutoDomainSelection {
+    bool received = false;
+    bool success = false;
+    std::string selected_host;
+};
+
 class PriceUpdateCapture : public optionx::utils::EventMediator {
 public:
     explicit PriceUpdateCapture(optionx::utils::EventBus& bus)
@@ -266,6 +272,37 @@ private:
     std::size_t m_update_count = 0;
 };
 
+class AutoDomainSelectionCapture : public optionx::utils::EventMediator {
+public:
+    explicit AutoDomainSelectionCapture(optionx::utils::EventBus& bus)
+        : optionx::utils::EventMediator(bus) {
+        subscribe<optionx::events::AutoDomainSelectedEvent>(
+            [this](const optionx::events::AutoDomainSelectedEvent& event) {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                m_selection.received = true;
+                m_selection.success = event.success;
+                m_selection.selected_host = event.selected_host;
+                LOGIT_INFO(
+                    "Intrade Bar smoke auto domain selected: success=",
+                    event.success,
+                    ", host=",
+                    event.selected_host);
+            });
+    }
+
+    void on_event(const optionx::utils::Event* const) override {
+    }
+
+    AutoDomainSelection selection() const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_selection;
+    }
+
+private:
+    mutable std::mutex m_mutex;
+    AutoDomainSelection m_selection;
+};
+
 struct ConnectAttempt {
     bool callback_received = false;
     bool success = false;
@@ -287,7 +324,8 @@ class IntradeBarSmokeRuntime {
 public:
     explicit IntradeBarSmokeRuntime(IntradeBarSmokeConfig config)
         : m_config(std::move(config)),
-          m_price_capture(m_platform.event_bus()) {
+          m_price_capture(m_platform.event_bus()),
+          m_domain_capture(m_platform.event_bus()) {
         m_platform.on_account_info() = [this](const optionx::AccountInfoUpdate& update) {
             std::lock_guard<std::mutex> lock(m_mutex);
             m_last_account = update.account_info;
@@ -393,6 +431,10 @@ public:
 
     std::vector<optionx::TickData> latest_ticks() const {
         return m_price_capture.ticks();
+    }
+
+    AutoDomainSelection latest_domain_selection() const {
+        return m_domain_capture.selection();
     }
 
     std::shared_ptr<optionx::BaseAccountInfoData> last_account() const {
@@ -518,6 +560,7 @@ private:
     IntradeBarSmokeConfig m_config;
     Platform m_platform;
     PriceUpdateCapture m_price_capture;
+    AutoDomainSelectionCapture m_domain_capture;
     mutable std::mutex m_mutex;
     std::shared_ptr<optionx::BaseAccountInfoData> m_last_account;
     std::size_t m_account_update_count = 0;

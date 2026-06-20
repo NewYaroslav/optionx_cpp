@@ -19,6 +19,7 @@ Quick CLI smoke helper:
 $env:OPTIONX_INTRADE_BAR_CONFIG_FILE="tests\intrade_bar_api\intrade_bar_api.local.env"
 .\build-codex\intrade_bar_smoke_cli.exe show-account
 .\build-codex\intrade_bar_smoke_cli.exe auth-cache
+.\build-codex\intrade_bar_smoke_cli.exe domain-check --domain-min=0 --domain-max=1000
 .\build-codex\intrade_bar_smoke_cli.exe quotes --symbol=EURUSD
 .\build-codex\intrade_bar_smoke_cli.exe switch-check --confirm --account-type=DEMO --currency=USD
 .\build-codex\intrade_bar_smoke_cli.exe open-trade --confirm --symbol=EURUSD --amount=1 --duration=60 --buy
