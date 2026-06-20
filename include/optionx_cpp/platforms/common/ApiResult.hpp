@@ -14,13 +14,19 @@ namespace optionx::platforms {
     /// \tparam T Payload type returned on success.
     template<class T>
     struct ApiResult {
-        bool success = false;           ///< Whether the operation succeeded.
-        long status_code = 0;           ///< HTTP status code, if available.
-        T value{};                      ///< Parsed response payload.
-        std::string error_message;      ///< Human-readable failure reason.
+        static constexpr long NO_HTTP_STATUS = 0;     ///< No HTTP status was captured for this result.
+        static constexpr long NO_RESPONSE_STATUS = -1; ///< The HTTP request did not produce a response.
+
+        bool success = false;                       ///< Whether the operation succeeded.
+        long status_code = NO_HTTP_STATUS;          ///< HTTP status code, or a NO_* sentinel.
+        T value{};                                  ///< Parsed response payload.
+        std::string error_message;                  ///< Human-readable failure reason.
 
         /// \brief Creates a successful result.
-        static ApiResult ok(T payload, long status = 0) {
+        /// \param payload Parsed success payload.
+        /// \param status HTTP status code, if available.
+        /// \return Successful typed result.
+        static ApiResult ok(T payload, long status = NO_HTTP_STATUS) {
             ApiResult result;
             result.success = true;
             result.status_code = status;
@@ -29,12 +35,21 @@ namespace optionx::platforms {
         }
 
         /// \brief Creates a failed result.
-        static ApiResult fail(std::string message, long status = -1) {
+        /// \param message Human-readable failure reason.
+        /// \param status HTTP status code, if available.
+        /// \return Failed typed result.
+        static ApiResult fail(std::string message, long status = NO_RESPONSE_STATUS) {
             ApiResult result;
             result.success = false;
             result.status_code = status;
             result.error_message = std::move(message);
             return result;
+        }
+
+        /// \brief Checks whether status_code contains a real HTTP status.
+        /// \return True for positive HTTP status codes; false for NO_* sentinels.
+        bool has_http_status() const noexcept {
+            return status_code > NO_HTTP_STATUS;
         }
 
         /// \brief Allows concise success checks.

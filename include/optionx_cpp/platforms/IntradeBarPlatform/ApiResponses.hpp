@@ -150,7 +150,7 @@ namespace optionx::platforms::intrade_bar {
     inline SettingsSwitchResult make_settings_switch_failure(
             SettingsSwitchFailureReason reason,
             std::string message,
-            long status = -1,
+            long status = SettingsSwitchResult::NO_RESPONSE_STATUS,
             std::string response_body = {}) {
         auto result = SettingsSwitchResult::fail(std::move(message), status);
         result.value.failure_reason = reason;

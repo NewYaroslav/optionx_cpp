@@ -12,6 +12,7 @@ TEST(IntradeBarApiResponses, ApiResultCarriesTypedSuccessPayload) {
     ASSERT_TRUE(result);
     EXPECT_TRUE(result.success);
     EXPECT_EQ(result.status_code, 200);
+    EXPECT_TRUE(result.has_http_status());
     EXPECT_DOUBLE_EQ(result.value.balance, 42.5);
     EXPECT_EQ(result.value.currency, CurrencyType::USD);
     EXPECT_TRUE(result.error_message.empty());
@@ -23,8 +24,21 @@ TEST(IntradeBarApiResponses, ApiResultCarriesTypedFailure) {
     EXPECT_FALSE(result);
     EXPECT_FALSE(result.success);
     EXPECT_EQ(result.status_code, 451);
+    EXPECT_TRUE(result.has_http_status());
     EXPECT_EQ(result.error_message, "blocked");
     EXPECT_EQ(result.value.option_id, 0);
+}
+
+TEST(IntradeBarApiResponses, ApiResultMarksMissingHttpStatusExplicitly) {
+    auto success = HostAvailabilityResult::ok(HostAvailability{true});
+    EXPECT_TRUE(success);
+    EXPECT_EQ(success.status_code, HostAvailabilityResult::NO_HTTP_STATUS);
+    EXPECT_FALSE(success.has_http_status());
+
+    auto failure = ProfileInfoResult::fail("no response");
+    EXPECT_FALSE(failure);
+    EXPECT_EQ(failure.status_code, ProfileInfoResult::NO_RESPONSE_STATUS);
+    EXPECT_FALSE(failure.has_http_status());
 }
 
 TEST(IntradeBarApiResponses, TradeWorkflowPayloadsKeepBrokerSpecificFieldsTyped) {
