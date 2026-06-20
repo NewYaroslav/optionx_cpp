@@ -2,10 +2,10 @@
 
 #include <optionx_cpp/platforms/IntradeBarPlatform.hpp>
 
+#include "IntradeBarSmokeUtils.hpp"
+
 #include <atomic>
 #include <chrono>
-#include <cstdlib>
-#include <fstream>
 #include <iostream>
 #include <mutex>
 #include <optional>
@@ -18,81 +18,6 @@
 namespace optionx::tests::intrade_bar_smoke {
 
 using Platform = optionx::platforms::IntradeBarPlatform;
-
-inline std::string trim(std::string value) {
-    const auto first = value.find_first_not_of(" \t\r\n");
-    if (first == std::string::npos) return {};
-    const auto last = value.find_last_not_of(" \t\r\n");
-    return value.substr(first, last - first + 1);
-}
-
-inline std::unordered_map<std::string, std::string> read_env_file(const std::string& path) {
-    std::unordered_map<std::string, std::string> values;
-    std::ifstream file(path);
-    std::string line;
-    while (std::getline(file, line)) {
-        line = trim(line);
-        if (line.empty() || line[0] == '#') continue;
-        const auto eq = line.find('=');
-        if (eq == std::string::npos) continue;
-        values[trim(line.substr(0, eq))] = trim(line.substr(eq + 1));
-    }
-    return values;
-}
-
-inline std::string getenv_or_empty(const char* name) {
-    const char* value = std::getenv(name);
-    return value ? std::string(value) : std::string();
-}
-
-inline std::string config_value(
-        const std::unordered_map<std::string, std::string>& file_values,
-        const char* key,
-        std::string fallback = {}) {
-    std::string value = getenv_or_empty(key);
-    if (!value.empty()) return value;
-    auto it = file_values.find(key);
-    return it == file_values.end() ? std::move(fallback) : it->second;
-}
-
-inline bool parse_bool(const std::string& value, bool fallback = false) {
-    if (value == "1" || value == "true" || value == "TRUE" || value == "yes" || value == "YES") return true;
-    if (value == "0" || value == "false" || value == "FALSE" || value == "no" || value == "NO") return false;
-    return fallback;
-}
-
-inline int parse_int(const std::string& value, int fallback) {
-    try {
-        return value.empty() ? fallback : std::stoi(value);
-    } catch (...) {
-        return fallback;
-    }
-}
-
-inline int64_t parse_i64(const std::string& value, int64_t fallback) {
-    try {
-        return value.empty() ? fallback : std::stoll(value);
-    } catch (...) {
-        return fallback;
-    }
-}
-
-inline double parse_double(const std::string& value, double fallback) {
-    try {
-        return value.empty() ? fallback : std::stod(value);
-    } catch (...) {
-        return fallback;
-    }
-}
-
-template<class EnumT>
-EnumT parse_enum_or(const std::string& value, EnumT fallback) {
-    try {
-        return value.empty() ? fallback : optionx::to_enum<EnumT>(value);
-    } catch (...) {
-        return fallback;
-    }
-}
 
 struct IntradeBarSmokeConfig {
     std::string email;
@@ -130,6 +55,20 @@ struct IntradeBarSmokeConfig {
         return !proxy_server.empty() && !proxy_auth.empty();
     }
 };
+
+inline bool require_live_config(
+        const IntradeBarSmokeConfig& config,
+        std::ostream& err) {
+    if (!config.has_credentials()) {
+        err << "Missing OPTIONX_INTRADE_BAR_EMAIL/OPTIONX_INTRADE_BAR_PASSWORD.\n";
+        return false;
+    }
+    if (!config.has_proxy()) {
+        err << "Refusing to contact broker without proxy settings.\n";
+        return false;
+    }
+    return true;
+}
 
 inline void apply_combined_proxy(
         const std::string& combined_proxy,
@@ -540,6 +479,21 @@ private:
     std::size_t m_account_update_count = 0;
     bool m_started = false;
 };
+
+inline bool connect_or_report(
+        IntradeBarSmokeRuntime& runtime,
+        std::ostream& out,
+        std::ostream& err) {
+    const auto connect = runtime.connect();
+    out << "auth callback=" << connect.callback_received
+        << " success=" << connect.success
+        << " elapsed_ms=" << connect.elapsed_ms << '\n';
+    if (!connect.success) {
+        err << "auth failed: " << connect.reason << '\n';
+        return false;
+    }
+    return true;
+}
 
 inline bool remove_saved_session(const IntradeBarSmokeConfig& config) {
     return optionx::storage::ServiceSessionDB::get_instance().remove_session(
