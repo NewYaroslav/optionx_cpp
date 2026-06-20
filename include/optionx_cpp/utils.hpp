@@ -16,6 +16,7 @@
 // Core utilities
 #include "utils/enum_utils.hpp"       ///< Enum serialization/deserialization tools
 #include "utils/string_utils.hpp"     ///< String encoding/formatting/parsing utilities
+#include "utils/response_parse_utils.hpp" ///< Raw response parsing utilities.
 #include "utils/http_utils.hpp"       ///< HTTP request/response handling utilities.
 #include "utils/path_utils.hpp"       ///< Filesystem path manipulation helpers
 #include "utils/fixed_point.hpp"      ///< Fixed-point arithmetic for financial calculations

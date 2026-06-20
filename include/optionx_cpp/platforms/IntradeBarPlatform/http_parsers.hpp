@@ -6,7 +6,14 @@
 /// \brief Helper functions for parsing HTTP and WebSocket responses for the
 ///        IntradeBar trading platform.
 
+#include <algorithm>
+#include <cctype>
 #include <optional>
+#include <regex>
+#include <stdexcept>
+
+#include "optionx_cpp/utils/response_parse_utils.hpp"
+#include "ApiResponses.hpp"
 
 namespace optionx::platforms::intrade_bar {
 
@@ -160,6 +167,152 @@ namespace optionx::platforms::intrade_bar {
         return std::make_tuple(req_id, req_value, cookies);
     }
 
+    namespace detail {
+
+        inline std::optional<int64_t> parse_active_trade_close_time_ms(
+                const std::string& row,
+                int64_t trade_id) {
+            std::smatch match;
+            static const std::regex close_time_regex(
+                R"(setInterval\s*\(\s*showRemaining[^;]*'([0-9]+)'\s*\))");
+            if (std::regex_search(row, match, close_time_regex) && match.size() >= 2) {
+                if (auto close_time = utils::parse_i64_strict(match[1].str())) {
+                    return time_shield::sec_to_ms(*close_time);
+                }
+                return std::nullopt;
+            }
+
+            const std::regex remaining_regex(
+                "time_time_" + std::to_string(trade_id) + R"(\s*=\s*([0-9]+)\s*(?:;|$))");
+            if (std::regex_search(row, match, remaining_regex) && match.size() >= 2) {
+                if (auto remaining_sec = utils::parse_i64_strict(match[1].str())) {
+                    return OPTIONX_TIMESTAMP_MS + time_shield::sec_to_ms(*remaining_sec);
+                }
+                return std::nullopt;
+            }
+
+            return std::nullopt;
+        }
+
+        inline void log_trade_open_response(
+                const std::string& content,
+                const std::string& reason) {
+#           ifdef OPTIONX_LOG_UNIQUE_FILE_INDEX
+            const int log_index = OPTIONX_LOG_UNIQUE_FILE_INDEX;
+            LOGIT_STREAM_ERROR_TO(log_index) << content;
+            LOGIT_PRINT_ERROR(
+                reason,
+                " Content log was written to file: ",
+                LOGIT_GET_LAST_FILE_NAME(log_index)
+            );
+#           else
+            LOGIT_PRINT_ERROR(reason);
+#           endif
+        }
+
+        inline std::string empty_trade_open_response_error() {
+            return "Trade open failed. Server returned an empty response; instrument may be closed or unavailable.";
+        }
+
+    } // namespace detail
+
+    /// \brief Parses active trades from the authenticated main page.
+    /// \param content Raw HTML of the authenticated main page.
+    /// \return Active trades found in the trade_active block.
+    std::vector<ActiveTradeInfo> parse_active_trades_snapshot(const std::string& content) {
+        std::vector<ActiveTradeInfo> trades;
+
+        std::string active_html;
+        const std::size_t active_id = content.find("id=\"trade_active\"");
+        if (active_id == std::string::npos) {
+            throw std::runtime_error("Authenticated active trades block not found.");
+        }
+        std::size_t block_start = content.rfind("<tbody", active_id);
+        if (block_start == std::string::npos) block_start = active_id;
+        std::size_t block_end = content.find("</tbody>", active_id);
+        if (block_end == std::string::npos) block_end = content.size();
+        active_html = content.substr(block_start, block_end - block_start);
+
+        std::size_t pos = 0;
+        for (;;) {
+            const std::size_t row_start = active_html.find("<tr", pos);
+            if (row_start == std::string::npos) break;
+            if (row_start + 3 < active_html.size()) {
+                const unsigned char after_tr = static_cast<unsigned char>(active_html[row_start + 3]);
+                if (std::isspace(after_tr) == 0 &&
+                    active_html[row_start + 3] != '>' &&
+                    active_html[row_start + 3] != '/') {
+                    pos = row_start + 3;
+                    continue;
+                }
+            }
+
+            const std::size_t row_end = active_html.find("</tr>", row_start);
+            if (row_end == std::string::npos) break;
+            const std::string row = active_html.substr(row_start, row_end - row_start);
+            pos = row_end + 5;
+
+            auto row_id = utils::extract_html_attr(row, "id");
+            if (!row_id || row_id->rfind("trade_inv_", 0) != 0) continue;
+
+            auto id = utils::parse_i64_attr(row, "data-id");
+            if (!id || *id <= 0) continue;
+
+            ActiveTradeInfo trade;
+            trade.id = *id;
+            if (auto symbol = utils::extract_html_attr(row, "data-option")) {
+                trade.symbol = *symbol;
+            }
+            if (auto open_price = utils::parse_double_attr(row, "data-rate")) {
+                trade.open_price = *open_price;
+            }
+            if (auto open_time = utils::parse_i64_attr(row, "data-timeopen")) {
+                trade.open_time_ms = time_shield::sec_to_ms(*open_time);
+            }
+            if (auto status = utils::parse_int_attr(row, "data-status")) {
+                trade.status = *status;
+            }
+            if (auto contract = utils::parse_int_attr(row, "data-contract")) {
+                trade.contract = *contract;
+            }
+            if (auto close_time = detail::parse_active_trade_close_time_ms(row, trade.id)) {
+                trade.close_time_ms = *close_time;
+            }
+
+            trades.push_back(std::move(trade));
+        }
+
+        return trades;
+    }
+
+    /// \brief Parses account settings switch response from the broker.
+    /// \param content Raw HTTP response body.
+    /// \param status_code HTTP status code.
+    /// \param operation_name Human-readable settings operation name.
+    /// \return Typed switch result with retry diagnostics on broker rejection.
+    SettingsSwitchResult parse_settings_switch_response(
+            const std::string& content,
+            long status_code,
+            const std::string& operation_name) {
+        const std::string normalized = utils::trim_copy(content);
+        if (normalized == "ok") {
+            return SettingsSwitchResult::ok(SettingsSwitch{}, status_code);
+        }
+        if (normalized == "error") {
+            return make_settings_switch_failure(
+                SettingsSwitchFailureReason::BROKER_REJECTED,
+                "Broker rejected " + operation_name +
+                    " switch; active trades may block settings changes.",
+                status_code,
+                content);
+        }
+        return make_settings_switch_failure(
+            SettingsSwitchFailureReason::UNEXPECTED_RESPONSE,
+            "Unexpected " + operation_name + " switch response.",
+            status_code,
+            content);
+    }
+
     /// \brief Extracts user_id and user_hash from a cookies string.
     /// \param cookies The input string containing cookies.
     /// \param user_id [out] The extracted user_id.
@@ -248,6 +401,21 @@ namespace optionx::platforms::intrade_bar {
         }
         const int64_t timestamp = OPTIONX_TIMESTAMP_MS;
         try {
+            if (utils::is_blank_response(content)) {
+                const std::string error_desc = detail::empty_trade_open_response_error();
+                detail::log_trade_open_response(content, error_desc);
+                result->trade_state = result->live_state = TradeState::OPEN_ERROR;
+                result->error_code = TradeErrorCode::PARSING_ERROR;
+                result->error_desc = error_desc;
+                result->delay = timestamp - result->send_date;
+                result->ping = result->delay / 2;
+                result->open_date = timestamp;
+                result->close_date = request->option_type == OptionType::SPRINT
+                                     ? timestamp + time_shield::sec_to_ms(request->duration)
+                                     : time_shield::sec_to_ms(request->expiry_time);
+                return false;
+            }
+
             // Check for error indicators in the response
             if (content.find("error") != std::string::npos) {
 #               ifdef OPTIONX_LOG_UNIQUE_FILE_INDEX
@@ -299,7 +467,7 @@ namespace optionx::platforms::intrade_bar {
             std::string str_data_id, str_data_timeopen, str_data_rate;
 
             if (utils::extract_between(content, "data-id=\"", "\"", str_data_id) == std::string::npos) {
-                LOGIT_ERROR("Failed to extract id.");
+                detail::log_trade_open_response(content, "Failed to extract id from trade open response.");
                 result->trade_state = result->live_state = TradeState::OPEN_ERROR;
                 result->error_code = TradeErrorCode::PARSING_ERROR;
                 result->error_desc = "Failed to extract id.";
@@ -314,7 +482,7 @@ namespace optionx::platforms::intrade_bar {
             result->option_id = std::stoull(str_data_id);
 
             if (utils::extract_between(content, "data-timeopen=\"", "\"", str_data_timeopen) == std::string::npos) {
-                LOGIT_ERROR("Failed to extract timeopen.");
+                detail::log_trade_open_response(content, "Failed to extract timeopen from trade open response.");
                 result->trade_state = result->live_state = TradeState::OPEN_ERROR;
                 result->error_code = TradeErrorCode::PARSING_ERROR;
                 result->error_desc = "Failed to extract timeopen.";
@@ -331,7 +499,7 @@ namespace optionx::platforms::intrade_bar {
             result->ping = result->delay / 2;
 
             if (utils::extract_between(content, "data-rate=\"", "\"", str_data_rate) == std::string::npos) {
-                LOGIT_ERROR("Failed to extract rate.");
+                detail::log_trade_open_response(content, "Failed to extract rate from trade open response.");
                 result->trade_state = result->live_state = TradeState::OPEN_ERROR;
                 result->error_code = TradeErrorCode::PARSING_ERROR;
                 result->error_desc = "Failed to extract rate.";
@@ -384,6 +552,13 @@ namespace optionx::platforms::intrade_bar {
                 double open_price,
                 const std::string& error_desc)> result_callback) {
         try {
+            if (utils::is_blank_response(content)) {
+                const std::string error_desc = detail::empty_trade_open_response_error();
+                detail::log_trade_open_response(content, error_desc);
+                result_callback(false, status_code, 0, 0, 0, error_desc);
+                return;
+            }
+
             // Check for error indicators in the response
             if (content.find("error") != std::string::npos) {
 #               ifdef OPTIONX_LOG_UNIQUE_FILE_INDEX
@@ -421,21 +596,21 @@ namespace optionx::platforms::intrade_bar {
             std::string str_data_id, str_data_timeopen, str_data_rate;
 
             if (utils::extract_between(content, "data-id=\"", "\"", str_data_id) == std::string::npos) {
-                LOGIT_ERROR("Failed to extract id.");
+                detail::log_trade_open_response(content, "Failed to extract id from trade open response.");
                 result_callback(false, status_code,
                     0, 0, 0, "Failed to extract id.");
                 return;
             }
 
             if (utils::extract_between(content, "data-timeopen=\"", "\"", str_data_timeopen) == std::string::npos) {
-                LOGIT_ERROR("Failed to extract timeopen.");
+                detail::log_trade_open_response(content, "Failed to extract timeopen from trade open response.");
                 result_callback(false, status_code,
                     0, 0, 0, "Failed to extract timeopen.");
                 return;
             }
 
             if (utils::extract_between(content, "data-rate=\"", "\"", str_data_rate) == std::string::npos) {
-                LOGIT_ERROR("Failed to extract rate.");
+                detail::log_trade_open_response(content, "Failed to extract rate from trade open response.");
                 result_callback(false, status_code,
                     0, 0, 0, "Failed to extract rate.");
                 return;

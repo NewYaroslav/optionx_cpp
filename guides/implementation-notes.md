@@ -44,6 +44,30 @@ Lifecycle:
 - Registered modules хранятся как raw pointers; concrete platform должна
   владеть ими как fields и гарантировать lifetime.
 
+### IntradeBar Delayed Retry Lifecycle Note
+
+Do not report a use-after-free risk for the current IntradeBar settings-switch
+delayed retry flow unless you find a new path that bypasses the shutdown chain
+below or removes the task shutdown guard.
+
+Current chain:
+
+1. The delayed retry task is owned by `AuthManager::m_task_manager`.
+2. `AuthManager::shutdown()` calls `m_task_manager.shutdown()`.
+3. `TaskManager::shutdown()` marks tasks as shutdown and runs a final
+   `process()`.
+4. The delayed retry callback receives the `Task` and checks
+   `task->is_shutdown()` before invoking the lambda that captures `this`.
+5. `IntradeBarPlatform::~IntradeBarPlatform()` calls `shutdown()` while
+   derived members still exist. The later `BaseTradingPlatform` destructor call
+   is a no-op because platform shutdown is idempotent.
+
+So the reviewed IntradeBar delayed settings-switch retry path does not
+dereference a destroyed `AuthManager` during normal platform shutdown. For new
+platforms or future lifecycle changes, verify that the concrete platform calls
+`shutdown()` while its module fields are still alive, and that delayed callbacks
+guard on `task->is_shutdown()` before using captured owners.
+
 ## Pub-Sub
 
 Опорные файлы: `utils/pubsub/EventBus.hpp`, `EventMediator.hpp`,
@@ -104,6 +128,19 @@ overloads. `run()` запускает worker thread, `process()` выполня�
 - Exceptions из future ловятся и переводятся в error response.
 - Rate limit ids хранятся в `m_rate_limits`; используй enum class
   `RateLimitType` внутри конкретной платформы.
+
+### IntradeBar Settings Switch Acknowledgement
+
+`request_switch_account_type_result` and `request_switch_currency_result` treat
+broker body `ok` as acknowledgement that the account setting changed. The auth
+flow then updates local `AccountInfoData` without an immediate follow-up
+`request_profile`.
+
+Do not flag this as a missing verification unless there is live evidence that
+Intrade Bar can return `ok` while leaving the setting unchanged. The extra
+profile request would add latency, rate-limit pressure, and another broker
+failure point to every successful switch. Existing balance/profile maintenance
+can still detect a later mismatch and restart auth.
 
 ## WebSocket
 

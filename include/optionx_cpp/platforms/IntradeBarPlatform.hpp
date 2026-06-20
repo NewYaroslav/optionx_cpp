@@ -13,6 +13,7 @@
 #include "common/BaseTradingPlatform.hpp"
 #include "IntradeBarPlatform/AuthData.hpp"
 #include "IntradeBarPlatform/AccountInfoData.hpp"
+#include "IntradeBarPlatform/ApiResponses.hpp"
 #include "IntradeBarPlatform/http_utils.hpp"
 #include "IntradeBarPlatform/http_parsers.hpp"
 #include "IntradeBarPlatform/HttpClientModule.hpp"
@@ -51,8 +52,10 @@ namespace optionx::platforms {
               m_trade_manager(*this, m_request_manager, m_account_info) {
         }
 
-        /// \brief Default destructor.
-        virtual ~IntradeBarPlatform() = default;
+        /// \brief Shuts down modules while platform-owned module instances are still alive.
+        ~IntradeBarPlatform() override {
+            shutdown();
+        }
 
         /// \brief Places a trade on the platform.
         ///

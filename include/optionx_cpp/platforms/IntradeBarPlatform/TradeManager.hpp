@@ -105,6 +105,11 @@ namespace optionx::platforms::intrade_bar {
     void TradeManager::handle_event(const events::TradeRequestEvent& event) {
         auto request = event.request;
         auto result  = event.result;
+        LOGIT_INFO(
+            "Intrade Bar trade: opening request. symbol=",
+            request ? request->symbol : std::string(),
+            ", amount=",
+            request ? request->amount : 0.0);
 
         m_request_manager.request_execute_trade(
                 request, [this, request, result] (
@@ -117,6 +122,11 @@ namespace optionx::platforms::intrade_bar {
             const int64_t timestamp = OPTIONX_TIMESTAMP_MS;
             auto account_info  = get_account_info();
             if (!success) {
+                LOGIT_WARN(
+                    "Intrade Bar trade: open failed. status=",
+                    status_code,
+                    ", error=",
+                    error_desc);
                 result->trade_state = result->live_state = TradeState::OPEN_ERROR;
                 result->error_code = TradeErrorCode::PARSING_ERROR;
                 result->delay = timestamp - result->send_date;
@@ -141,6 +151,11 @@ namespace optionx::platforms::intrade_bar {
             }
 
             result->option_id = option_id;
+            LOGIT_INFO(
+                "Intrade Bar trade: open accepted. option_id=",
+                option_id,
+                ", open_price=",
+                open_price);
             result->open_date = open_date;
             result->close_date = request->option_type == OptionType::SPRINT
              ? open_date + time_shield::sec_to_ms(request->duration)
@@ -193,6 +208,7 @@ namespace optionx::platforms::intrade_bar {
             return;
         }
 
+        LOGIT_INFO("Intrade Bar trade: checking result. option_id=", result->option_id);
         LOGIT_0TRACE();
         const int64_t delay_ms = 500;
         m_task_manager.add_delayed_task(

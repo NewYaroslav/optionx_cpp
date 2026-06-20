@@ -29,6 +29,10 @@ namespace optionx::platforms::intrade_bar {
         bool auto_find_domain  = false;            ///< Whether to perform automatic domain discovery.
         int domain_index_min   = 0;                ///< Minimum domain index to scan (0 = intrade.bar).
         int domain_index_max   = 1000;             ///< Maximum domain index to scan (e.g., intrade1000.bar).
+        int64_t balance_check_period_ms = time_shield::MS_PER_15_MIN; ///< Connected balance polling period.
+        int64_t settings_switch_retry_timeout_ms = time_shield::MS_PER_10_MIN; ///< Max time to retry broker settings switches.
+        int64_t settings_switch_retry_delay_ms = time_shield::MS_PER_15_SEC; ///< Fallback retry delay for settings switches.
+        int64_t settings_switch_active_trade_buffer_ms = time_shield::MS_PER_5_SEC; ///< Delay after active trade close before retry.
 
         AuthData() :
             user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"),
@@ -116,6 +120,10 @@ namespace optionx::platforms::intrade_bar {
                 j["auto_find_domain"] = auto_find_domain;
                 j["domain_index_min"] = domain_index_min;
                 j["domain_index_max"] = domain_index_max;
+                j["balance_check_period_ms"] = balance_check_period_ms;
+                j["settings_switch_retry_timeout_ms"] = settings_switch_retry_timeout_ms;
+                j["settings_switch_retry_delay_ms"] = settings_switch_retry_delay_ms;
+                j["settings_switch_active_trade_buffer_ms"] = settings_switch_active_trade_buffer_ms;
             } catch (const std::exception& ex) {
                 LOGIT_ERROR(ex);
             }
@@ -149,6 +157,16 @@ namespace optionx::platforms::intrade_bar {
                 auto_find_domain = j.value("auto_find_domain", auto_find_domain);
                 domain_index_min = j.value("domain_index_min", domain_index_min);
                 domain_index_max = j.value("domain_index_max", domain_index_max);
+                balance_check_period_ms = j.value("balance_check_period_ms", balance_check_period_ms);
+                settings_switch_retry_timeout_ms = j.value(
+                    "settings_switch_retry_timeout_ms",
+                    settings_switch_retry_timeout_ms);
+                settings_switch_retry_delay_ms = j.value(
+                    "settings_switch_retry_delay_ms",
+                    settings_switch_retry_delay_ms);
+                settings_switch_active_trade_buffer_ms = j.value(
+                    "settings_switch_active_trade_buffer_ms",
+                    settings_switch_active_trade_buffer_ms);
             } catch (const std::exception& ex) {
                 LOGIT_ERROR(ex);
             }
@@ -165,6 +183,18 @@ namespace optionx::platforms::intrade_bar {
             // If auto domain discovery is enabled, the index range must be valid
             if (auto_find_domain && domain_index_min > domain_index_max) {
                 return { false, "Invalid domain index range: min > max" };
+            }
+            if (balance_check_period_ms <= 0) {
+                return { false, "Balance check period must be positive" };
+            }
+            if (settings_switch_retry_timeout_ms <= 0) {
+                return { false, "Settings switch retry timeout must be positive" };
+            }
+            if (settings_switch_retry_delay_ms <= 0) {
+                return { false, "Settings switch retry delay must be positive" };
+            }
+            if (settings_switch_active_trade_buffer_ms < 0) {
+                return { false, "Settings switch active trade buffer must be non-negative" };
             }
 
             // Validate required fields based on selected authentication method

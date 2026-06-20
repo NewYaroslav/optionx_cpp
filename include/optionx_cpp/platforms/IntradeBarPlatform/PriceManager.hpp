@@ -126,6 +126,7 @@ namespace optionx::platforms::intrade_bar {
     void PriceManager::handle_price_update(std::shared_ptr<utils::Task> task) {
         if (m_has_price_update) return;
         m_has_price_update = true;
+        LOGIT_DEBUG("Intrade Bar price: requesting price snapshot.");
         m_request_manager.request_price([this, task](
                 bool success,
                 std::vector<TickData> ticks) {
@@ -135,11 +136,13 @@ namespace optionx::platforms::intrade_bar {
                 return;
             }
             if (!success) {
+                LOGIT_WARN("Intrade Bar price: snapshot request failed, slowing polling.");
                 task->set_period(time_shield::MS_PER_5_MIN);
                 return;
             }
 
             task->set_period(time_shield::MS_PER_SEC);
+            LOGIT_DEBUG("Intrade Bar price: snapshot received. ticks=", ticks.size());
 
             for (auto& tick : ticks) {
                 auto it = m_ticks.find(tick.symbol);
