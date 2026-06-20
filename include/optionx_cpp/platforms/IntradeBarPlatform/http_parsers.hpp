@@ -7,13 +7,11 @@
 ///        IntradeBar trading platform.
 
 #include <algorithm>
-#include <cctype>
-#include <cmath>
-#include <limits>
 #include <optional>
 #include <regex>
 #include <stdexcept>
 
+#include "optionx_cpp/utils/response_parse_utils.hpp"
 #include "ApiResponses.hpp"
 
 namespace optionx::platforms::intrade_bar {
@@ -170,82 +168,6 @@ namespace optionx::platforms::intrade_bar {
 
     namespace detail {
 
-        inline std::optional<std::string> extract_html_attr(
-                const std::string& html,
-                const std::string& attr_name) {
-            std::string value;
-            if (utils::extract_between(html, attr_name + "=\"", "\"", value) == std::string::npos) {
-                return std::nullopt;
-            }
-            return value;
-        }
-
-        inline std::optional<int64_t> parse_i64_strict(const std::string& value) {
-            if (value.empty()) return std::nullopt;
-            if (!std::all_of(value.begin(), value.end(), [](unsigned char ch) {
-                    return std::isdigit(ch) != 0;
-                })) {
-                return std::nullopt;
-            }
-            try {
-                return std::stoll(value);
-            } catch (...) {
-                return std::nullopt;
-            }
-        }
-
-        inline std::optional<int> parse_int_strict(const std::string& value) {
-            const auto parsed = parse_i64_strict(value);
-            if (!parsed ||
-                *parsed > static_cast<int64_t>(std::numeric_limits<int>::max())) {
-                return std::nullopt;
-            }
-            return static_cast<int>(*parsed);
-        }
-
-        inline std::optional<double> parse_double_strict(const std::string& value) {
-            if (value.empty()) return std::nullopt;
-            if (std::any_of(value.begin(), value.end(), [](unsigned char ch) {
-                    return std::isspace(ch) != 0;
-                })) {
-                return std::nullopt;
-            }
-            try {
-                std::size_t parsed = 0;
-                const double result = std::stod(value, &parsed);
-                if (parsed != value.size() || !std::isfinite(result)) {
-                    return std::nullopt;
-                }
-                return result;
-            } catch (...) {
-                return std::nullopt;
-            }
-        }
-
-        inline std::optional<int64_t> parse_i64_attr(
-                const std::string& html,
-                const std::string& attr_name) {
-            auto value = extract_html_attr(html, attr_name);
-            if (!value) return std::nullopt;
-            return parse_i64_strict(*value);
-        }
-
-        inline std::optional<int> parse_int_attr(
-                const std::string& html,
-                const std::string& attr_name) {
-            auto value = extract_html_attr(html, attr_name);
-            if (!value) return std::nullopt;
-            return parse_int_strict(*value);
-        }
-
-        inline std::optional<double> parse_double_attr(
-                const std::string& html,
-                const std::string& attr_name) {
-            auto value = extract_html_attr(html, attr_name);
-            if (!value) return std::nullopt;
-            return parse_double_strict(*value);
-        }
-
         inline std::optional<int64_t> parse_active_trade_close_time_ms(
                 const std::string& row,
                 int64_t trade_id) {
@@ -253,7 +175,7 @@ namespace optionx::platforms::intrade_bar {
             static const std::regex close_time_regex(
                 R"(setInterval\s*\(\s*showRemaining[^;]*'([0-9]+)'\s*\))");
             if (std::regex_search(row, match, close_time_regex) && match.size() >= 2) {
-                if (auto close_time = parse_i64_strict(match[1].str())) {
+                if (auto close_time = utils::parse_i64_strict(match[1].str())) {
                     return time_shield::sec_to_ms(*close_time);
                 }
                 return std::nullopt;
@@ -262,7 +184,7 @@ namespace optionx::platforms::intrade_bar {
             const std::regex remaining_regex(
                 "time_time_" + std::to_string(trade_id) + R"(\s*=\s*([0-9]+)\s*(?:;|$))");
             if (std::regex_search(row, match, remaining_regex) && match.size() >= 2) {
-                if (auto remaining_sec = parse_i64_strict(match[1].str())) {
+                if (auto remaining_sec = utils::parse_i64_strict(match[1].str())) {
                     return OPTIONX_TIMESTAMP_MS + time_shield::sec_to_ms(*remaining_sec);
                 }
                 return std::nullopt;
@@ -285,12 +207,6 @@ namespace optionx::platforms::intrade_bar {
 #           else
             LOGIT_PRINT_ERROR(reason);
 #           endif
-        }
-
-        inline bool is_blank_response(const std::string& content) {
-            return std::all_of(content.begin(), content.end(), [](unsigned char ch) {
-                return std::isspace(ch) != 0;
-            });
         }
 
         inline std::string empty_trade_open_response_error() {
@@ -326,24 +242,24 @@ namespace optionx::platforms::intrade_bar {
             const std::string row = active_html.substr(row_start, row_end - row_start);
             pos = row_end + 5;
 
-            auto id = detail::parse_i64_attr(row, "data-id");
+            auto id = utils::parse_i64_attr(row, "data-id");
             if (!id || *id <= 0) continue;
 
             ActiveTradeInfo trade;
             trade.id = *id;
-            if (auto symbol = detail::extract_html_attr(row, "data-option")) {
+            if (auto symbol = utils::extract_html_attr(row, "data-option")) {
                 trade.symbol = *symbol;
             }
-            if (auto open_price = detail::parse_double_attr(row, "data-rate")) {
+            if (auto open_price = utils::parse_double_attr(row, "data-rate")) {
                 trade.open_price = *open_price;
             }
-            if (auto open_time = detail::parse_i64_attr(row, "data-timeopen")) {
+            if (auto open_time = utils::parse_i64_attr(row, "data-timeopen")) {
                 trade.open_time_ms = time_shield::sec_to_ms(*open_time);
             }
-            if (auto status = detail::parse_int_attr(row, "data-status")) {
+            if (auto status = utils::parse_int_attr(row, "data-status")) {
                 trade.status = *status;
             }
-            if (auto contract = detail::parse_int_attr(row, "data-contract")) {
+            if (auto contract = utils::parse_int_attr(row, "data-contract")) {
                 trade.contract = *contract;
             }
             if (auto close_time = detail::parse_active_trade_close_time_ms(row, trade.id)) {
@@ -444,7 +360,7 @@ namespace optionx::platforms::intrade_bar {
         }
         const int64_t timestamp = OPTIONX_TIMESTAMP_MS;
         try {
-            if (detail::is_blank_response(content)) {
+            if (utils::is_blank_response(content)) {
                 const std::string error_desc = detail::empty_trade_open_response_error();
                 detail::log_trade_open_response(content, error_desc);
                 result->trade_state = result->live_state = TradeState::OPEN_ERROR;
@@ -595,7 +511,7 @@ namespace optionx::platforms::intrade_bar {
                 double open_price,
                 const std::string& error_desc)> result_callback) {
         try {
-            if (detail::is_blank_response(content)) {
+            if (utils::is_blank_response(content)) {
                 const std::string error_desc = detail::empty_trade_open_response_error();
                 detail::log_trade_open_response(content, error_desc);
                 result_callback(false, status_code, 0, 0, 0, error_desc);
