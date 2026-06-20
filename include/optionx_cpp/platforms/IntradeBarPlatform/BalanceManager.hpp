@@ -56,7 +56,8 @@ namespace optionx::platforms::intrade_bar {
         std::shared_ptr<BaseAccountInfoData> m_account_info; ///< Shared pointer to account information.
         int64_t m_last_trades_time;           ///< Timestamp of the last trade activity.
         int64_t m_request_time;               ///< Timestamp of the last balance request.
-        int64_t m_balance_check_period_ms = time_shield::MS_PER_15_MIN;
+        int64_t m_balance_check_period_ms = time_shield::MS_PER_15_MIN; ///< Connected balance polling period.
+        int64_t m_disconnected_domain_retry_period_ms = time_shield::MS_PER_15_SEC; ///< Disconnected host/domain recovery period.
         bool m_has_balance_update = false;    ///< Flag indicating if a balance update is in progress.
         bool m_check_host_in_progress = false;
 
@@ -227,6 +228,13 @@ namespace optionx::platforms::intrade_bar {
                     "Intrade Bar balance: configured balance check period ms=",
                     m_balance_check_period_ms);
             }
+            if (auth_data->disconnected_domain_retry_period_ms > 0) {
+                m_disconnected_domain_retry_period_ms =
+                    auth_data->disconnected_domain_retry_period_ms;
+                LOGIT_INFO(
+                    "Intrade Bar balance: configured disconnected domain retry period ms=",
+                    m_disconnected_domain_retry_period_ms);
+            }
         }
     }
 
@@ -317,9 +325,12 @@ namespace optionx::platforms::intrade_bar {
         LOGIT_TRACE0();
 
         m_task_manager.shutdown();
+        LOGIT_INFO(
+            "Intrade Bar balance: starting disconnected host recovery. period_ms=",
+            m_disconnected_domain_retry_period_ms);
         m_task_manager.add_periodic_task(
-                "disconnected-15sec",
-                time_shield::MS_PER_15_SEC,
+                "disconnected-domain-retry",
+                m_disconnected_domain_retry_period_ms,
                 [this](std::shared_ptr<utils::Task> task) {
             LOGIT_TRACE0();
             if (task->is_shutdown()) return;

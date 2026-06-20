@@ -24,7 +24,7 @@ void print_usage(std::ostream& out) {
         << "  intrade_bar_smoke_cli auth\n"
         << "  intrade_bar_smoke_cli auth-cache\n"
         << "  intrade_bar_smoke_cli show-account\n"
-        << "  intrade_bar_smoke_cli domain-check [--domain-min=0] [--domain-max=1000]\n"
+        << "  intrade_bar_smoke_cli domain-check [--domain-min=-1] [--domain-max=1000]\n"
         << "  intrade_bar_smoke_cli quotes [--symbol=EURUSD]\n"
         << "  intrade_bar_smoke_cli switch-check --confirm [--account-type=DEMO] [--currency=USD]\n"
         << "  intrade_bar_smoke_cli open-trade --confirm [--symbol=EURUSD] [--amount=1] [--duration=60] [--buy|--sell]\n"

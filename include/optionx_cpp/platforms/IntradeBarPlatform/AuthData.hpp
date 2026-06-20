@@ -30,6 +30,7 @@ namespace optionx::platforms::intrade_bar {
         int domain_index_min   = 0;                ///< Minimum domain index to scan (negative excludes intrade.bar).
         int domain_index_max   = 1000;             ///< Maximum domain index to scan (e.g., intrade1000.bar).
         int64_t balance_check_period_ms = time_shield::MS_PER_15_MIN; ///< Connected balance polling period.
+        int64_t disconnected_domain_retry_period_ms = time_shield::MS_PER_15_SEC; ///< Disconnected host/domain recovery period.
         int64_t settings_switch_retry_timeout_ms = time_shield::MS_PER_10_MIN; ///< Max time to retry broker settings switches.
         int64_t settings_switch_retry_delay_ms = time_shield::MS_PER_15_SEC; ///< Fallback retry delay for settings switches.
         int64_t settings_switch_active_trade_buffer_ms = time_shield::MS_PER_5_SEC; ///< Delay after active trade close before retry.
@@ -121,6 +122,7 @@ namespace optionx::platforms::intrade_bar {
                 j["domain_index_min"] = domain_index_min;
                 j["domain_index_max"] = domain_index_max;
                 j["balance_check_period_ms"] = balance_check_period_ms;
+                j["disconnected_domain_retry_period_ms"] = disconnected_domain_retry_period_ms;
                 j["settings_switch_retry_timeout_ms"] = settings_switch_retry_timeout_ms;
                 j["settings_switch_retry_delay_ms"] = settings_switch_retry_delay_ms;
                 j["settings_switch_active_trade_buffer_ms"] = settings_switch_active_trade_buffer_ms;
@@ -158,6 +160,9 @@ namespace optionx::platforms::intrade_bar {
                 domain_index_min = j.value("domain_index_min", domain_index_min);
                 domain_index_max = j.value("domain_index_max", domain_index_max);
                 balance_check_period_ms = j.value("balance_check_period_ms", balance_check_period_ms);
+                disconnected_domain_retry_period_ms = j.value(
+                    "disconnected_domain_retry_period_ms",
+                    disconnected_domain_retry_period_ms);
                 settings_switch_retry_timeout_ms = j.value(
                     "settings_switch_retry_timeout_ms",
                     settings_switch_retry_timeout_ms);
@@ -186,6 +191,9 @@ namespace optionx::platforms::intrade_bar {
             }
             if (balance_check_period_ms <= 0) {
                 return { false, "Balance check period must be positive" };
+            }
+            if (disconnected_domain_retry_period_ms <= 0) {
+                return { false, "Disconnected domain retry period must be positive" };
             }
             if (settings_switch_retry_timeout_ms <= 0) {
                 return { false, "Settings switch retry timeout must be positive" };

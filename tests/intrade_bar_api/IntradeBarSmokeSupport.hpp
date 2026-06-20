@@ -52,6 +52,7 @@ struct IntradeBarSmokeConfig {
     int64_t price_timeout_ms = 30000;
     int64_t trade_open_timeout_ms = 45000;
     int64_t balance_check_period_ms = time_shield::MS_PER_15_SEC;
+    int64_t disconnected_domain_retry_period_ms = time_shield::MS_PER_15_SEC;
     int64_t settings_switch_timeout_ms = 120000;
     int64_t settings_switch_retry_timeout_ms = time_shield::MS_PER_10_MIN;
     int64_t settings_switch_retry_delay_ms = time_shield::MS_PER_15_SEC;
@@ -143,6 +144,9 @@ inline IntradeBarSmokeConfig load_config() {
     config.balance_check_period_ms = parse_i64(
         config_value(file_values, "OPTIONX_INTRADE_BAR_BALANCE_CHECK_PERIOD_MS", "15000"),
         time_shield::MS_PER_15_SEC);
+    config.disconnected_domain_retry_period_ms = parse_i64(
+        config_value(file_values, "OPTIONX_INTRADE_BAR_DISCONNECTED_DOMAIN_RETRY_PERIOD_MS", "15000"),
+        time_shield::MS_PER_15_SEC);
     config.settings_switch_timeout_ms = parse_i64(
         config_value(file_values, "OPTIONX_INTRADE_BAR_SETTINGS_SWITCH_TIMEOUT_MS", "120000"),
         120000);
@@ -196,6 +200,8 @@ inline std::unique_ptr<optionx::platforms::intrade_bar::AuthData> make_auth_data
     auth_data->domain_index_min = config.domain_index_min;
     auth_data->domain_index_max = config.domain_index_max;
     auth_data->balance_check_period_ms = config.balance_check_period_ms;
+    auth_data->disconnected_domain_retry_period_ms =
+        config.disconnected_domain_retry_period_ms;
     auth_data->settings_switch_retry_timeout_ms = config.settings_switch_retry_timeout_ms;
     auth_data->settings_switch_retry_delay_ms = config.settings_switch_retry_delay_ms;
     auth_data->settings_switch_active_trade_buffer_ms =

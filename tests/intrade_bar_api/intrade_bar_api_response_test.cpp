@@ -41,6 +41,30 @@ TEST(IntradeBarApiResponses, ApiResultMarksMissingHttpStatusExplicitly) {
     EXPECT_FALSE(failure.has_http_status());
 }
 
+TEST(IntradeBarAuthData, KeepsDisconnectedDomainRetryPeriodInConfig) {
+    AuthData auth_data;
+    auth_data.set_email_password("user@example.test", "secret");
+    auth_data.account_type = AccountType::DEMO;
+    auth_data.currency = CurrencyType::USD;
+    auth_data.disconnected_domain_retry_period_ms = 12345;
+
+    nlohmann::json json;
+    auth_data.to_json(json);
+    ASSERT_EQ(json.at("disconnected_domain_retry_period_ms").get<int64_t>(), 12345);
+
+    AuthData restored;
+    restored.from_json(json);
+    EXPECT_EQ(restored.disconnected_domain_retry_period_ms, 12345);
+
+    auto [valid, message] = restored.validate();
+    EXPECT_TRUE(valid) << message;
+
+    restored.disconnected_domain_retry_period_ms = 0;
+    auto [invalid, invalid_message] = restored.validate();
+    EXPECT_FALSE(invalid);
+    EXPECT_EQ(invalid_message, "Disconnected domain retry period must be positive");
+}
+
 TEST(IntradeBarApiResponses, TradeWorkflowPayloadsKeepBrokerSpecificFieldsTyped) {
     TradeOpenInfo opened;
     opened.option_id = 123;

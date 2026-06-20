@@ -103,7 +103,7 @@ connected=1 account_type=DEMO currency=USD balance=10000 open_trades=0
 Check automatic domain discovery:
 
 ```powershell
-.\build-codex\intrade_bar_smoke_cli.exe domain-check --domain-min=0 --domain-max=1000
+.\build-codex\intrade_bar_smoke_cli.exe domain-check --domain-min=-1 --domain-max=1000
 ```
 
 `domain-check` temporarily enables `auto_find_domain`, runs the normal
@@ -113,17 +113,18 @@ platform's `AutoDomainSelectedEvent`.
 Expected output shape:
 
 ```text
-domain_check auto_find_domain=1 domain_min=0 domain_max=1000 timeout_ms=90000
+domain_check auto_find_domain=1 domain_min=-1 domain_max=1000 timeout_ms=90000
 auth callback=1 success=1 elapsed_ms=4200
-domain selected=1 success=1 host=https://intrade.bar
+domain selected=1 success=1 host=https://intrade35.bar
 connected=1 account_type=DEMO currency=USD balance=10000 open_trades=0
 ```
 
-The same range can be configured without CLI flags:
+For RF/CIS environments, keep automatic domain discovery enabled and exclude
+the primary `https://intrade.bar` domain when it is blocked locally:
 
 ```text
 OPTIONX_INTRADE_BAR_AUTO_FIND_DOMAIN=1
-OPTIONX_INTRADE_BAR_DOMAIN_MIN=0
+OPTIONX_INTRADE_BAR_DOMAIN_MIN=-1
 OPTIONX_INTRADE_BAR_DOMAIN_MAX=1000
 ```
 
@@ -187,6 +188,7 @@ For smoke runs the connected balance poll is intentionally fast:
 
 ```text
 OPTIONX_INTRADE_BAR_BALANCE_CHECK_PERIOD_MS=15000
+OPTIONX_INTRADE_BAR_DISCONNECTED_DOMAIN_RETRY_PERIOD_MS=15000
 OPTIONX_INTRADE_BAR_SETTINGS_SWITCH_TIMEOUT_MS=120000
 OPTIONX_INTRADE_BAR_SETTINGS_SWITCH_RETRY_TIMEOUT_MS=600000
 OPTIONX_INTRADE_BAR_SETTINGS_SWITCH_RETRY_DELAY_MS=15000
