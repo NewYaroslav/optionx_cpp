@@ -7,6 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <sstream>
@@ -424,9 +425,24 @@ public:
             int64_t duration_sec,
             int64_t timeout_ms) {
         LOGIT_SCOPE_INFO("intradebar.smoke.open_trade");
-        TradeOpenAttempt attempt;
-        std::atomic<bool> done{false};
+        struct SharedAttempt {
+            mutable std::mutex mutex;
+            TradeOpenAttempt attempt;
+            std::atomic<bool> done{false};
+        };
+
+        auto shared = std::make_shared<SharedAttempt>();
         const auto started_at = std::chrono::steady_clock::now();
+        const auto elapsed_ms = [&] {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - started_at).count();
+        };
+        const auto snapshot = [&] {
+            std::lock_guard<std::mutex> lock(shared->mutex);
+            shared->done.store(true, std::memory_order_release);
+            shared->attempt.elapsed_ms = elapsed_ms();
+            return shared->attempt;
+        };
 
         auto request = std::make_unique<optionx::TradeRequest>();
         request->symbol = symbol;
@@ -437,14 +453,25 @@ public:
         request->account_type = m_config.account_type;
         request->currency = m_config.currency;
         request->comment = "optionx_cpp intrade_bar smoke cli";
-        request->add_callback([&](
+        request->add_callback([shared](
                 std::unique_ptr<optionx::TradeRequest>,
                 std::unique_ptr<optionx::TradeResult> result) {
-            attempt.callback_received = true;
-            attempt.state = result->trade_state;
-            attempt.error_desc = result->error_desc;
-            attempt.option_id = result->option_id;
-            attempt.open_price = result->open_price;
+            const bool opens_finished =
+                result->trade_state == optionx::TradeState::OPEN_SUCCESS ||
+                result->trade_state == optionx::TradeState::OPEN_ERROR;
+            {
+                std::lock_guard<std::mutex> lock(shared->mutex);
+                if (!shared->done.load(std::memory_order_acquire)) {
+                    shared->attempt.callback_received = true;
+                    shared->attempt.state = result->trade_state;
+                    shared->attempt.error_desc = result->error_desc;
+                    shared->attempt.option_id = result->option_id;
+                    shared->attempt.open_price = result->open_price;
+                    if (opens_finished) {
+                        shared->done.store(true, std::memory_order_release);
+                    }
+                }
+            }
             LOGIT_INFO(
                 "Intrade Bar smoke trade callback: state=",
                 optionx::to_str(result->trade_state),
@@ -452,22 +479,25 @@ public:
                 result->option_id,
                 ", error=",
                 result->error_desc);
-            if (result->trade_state == optionx::TradeState::OPEN_SUCCESS ||
-                result->trade_state == optionx::TradeState::OPEN_ERROR) {
-                done = true;
-            }
         });
 
-        attempt.accepted = m_platform.place_trade(std::move(request));
-        if (!attempt.accepted) {
-            attempt.error_desc = "Platform refused trade request before sending.";
-            return attempt;
+        const bool accepted = m_platform.place_trade(std::move(request));
+        {
+            std::lock_guard<std::mutex> lock(shared->mutex);
+            shared->attempt.accepted = accepted;
+            if (!accepted) {
+                shared->attempt.error_desc = "Platform refused trade request before sending.";
+            }
+        }
+        if (!accepted) {
+            return snapshot();
         }
 
-        pump_until(m_platform, [&] { return done.load(); }, timeout_ms);
-        attempt.elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - started_at).count();
-        return attempt;
+        pump_until(
+            m_platform,
+            [&] { return shared->done.load(std::memory_order_acquire); },
+            timeout_ms);
+        return snapshot();
     }
 
 private:
