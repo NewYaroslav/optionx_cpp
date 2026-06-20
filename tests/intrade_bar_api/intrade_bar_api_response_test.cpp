@@ -45,6 +45,37 @@ TEST(IntradeBarApiResponses, TradeWorkflowPayloadsKeepBrokerSpecificFieldsTyped)
     EXPECT_DOUBLE_EQ(check_result.value.profit, 18.0);
 }
 
+TEST(IntradeBarApiResponses, ParsesSuccessfulSettingsSwitchResponse) {
+    const auto result = parse_settings_switch_response("ok", 200, "currency");
+
+    ASSERT_TRUE(result);
+    EXPECT_EQ(result.status_code, 200);
+    EXPECT_EQ(result.value.failure_reason, SettingsSwitchFailureReason::NONE);
+    EXPECT_FALSE(result.value.should_retry());
+    EXPECT_TRUE(result.value.response_body.empty());
+}
+
+TEST(IntradeBarApiResponses, ClassifiesBrokerRejectedSettingsSwitchAsRetryable) {
+    const auto result = parse_settings_switch_response("error", 200, "account type");
+
+    EXPECT_FALSE(result);
+    EXPECT_EQ(result.status_code, 200);
+    EXPECT_EQ(result.value.failure_reason, SettingsSwitchFailureReason::BROKER_REJECTED);
+    EXPECT_TRUE(result.value.should_retry());
+    EXPECT_EQ(result.value.response_body, "error");
+    EXPECT_NE(result.error_message.find("active trades"), std::string::npos);
+}
+
+TEST(IntradeBarApiResponses, ClassifiesUnexpectedSettingsSwitchResponseAsNonRetryable) {
+    const auto result = parse_settings_switch_response("session expired", 200, "currency");
+
+    EXPECT_FALSE(result);
+    EXPECT_EQ(result.status_code, 200);
+    EXPECT_EQ(result.value.failure_reason, SettingsSwitchFailureReason::UNEXPECTED_RESPONSE);
+    EXPECT_FALSE(result.value.should_retry());
+    EXPECT_EQ(result.value.response_body, "session expired");
+}
+
 TEST(IntradeBarApiResponses, ParsesActiveTradesAndLatestCloseTime) {
     const std::string html = R"HTML(
         <tbody class="table_tbody" id="trade_active">

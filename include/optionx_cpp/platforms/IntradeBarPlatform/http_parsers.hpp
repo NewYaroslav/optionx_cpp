@@ -272,6 +272,33 @@ namespace optionx::platforms::intrade_bar {
         return trades;
     }
 
+    /// \brief Parses account settings switch response from the broker.
+    /// \param content Raw HTTP response body.
+    /// \param status_code HTTP status code.
+    /// \param operation_name Human-readable settings operation name.
+    /// \return Typed switch result with retry diagnostics on broker rejection.
+    SettingsSwitchResult parse_settings_switch_response(
+            const std::string& content,
+            long status_code,
+            const std::string& operation_name) {
+        if (content == "ok") {
+            return SettingsSwitchResult::ok(SettingsSwitch{}, status_code);
+        }
+        if (content == "error") {
+            return make_settings_switch_failure(
+                SettingsSwitchFailureReason::BROKER_REJECTED,
+                "Broker rejected " + operation_name +
+                    " switch; active trades may block settings changes.",
+                status_code,
+                content);
+        }
+        return make_settings_switch_failure(
+            SettingsSwitchFailureReason::UNEXPECTED_RESPONSE,
+            "Unexpected " + operation_name + " switch response.",
+            status_code,
+            content);
+    }
+
     /// \brief Extracts user_id and user_hash from a cookies string.
     /// \param cookies The input string containing cookies.
     /// \param user_id [out] The extracted user_id.

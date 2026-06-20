@@ -345,6 +345,12 @@ namespace optionx::platforms::intrade_bar {
             CurrencyType currency,
             connection_callback_t connect_callback);
 
+        /// \brief Sends account settings switch request and preserves failure diagnostics.
+        void request_settings_switch_result(
+            const std::string& operation_name,
+            const std::string& endpoint,
+            std::function<void(SettingsSwitchResult)> switch_callback);
+
         void finalize_authentication(
             std::shared_ptr<AuthData> auth_data,
             connection_callback_t connect_callback);
@@ -613,41 +619,26 @@ namespace optionx::platforms::intrade_bar {
 
     void RequestManager::request_switch_account_type(
             std::function<void(bool success)> switch_callback) {
-        LOGIT_TRACE0();
-
-        // Prepare query parameters
-        kurlyk::QueryParams query = {
-            {"user_id", m_user_id},
-            {"user_hash", m_user_hash},
-        };
-
-        // Send POST request
-        auto future = get_http_client().post(
-            "/user_real_trade.php",
-            kurlyk::QueryParams(),
-            m_api_headers,
-            kurlyk::utils::to_query_string(query),
-            get_rate_limit(RateLimitType::ACCOUNT_SETTINGS)
-        );
-
-        auto callback = [this, switch_callback](kurlyk::HttpResponsePtr response) {
-            if (!validate_response(response)) {
-                switch_callback(false);
-                return;
-            }
-            bool success = (response->content == "ok");
-            if (!success) {
-                LOGIT_PRINT_ERROR("Response validation failed: expected 'ok', but received '", response->content, "'.");
-            }
-            switch_callback(success);
-        };
-
-        add_http_request_task(std::move(future), std::move(callback));
+        request_switch_account_type_result(
+            [switch_callback = std::move(switch_callback)](SettingsSwitchResult result) {
+                if (switch_callback) switch_callback(static_cast<bool>(result));
+            });
     }
 
     void RequestManager::request_switch_currency(
             std::function<void(bool success)> switch_callback) {
+        request_switch_currency_result(
+            [switch_callback = std::move(switch_callback)](SettingsSwitchResult result) {
+                if (switch_callback) switch_callback(static_cast<bool>(result));
+            });
+    }
+
+    void RequestManager::request_settings_switch_result(
+            const std::string& operation_name,
+            const std::string& endpoint,
+            std::function<void(SettingsSwitchResult)> switch_callback) {
         LOGIT_TRACE0();
+        if (!switch_callback) return;
     
         // Prepare query parameters
         kurlyk::QueryParams query = {
@@ -657,23 +648,36 @@ namespace optionx::platforms::intrade_bar {
 
         // Send POST request
         auto future = get_http_client().post(
-            "/user_currency_edit.php",
+            endpoint,
             kurlyk::QueryParams(),
             m_api_headers,
             kurlyk::utils::to_query_string(query),
             get_rate_limit(RateLimitType::ACCOUNT_SETTINGS)
         );
 
-        auto callback = [this, switch_callback](kurlyk::HttpResponsePtr response) {
+        auto callback = [operation_name, switch_callback = std::move(switch_callback)](
+                kurlyk::HttpResponsePtr response) mutable {
             if (!validate_response(response)) {
-                switch_callback(false);
+                switch_callback(make_settings_switch_failure(
+                    SettingsSwitchFailureReason::TRANSPORT_ERROR,
+                    ::optionx::utils::describe_response_error(
+                        response,
+                        "Settings switch request failed."),
+                    response ? response->status_code : -1));
                 return;
             }
-            bool success = (response->content == "ok");
-            if (!success) {
-                LOGIT_PRINT_ERROR("Response validation failed: expected 'ok', but received '", response->content, "'.");
+
+            auto result = parse_settings_switch_response(
+                response->content,
+                response->status_code,
+                operation_name);
+            if (!result && result.value.failure_reason == SettingsSwitchFailureReason::UNEXPECTED_RESPONSE) {
+                LOGIT_PRINT_ERROR(
+                    "Response validation failed: expected 'ok' or 'error', but received '",
+                    response->content,
+                    "'.");
             }
-            switch_callback(success);
+            switch_callback(std::move(result));
         };
 
         add_http_request_task(std::move(future), std::move(callback));
@@ -1222,28 +1226,18 @@ namespace optionx::platforms::intrade_bar {
 
     void RequestManager::request_switch_account_type_result(
             std::function<void(SettingsSwitchResult)> switch_callback) {
-        request_switch_account_type(
-            [switch_callback = std::move(switch_callback)](bool success) {
-                if (!switch_callback) return;
-                if (!success) {
-                    switch_callback(SettingsSwitchResult::fail("Failed to switch account type."));
-                    return;
-                }
-                switch_callback(SettingsSwitchResult::ok(SettingsSwitch{}));
-            });
+        request_settings_switch_result(
+            "account type",
+            "/user_real_trade.php",
+            std::move(switch_callback));
     }
 
     void RequestManager::request_switch_currency_result(
             std::function<void(SettingsSwitchResult)> switch_callback) {
-        request_switch_currency(
-            [switch_callback = std::move(switch_callback)](bool success) {
-                if (!switch_callback) return;
-                if (!success) {
-                    switch_callback(SettingsSwitchResult::fail("Failed to switch currency."));
-                    return;
-                }
-                switch_callback(SettingsSwitchResult::ok(SettingsSwitch{}));
-            });
+        request_settings_switch_result(
+            "currency",
+            "/user_currency_edit.php",
+            std::move(switch_callback));
     }
 
     void RequestManager::request_price_result(

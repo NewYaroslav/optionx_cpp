@@ -670,31 +670,51 @@ namespace optionx::platforms::intrade_bar {
         LOGIT_INFO(
             "Intrade Bar auth: account type switch attempt=",
             attempt);
-        m_request_manager.request_switch_account_type([this, currency, callback, started_ms, attempt](bool success) {
-            if (!success) {
-                LOGIT_WARN("Intrade Bar auth: account type switch rejected by broker.");
-                schedule_settings_switch_retry(
-                    "account type",
-                    started_ms,
-                    attempt,
-                    callback,
-                    [this, currency, callback, started_ms, attempt]() {
-                        handle_account_type_switch_attempt(
-                            currency,
-                            callback,
-                            started_ms,
-                            attempt + 1);
-                    });
-                return;
-            }
+        m_request_manager.request_switch_account_type_result(
+            [this, currency, callback, started_ms, attempt](SettingsSwitchResult result) {
+                if (!result) {
+                    if (!result.value.should_retry()) {
+                        const std::string error_text = result.error_message.empty()
+                            ? "Failed to switch account type."
+                            : result.error_message;
+                        LOGIT_ERROR(
+                            "Intrade Bar auth: account type switch failed without retry. reason=",
+                            error_text,
+                            ", failure_reason=",
+                            settings_switch_failure_reason_to_string(result.value.failure_reason),
+                            ", status_code=",
+                            result.status_code);
+                        callback({false, error_text, m_auth_data->clone_unique()});
+                        return;
+                    }
 
-            using Status = events::AccountInfoUpdateEvent::Status;
-            auto account_info = get_account_info();
-            account_info->account_type = m_auth_data->account_type;
-            notify(events::AccountInfoUpdateEvent(account_info, Status::ACCOUNT_TYPE_CHANGED));
+                    LOGIT_WARN(
+                        "Intrade Bar auth: account type switch rejected by broker; scheduling retry. reason=",
+                        result.error_message,
+                        ", status_code=",
+                        result.status_code);
+                    schedule_settings_switch_retry(
+                        "account type",
+                        started_ms,
+                        attempt,
+                        callback,
+                        [this, currency, callback, started_ms, attempt]() {
+                            handle_account_type_switch_attempt(
+                                currency,
+                                callback,
+                                started_ms,
+                                attempt + 1);
+                        });
+                    return;
+                }
 
-            handle_currency_switch(currency, std::move(callback));
-        });
+                using Status = events::AccountInfoUpdateEvent::Status;
+                auto account_info = get_account_info();
+                account_info->account_type = m_auth_data->account_type;
+                notify(events::AccountInfoUpdateEvent(account_info, Status::ACCOUNT_TYPE_CHANGED));
+
+                handle_currency_switch(currency, std::move(callback));
+            });
     }
 
     void AuthManager::handle_currency_switch(
@@ -723,30 +743,50 @@ namespace optionx::platforms::intrade_bar {
         LOGIT_INFO(
             "Intrade Bar auth: currency switch attempt=",
             attempt);
-        m_request_manager.request_switch_currency([this, callback, started_ms, attempt](bool success) {
-            if (!success) {
-                LOGIT_WARN("Intrade Bar auth: currency switch rejected by broker.");
-                schedule_settings_switch_retry(
-                    "currency",
-                    started_ms,
-                    attempt,
-                    callback,
-                    [this, callback, started_ms, attempt]() {
-                        handle_currency_switch_attempt(
-                            callback,
-                            started_ms,
-                            attempt + 1);
-                    });
-                return;
-            }
+        m_request_manager.request_switch_currency_result(
+            [this, callback, started_ms, attempt](SettingsSwitchResult result) {
+                if (!result) {
+                    if (!result.value.should_retry()) {
+                        const std::string error_text = result.error_message.empty()
+                            ? "Failed to switch currency."
+                            : result.error_message;
+                        LOGIT_ERROR(
+                            "Intrade Bar auth: currency switch failed without retry. reason=",
+                            error_text,
+                            ", failure_reason=",
+                            settings_switch_failure_reason_to_string(result.value.failure_reason),
+                            ", status_code=",
+                            result.status_code);
+                        callback({false, error_text, m_auth_data->clone_unique()});
+                        return;
+                    }
 
-            using Status = events::AccountInfoUpdateEvent::Status;
-            auto account_info = get_account_info();
-            account_info->currency = m_auth_data->currency;
-            notify(events::AccountInfoUpdateEvent(account_info, Status::CURRENCY_CHANGED));
+                    LOGIT_WARN(
+                        "Intrade Bar auth: currency switch rejected by broker; scheduling retry. reason=",
+                        result.error_message,
+                        ", status_code=",
+                        result.status_code);
+                    schedule_settings_switch_retry(
+                        "currency",
+                        started_ms,
+                        attempt,
+                        callback,
+                        [this, callback, started_ms, attempt]() {
+                            handle_currency_switch_attempt(
+                                callback,
+                                started_ms,
+                                attempt + 1);
+                        });
+                    return;
+                }
 
-            callback({true, std::string(), m_auth_data->clone_unique()});
-        });
+                using Status = events::AccountInfoUpdateEvent::Status;
+                auto account_info = get_account_info();
+                account_info->currency = m_auth_data->currency;
+                notify(events::AccountInfoUpdateEvent(account_info, Status::CURRENCY_CHANGED));
+
+                callback({true, std::string(), m_auth_data->clone_unique()});
+            });
     }
 
     void AuthManager::schedule_settings_switch_retry(
