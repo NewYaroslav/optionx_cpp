@@ -142,10 +142,37 @@ if(BUILD_TESTS)
     )
     add_custom_target(project_headers SOURCES ${PROJECT_HEADERS})
 
-    file(GLOB_RECURSE TEST_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tests/*.cpp)
+    file(GLOB_RECURSE TEST_SOURCES
+        CONFIGURE_DEPENDS
+        RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
+        tests/*.cpp
+    )
+    list(SORT TEST_SOURCES)
+
+    set(TEST_SOURCE_STEMS)
+    foreach(test_src ${TEST_SOURCES})
+        get_filename_component(test_stem "${test_src}" NAME_WE)
+        list(APPEND TEST_SOURCE_STEMS "${test_stem}")
+    endforeach()
 
     foreach(test_src ${TEST_SOURCES})
-        get_filename_component(test_name ${test_src} NAME_WE)
+        get_filename_component(test_name "${test_src}" NAME_WE)
+        set(test_name_count 0)
+        foreach(test_stem ${TEST_SOURCE_STEMS})
+            if(test_stem STREQUAL test_name)
+                math(EXPR test_name_count "${test_name_count} + 1")
+            endif()
+        endforeach()
+
+        if(test_name_count GREATER 1)
+            set(test_name "${test_src}")
+            string(REGEX REPLACE "\\.[^.]*$" "" test_name "${test_name}")
+            string(MAKE_C_IDENTIFIER "${test_name}" test_name)
+        endif()
+
+        if(TARGET ${test_name})
+            message(FATAL_ERROR "Duplicate test target name '${test_name}' from '${test_src}'")
+        endif()
 
         add_executable(${test_name} ${test_src})
 
