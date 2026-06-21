@@ -10,7 +10,9 @@ Used before authentication when `AuthData::auto_find_domain` is enabled, and by
 `BalanceManager` while disconnected.
 
 1. `request_find_working_domain`
-2. Iterate configured `*.intrade.bar` domain indexes.
+2. Iterate configured `*.intrade.bar` domain indexes. A negative minimum index
+   excludes the primary `https://intrade.bar` host and scans the absolute
+   numbered range.
 3. For each candidate, call host availability logic.
 4. On first success, publish `AutoDomainSelectedEvent` and continue the caller
    workflow.
@@ -64,8 +66,9 @@ Started after `AccountInfoUpdateEvent::CONNECTED`.
 2. Every 15 seconds, `BalanceManager` calls
    `request_check_current_host_available`.
 3. On failed host check, mark disconnected.
-4. While disconnected, retry host check; if it fails, run domain discovery and
-   then request balance again.
+4. While disconnected, retry host check using
+   `AuthData::disconnected_domain_retry_period_ms`; if it fails, run domain
+   discovery and then request balance again.
 
 ## Price Polling
 

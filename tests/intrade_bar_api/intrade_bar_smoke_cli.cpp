@@ -24,6 +24,7 @@ void print_usage(std::ostream& out) {
         << "  intrade_bar_smoke_cli auth\n"
         << "  intrade_bar_smoke_cli auth-cache\n"
         << "  intrade_bar_smoke_cli show-account\n"
+        << "  intrade_bar_smoke_cli domain-check [--domain-min=-1] [--domain-max=1000]\n"
         << "  intrade_bar_smoke_cli quotes [--symbol=EURUSD]\n"
         << "  intrade_bar_smoke_cli switch-check --confirm [--account-type=DEMO] [--currency=USD]\n"
         << "  intrade_bar_smoke_cli open-trade --confirm [--symbol=EURUSD] [--amount=1] [--duration=60] [--buy|--sell]\n"
@@ -55,64 +56,13 @@ CliOptions parse_args(int argc, char** argv) {
     return options;
 }
 
-bool require_live_config(const smoke::IntradeBarSmokeConfig& config) {
-    if (!config.has_credentials()) {
-        std::cerr << "Missing OPTIONX_INTRADE_BAR_EMAIL/OPTIONX_INTRADE_BAR_PASSWORD.\n";
-        return false;
-    }
-    if (!config.has_proxy()) {
-        std::cerr << "Refusing to contact broker without proxy settings.\n";
-        return false;
-    }
-    return true;
-}
-
-std::string value_or(
-        const CliOptions& options,
-        const std::string& key,
-        std::string fallback) {
-    auto it = options.values.find(key);
-    return it == options.values.end() ? std::move(fallback) : it->second;
-}
-
-double double_or(
-        const CliOptions& options,
-        const std::string& key,
-        double fallback) {
-    auto it = options.values.find(key);
-    return it == options.values.end() ? fallback : smoke::parse_double(it->second, fallback);
-}
-
-int64_t i64_or(
-        const CliOptions& options,
-        const std::string& key,
-        int64_t fallback) {
-    auto it = options.values.find(key);
-    return it == options.values.end() ? fallback : smoke::parse_i64(it->second, fallback);
-}
-
-bool connect_or_report(
-        smoke::IntradeBarSmokeRuntime& runtime,
-        std::ostream& out,
-        std::ostream& err) {
-    const auto connect = runtime.connect();
-    out << "auth callback=" << connect.callback_received
-        << " success=" << connect.success
-        << " elapsed_ms=" << connect.elapsed_ms << '\n';
-    if (!connect.success) {
-        err << "auth failed: " << connect.reason << '\n';
-        return false;
-    }
-    return true;
-}
-
 bool restore_settings_direct(
         const smoke::IntradeBarSmokeConfig& config,
         std::ostream& out,
         std::ostream& err) {
     out << "restore_direct=1\n";
     smoke::IntradeBarSmokeRuntime runtime(config);
-    if (!connect_or_report(runtime, out, err)) return false;
+    if (!smoke::connect_or_report(runtime, out, err)) return false;
     const bool restored = runtime.has_account_settings(
         config.account_type,
         config.currency);
@@ -122,27 +72,17 @@ bool restore_settings_direct(
     return restored;
 }
 
-optionx::AccountType opposite_account_type(optionx::AccountType value) {
-    return value == optionx::AccountType::DEMO ?
-        optionx::AccountType::REAL : optionx::AccountType::DEMO;
-}
-
-optionx::CurrencyType opposite_currency(optionx::CurrencyType value) {
-    return value == optionx::CurrencyType::USD ?
-        optionx::CurrencyType::RUB : optionx::CurrencyType::USD;
-}
-
 int run_auth(smoke::IntradeBarSmokeConfig config) {
-    if (!require_live_config(config)) return 2;
+    if (!smoke::require_live_config(config, std::cerr)) return 2;
     smoke::IntradeBarSmokeRuntime runtime(std::move(config));
-    if (!connect_or_report(runtime, std::cout, std::cerr)) return 1;
+    if (!smoke::connect_or_report(runtime, std::cout, std::cerr)) return 1;
     smoke::print_account(std::cout, runtime.platform());
     runtime.disconnect();
     return 0;
 }
 
 int run_auth_cache(smoke::IntradeBarSmokeConfig config) {
-    if (!require_live_config(config)) return 2;
+    if (!smoke::require_live_config(config, std::cerr)) return 2;
     smoke::remove_saved_session(config);
 
     smoke::ConnectAttempt fresh;
@@ -176,13 +116,60 @@ int run_auth_cache(smoke::IntradeBarSmokeConfig config) {
     return cached.elapsed_ms < fresh.elapsed_ms ? 0 : 3;
 }
 
+int run_domain_check(smoke::IntradeBarSmokeConfig config, const CliOptions& options) {
+    if (!smoke::require_live_config(config, std::cerr)) return 2;
+
+    config.auto_find_domain = true;
+    config.domain_index_min = smoke::option_signed_int_or(
+        options.values,
+        "domain-min",
+        config.domain_index_min);
+    config.domain_index_max = static_cast<int>(smoke::option_i64_or(
+        options.values,
+        "domain-max",
+        config.domain_index_max));
+    const int64_t timeout_ms = smoke::option_i64_or(
+        options.values,
+        "timeout-ms",
+        config.auth_timeout_ms);
+
+    std::cout << "domain_check auto_find_domain=" << config.auto_find_domain
+              << " domain_min=" << config.domain_index_min
+              << " domain_max=" << config.domain_index_max
+              << " timeout_ms=" << timeout_ms << '\n';
+
+    smoke::IntradeBarSmokeRuntime runtime(config);
+    const auto connect = runtime.connect(timeout_ms);
+    std::cout << "auth callback=" << connect.callback_received
+              << " success=" << connect.success
+              << " elapsed_ms=" << connect.elapsed_ms << '\n';
+
+    const auto selection = runtime.latest_domain_selection();
+    std::cout << "domain selected=" << selection.received
+              << " success=" << selection.success
+              << " host=" << selection.selected_host << '\n';
+
+    if (!connect.success) {
+        std::cerr << "auth failed: " << connect.reason << '\n';
+        runtime.disconnect();
+        return 1;
+    }
+
+    smoke::print_account(std::cout, runtime.platform());
+    runtime.disconnect();
+    return selection.received && selection.success ? 0 : 1;
+}
+
 int run_quotes(smoke::IntradeBarSmokeConfig config, const CliOptions& options) {
-    if (!require_live_config(config)) return 2;
-    const std::string requested_symbol = value_or(options, "symbol", config.quote_symbol);
+    if (!smoke::require_live_config(config, std::cerr)) return 2;
+    const std::string requested_symbol = smoke::option_value_or(
+        options.values,
+        "symbol",
+        config.quote_symbol);
     const std::string symbol = smoke::normalize_quote_symbol(requested_symbol);
 
     smoke::IntradeBarSmokeRuntime runtime(std::move(config));
-    if (!connect_or_report(runtime, std::cout, std::cerr)) return 1;
+    if (!smoke::connect_or_report(runtime, std::cout, std::cerr)) return 1;
     if (!runtime.wait_for_price_update(symbol)) {
         std::cerr << "timed out waiting for price update: " << symbol << '\n';
         runtime.disconnect();
@@ -207,26 +194,42 @@ int run_quotes(smoke::IntradeBarSmokeConfig config, const CliOptions& options) {
 }
 
 int run_switch_check(smoke::IntradeBarSmokeConfig config, const CliOptions& options) {
-    if (!require_live_config(config)) return 2;
+    if (!smoke::require_live_config(config, std::cerr)) return 2;
     if (!options.confirm) {
         std::cerr << "switch-check temporarily changes broker account settings; pass --confirm.\n";
         return 2;
     }
 
     const auto target_account_type = smoke::parse_enum_or<optionx::AccountType>(
-        value_or(options, "account-type", optionx::to_str(config.account_type)),
+        smoke::option_value_or(
+            options.values,
+            "account-type",
+            optionx::to_str(config.account_type)),
         config.account_type);
     const auto target_currency = smoke::parse_enum_or<optionx::CurrencyType>(
-        value_or(options, "currency", optionx::to_str(config.currency)),
+        smoke::option_value_or(
+            options.values,
+            "currency",
+            optionx::to_str(config.currency)),
         config.currency);
+    const auto default_source_account_type =
+        smoke::opposite_account_type(target_account_type);
+    const auto default_source_currency =
+        smoke::opposite_currency(target_currency);
     const auto source_account_type = smoke::parse_enum_or<optionx::AccountType>(
-        value_or(options, "from-account-type", optionx::to_str(opposite_account_type(target_account_type))),
-        opposite_account_type(target_account_type));
+        smoke::option_value_or(
+            options.values,
+            "from-account-type",
+            optionx::to_str(default_source_account_type)),
+        default_source_account_type);
     const auto source_currency = smoke::parse_enum_or<optionx::CurrencyType>(
-        value_or(options, "from-currency", optionx::to_str(opposite_currency(target_currency))),
-        opposite_currency(target_currency));
-    const int64_t timeout_ms = i64_or(
-        options,
+        smoke::option_value_or(
+            options.values,
+            "from-currency",
+            optionx::to_str(default_source_currency)),
+        default_source_currency);
+    const int64_t timeout_ms = smoke::option_i64_or(
+        options.values,
         "timeout-ms",
         config.settings_switch_timeout_ms);
 
@@ -254,7 +257,7 @@ int run_switch_check(smoke::IntradeBarSmokeConfig config, const CliOptions& opti
               << " timeout_ms=" << timeout_ms << '\n';
 
     smoke::IntradeBarSmokeRuntime target_runtime(target_config);
-    if (!connect_or_report(target_runtime, std::cout, std::cerr)) return 1;
+    if (!smoke::connect_or_report(target_runtime, std::cout, std::cerr)) return 1;
     const bool initial_target_ok = target_runtime.has_account_settings(
         target_account_type,
         target_currency);
@@ -269,7 +272,7 @@ int run_switch_check(smoke::IntradeBarSmokeConfig config, const CliOptions& opti
         std::cout << "source account_type=" << optionx::to_str(source_account_type)
                   << " currency=" << optionx::to_str(source_currency) << '\n';
         smoke::IntradeBarSmokeRuntime source_runtime(source_config);
-        if (!connect_or_report(source_runtime, std::cout, std::cerr)) {
+        if (!smoke::connect_or_report(source_runtime, std::cout, std::cerr)) {
             target_runtime.disconnect();
             restore_settings_direct(target_config, std::cout, std::cerr);
             return 1;
@@ -311,7 +314,7 @@ int run_switch_check(smoke::IntradeBarSmokeConfig config, const CliOptions& opti
 }
 
 int run_open_trade(smoke::IntradeBarSmokeConfig config, const CliOptions& options) {
-    if (!require_live_config(config)) return 2;
+    if (!smoke::require_live_config(config, std::cerr)) return 2;
     const bool confirmed = options.confirm || config.allow_trade;
     if (!confirmed) {
         std::cerr << "open-trade requires --confirm or OPTIONX_INTRADE_BAR_ALLOW_TRADE=1.\n";
@@ -323,15 +326,27 @@ int run_open_trade(smoke::IntradeBarSmokeConfig config, const CliOptions& option
         return 2;
     }
 
-    const std::string symbol = value_or(options, "symbol", config.trade_symbol);
-    const double amount = double_or(options, "amount", config.trade_amount);
-    const int64_t duration = i64_or(options, "duration", config.trade_duration_sec);
+    const std::string symbol = smoke::option_value_or(
+        options.values,
+        "symbol",
+        config.trade_symbol);
+    const double amount = smoke::option_double_or(
+        options.values,
+        "amount",
+        config.trade_amount);
+    const int64_t duration = smoke::option_i64_or(
+        options.values,
+        "duration",
+        config.trade_duration_sec);
     const auto order_type = smoke::parse_enum_or<optionx::OrderType>(
-        value_or(options, "order", optionx::to_str(config.trade_order_type)),
+        smoke::option_value_or(
+            options.values,
+            "order",
+            optionx::to_str(config.trade_order_type)),
         config.trade_order_type);
 
     smoke::IntradeBarSmokeRuntime runtime(config);
-    if (!connect_or_report(runtime, std::cout, std::cerr)) return 1;
+    if (!smoke::connect_or_report(runtime, std::cout, std::cerr)) return 1;
     smoke::print_account(std::cout, runtime.platform());
 
     const auto open = runtime.open_trade_and_wait(
@@ -377,6 +392,8 @@ int main(int argc, char** argv) {
         result = run_auth_cache(std::move(config));
     } else if (options.command == "show-account") {
         result = run_auth(std::move(config));
+    } else if (options.command == "domain-check") {
+        result = run_domain_check(std::move(config), options);
     } else if (options.command == "quotes") {
         result = run_quotes(std::move(config), options);
     } else if (options.command == "switch-check") {

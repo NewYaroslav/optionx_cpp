@@ -2,11 +2,12 @@
 
 #include <optionx_cpp/platforms/IntradeBarPlatform.hpp>
 
+#include "../common/SmokeTestUtils.hpp"
+
 #include <atomic>
 #include <chrono>
-#include <cstdlib>
-#include <fstream>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <sstream>
@@ -18,81 +19,22 @@
 namespace optionx::tests::intrade_bar_smoke {
 
 using Platform = optionx::platforms::IntradeBarPlatform;
-
-inline std::string trim(std::string value) {
-    const auto first = value.find_first_not_of(" \t\r\n");
-    if (first == std::string::npos) return {};
-    const auto last = value.find_last_not_of(" \t\r\n");
-    return value.substr(first, last - first + 1);
-}
-
-inline std::unordered_map<std::string, std::string> read_env_file(const std::string& path) {
-    std::unordered_map<std::string, std::string> values;
-    std::ifstream file(path);
-    std::string line;
-    while (std::getline(file, line)) {
-        line = trim(line);
-        if (line.empty() || line[0] == '#') continue;
-        const auto eq = line.find('=');
-        if (eq == std::string::npos) continue;
-        values[trim(line.substr(0, eq))] = trim(line.substr(eq + 1));
-    }
-    return values;
-}
-
-inline std::string getenv_or_empty(const char* name) {
-    const char* value = std::getenv(name);
-    return value ? std::string(value) : std::string();
-}
-
-inline std::string config_value(
-        const std::unordered_map<std::string, std::string>& file_values,
-        const char* key,
-        std::string fallback = {}) {
-    std::string value = getenv_or_empty(key);
-    if (!value.empty()) return value;
-    auto it = file_values.find(key);
-    return it == file_values.end() ? std::move(fallback) : it->second;
-}
-
-inline bool parse_bool(const std::string& value, bool fallback = false) {
-    if (value == "1" || value == "true" || value == "TRUE" || value == "yes" || value == "YES") return true;
-    if (value == "0" || value == "false" || value == "FALSE" || value == "no" || value == "NO") return false;
-    return fallback;
-}
-
-inline int parse_int(const std::string& value, int fallback) {
-    try {
-        return value.empty() ? fallback : std::stoi(value);
-    } catch (...) {
-        return fallback;
-    }
-}
-
-inline int64_t parse_i64(const std::string& value, int64_t fallback) {
-    try {
-        return value.empty() ? fallback : std::stoll(value);
-    } catch (...) {
-        return fallback;
-    }
-}
-
-inline double parse_double(const std::string& value, double fallback) {
-    try {
-        return value.empty() ? fallback : std::stod(value);
-    } catch (...) {
-        return fallback;
-    }
-}
-
-template<class EnumT>
-EnumT parse_enum_or(const std::string& value, EnumT fallback) {
-    try {
-        return value.empty() ? fallback : optionx::to_enum<EnumT>(value);
-    } catch (...) {
-        return fallback;
-    }
-}
+using optionx::tests::smoke::config_value;
+using optionx::tests::smoke::getenv_or_empty;
+using optionx::tests::smoke::option_double_or;
+using optionx::tests::smoke::option_i64_or;
+using optionx::tests::smoke::option_signed_int_or;
+using optionx::tests::smoke::option_value_or;
+using optionx::tests::smoke::opposite_account_type;
+using optionx::tests::smoke::opposite_currency;
+using optionx::tests::smoke::parse_bool;
+using optionx::tests::smoke::parse_double;
+using optionx::tests::smoke::parse_enum_or;
+using optionx::tests::smoke::parse_i64;
+using optionx::tests::smoke::parse_int;
+using optionx::tests::smoke::parse_signed_int;
+using optionx::tests::smoke::read_env_file;
+using optionx::tests::smoke::trim;
 
 struct IntradeBarSmokeConfig {
     std::string email;
@@ -105,11 +47,12 @@ struct IntradeBarSmokeConfig {
     optionx::CurrencyType currency = optionx::CurrencyType::USD;
     bool auto_find_domain = false;
     int domain_index_min = 0;
-    int domain_index_max = 0;
+    int domain_index_max = 1000;
     int64_t auth_timeout_ms = 90000;
     int64_t price_timeout_ms = 30000;
     int64_t trade_open_timeout_ms = 45000;
     int64_t balance_check_period_ms = time_shield::MS_PER_15_SEC;
+    int64_t disconnected_domain_retry_period_ms = time_shield::MS_PER_15_SEC;
     int64_t settings_switch_timeout_ms = 120000;
     int64_t settings_switch_retry_timeout_ms = time_shield::MS_PER_10_MIN;
     int64_t settings_switch_retry_delay_ms = time_shield::MS_PER_15_SEC;
@@ -130,6 +73,20 @@ struct IntradeBarSmokeConfig {
         return !proxy_server.empty() && !proxy_auth.empty();
     }
 };
+
+inline bool require_live_config(
+        const IntradeBarSmokeConfig& config,
+        std::ostream& err) {
+    if (!config.has_credentials()) {
+        err << "Missing OPTIONX_INTRADE_BAR_EMAIL/OPTIONX_INTRADE_BAR_PASSWORD.\n";
+        return false;
+    }
+    if (!config.has_proxy()) {
+        err << "Refusing to contact broker without proxy settings.\n";
+        return false;
+    }
+    return true;
+}
 
 inline void apply_combined_proxy(
         const std::string& combined_proxy,
@@ -169,12 +126,12 @@ inline IntradeBarSmokeConfig load_config() {
     config.auto_find_domain = parse_bool(
         config_value(file_values, "OPTIONX_INTRADE_BAR_AUTO_FIND_DOMAIN", "0"),
         false);
-    config.domain_index_min = parse_int(
+    config.domain_index_min = parse_signed_int(
         config_value(file_values, "OPTIONX_INTRADE_BAR_DOMAIN_MIN", "0"),
         0);
     config.domain_index_max = parse_int(
-        config_value(file_values, "OPTIONX_INTRADE_BAR_DOMAIN_MAX", "0"),
-        0);
+        config_value(file_values, "OPTIONX_INTRADE_BAR_DOMAIN_MAX", "1000"),
+        1000);
     config.auth_timeout_ms = parse_i64(
         config_value(file_values, "OPTIONX_INTRADE_BAR_AUTH_TIMEOUT_MS", "90000"),
         90000);
@@ -186,6 +143,9 @@ inline IntradeBarSmokeConfig load_config() {
         45000);
     config.balance_check_period_ms = parse_i64(
         config_value(file_values, "OPTIONX_INTRADE_BAR_BALANCE_CHECK_PERIOD_MS", "15000"),
+        time_shield::MS_PER_15_SEC);
+    config.disconnected_domain_retry_period_ms = parse_i64(
+        config_value(file_values, "OPTIONX_INTRADE_BAR_DISCONNECTED_DOMAIN_RETRY_PERIOD_MS", "15000"),
         time_shield::MS_PER_15_SEC);
     config.settings_switch_timeout_ms = parse_i64(
         config_value(file_values, "OPTIONX_INTRADE_BAR_SETTINGS_SWITCH_TIMEOUT_MS", "120000"),
@@ -240,6 +200,8 @@ inline std::unique_ptr<optionx::platforms::intrade_bar::AuthData> make_auth_data
     auth_data->domain_index_min = config.domain_index_min;
     auth_data->domain_index_max = config.domain_index_max;
     auth_data->balance_check_period_ms = config.balance_check_period_ms;
+    auth_data->disconnected_domain_retry_period_ms =
+        config.disconnected_domain_retry_period_ms;
     auth_data->settings_switch_retry_timeout_ms = config.settings_switch_retry_timeout_ms;
     auth_data->settings_switch_retry_delay_ms = config.settings_switch_retry_delay_ms;
     auth_data->settings_switch_active_trade_buffer_ms =
@@ -271,6 +233,12 @@ bool pump_until(
     platform.process();
     return predicate();
 }
+
+struct AutoDomainSelection {
+    bool received = false;
+    bool success = false;
+    std::string selected_host;
+};
 
 class PriceUpdateCapture : public optionx::utils::EventMediator {
 public:
@@ -312,6 +280,37 @@ private:
     std::size_t m_update_count = 0;
 };
 
+class AutoDomainSelectionCapture : public optionx::utils::EventMediator {
+public:
+    explicit AutoDomainSelectionCapture(optionx::utils::EventBus& bus)
+        : optionx::utils::EventMediator(bus) {
+        subscribe<optionx::events::AutoDomainSelectedEvent>(
+            [this](const optionx::events::AutoDomainSelectedEvent& event) {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                m_selection.received = true;
+                m_selection.success = event.success;
+                m_selection.selected_host = event.selected_host;
+                LOGIT_INFO(
+                    "Intrade Bar smoke auto domain selected: success=",
+                    event.success,
+                    ", host=",
+                    event.selected_host);
+            });
+    }
+
+    void on_event(const optionx::utils::Event* const) override {
+    }
+
+    AutoDomainSelection selection() const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_selection;
+    }
+
+private:
+    mutable std::mutex m_mutex;
+    AutoDomainSelection m_selection;
+};
+
 struct ConnectAttempt {
     bool callback_received = false;
     bool success = false;
@@ -333,7 +332,8 @@ class IntradeBarSmokeRuntime {
 public:
     explicit IntradeBarSmokeRuntime(IntradeBarSmokeConfig config)
         : m_config(std::move(config)),
-          m_price_capture(m_platform.event_bus()) {
+          m_price_capture(m_platform.event_bus()),
+          m_domain_capture(m_platform.event_bus()) {
         m_platform.on_account_info() = [this](const optionx::AccountInfoUpdate& update) {
             std::lock_guard<std::mutex> lock(m_mutex);
             m_last_account = update.account_info;
@@ -441,6 +441,10 @@ public:
         return m_price_capture.ticks();
     }
 
+    AutoDomainSelection latest_domain_selection() const {
+        return m_domain_capture.selection();
+    }
+
     std::shared_ptr<optionx::BaseAccountInfoData> last_account() const {
         std::lock_guard<std::mutex> lock(m_mutex);
         return m_last_account;
@@ -485,9 +489,24 @@ public:
             int64_t duration_sec,
             int64_t timeout_ms) {
         LOGIT_SCOPE_INFO("intradebar.smoke.open_trade");
-        TradeOpenAttempt attempt;
-        std::atomic<bool> done{false};
+        struct SharedAttempt {
+            mutable std::mutex mutex;
+            TradeOpenAttempt attempt;
+            std::atomic<bool> done{false};
+        };
+
+        auto shared = std::make_shared<SharedAttempt>();
         const auto started_at = std::chrono::steady_clock::now();
+        const auto elapsed_ms = [&] {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - started_at).count();
+        };
+        const auto snapshot = [&] {
+            std::lock_guard<std::mutex> lock(shared->mutex);
+            shared->done.store(true, std::memory_order_release);
+            shared->attempt.elapsed_ms = elapsed_ms();
+            return shared->attempt;
+        };
 
         auto request = std::make_unique<optionx::TradeRequest>();
         request->symbol = symbol;
@@ -498,14 +517,25 @@ public:
         request->account_type = m_config.account_type;
         request->currency = m_config.currency;
         request->comment = "optionx_cpp intrade_bar smoke cli";
-        request->add_callback([&](
+        request->add_callback([shared](
                 std::unique_ptr<optionx::TradeRequest>,
                 std::unique_ptr<optionx::TradeResult> result) {
-            attempt.callback_received = true;
-            attempt.state = result->trade_state;
-            attempt.error_desc = result->error_desc;
-            attempt.option_id = result->option_id;
-            attempt.open_price = result->open_price;
+            const bool opens_finished =
+                result->trade_state == optionx::TradeState::OPEN_SUCCESS ||
+                result->trade_state == optionx::TradeState::OPEN_ERROR;
+            {
+                std::lock_guard<std::mutex> lock(shared->mutex);
+                if (!shared->done.load(std::memory_order_acquire)) {
+                    shared->attempt.callback_received = true;
+                    shared->attempt.state = result->trade_state;
+                    shared->attempt.error_desc = result->error_desc;
+                    shared->attempt.option_id = result->option_id;
+                    shared->attempt.open_price = result->open_price;
+                    if (opens_finished) {
+                        shared->done.store(true, std::memory_order_release);
+                    }
+                }
+            }
             LOGIT_INFO(
                 "Intrade Bar smoke trade callback: state=",
                 optionx::to_str(result->trade_state),
@@ -513,33 +543,52 @@ public:
                 result->option_id,
                 ", error=",
                 result->error_desc);
-            if (result->trade_state == optionx::TradeState::OPEN_SUCCESS ||
-                result->trade_state == optionx::TradeState::OPEN_ERROR) {
-                done = true;
-            }
         });
 
-        attempt.accepted = m_platform.place_trade(std::move(request));
-        if (!attempt.accepted) {
-            attempt.error_desc = "Platform refused trade request before sending.";
-            return attempt;
+        const bool accepted = m_platform.place_trade(std::move(request));
+        {
+            std::lock_guard<std::mutex> lock(shared->mutex);
+            shared->attempt.accepted = accepted;
+            if (!accepted) {
+                shared->attempt.error_desc = "Platform refused trade request before sending.";
+            }
+        }
+        if (!accepted) {
+            return snapshot();
         }
 
-        pump_until(m_platform, [&] { return done.load(); }, timeout_ms);
-        attempt.elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - started_at).count();
-        return attempt;
+        pump_until(
+            m_platform,
+            [&] { return shared->done.load(std::memory_order_acquire); },
+            timeout_ms);
+        return snapshot();
     }
 
 private:
     IntradeBarSmokeConfig m_config;
     Platform m_platform;
     PriceUpdateCapture m_price_capture;
+    AutoDomainSelectionCapture m_domain_capture;
     mutable std::mutex m_mutex;
     std::shared_ptr<optionx::BaseAccountInfoData> m_last_account;
     std::size_t m_account_update_count = 0;
     bool m_started = false;
 };
+
+inline bool connect_or_report(
+        IntradeBarSmokeRuntime& runtime,
+        std::ostream& out,
+        std::ostream& err) {
+    const auto connect = runtime.connect();
+    out << "auth callback=" << connect.callback_received
+        << " success=" << connect.success
+        << " elapsed_ms=" << connect.elapsed_ms << '\n';
+    if (!connect.success) {
+        err << "auth failed: " << connect.reason << '\n';
+        return false;
+    }
+    return true;
+}
 
 inline bool remove_saved_session(const IntradeBarSmokeConfig& config) {
     return optionx::storage::ServiceSessionDB::get_instance().remove_session(

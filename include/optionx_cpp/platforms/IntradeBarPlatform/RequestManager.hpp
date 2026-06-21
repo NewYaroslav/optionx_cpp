@@ -272,6 +272,7 @@ namespace optionx::platforms::intrade_bar {
         std::string       m_cookies;     ///< Session cookies.
         int m_domain_index_min = 0;      ///< Minimum domain index to scan (0 = intrade.bar).
         int m_domain_index_max = 0;      ///< Maximum domain index to scan (e.g., intrade1000.bar).
+        bool m_domain_include_primary = true; ///< Whether to include https://intrade.bar in domain discovery.
 
         /// \brief Returns a reference to the HTTP client.
         /// \return Reference to the `kurlyk::HttpClient` instance.
@@ -307,6 +308,7 @@ namespace optionx::platforms::intrade_bar {
                     client.set_host(msg->host);
                     client.set_origin(msg->host);
                 } else {
+                    m_domain_include_primary = msg->domain_index_min >= 0;
                     m_domain_index_min = std::abs(msg->domain_index_min);
                     m_domain_index_max = std::abs(msg->domain_index_max);
                     if (m_domain_index_min > m_domain_index_max) {
@@ -691,93 +693,117 @@ namespace optionx::platforms::intrade_bar {
         
         const int min_index = m_domain_index_min;
         const int max_index = m_domain_index_max;
-        int total_requests = max_index - min_index + 1 + (min_index > 0 ? 1 : 0);  // include index 0 if min > 0
+        const bool include_primary = m_domain_include_primary;
 
         struct DomainCheckState {
-            int total_requests = 0;
-            int completed_requests = 0;
-            std::vector<int> successful_indices;
+            std::vector<int> indices;
+            std::size_t next_index = 0;
+            int pending_requests = 0;
+            bool completed = false;
             std::function<void(bool, std::string&)> on_complete;
         };
 
         auto state = std::make_shared<DomainCheckState>();
-        state->total_requests = total_requests;
         state->on_complete = std::move(find_callback);
-
-        auto& client = get_http_client();
-        client.set_head_only(true);
-        client.set_retry_attempts(3, time_shield::MS_PER_SEC);
-        client.set_timeout(5);
-        client.set_connect_timeout(5);
-
-        for (int i = 0; i <= max_index; ++i) {
-            if (i == 1 && i < min_index) i = min_index; // skip to min_index if i == 1 and < min
-            
-            std::string host = (i == 0)
-                ? "https://intrade.bar"
-                : "https://intrade" + std::to_string(i) + ".bar";
-
-            client.set_host(host);
-            auto future = client.get("/", {}, {});
-
-            auto callback = [this, state, i](kurlyk::HttpResponsePtr response) {
-                if (!response || !response->ready) {
-                    LOGIT_ERROR("Domain check: response not ready or null.");
-                    int finished = ++state->completed_requests;
-                    if (finished == state->total_requests) {
-                        bool success = !state->successful_indices.empty();
-                        std::string selected_host;
-                        if (success) {
-                            int min_index = *std::min_element(
-                                state->successful_indices.begin(), state->successful_indices.end());
-                            selected_host = (min_index == 0)
-                                ? "https://intrade.bar"
-                                : "https://intrade" + std::to_string(min_index) + ".bar";
-                            get_http_client().set_host(selected_host);
-                            get_http_client().set_origin(selected_host);
-                        }
-                        LOGIT_PRINT_INFO("Auto-selected domain:", selected_host, "; success:", success);
-                        state->on_complete(success, selected_host);
-                    }
-                    return;
-                }
-
-                if (response->status_code == 200) {
-                    state->successful_indices.push_back(i);
-                }
-
-                int finished = ++state->completed_requests;
-                if (finished == state->total_requests) {
-                    bool success = false;
-                    std::string selected_host;
-
-                    if (!state->successful_indices.empty()) {
-                        int min_index = *std::min_element(
-                            state->successful_indices.begin(), state->successful_indices.end());
-                        selected_host = (min_index == 0)
-                            ? "https://intrade.bar"
-                            : "https://intrade" + std::to_string(min_index) + ".bar";
-                        success = true;
-                    }
-
-                    LOGIT_PRINT_INFO("Auto-selected domain:", selected_host, "; success:", success);
-
-                    if (success) {
-                        get_http_client().set_host(selected_host);
-                        get_http_client().set_origin(selected_host);
-                    }
-                    
-                    state->on_complete(success, selected_host);
-                }
-            };
-            
-            add_http_request_task(std::move(future), std::move(callback));
+        if (include_primary) {
+            state->indices.push_back(0);
         }
-        
-        client.set_head_only(false);
-        client.set_retry_attempts(10, time_shield::MS_PER_SEC);
-        client.set_timeout(30);
-        client.set_connect_timeout(15);
+        for (int i = std::max(1, min_index); i <= max_index; ++i) {
+            state->indices.push_back(i);
+        }
+
+        constexpr int domain_check_batch_size = 50;
+
+        auto make_host = [](int index) {
+            return (index == 0)
+                ? "https://intrade.bar"
+                : "https://intrade" + std::to_string(index) + ".bar";
+        };
+
+        auto restore_client_defaults = [this]() {
+            auto& client = get_http_client();
+            client.set_head_only(false);
+            client.set_retry_attempts(10, time_shield::MS_PER_SEC);
+            client.set_timeout(30);
+            client.set_connect_timeout(15);
+        };
+
+        auto complete = [this, state, make_host, restore_client_defaults](
+                bool success,
+                int selected_index) {
+            if (state->completed) return;
+            state->completed = true;
+
+            std::string selected_host;
+            if (success) {
+                selected_host = make_host(selected_index);
+                get_http_client().set_host(selected_host);
+                get_http_client().set_origin(selected_host);
+            }
+
+            restore_client_defaults();
+            LOGIT_PRINT_INFO("Auto-selected domain:", selected_host, "; success:", success);
+            state->on_complete(success, selected_host);
+        };
+
+        auto launch_batch = std::make_shared<std::function<void()>>();
+        *launch_batch = [this, state, make_host, complete, launch_batch]() {
+            if (state->completed) return;
+            if (state->next_index >= state->indices.size()) {
+                complete(false, 0);
+                return;
+            }
+
+            auto& client = get_http_client();
+            client.set_head_only(true);
+            client.set_retry_attempts(3, time_shield::MS_PER_SEC);
+            client.set_timeout(5);
+            client.set_connect_timeout(5);
+
+            state->pending_requests = 0;
+            for (int sent = 0;
+                 sent < domain_check_batch_size && state->next_index < state->indices.size();
+                 ++sent, ++state->next_index) {
+                const int index = state->indices[state->next_index];
+                const std::string host = make_host(index);
+
+                client.set_host(host);
+                auto future = client.get("/", {}, {});
+
+                auto callback = [state, complete, launch_batch, index](
+                        kurlyk::HttpResponsePtr response) {
+                    if (state->completed) return;
+
+                    if (response && response->ready && response->status_code == 200) {
+                        complete(true, index);
+                        return;
+                    }
+
+                    if (!response || !response->ready) {
+                        LOGIT_ERROR("Domain check: response not ready or null.");
+                    }
+
+                    --state->pending_requests;
+                    if (state->pending_requests == 0) {
+                        (*launch_batch)();
+                    }
+                };
+
+                ++state->pending_requests;
+                add_http_request_task(std::move(future), std::move(callback));
+            }
+
+            if (state->pending_requests == 0) {
+                (*launch_batch)();
+            }
+        };
+
+        if (state->indices.empty()) {
+            complete(false, 0);
+            return;
+        }
+
+        (*launch_batch)();
     }
     
     /// \brief Checks if the currently set host in the HTTP client is available.
