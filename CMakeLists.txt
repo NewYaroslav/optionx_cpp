@@ -155,6 +155,11 @@ if(BUILD_TESTS)
         list(APPEND TEST_SOURCE_STEMS "${test_stem}")
     endforeach()
 
+    set(TEST_TARGET_NAMES)
+    set(TEST_TARGET_SOURCES)
+
+    # Keep existing basename targets while they are unique. If recursive
+    # discovery finds duplicate stems, use path-derived names for that stem.
     foreach(test_src ${TEST_SOURCES})
         get_filename_component(test_name "${test_src}" NAME_WE)
         set(test_name_count 0)
@@ -170,9 +175,18 @@ if(BUILD_TESTS)
             string(MAKE_C_IDENTIFIER "${test_name}" test_name)
         endif()
 
-        if(TARGET ${test_name})
-            message(FATAL_ERROR "Duplicate test target name '${test_name}' from '${test_src}'")
+        list(FIND TEST_TARGET_NAMES "${test_name}" existing_test_index)
+        if(NOT existing_test_index EQUAL -1)
+            list(GET TEST_TARGET_SOURCES ${existing_test_index} existing_test_src)
+            message(FATAL_ERROR "Duplicate test target name '${test_name}' from '${test_src}' conflicts with '${existing_test_src}'")
         endif()
+
+        if(TARGET ${test_name})
+            message(FATAL_ERROR "Test target name '${test_name}' from '${test_src}' conflicts with an existing CMake target")
+        endif()
+
+        list(APPEND TEST_TARGET_NAMES "${test_name}")
+        list(APPEND TEST_TARGET_SOURCES "${test_src}")
 
         add_executable(${test_name} ${test_src})
 
