@@ -156,6 +156,42 @@ auth callback=1 success=1 elapsed_ms=3639
 EURUSD bid=1.14911 ask=1.14914 mid=1.14913
 ```
 
+Fetch closed trade history:
+
+```powershell
+.\build-codex\intrade_bar_smoke_cli.exe history --source=CSV --days=14 --account-type=DEMO
+```
+
+History source modes:
+
+```text
+CSV       use /stat_trade_export.php; best financial result coverage
+HTML      parse broker IDs from the authenticated page history
+HTML_CSV  use CSV as the financial base and enrich it with HTML broker IDs
+```
+
+The default source is configurable:
+
+```text
+OPTIONX_INTRADE_BAR_TRADE_HISTORY_SOURCE=CSV
+```
+
+Useful options:
+
+```text
+--source=CSV
+--source=HTML
+--source=HTML_CSV
+--days=14
+--from-ms=1719000000000
+--to-ms=1719600000000
+--account-type=DEMO
+--timeout-ms=90000
+```
+
+The command prints a compact summary to stdout and writes every fetched trade
+to the normal log files under `build-codex\data\logs\`.
+
 Check automatic account/currency recovery:
 
 ```powershell
@@ -230,6 +266,37 @@ OPTIONX_INTRADE_BAR_ALLOW_REAL_TRADE=1
 ```
 
 Keep `OPTIONX_INTRADE_BAR_ACCOUNT_TYPE=DEMO` for routine smoke checks.
+
+Open a guarded demo trade and then recover its final result by broker ID:
+
+```powershell
+.\build-codex\intrade_bar_smoke_cli.exe open-check-result --confirm --symbol=BTCUSDT --amount=1 --duration=300 --buy
+```
+
+`open-check-result` first waits for the normal lifecycle callback to reach a
+terminal state. Then it creates a new `TradeResult` with only the intermediate
+fields a restarted bot would reasonably know: local trade id, broker option id,
+amount, account/currency, and open timing/price fields. The command calls
+`fetch_trade_result` with `TradeResultQuery` and compares the fetched state and
+profit with the lifecycle result.
+
+Useful options:
+
+```text
+--symbol=BTCUSDT
+--amount=1
+--duration=300
+--buy
+--sell
+--result-timeout-ms=420000
+--retry-attempts=15
+```
+
+The default result timeout can also be set globally:
+
+```text
+OPTIONX_INTRADE_BAR_TRADE_RESULT_TIMEOUT_MS=420000
+```
 
 ## Logs And Data
 

@@ -5,6 +5,7 @@
 /// \file ApiResponses.hpp
 /// \brief Typed response payloads for Intrade Bar HTTP workflows.
 
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -13,6 +14,7 @@
 #include <optionx_cpp/data.hpp>
 
 #include "../common/ApiResult.hpp"
+#include "TradeHistorySource.hpp"
 
 namespace optionx::platforms::intrade_bar {
 
@@ -110,6 +112,47 @@ namespace optionx::platforms::intrade_bar {
         double profit = 0.0;
     };
 
+    /// \brief Closed trade history payload.
+    struct TradeHistory {
+        std::vector<TradeResult> trades;
+    };
+
+    /// \brief Applies Intrade Bar trade-check payload to a common TradeResult.
+    /// \param check Parsed broker response where profit is a gross returned amount.
+    /// \param result Trade result to update.
+    /// \return True if the outcome was classified; false if required context is missing.
+    inline bool apply_trade_check_info_to_result(
+            const TradeCheckInfo& check,
+            TradeResult& result) {
+        result.close_price = check.price;
+
+        constexpr double balance_tolerance = 0.01;
+        if (result.amount <= 0.0) {
+            result.trade_state = result.live_state = TradeState::CHECK_ERROR;
+            result.error_code = TradeErrorCode::INVALID_REQUEST;
+            result.error_desc = "Trade amount is required to classify Intrade Bar trade result.";
+            return false;
+        }
+
+        if (std::abs(check.profit - result.amount) < balance_tolerance) {
+            result.trade_state = result.live_state = TradeState::STANDOFF;
+            result.profit = 0.0;
+        } else if (check.profit <= balance_tolerance) {
+            result.trade_state = result.live_state = TradeState::LOSS;
+            result.profit = -result.amount;
+        } else {
+            result.trade_state = result.live_state = TradeState::WIN;
+            result.profit = check.profit - result.amount;
+            result.payout = utils::normalize_double(
+                (check.profit - result.amount) / result.amount,
+                2);
+        }
+
+        result.error_code = TradeErrorCode::SUCCESS;
+        result.error_desc.clear();
+        return true;
+    }
+
     using DomainSelectionResult = ApiResult<DomainSelection>;
     using HostAvailabilityResult = ApiResult<HostAvailability>;
     using MainPageChallengeResult = ApiResult<MainPageChallenge>;
@@ -122,6 +165,7 @@ namespace optionx::platforms::intrade_bar {
     using PriceSnapshotResult = ApiResult<PriceSnapshot>;
     using TradeOpenResult = ApiResult<TradeOpenInfo>;
     using TradeCheckResult = ApiResult<TradeCheckInfo>;
+    using TradeHistoryResult = ApiResult<TradeHistory>;
 
     /// \brief Converts a settings-switch failure reason to a stable log string.
     /// \param reason Failure reason.

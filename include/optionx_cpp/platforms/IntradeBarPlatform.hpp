@@ -66,6 +66,31 @@ namespace optionx::platforms {
             return m_trade_execution.place_trade(std::move(trade_request));
         }
 
+        /// \brief Requests the final result for a previously opened Intrade Bar trade.
+        /// \param query Broker-side trade identity and retry settings.
+        /// \param result Partially filled result object to update with broker data.
+        /// \param callback Callback receiving the updated result.
+        /// \return True if the check was accepted for processing; false otherwise.
+        bool fetch_trade_result(
+                TradeResultQuery query,
+                std::unique_ptr<TradeResult> result,
+                trade_result_check_callback_t callback) override {
+            return m_trade_manager.fetch_trade_result(
+                std::move(query),
+                std::move(result),
+                std::move(callback));
+        }
+
+        /// \brief Requests closed Intrade Bar trade history.
+        /// \param request Trade history range and account selection.
+        /// \param callback Callback receiving closed trade results.
+        /// \return True if the history request was accepted for processing; false otherwise.
+        bool fetch_trade_history(
+                const TradeHistoryRequest& request,
+                trade_history_callback_t callback) override {
+            return m_trade_manager.fetch_trade_history(request, std::move(callback));
+        }
+
         /// \brief Returns the platform-level trade result callback.
         /// \return Mutable callback reference from the trade execution module.
         trade_result_callback_t& on_trade_result() override {

@@ -12,6 +12,8 @@ namespace optionx::platforms {
     class BaseTradingPlatform {
     public:
         using trade_result_callback_t = std::function<void(std::unique_ptr<TradeRequest>, std::unique_ptr<TradeResult>)>;
+        using trade_result_check_callback_t = std::function<void(std::unique_ptr<TradeResult>)>;
+        using trade_history_callback_t = std::function<void(const std::vector<TradeResult>&)>;
         using trade_id_provider_t = std::function<std::uint64_t()>;
         using bars_callback_t  = std::function<void(const std::vector<BarData>&)>;
         using ticks_callback_t = std::function<void(const std::vector<TickData>&)>;
@@ -71,6 +73,23 @@ namespace optionx::platforms {
         /// \param trade_request Trade request details.
         /// \return True if the trade was placed successfully; false otherwise.
         virtual bool place_trade(std::unique_ptr<TradeRequest> trade_request) { return false; };
+
+        /// \brief Requests the final broker-side result for a previously opened trade.
+        /// \param query Broker-side trade identity and retry settings.
+        /// \param result Partially filled result object to update with broker data.
+        /// \param callback Callback receiving the updated result.
+        /// \return True if the request was accepted for processing; false otherwise.
+        virtual bool fetch_trade_result(
+            TradeResultQuery query,
+            std::unique_ptr<TradeResult> result,
+            trade_result_check_callback_t callback) { return false; };
+
+        /// \brief Requests closed trade history for the account.
+        /// \param request Trade history range and account selection.
+        /// \param callback Callback function to receive closed trade results.
+        virtual bool fetch_trade_history(
+            const TradeHistoryRequest& request,
+            trade_history_callback_t callback) { return false; };
 
         /// \brief Requests historical candle data for a specified time range.
         /// \param request Historical candle data request parameters.

@@ -226,6 +226,20 @@ namespace optionx::platforms::intrade_bar {
         void request_price_result(
             std::function<void(PriceSnapshotResult)> price_callback);
 
+        /// \brief Requests closed trade history export.
+        /// \param request History range and account type.
+        /// \param callback Callback receiving parsed closed trades.
+        void request_trade_history(
+            const TradeHistoryRequest& request,
+            std::function<void(
+                bool success,
+                long status_code,
+                std::vector<TradeResult> trades)> callback);
+
+        /// \brief Typed variant of request_trade_history.
+        void request_trade_history_result(
+            const TradeHistoryRequest& request,
+            std::function<void(TradeHistoryResult)> callback);
         /// \brief Requests the trade check result.
         /// \param deal_id The deal ID to check.
         /// \param retry_attempts Number of retries if the response is empty.
@@ -273,6 +287,7 @@ namespace optionx::platforms::intrade_bar {
         int m_domain_index_min = 0;      ///< Minimum domain index to scan (0 = intrade.bar).
         int m_domain_index_max = 0;      ///< Maximum domain index to scan (e.g., intrade1000.bar).
         bool m_domain_include_primary = true; ///< Whether to include https://intrade.bar in domain discovery.
+        TradeHistorySource m_trade_history_source = TradeHistorySource::CSV; ///< Closed trade history source mode.
 
         /// \brief Returns a reference to the HTTP client.
         /// \return Reference to the `kurlyk::HttpClient` instance.
@@ -320,6 +335,7 @@ namespace optionx::platforms::intrade_bar {
                 client.set_proxy_server(msg->proxy_server);
                 client.set_proxy_auth(msg->proxy_auth);
                 client.set_proxy_type(msg->proxy_type);
+                m_trade_history_source = msg->trade_history_source;
                 LOGIT_INFO(
                     "Intrade Bar HTTP client configured. host=",
                     referer,
@@ -356,6 +372,20 @@ namespace optionx::platforms::intrade_bar {
         void finalize_authentication(
             std::shared_ptr<AuthData> auth_data,
             connection_callback_t connect_callback);
+
+        void request_trade_history_csv(
+            const TradeHistoryRequest& request,
+            std::function<void(
+                bool success,
+                long status_code,
+                std::vector<TradeResult> trades)> callback);
+
+        void request_trade_history_html(
+            const TradeHistoryRequest& request,
+            std::function<void(
+                bool success,
+                long status_code,
+                std::vector<TradeResult> trades)> callback);
     };
 	
     // ------------------------------------------------------------------------
@@ -947,6 +977,184 @@ namespace optionx::platforms::intrade_bar {
         add_http_request_task(std::move(future), std::move(callback));
     }
 
+    namespace {
+        std::vector<TradeResult> filter_trade_history_range(
+                std::vector<TradeResult> trades,
+                const TradeHistoryRequest& request) {
+            trades.erase(
+                std::remove_if(
+                    trades.begin(),
+                    trades.end(),
+                    [&request](const TradeResult& trade) {
+                        const int64_t timestamp =
+                            trade.open_date > 0 ? trade.open_date : trade.close_date;
+                        if (timestamp <= 0) return false;
+                        return timestamp < request.start_time_ms ||
+                            timestamp > request.end_time_ms;
+                    }),
+                trades.end());
+            return trades;
+        }
+    }
+
+    void RequestManager::request_trade_history(
+            const TradeHistoryRequest& request,
+            std::function<void(
+                bool success,
+                long status_code,
+                std::vector<TradeResult> trades)> callback) {
+        if (!request.has_valid_range() || request.account_type == AccountType::UNKNOWN) {
+            callback(false, -1, {});
+            return;
+        }
+
+        LOGIT_INFO(
+            "Intrade Bar trade history request. source=",
+            trade_history_source_to_string(m_trade_history_source),
+            ", account=",
+            to_str(request.account_type));
+
+        if (m_trade_history_source == TradeHistorySource::HTML) {
+            request_trade_history_html(request, std::move(callback));
+            return;
+        }
+        if (m_trade_history_source == TradeHistorySource::CSV) {
+            request_trade_history_csv(request, std::move(callback));
+            return;
+        }
+
+        request_trade_history_csv(
+            request,
+            [this, request, callback = std::move(callback)](
+                    bool csv_success,
+                    long csv_status_code,
+                    std::vector<TradeResult> csv_trades) mutable {
+                request_trade_history_html(
+                    request,
+                    [callback = std::move(callback),
+                     csv_success,
+                     csv_status_code,
+                     csv_trades = std::move(csv_trades)](
+                            bool html_success,
+                            long html_status_code,
+                            std::vector<TradeResult> html_trades) mutable {
+                        if (csv_success) {
+                            const long status_code = csv_status_code >= 0 ?
+                                csv_status_code : html_status_code;
+                            if (html_success) {
+                                callback(
+                                    true,
+                                    status_code,
+                                    merge_trade_history_csv_with_html(
+                                        std::move(csv_trades),
+                                        html_trades));
+                                return;
+                            }
+                            callback(true, status_code, std::move(csv_trades));
+                            return;
+                        }
+                        if (html_success) {
+                            callback(true, html_status_code, std::move(html_trades));
+                            return;
+                        }
+                        callback(false, csv_status_code >= 0 ? csv_status_code : html_status_code, {});
+                    });
+            });
+    }
+
+    void RequestManager::request_trade_history_csv(
+            const TradeHistoryRequest& request,
+            std::function<void(
+                bool success,
+                long status_code,
+                std::vector<TradeResult> trades)> callback) {
+        constexpr int64_t broker_offset_sec = 3 * time_shield::SEC_PER_HOUR;
+        kurlyk::QueryParams query = {
+            {"name_method", "stat_export"},
+            {"status_real", request.account_type == AccountType::REAL ? "1" : "0"},
+            {"date1", time_shield::to_string(
+                "%DD.%MM.%YYYY",
+                time_shield::ms_to_sec(request.start_time_ms) + broker_offset_sec)},
+            {"date2", time_shield::to_string(
+                "%DD.%MM.%YYYY",
+                time_shield::ms_to_sec(request.end_time_ms) + broker_offset_sec)}
+        };
+
+        auto future = get_http_client().post(
+            "/stat_trade_export.php",
+            kurlyk::QueryParams(),
+            {
+                {"Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+                {"Content-Type", "application/x-www-form-urlencoded"},
+                {"Upgrade-Insecure-Requests", "1"},
+                {"Cookie", m_cookies}
+            },
+            kurlyk::utils::to_query_string(query),
+            get_rate_limit(RateLimitType::ACCOUNT_INFO)
+        );
+
+        auto response_callback = [request, callback = std::move(callback)](kurlyk::HttpResponsePtr response) {
+            if (!validate_response(response)) {
+                callback(false, response ? response->status_code : -1, {});
+                return;
+            }
+
+            try {
+                callback(
+                    true,
+                    response->status_code,
+                    filter_trade_history_range(
+                        parse_trade_history_csv_export(response->content, request.account_type),
+                        request));
+            } catch (const std::exception& ex) {
+                LOGIT_ERROR("Error parsing trade history CSV export: ", ex.what());
+                callback(false, response ? response->status_code : -1, {});
+            }
+        };
+
+        add_http_request_task(std::move(future), std::move(response_callback));
+    }
+
+    void RequestManager::request_trade_history_html(
+            const TradeHistoryRequest& request,
+            std::function<void(
+                bool success,
+                long status_code,
+                std::vector<TradeResult> trades)> callback) {
+        auto future = get_http_client().get(
+            "/",
+            kurlyk::QueryParams(),
+            {
+                {"Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+                {"Content-Type", "application/x-www-form-urlencoded"},
+                {"Upgrade-Insecure-Requests", "1"},
+                {"Cookie", m_cookies}
+            },
+            get_rate_limit(RateLimitType::ACCOUNT_INFO)
+        );
+
+        auto response_callback = [request, callback = std::move(callback)](kurlyk::HttpResponsePtr response) {
+            if (!validate_response(response)) {
+                callback(false, response ? response->status_code : -1, {});
+                return;
+            }
+
+            try {
+                callback(
+                    true,
+                    response->status_code,
+                    filter_trade_history_range(
+                        parse_trade_history_html_snapshot(response->content, request.account_type),
+                        request));
+            } catch (const std::exception& ex) {
+                LOGIT_ERROR("Error parsing trade history HTML: ", ex.what());
+                callback(false, response ? response->status_code : -1, {});
+            }
+        };
+
+        add_http_request_task(std::move(future), std::move(response_callback));
+    }
+
     void RequestManager::request_trade_check(
             int64_t deal_id,
             int retry_attempts,
@@ -1281,6 +1489,25 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
+    void RequestManager::request_trade_history_result(
+            const TradeHistoryRequest& request,
+            std::function<void(TradeHistoryResult)> callback) {
+        request_trade_history(
+            request,
+            [callback = std::move(callback)](
+                    bool success,
+                    long status_code,
+                    std::vector<TradeResult> trades) mutable {
+                if (!callback) return;
+                if (!success) {
+                    callback(TradeHistoryResult::fail(
+                        "Failed to retrieve trade history.",
+                        status_code));
+                    return;
+                }
+                callback(TradeHistoryResult::ok(TradeHistory{std::move(trades)}, status_code));
+            });
+    }
     void RequestManager::request_trade_check_result(
             int64_t deal_id,
             int retry_attempts,

@@ -8,6 +8,11 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <vector>
+#include <unordered_map>
+#include <sstream>
+#include <cmath>
 #include <optional>
 #include <regex>
 #include <stdexcept>
@@ -214,8 +219,403 @@ namespace optionx::platforms::intrade_bar {
             return "Trade open failed. Server returned an empty response; instrument may be closed or unavailable.";
         }
 
+
+        struct HistoryMoney {
+            double amount = 0.0;
+            CurrencyType currency = CurrencyType::UNKNOWN;
+        };
+
+        inline std::vector<std::string> split_semicolon_line(const std::string& line) {
+            std::vector<std::string> fields;
+            std::string field;
+            std::istringstream stream(line);
+            while (std::getline(stream, field, ';')) {
+                fields.push_back(utils::trim_copy(field));
+            }
+            return fields;
+        }
+
+        inline std::string lower_ascii_copy(std::string value) {
+            std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            return value;
+        }
+
+        inline int history_month_from_name(std::string month) {
+            month = lower_ascii_copy(utils::trim_copy(month));
+            static const std::unordered_map<std::string, int> months = {
+                {"jan", 1}, {"feb", 2}, {"mar", 3}, {"apr", 4},
+                {"may", 5}, {"jun", 6}, {"jul", 7}, {"aug", 8},
+                {"sep", 9}, {"oct", 10}, {"nov", 11}, {"dec", 12}
+            };
+            const auto it = months.find(month);
+            return it == months.end() ? 0 : it->second;
+        }
+
+        inline std::optional<int64_t> parse_history_datetime_ms(const std::string& raw) {
+            std::smatch match;
+            int hour = 0;
+            int minute = 0;
+            int second = 0;
+            int day = 0;
+            int month = 0;
+            int year = 0;
+
+            static const std::regex named_month(
+                R"(^\s*([0-9]{1,2}):([0-9]{2}):([0-9]{2}),\s*([0-9]{1,2})\s+([A-Za-z]{3})\s+([0-9]{2,4})\s*$)");
+            static const std::regex numeric_month(
+                R"(^\s*([0-9]{1,2}):([0-9]{2}):([0-9]{2}),\s*([0-9]{1,2})\.([0-9]{1,2})\.([0-9]{2,4})\s*$)");
+
+            if (std::regex_match(raw, match, named_month) && match.size() == 7) {
+                auto parsed_hour = utils::parse_int_strict(match[1].str());
+                auto parsed_minute = utils::parse_int_strict(match[2].str());
+                auto parsed_second = utils::parse_int_strict(match[3].str());
+                auto parsed_day = utils::parse_int_strict(match[4].str());
+                auto parsed_year = utils::parse_int_strict(match[6].str());
+                if (!parsed_hour || !parsed_minute || !parsed_second || !parsed_day || !parsed_year) return std::nullopt;
+                hour = *parsed_hour;
+                minute = *parsed_minute;
+                second = *parsed_second;
+                day = *parsed_day;
+                month = history_month_from_name(match[5].str());
+                year = *parsed_year;
+            } else if (std::regex_match(raw, match, numeric_month) && match.size() == 7) {
+                auto parsed_hour = utils::parse_int_strict(match[1].str());
+                auto parsed_minute = utils::parse_int_strict(match[2].str());
+                auto parsed_second = utils::parse_int_strict(match[3].str());
+                auto parsed_day = utils::parse_int_strict(match[4].str());
+                auto parsed_month = utils::parse_int_strict(match[5].str());
+                auto parsed_year = utils::parse_int_strict(match[6].str());
+                if (!parsed_hour || !parsed_minute || !parsed_second || !parsed_day || !parsed_month || !parsed_year) return std::nullopt;
+                hour = *parsed_hour;
+                minute = *parsed_minute;
+                second = *parsed_second;
+                day = *parsed_day;
+                month = *parsed_month;
+                year = *parsed_year;
+            } else {
+                return std::nullopt;
+            }
+
+            if (year < 100) year += 2000;
+            if (month < 1 || month > 12 || day < 1 || day > 31 ||
+                hour > 23 || minute > 59 || second > 59) {
+                return std::nullopt;
+            }
+
+            constexpr int64_t broker_offset_sec = 3 * time_shield::SEC_PER_HOUR;
+            const int64_t timestamp_sec = time_shield::to_timestamp(year, month, day, hour, minute, second) - broker_offset_sec;
+            return time_shield::sec_to_ms(timestamp_sec);
+        }
+
+        inline std::optional<HistoryMoney> parse_history_money(std::string raw) {
+            raw = utils::trim_copy(raw);
+            std::replace(raw.begin(), raw.end(), ',', '.');
+
+            CurrencyType currency = CurrencyType::UNKNOWN;
+            if (raw.find("USD") != std::string::npos || raw.find('$') != std::string::npos) {
+                currency = CurrencyType::USD;
+            } else if (raw.find("RUB") != std::string::npos || raw.find(u8"в‚Ѕ") != std::string::npos) {
+                currency = CurrencyType::RUB;
+            }
+
+            std::smatch match;
+            static const std::regex number_regex(R"([-+]?[0-9]+(?:\.[0-9]+)?)");
+            if (!std::regex_search(raw, match, number_regex) || match.empty()) {
+                return std::nullopt;
+            }
+            auto amount = utils::parse_double_strict(match[0].str());
+            if (!amount) return std::nullopt;
+            return HistoryMoney{*amount, currency};
+        }
+
+        inline std::string normalize_history_symbol(std::string symbol) {
+            symbol = utils::trim_copy(symbol);
+            symbol.erase(std::remove(symbol.begin(), symbol.end(), '/'), symbol.end());
+            symbol.erase(std::remove(symbol.begin(), symbol.end(), ' '), symbol.end());
+            if (symbol == "BTCUSD") return "BTCUSDT";
+            return symbol;
+        }
+
+        inline std::string history_block_from_html(const std::string& content) {
+            const std::size_t history_id = content.find("trade_history");
+            if (history_id == std::string::npos) return {};
+            std::size_t block_start = content.rfind("<tbody", history_id);
+            if (block_start == std::string::npos) {
+                block_start = content.rfind("<table", history_id);
+            }
+            if (block_start == std::string::npos) block_start = history_id;
+
+            std::size_t block_end = content.find("</tbody>", history_id);
+            if (block_end != std::string::npos) {
+                block_end += 8;
+            } else {
+                block_end = content.find("</table>", history_id);
+                if (block_end != std::string::npos) {
+                    block_end += 8;
+                } else {
+                    block_end = content.size();
+                }
+            }
+            return content.substr(block_start, block_end - block_start);
+        }
+
+        inline std::optional<int64_t> parse_first_i64_from_string(const std::string& value) {
+            std::smatch match;
+            static const std::regex number_regex(R"([0-9]+)");
+            if (!std::regex_search(value, match, number_regex) || match.empty()) {
+                return std::nullopt;
+            }
+            return utils::parse_i64_strict(match[0].str());
+        }
+
+        inline std::optional<int64_t> parse_history_row_option_id(const std::string& row) {
+            if (auto id = utils::parse_i64_attr(row, "data-id"); id && *id > 0) {
+                return id;
+            }
+            if (auto id = utils::parse_i64_attr(row, "data-trade-id"); id && *id > 0) {
+                return id;
+            }
+            if (auto row_id = utils::extract_html_attr(row, "id")) {
+                if (row_id->rfind("trade_inv_", 0) == 0) {
+                    return parse_first_i64_from_string(*row_id);
+                }
+            }
+            return std::nullopt;
+        }
+
+        inline std::optional<int64_t> parse_history_row_time_ms(const std::string& row) {
+            const char* attr_names[] = {
+                "data-timeopen",
+                "data-open-time",
+                "data-open",
+                "data-time"
+            };
+            for (const char* attr_name : attr_names) {
+                if (auto value = utils::parse_i64_attr(row, attr_name); value && *value > 0) {
+                    return time_shield::sec_to_ms(*value);
+                }
+            }
+            return std::nullopt;
+        }
+
+        inline std::optional<int64_t> parse_history_row_close_time_ms(const std::string& row) {
+            const char* attr_names[] = {
+                "data-timeclose",
+                "data-close-time",
+                "data-timeend",
+                "data-expiration"
+            };
+            for (const char* attr_name : attr_names) {
+                if (auto value = utils::parse_i64_attr(row, attr_name); value && *value > 0) {
+                    return time_shield::sec_to_ms(*value);
+                }
+            }
+            return std::nullopt;
+        }
+
+        inline OptionType parse_history_option_type(const std::string& value) {
+            const std::string normalized = lower_ascii_copy(utils::trim_copy(value));
+            if (normalized.find("sprint") != std::string::npos) return OptionType::SPRINT;
+            if (normalized.find("classic") != std::string::npos) return OptionType::CLASSIC;
+            return OptionType::UNKNOWN;
+        }
+
+        inline OrderType parse_history_order_type(const std::string& value) {
+            const std::string normalized = lower_ascii_copy(utils::trim_copy(value));
+            if (normalized == "up" || normalized == "buy" || normalized == "call") return OrderType::BUY;
+            if (normalized == "down" || normalized == "sell" || normalized == "put") return OrderType::SELL;
+            return OrderType::UNKNOWN;
+        }
+
     } // namespace detail
 
+    /// \brief Parses closed trade rows from the authenticated HTML page.
+    /// \param content Raw authenticated HTML page.
+    /// \param account_type Account type used for the request.
+    /// \return Best-effort history rows; financial result fields may be unknown.
+    std::vector<TradeResult> parse_trade_history_html_snapshot(
+            const std::string& content,
+            AccountType account_type) {
+        std::vector<TradeResult> trades;
+        const std::string history_html = detail::history_block_from_html(content);
+        if (history_html.empty()) return trades;
+
+        std::size_t pos = 0;
+        for (;;) {
+            const std::size_t row_start = history_html.find("<tr", pos);
+            if (row_start == std::string::npos) break;
+            const std::size_t row_end = history_html.find("</tr>", row_start);
+            if (row_end == std::string::npos) break;
+            const std::string row = history_html.substr(row_start, row_end - row_start);
+            pos = row_end + 5;
+
+            auto option_id = detail::parse_history_row_option_id(row);
+            if (!option_id || *option_id <= 0) continue;
+
+            TradeResult trade;
+            trade.option_id = *option_id;
+            if (auto symbol = utils::extract_html_attr(row, "data-option")) {
+                trade.symbol = detail::normalize_history_symbol(*symbol);
+            }
+            if (auto open_price = utils::parse_double_attr(row, "data-rate")) {
+                trade.open_price = *open_price;
+            }
+            if (auto open_time = detail::parse_history_row_time_ms(row)) {
+                trade.open_date = *open_time;
+            }
+            if (auto close_time = detail::parse_history_row_close_time_ms(row)) {
+                trade.close_date = *close_time;
+                if (trade.open_date > 0 && trade.close_date >= trade.open_date) {
+                    trade.duration = time_shield::ms_to_sec(trade.close_date - trade.open_date);
+                }
+            }
+            if (auto status = utils::parse_int_attr(row, "data-status")) {
+                if (*status == 1) trade.order_type = OrderType::BUY;
+                if (*status == 2) trade.order_type = OrderType::SELL;
+            }
+            if (auto contract = utils::parse_int_attr(row, "data-contract")) {
+                if (*contract == 0) trade.option_type = OptionType::SPRINT;
+                if (*contract == 1) trade.option_type = OptionType::CLASSIC;
+            }
+            trade.account_type = account_type;
+            trade.platform_type = PlatformType::INTRADE_BAR;
+            trades.push_back(std::move(trade));
+        }
+
+        return trades;
+    }
+
+    /// \brief Merges CSV financial history with HTML broker identifiers.
+    /// \param csv_trades Financially complete CSV trades.
+    /// \param html_trades Best-effort HTML trades with broker IDs.
+    /// \return CSV trades enriched with HTML IDs and unmatched HTML rows appended.
+    std::vector<TradeResult> merge_trade_history_csv_with_html(
+            std::vector<TradeResult> csv_trades,
+            const std::vector<TradeResult>& html_trades) {
+        std::vector<bool> html_used(html_trades.size(), false);
+        constexpr int64_t time_tolerance_ms = time_shield::MS_PER_5_SEC;
+        constexpr double price_tolerance = 0.00001;
+
+        for (auto& csv_trade : csv_trades) {
+            for (std::size_t i = 0; i < html_trades.size(); ++i) {
+                if (html_used[i]) continue;
+                const auto& html_trade = html_trades[i];
+                if (csv_trade.option_id > 0 && html_trade.option_id > 0 &&
+                    csv_trade.option_id == html_trade.option_id) {
+                    html_used[i] = true;
+                } else {
+                    if (csv_trade.symbol.empty() ||
+                        html_trade.symbol.empty() ||
+                        csv_trade.symbol != html_trade.symbol ||
+                        csv_trade.open_date <= 0 ||
+                        html_trade.open_date <= 0 ||
+                        std::llabs(csv_trade.open_date - html_trade.open_date) > time_tolerance_ms) {
+                        continue;
+                    }
+                    if (csv_trade.open_price > 0.0 &&
+                        html_trade.open_price > 0.0 &&
+                        std::abs(csv_trade.open_price - html_trade.open_price) > price_tolerance) {
+                        continue;
+                    }
+                    html_used[i] = true;
+                }
+
+                if (csv_trade.option_id == 0) csv_trade.option_id = html_trade.option_id;
+                if (csv_trade.symbol.empty()) csv_trade.symbol = html_trade.symbol;
+                if (csv_trade.open_price == 0.0) csv_trade.open_price = html_trade.open_price;
+                if (csv_trade.open_date == 0) csv_trade.open_date = html_trade.open_date;
+                if (csv_trade.close_date == 0) csv_trade.close_date = html_trade.close_date;
+                if (csv_trade.duration == 0) csv_trade.duration = html_trade.duration;
+                if (csv_trade.option_type == OptionType::UNKNOWN) csv_trade.option_type = html_trade.option_type;
+                if (csv_trade.order_type == OrderType::UNKNOWN) csv_trade.order_type = html_trade.order_type;
+                break;
+            }
+        }
+
+        for (std::size_t i = 0; i < html_trades.size(); ++i) {
+            if (!html_used[i]) csv_trades.push_back(html_trades[i]);
+        }
+
+        return csv_trades;
+    }
+
+    /// \brief Parses closed trades returned by /stat_trade_export.php CSV export.
+    /// \param content Raw semicolon-separated export body.
+    /// \param account_type Account type used for the export request.
+    /// \return Parsed closed trade results; malformed rows are skipped.
+    std::vector<TradeResult> parse_trade_history_csv_export(
+            const std::string& content,
+            AccountType account_type) {
+        std::vector<TradeResult> trades;
+        std::istringstream stream(content);
+        std::string line;
+        bool first_line = true;
+
+        while (std::getline(stream, line)) {
+            line = utils::trim_copy(line);
+            if (line.empty()) continue;
+
+            auto fields = detail::split_semicolon_line(line);
+            if (first_line) {
+                first_line = false;
+                if (!fields.empty() && detail::lower_ascii_copy(fields[0]).find("id") != std::string::npos) {
+                    continue;
+                }
+            }
+            if (fields.size() < 10) continue;
+
+            TradeResult trade;
+            if (auto option_id = utils::parse_i64_strict(fields[0]); option_id && *option_id > 0) {
+                trade.option_id = *option_id;
+            }
+            trade.option_type = detail::parse_history_option_type(fields[1]);
+            trade.symbol = detail::normalize_history_symbol(fields[2]);
+            trade.order_type = detail::parse_history_order_type(fields[3]);
+
+            auto open_time = detail::parse_history_datetime_ms(fields[4]);
+            auto close_time = detail::parse_history_datetime_ms(fields[5]);
+            auto open_price = utils::parse_double_strict(fields[6]);
+            auto close_price = utils::parse_double_strict(fields[7]);
+            auto amount = detail::parse_history_money(fields[8]);
+            auto gross_result = detail::parse_history_money(fields[9]);
+            if (!open_time || !close_time || !open_price || !close_price || !amount || !gross_result) {
+                continue;
+            }
+
+            trade.open_date = *open_time;
+            trade.close_date = *close_time;
+            if (trade.close_date >= trade.open_date) {
+                trade.duration = time_shield::ms_to_sec(trade.close_date - trade.open_date);
+            }
+            trade.open_price = *open_price;
+            trade.close_price = *close_price;
+            trade.amount = amount->amount;
+            trade.currency = amount->currency;
+            trade.account_type = account_type;
+            trade.platform_type = PlatformType::INTRADE_BAR;
+
+            constexpr double money_tolerance = 0.01;
+            if (std::abs(gross_result->amount - trade.amount) < money_tolerance) {
+                trade.trade_state = trade.live_state = TradeState::STANDOFF;
+                trade.profit = 0.0;
+            } else if (gross_result->amount > trade.amount) {
+                trade.trade_state = trade.live_state = TradeState::WIN;
+                trade.profit = gross_result->amount - trade.amount;
+                trade.payout = utils::normalize_double(trade.profit / trade.amount, 2);
+            } else {
+                trade.trade_state = trade.live_state = TradeState::LOSS;
+                trade.profit = -trade.amount;
+            }
+
+            trade.error_code = TradeErrorCode::SUCCESS;
+            trade.error_desc.clear();
+            trades.push_back(std::move(trade));
+        }
+
+        return trades;
+    }
     /// \brief Parses active trades from the authenticated main page.
     /// \param content Raw HTML of the authenticated main page.
     /// \return Active trades found in the trade_active block.

@@ -101,6 +101,36 @@ Started from `TradeStatusEvent`.
 6. Combine close price, broker profit, payout rules, and balance to set final
    trade state.
 
+## Trade History Export
+
+Started from `BaseTradingPlatform::fetch_trade_history` or
+`intrade_bar_smoke_cli history`.
+
+1. `TradeManager::fetch_trade_history` validates the requested time range and
+   resolves the account type from the connected account if the request did not
+   specify one.
+2. `RequestManager::request_trade_history` chooses the source from
+   `AuthData::trade_history_source`.
+3. `CSV` calls `/stat_trade_export.php` with `name_method=stat_export`,
+   `status_real`, `date1`, and `date2`, then parses closed financial results.
+4. `HTML` requests the authenticated main page and parses best-effort broker
+   identifiers from the history table.
+5. `HTML_CSV` uses CSV as the financial base and enriches rows with matching
+   HTML broker IDs when symbol/time/open-price matching is possible.
+
+## Manual Trade Result Recovery Check
+
+Started from `intrade_bar_smoke_cli open-check-result`.
+
+1. Open a guarded demo sprint trade, usually `BTCUSDT`, amount `1`, duration
+   `300` seconds.
+2. Wait for the normal trade lifecycle to reach a terminal callback.
+3. Create a fresh `TradeResult` containing only the recovered intermediate
+   context: local trade id, broker option id, amount, account/currency, and
+   open timing/price fields.
+4. Call `BaseTradingPlatform::fetch_trade_result` with `TradeResultQuery`.
+5. Compare the fetched terminal result with the lifecycle terminal result.
+
 ## Typed Adapter Surface
 
 `RequestManager` keeps the old callback methods intact. New `*_result` methods
@@ -118,4 +148,5 @@ shape without changing Intrade Bar parser literals.
 4. Account type, currency, balance, and one live quote snapshot after auth.
 
 `intrade_bar_smoke_cli` exposes the same pieces manually through `auth`,
-`auth-cache`, `show-account`, `quotes`, and guarded `open-trade` commands.
+`auth-cache`, `show-account`, `quotes`, `history`, guarded `open-trade`, and
+`open-check-result` commands.

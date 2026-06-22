@@ -30,6 +30,8 @@
 
 #include "trading/enums.hpp"
 #include "trading/TradeResult.hpp"
+#include "trading/TradeResultQuery.hpp"
+#include "trading/TradeHistoryRequest.hpp"
 #include "trading/TradeRequest.hpp"
 #include "trading/IMoneyManagementParams.hpp"
 #include "trading/ITradeDecisionParams.hpp"

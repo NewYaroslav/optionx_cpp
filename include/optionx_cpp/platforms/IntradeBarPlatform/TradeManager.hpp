@@ -14,6 +14,8 @@ namespace optionx::platforms::intrade_bar {
     /// and ensuring the account balance is correctly updated after each trade.
     class TradeManager final : public modules::BaseModule {
     public:
+        using trade_result_check_callback_t = BaseTradingPlatform::trade_result_check_callback_t;
+        using trade_history_callback_t = BaseTradingPlatform::trade_history_callback_t;
 
         /// \brief Constructs the trade manager.
         /// \param platform Reference to the trading platform.
@@ -44,6 +46,23 @@ namespace optionx::platforms::intrade_bar {
 
         /// \brief Shuts down the trade manager and cleans up resources.
         void shutdown() override;
+
+        /// \brief Requests closed trade history for an account and time range.
+        /// \param request History range and account type.
+        /// \param callback Callback receiving parsed trade results.
+        /// \return True if the history request was accepted for processing.
+        bool fetch_trade_history(
+                const TradeHistoryRequest& request,
+                trade_history_callback_t callback);
+        /// \brief Requests the final result for a previously opened Intrade Bar trade.
+        /// \param query Broker-side trade identity and retry settings.
+        /// \param result Partially filled result object to update.
+        /// \param callback Callback receiving the updated result.
+        /// \return True if the check was accepted or completed with a validation result.
+        bool fetch_trade_result(
+                TradeResultQuery query,
+                std::unique_ptr<TradeResult> result,
+                trade_result_check_callback_t callback);
 
     private:
         RequestManager&    m_request_manager; ///< Reference to the request manager.
@@ -100,6 +119,140 @@ namespace optionx::platforms::intrade_bar {
 
     void TradeManager::shutdown() {
         m_task_manager.shutdown();
+    }
+
+    bool TradeManager::fetch_trade_history(
+            const TradeHistoryRequest& request,
+            trade_history_callback_t callback) {
+        if (!callback || !request.has_valid_range()) return false;
+
+        TradeHistoryRequest effective_request = request;
+        if (effective_request.account_type == AccountType::UNKNOWN) {
+            effective_request.account_type = get_account_info()->account_type;
+        }
+        if (effective_request.account_type == AccountType::UNKNOWN) return false;
+
+        m_request_manager.request_trade_history_result(
+            effective_request,
+            [callback = std::move(callback)](TradeHistoryResult history_result) mutable {
+                if (!callback) return;
+                if (!history_result) {
+                    callback({});
+                    return;
+                }
+                callback(history_result.value.trades);
+            });
+        return true;
+    }
+    bool TradeManager::fetch_trade_result(
+            TradeResultQuery query,
+            std::unique_ptr<TradeResult> result,
+            trade_result_check_callback_t callback) {
+        if (!result || !callback) return false;
+
+        auto shared_result = std::shared_ptr<TradeResult>(std::move(result));
+        if (query.trade_id == 0) query.trade_id = shared_result->trade_id;
+        if (query.option_id == 0) query.option_id = shared_result->option_id;
+        if (query.option_hash.empty()) query.option_hash = shared_result->option_hash;
+
+        if (shared_result->trade_id == 0) shared_result->trade_id = query.trade_id;
+        if (shared_result->option_id == 0) shared_result->option_id = query.option_id;
+        if (shared_result->option_hash.empty()) shared_result->option_hash = query.option_hash;
+        shared_result->platform_type = PlatformType::INTRADE_BAR;
+
+        auto callback_ptr = std::make_shared<trade_result_check_callback_t>(std::move(callback));
+        auto complete = [shared_result, callback_ptr]() {
+            if (*callback_ptr) {
+                (*callback_ptr)(shared_result->clone_unique());
+            }
+        };
+
+        if (!query.has_broker_identity()) {
+            shared_result->trade_state = shared_result->live_state = TradeState::CHECK_ERROR;
+            shared_result->error_code = TradeErrorCode::INVALID_REQUEST;
+            shared_result->error_desc = "Broker trade identity is missing.";
+            complete();
+            return true;
+        }
+
+        if (query.option_id <= 0) {
+            shared_result->trade_state = shared_result->live_state = TradeState::CHECK_ERROR;
+            shared_result->error_code = TradeErrorCode::INVALID_REQUEST;
+            shared_result->error_desc = "Intrade Bar trade result check requires numeric option_id.";
+            complete();
+            return true;
+        }
+
+        const int retry_attempts = query.retry_attempts < 0 ? 0 : query.retry_attempts;
+        LOGIT_INFO("Intrade Bar trade: fetching result by option_id=", query.option_id);
+        m_request_manager.request_trade_check_result(
+            query.option_id,
+            retry_attempts,
+            [this, shared_result, callback_ptr](TradeCheckResult check_result) {
+                if (!check_result) {
+                    auto account_info = get_account_info();
+                    shared_result->trade_state = shared_result->live_state = TradeState::CHECK_ERROR;
+                    shared_result->error_code = TradeErrorCode::PARSING_ERROR;
+                    if (check_result.status_code == 451) {
+                        shared_result->error_desc = "Trade result blocked (HTTP 451 - Unavailable For Legal Reasons).";
+                    } else {
+                        shared_result->error_desc = check_result.error_message.empty()
+                            ? "Failed to retrieve trade result."
+                            : check_result.error_message;
+                    }
+                    if (check_result.status_code == 451 && account_info->connect) {
+                        LOGIT_0ERROR();
+                        account_info->connect = false;
+                        using Status = events::AccountInfoUpdateEvent::Status;
+                        notify(events::AccountInfoUpdateEvent(account_info, Status::DISCONNECTED, "HTTP 451 - Unavailable For Legal Reasons."));
+                    }
+                    if (*callback_ptr) {
+                        (*callback_ptr)(shared_result->clone_unique());
+                    }
+                    return;
+                }
+
+                if (!apply_trade_check_info_to_result(check_result.value, *shared_result)) {
+                    if (*callback_ptr) {
+                        (*callback_ptr)(shared_result->clone_unique());
+                    }
+                    return;
+                }
+
+                m_request_manager.request_balance(
+                    [this, shared_result, callback_ptr](
+                            bool success,
+                            double balance,
+                            CurrencyType currency) {
+                        auto account_info = get_account_info();
+                        if (success) {
+                            using Status = events::AccountInfoUpdateEvent::Status;
+                            const double previous_balance = account_info->balance;
+                            shared_result->balance = balance;
+                            if (shared_result->currency == CurrencyType::UNKNOWN) {
+                                shared_result->currency = currency;
+                            }
+
+                            if (!account_info->connect) {
+                                account_info->connect = true;
+                                notify(events::AccountInfoUpdateEvent(account_info, Status::CONNECTED));
+                            }
+
+                            const double balance_tolerance = 0.01;
+                            if (std::abs(previous_balance - balance) > balance_tolerance) {
+                                account_info->balance = balance;
+                                notify(events::AccountInfoUpdateEvent(account_info, Status::BALANCE_UPDATED));
+                            }
+                        } else if (shared_result->balance == 0.0) {
+                            shared_result->balance = account_info->balance;
+                        }
+
+                        if (*callback_ptr) {
+                            (*callback_ptr)(shared_result->clone_unique());
+                        }
+                    });
+            });
+        return true;
     }
 
     void TradeManager::handle_event(const events::TradeRequestEvent& event) {
@@ -308,32 +461,21 @@ namespace optionx::platforms::intrade_bar {
         } else {
             result->balance = balance;
         }
-        result->close_price = price;
+        if (!apply_trade_check_info_to_result(TradeCheckInfo{price, profit}, *result)) {
+            return;
+        }
 
-        const double balance_tolerance = 0.01;
-        if (std::abs(profit - result->amount) < balance_tolerance) {
-            result->trade_state = result->live_state = TradeState::STANDOFF;
+        if (result->trade_state == TradeState::STANDOFF ||
+            result->trade_state == TradeState::LOSS) {
             result->payout = account_info->get_for_trade<double>(
                 AccountInfoType::PAYOUT,
                 request,
                 time_shield::ms_to_sec(result->open_date));
-            result->profit = 0;
-        } else
-        if (profit <= balance_tolerance) {
-            result->trade_state = result->live_state = TradeState::LOSS;
-            result->payout = account_info->get_for_trade<double>(
-                AccountInfoType::PAYOUT,
-                request,
-                time_shield::ms_to_sec(result->open_date));
-            result->profit = -result->amount;
-        } else {
-            result->trade_state = result->live_state = TradeState::WIN;
-            result->profit = profit - result->amount;
-            result->payout = result->amount <= 0.0 ? 0.0 : utils::normalize_double((profit - result->amount) / result->amount, 2);
         }
 
         if (success) {
             using Status = events::AccountInfoUpdateEvent::Status;
+            const double balance_tolerance = 0.01;
             const double previous_balance = account_info->balance;
 
             if (!account_info->connect) {

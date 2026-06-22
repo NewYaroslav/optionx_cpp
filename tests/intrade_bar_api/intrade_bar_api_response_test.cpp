@@ -47,14 +47,17 @@ TEST(IntradeBarAuthData, KeepsDisconnectedDomainRetryPeriodInConfig) {
     auth_data.account_type = AccountType::DEMO;
     auth_data.currency = CurrencyType::USD;
     auth_data.disconnected_domain_retry_period_ms = 12345;
+    auth_data.trade_history_source = TradeHistorySource::HTML_CSV;
 
     nlohmann::json json;
     auth_data.to_json(json);
     ASSERT_EQ(json.at("disconnected_domain_retry_period_ms").get<int64_t>(), 12345);
+    ASSERT_EQ(json.at("trade_history_source").get<std::string>(), "HTML_CSV");
 
     AuthData restored;
     restored.from_json(json);
     EXPECT_EQ(restored.disconnected_domain_retry_period_ms, 12345);
+    EXPECT_EQ(restored.trade_history_source, TradeHistorySource::HTML_CSV);
 
     auto [valid, message] = restored.validate();
     EXPECT_TRUE(valid) << message;
@@ -81,6 +84,44 @@ TEST(IntradeBarApiResponses, TradeWorkflowPayloadsKeepBrokerSpecificFieldsTyped)
     ASSERT_TRUE(check_result);
     EXPECT_DOUBLE_EQ(check_result.value.price, 1.2350);
     EXPECT_DOUBLE_EQ(check_result.value.profit, 18.0);
+}
+
+TEST(IntradeBarApiResponses, AppliesTradeCheckInfoToTradeResultOutcome) {
+    TradeResult standoff;
+    standoff.amount = 10.0;
+    ASSERT_TRUE(apply_trade_check_info_to_result(TradeCheckInfo{1.2345, 10.0}, standoff));
+    EXPECT_EQ(standoff.trade_state, TradeState::STANDOFF);
+    EXPECT_EQ(standoff.live_state, TradeState::STANDOFF);
+    EXPECT_DOUBLE_EQ(standoff.close_price, 1.2345);
+    EXPECT_DOUBLE_EQ(standoff.profit, 0.0);
+    EXPECT_EQ(standoff.error_code, TradeErrorCode::SUCCESS);
+
+    TradeResult loss;
+    loss.amount = 10.0;
+    ASSERT_TRUE(apply_trade_check_info_to_result(TradeCheckInfo{1.2340, 0.0}, loss));
+    EXPECT_EQ(loss.trade_state, TradeState::LOSS);
+    EXPECT_EQ(loss.live_state, TradeState::LOSS);
+    EXPECT_DOUBLE_EQ(loss.profit, -10.0);
+
+    TradeResult win;
+    win.amount = 10.0;
+    ASSERT_TRUE(apply_trade_check_info_to_result(TradeCheckInfo{1.2350, 18.0}, win));
+    EXPECT_EQ(win.trade_state, TradeState::WIN);
+    EXPECT_EQ(win.live_state, TradeState::WIN);
+    EXPECT_DOUBLE_EQ(win.profit, 8.0);
+    EXPECT_DOUBLE_EQ(win.payout, 0.8);
+}
+
+TEST(IntradeBarApiResponses, RequiresAmountToClassifyTradeCheckInfo) {
+    TradeResult result;
+
+    EXPECT_FALSE(apply_trade_check_info_to_result(TradeCheckInfo{1.2345, 1.0}, result));
+    EXPECT_EQ(result.trade_state, TradeState::CHECK_ERROR);
+    EXPECT_EQ(result.live_state, TradeState::CHECK_ERROR);
+    EXPECT_EQ(result.error_code, TradeErrorCode::INVALID_REQUEST);
+    EXPECT_EQ(
+        result.error_desc,
+        "Trade amount is required to classify Intrade Bar trade result.");
 }
 
 TEST(IntradeBarApiResponses, ParsesSuccessfulSettingsSwitchResponse) {
@@ -124,6 +165,95 @@ TEST(IntradeBarApiResponses, ClassifiesUnexpectedSettingsSwitchResponseAsNonRetr
     EXPECT_EQ(result.value.failure_reason, SettingsSwitchFailureReason::UNEXPECTED_RESPONSE);
     EXPECT_FALSE(result.value.should_retry());
     EXPECT_EQ(result.value.response_body, "session expired");
+}
+
+TEST(IntradeBarApiResponses, ParsesTradeHistorySourceConfigValues) {
+    EXPECT_EQ(trade_history_source_from_string("HTML"), TradeHistorySource::HTML);
+    EXPECT_EQ(trade_history_source_from_string("CSV"), TradeHistorySource::CSV);
+    EXPECT_EQ(trade_history_source_from_string("html+csv"), TradeHistorySource::HTML_CSV);
+    EXPECT_EQ(trade_history_source_from_string("html_csv"), TradeHistorySource::HTML_CSV);
+    EXPECT_EQ(
+        trade_history_source_from_string("bad", TradeHistorySource::HTML),
+        TradeHistorySource::HTML);
+}
+
+TEST(IntradeBarApiResponses, ParsesTradeHistoryCsvExport) {
+    const std::string csv =
+        "id;Type;Asset;Direction;Open;Close;Open quote;Close quote;Amount;Result\n"
+        ";Sprint;EUR/GBP;Down;14:44:43, 14 Dec 20;14:47:43, 14 Dec 20;0.90492;0.90512;1 USD;1.82 USD\n"
+        "123;Sprint;AUD/NZD;Up;20:52:19, 28 Jun 21;20:55:19, 28 Jun 21;1.07411;1.07417;500 USD;0 USD\n"
+        ";Sprint;AUD/CAD;Up;16:34:33, 23 Jun 21;16:37:33, 23 Jun 21;0.93034;0.93008;50 RUB;50 RUB\n"
+        ";Sprint;BTCUSD;Up;16:34:33, 23 Jun 21;16:39:33, 23 Jun 21;62830.01;62850.00;1 USD;1.79 USD\n";
+
+    const auto trades = parse_trade_history_csv_export(csv, AccountType::DEMO);
+    ASSERT_EQ(trades.size(), 4u);
+
+    EXPECT_EQ(trades[0].symbol, "EURGBP");
+    EXPECT_EQ(trades[0].option_type, OptionType::SPRINT);
+    EXPECT_EQ(trades[0].order_type, OrderType::SELL);
+    EXPECT_EQ(trades[0].trade_state, TradeState::WIN);
+    EXPECT_EQ(trades[0].live_state, TradeState::WIN);
+    EXPECT_DOUBLE_EQ(trades[0].amount, 1.0);
+    EXPECT_DOUBLE_EQ(trades[0].profit, 0.82);
+    EXPECT_DOUBLE_EQ(trades[0].payout, 0.82);
+    EXPECT_EQ(trades[0].currency, CurrencyType::USD);
+    EXPECT_EQ(trades[0].account_type, AccountType::DEMO);
+    EXPECT_EQ(trades[0].platform_type, PlatformType::INTRADE_BAR);
+    EXPECT_EQ(trades[0].duration, 180);
+
+    EXPECT_EQ(trades[1].option_id, 123);
+    EXPECT_EQ(trades[1].symbol, "AUDNZD");
+    EXPECT_EQ(trades[1].order_type, OrderType::BUY);
+    EXPECT_EQ(trades[1].trade_state, TradeState::LOSS);
+    EXPECT_DOUBLE_EQ(trades[1].profit, -500.0);
+
+    EXPECT_EQ(trades[2].symbol, "AUDCAD");
+    EXPECT_EQ(trades[2].currency, CurrencyType::RUB);
+    EXPECT_EQ(trades[2].trade_state, TradeState::STANDOFF);
+    EXPECT_DOUBLE_EQ(trades[2].profit, 0.0);
+
+    EXPECT_EQ(trades[3].symbol, "BTCUSDT");
+    EXPECT_EQ(trades[3].trade_state, TradeState::WIN);
+    EXPECT_EQ(trades[3].duration, 300);
+}
+
+TEST(IntradeBarApiResponses, ParsesTradeHistoryHtmlSnapshotAndMergesWithCsv) {
+    const std::string html = R"HTML(
+        <tbody class="table_tbody" id="trade_history">
+            <tr id="trade_inv_224157357" data-id="224157357" data-option="BTCUSDT" data-rate="62830.01" data-timeopen="1719146073" data-timeclose="1719146373" data-status="1" data-contract="0">
+            </tr>
+            <tr id="trade_inv_224157358" data-id="224157358" data-option="EUR/USD" data-rate="1.07001" data-timeopen="1719146074" data-status="2" data-contract="1">
+            </tr>
+        </tbody>
+    )HTML";
+
+    const auto html_trades = parse_trade_history_html_snapshot(html, AccountType::DEMO);
+    ASSERT_EQ(html_trades.size(), 2u);
+    EXPECT_EQ(html_trades[0].option_id, 224157357);
+    EXPECT_EQ(html_trades[0].symbol, "BTCUSDT");
+    EXPECT_EQ(html_trades[0].order_type, OrderType::BUY);
+    EXPECT_EQ(html_trades[0].option_type, OptionType::SPRINT);
+    EXPECT_EQ(html_trades[0].open_date, time_shield::sec_to_ms(1719146073));
+    EXPECT_EQ(html_trades[0].close_date, time_shield::sec_to_ms(1719146373));
+    EXPECT_EQ(html_trades[0].duration, 300);
+
+    std::vector<TradeResult> csv_trades;
+    TradeResult csv_trade;
+    csv_trade.symbol = "BTCUSDT";
+    csv_trade.open_date = time_shield::sec_to_ms(1719146074);
+    csv_trade.open_price = 62830.01;
+    csv_trade.amount = 1.0;
+    csv_trade.trade_state = TradeState::WIN;
+    csv_trades.push_back(csv_trade);
+
+    const auto merged = merge_trade_history_csv_with_html(
+        std::move(csv_trades),
+        html_trades);
+    ASSERT_EQ(merged.size(), 2u);
+    EXPECT_EQ(merged[0].option_id, 224157357);
+    EXPECT_EQ(merged[0].symbol, "BTCUSDT");
+    EXPECT_EQ(merged[0].duration, 300);
+    EXPECT_EQ(merged[1].option_id, 224157358);
 }
 
 TEST(IntradeBarApiResponses, ParsesActiveTradesAndLatestCloseTime) {

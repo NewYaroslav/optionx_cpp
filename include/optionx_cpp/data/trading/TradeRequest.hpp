@@ -67,9 +67,13 @@ namespace optionx {
         virtual std::unique_ptr<TradeResult> create_trade_result_unique() const {
             auto result = std::make_unique<TradeResult>();
             result->trade_id = trade_id;
+            result->symbol = symbol;
+            result->option_type = option_type;
+            result->order_type = order_type;
             result->account_type = account_type;
             result->currency = currency;
             result->amount = amount;
+            result->duration = duration;
             return result;
         }
 
@@ -80,9 +84,13 @@ namespace optionx {
         virtual std::shared_ptr<TradeResult> create_trade_result_shared() const {
             auto result = std::make_shared<TradeResult>();
             result->trade_id = trade_id;
+            result->symbol = symbol;
+            result->option_type = option_type;
+            result->order_type = order_type;
             result->account_type = account_type;
             result->currency = currency;
             result->amount = amount;
+            result->duration = duration;
             return result;
         }
 

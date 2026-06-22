@@ -51,12 +51,15 @@ struct IntradeBarSmokeConfig {
     int64_t auth_timeout_ms = 90000;
     int64_t price_timeout_ms = 30000;
     int64_t trade_open_timeout_ms = 45000;
+    int64_t trade_result_timeout_ms = time_shield::sec_to_ms(7 * time_shield::SEC_PER_MIN);
     int64_t balance_check_period_ms = time_shield::MS_PER_15_SEC;
     int64_t disconnected_domain_retry_period_ms = time_shield::MS_PER_15_SEC;
     int64_t settings_switch_timeout_ms = 120000;
     int64_t settings_switch_retry_timeout_ms = time_shield::MS_PER_10_MIN;
     int64_t settings_switch_retry_delay_ms = time_shield::MS_PER_15_SEC;
     int64_t settings_switch_active_trade_buffer_ms = time_shield::MS_PER_5_SEC;
+    optionx::platforms::intrade_bar::TradeHistorySource trade_history_source =
+        optionx::platforms::intrade_bar::TradeHistorySource::CSV;
     std::string quote_symbol = "EURUSD";
     std::string trade_symbol = "EURUSD";
     optionx::OrderType trade_order_type = optionx::OrderType::BUY;
@@ -141,6 +144,9 @@ inline IntradeBarSmokeConfig load_config() {
     config.trade_open_timeout_ms = parse_i64(
         config_value(file_values, "OPTIONX_INTRADE_BAR_TRADE_OPEN_TIMEOUT_MS", "45000"),
         45000);
+    config.trade_result_timeout_ms = parse_i64(
+        config_value(file_values, "OPTIONX_INTRADE_BAR_TRADE_RESULT_TIMEOUT_MS", "420000"),
+        time_shield::sec_to_ms(7 * time_shield::SEC_PER_MIN));
     config.balance_check_period_ms = parse_i64(
         config_value(file_values, "OPTIONX_INTRADE_BAR_BALANCE_CHECK_PERIOD_MS", "15000"),
         time_shield::MS_PER_15_SEC);
@@ -159,6 +165,10 @@ inline IntradeBarSmokeConfig load_config() {
     config.settings_switch_active_trade_buffer_ms = parse_i64(
         config_value(file_values, "OPTIONX_INTRADE_BAR_SETTINGS_SWITCH_ACTIVE_TRADE_BUFFER_MS", "5000"),
         time_shield::MS_PER_5_SEC);
+    config.trade_history_source =
+        optionx::platforms::intrade_bar::trade_history_source_from_string(
+            config_value(file_values, "OPTIONX_INTRADE_BAR_TRADE_HISTORY_SOURCE", "CSV"),
+            config.trade_history_source);
     config.quote_symbol = config_value(
         file_values,
         "OPTIONX_INTRADE_BAR_QUOTE_SYMBOL",
@@ -206,6 +216,7 @@ inline std::unique_ptr<optionx::platforms::intrade_bar::AuthData> make_auth_data
     auth_data->settings_switch_retry_delay_ms = config.settings_switch_retry_delay_ms;
     auth_data->settings_switch_active_trade_buffer_ms =
         config.settings_switch_active_trade_buffer_ms;
+    auth_data->trade_history_source = config.trade_history_source;
     auth_data->proxy_server = config.proxy_server;
     auth_data->proxy_auth = config.proxy_auth;
     auth_data->proxy_type = parse_enum_or<kurlyk::ProxyType>(
@@ -325,6 +336,30 @@ struct TradeOpenAttempt {
     std::string error_desc;
     int64_t option_id = 0;
     double open_price = 0.0;
+    int64_t elapsed_ms = 0;
+};
+
+struct TradeLifecycleAttempt {
+    bool accepted = false;
+    bool callback_received = false;
+    bool open_received = false;
+    bool terminal_received = false;
+    optionx::TradeResult result;
+    std::string error_desc;
+    int64_t elapsed_ms = 0;
+};
+
+struct TradeResultFetchAttempt {
+    bool accepted = false;
+    bool callback_received = false;
+    optionx::TradeResult result;
+    int64_t elapsed_ms = 0;
+};
+
+struct TradeHistoryFetchAttempt {
+    bool accepted = false;
+    bool callback_received = false;
+    std::vector<optionx::TradeResult> trades;
     int64_t elapsed_ms = 0;
 };
 
@@ -562,6 +597,207 @@ public:
             [&] { return shared->done.load(std::memory_order_acquire); },
             timeout_ms);
         return snapshot();
+    }
+
+    TradeLifecycleAttempt open_trade_and_wait_for_result(
+            const std::string& symbol,
+            double amount,
+            optionx::OrderType order_type,
+            int64_t duration_sec,
+            int64_t timeout_ms) {
+        LOGIT_SCOPE_INFO("intradebar.smoke.open_trade_wait_result");
+        struct SharedAttempt {
+            mutable std::mutex mutex;
+            TradeLifecycleAttempt attempt;
+            std::atomic<bool> done{false};
+        };
+
+        auto shared = std::make_shared<SharedAttempt>();
+        const auto started_at = std::chrono::steady_clock::now();
+        const auto elapsed_ms = [&] {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - started_at).count();
+        };
+        const auto snapshot = [&] {
+            std::lock_guard<std::mutex> lock(shared->mutex);
+            shared->attempt.elapsed_ms = elapsed_ms();
+            return shared->attempt;
+        };
+
+        auto request = std::make_unique<optionx::TradeRequest>();
+        request->symbol = symbol;
+        request->amount = amount;
+        request->option_type = optionx::OptionType::SPRINT;
+        request->order_type = order_type;
+        request->duration = duration_sec;
+        request->account_type = m_config.account_type;
+        request->currency = m_config.currency;
+        request->comment = "optionx_cpp intrade_bar smoke cli result check";
+        request->add_callback([shared](
+                std::unique_ptr<optionx::TradeRequest>,
+                std::unique_ptr<optionx::TradeResult> result) {
+            if (!result) return;
+            const bool open_finished =
+                result->trade_state == optionx::TradeState::OPEN_SUCCESS ||
+                result->trade_state == optionx::TradeState::OPEN_ERROR;
+            const bool terminal = optionx::is_terminal_trade_state(result->trade_state);
+            {
+                std::lock_guard<std::mutex> lock(shared->mutex);
+                shared->attempt.callback_received = true;
+                shared->attempt.result = *result;
+                shared->attempt.error_desc = result->error_desc;
+                if (open_finished) {
+                    shared->attempt.open_received = true;
+                }
+                if (terminal) {
+                    shared->attempt.terminal_received = true;
+                    shared->done.store(true, std::memory_order_release);
+                }
+            }
+            LOGIT_INFO(
+                "Intrade Bar smoke lifecycle callback: state=",
+                optionx::to_str(result->trade_state),
+                ", option_id=",
+                result->option_id,
+                ", profit=",
+                result->profit,
+                ", error=",
+                result->error_desc);
+        });
+
+        const bool accepted = m_platform.place_trade(std::move(request));
+        {
+            std::lock_guard<std::mutex> lock(shared->mutex);
+            shared->attempt.accepted = accepted;
+            if (!accepted) {
+                shared->attempt.error_desc = "Platform refused trade request before sending.";
+                shared->done.store(true, std::memory_order_release);
+            }
+        }
+        if (!accepted) return snapshot();
+
+        pump_until(
+            m_platform,
+            [&] { return shared->done.load(std::memory_order_acquire); },
+            timeout_ms);
+        return snapshot();
+    }
+
+    TradeResultFetchAttempt fetch_trade_result_and_wait(
+            optionx::TradeResultQuery query,
+            std::unique_ptr<optionx::TradeResult> result,
+            int64_t timeout_ms) {
+        LOGIT_SCOPE_INFO("intradebar.smoke.fetch_trade_result");
+        struct SharedAttempt {
+            mutable std::mutex mutex;
+            TradeResultFetchAttempt attempt;
+            std::atomic<bool> done{false};
+        };
+
+        auto shared = std::make_shared<SharedAttempt>();
+        const auto started_at = std::chrono::steady_clock::now();
+        const auto elapsed_ms = [&] {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - started_at).count();
+        };
+
+        const bool accepted = m_platform.fetch_trade_result(
+            std::move(query),
+            std::move(result),
+            [shared](std::unique_ptr<optionx::TradeResult> fetched_result) {
+                std::lock_guard<std::mutex> lock(shared->mutex);
+                shared->attempt.callback_received = true;
+                if (fetched_result) {
+                    shared->attempt.result = *fetched_result;
+                }
+                shared->done.store(true, std::memory_order_release);
+                LOGIT_INFO(
+                    "Intrade Bar smoke fetch result callback: state=",
+                    optionx::to_str(shared->attempt.result.trade_state),
+                    ", option_id=",
+                    shared->attempt.result.option_id,
+                    ", profit=",
+                    shared->attempt.result.profit,
+                    ", error=",
+                    shared->attempt.result.error_desc);
+            });
+        {
+            std::lock_guard<std::mutex> lock(shared->mutex);
+            shared->attempt.accepted = accepted;
+            if (!accepted) {
+                shared->done.store(true, std::memory_order_release);
+            }
+        }
+
+        pump_until(
+            m_platform,
+            [&] { return shared->done.load(std::memory_order_acquire); },
+            timeout_ms);
+
+        std::lock_guard<std::mutex> lock(shared->mutex);
+        shared->attempt.elapsed_ms = elapsed_ms();
+        return shared->attempt;
+    }
+
+    TradeHistoryFetchAttempt fetch_trade_history_and_wait(
+            optionx::TradeHistoryRequest request,
+            int64_t timeout_ms) {
+        LOGIT_SCOPE_INFO("intradebar.smoke.fetch_trade_history");
+        struct SharedAttempt {
+            mutable std::mutex mutex;
+            TradeHistoryFetchAttempt attempt;
+            std::atomic<bool> done{false};
+        };
+
+        auto shared = std::make_shared<SharedAttempt>();
+        const auto started_at = std::chrono::steady_clock::now();
+        const auto elapsed_ms = [&] {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - started_at).count();
+        };
+
+        const bool accepted = m_platform.fetch_trade_history(
+            request,
+            [shared](const std::vector<optionx::TradeResult>& trades) {
+                std::lock_guard<std::mutex> lock(shared->mutex);
+                shared->attempt.callback_received = true;
+                shared->attempt.trades = trades;
+                shared->done.store(true, std::memory_order_release);
+                LOGIT_INFO("Intrade Bar smoke history callback: trades=", trades.size());
+                for (const auto& trade : trades) {
+                    LOGIT_INFO(
+                        "Intrade Bar smoke history trade: option_id=",
+                        trade.option_id,
+                        ", symbol=",
+                        trade.symbol,
+                        ", state=",
+                        optionx::to_str(trade.trade_state),
+                        ", amount=",
+                        trade.amount,
+                        ", profit=",
+                        trade.profit,
+                        ", open_date=",
+                        trade.open_date,
+                        ", close_date=",
+                        trade.close_date);
+                }
+            });
+        {
+            std::lock_guard<std::mutex> lock(shared->mutex);
+            shared->attempt.accepted = accepted;
+            if (!accepted) {
+                shared->done.store(true, std::memory_order_release);
+            }
+        }
+
+        pump_until(
+            m_platform,
+            [&] { return shared->done.load(std::memory_order_acquire); },
+            timeout_ms);
+
+        std::lock_guard<std::mutex> lock(shared->mutex);
+        shared->attempt.elapsed_ms = elapsed_ms();
+        return shared->attempt;
     }
 
 private:
