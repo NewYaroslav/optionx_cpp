@@ -70,7 +70,6 @@ TradeRecord make_win_record(
     record.send_date = open_date;
     record.open_date = open_date;
     record.close_date = open_date + 60000;
-    record.expiry_date = open_date + 60000;
     record.duration = 60;
     record.mm_step = (uid == 1) ? 0 : 1;
     return record;
@@ -151,8 +150,7 @@ TEST(TradeRecordStatusFixerTest, MarksStaleAsCheckError) {
     // Stuck trade
     records.push_back(make_win_record(2, 0, 10.0, 0.0, "EURUSD", optionx::TradeState::OPEN_SUCCESS));
     records.back().open_date = 800000;
-    records.back().close_date = 0;
-    records.back().expiry_date = 850000;
+    records.back().close_date = 850000;
     records.back().duration = 60;
 
     // wait_status_ms = 100000 -> stale_border = 1000000 - 100000 = 900000
@@ -171,15 +169,14 @@ TEST(TradeRecordStatusFixerTest, CallbackResolvesStaleTrade) {
 
     records.push_back(make_win_record(2, 0, 10.0, 0.0, "EURUSD", optionx::TradeState::OPEN_SUCCESS));
     records.back().open_date = 800000;
-    records.back().close_date = 0;
-    records.back().expiry_date = 850000;
+    records.back().close_date = 850000;
     records.back().duration = 60;
 
     auto resolver = [](const TradeRecord& rec) -> optionx::TradeResult {
         optionx::TradeResult result;
         result.trade_state = optionx::TradeState::WIN;
         result.profit = 8.0;
-        result.close_date = rec.expiry_date;
+        result.close_date = rec.close_date;
         return result;
     };
 

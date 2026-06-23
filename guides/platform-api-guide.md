@@ -30,6 +30,9 @@
 |---|---|---|
 | `configure_auth(std::unique_ptr<IAuthData>)` | Отправить auth data через `AuthDataEvent` | Возвращает `false` для `nullptr`; auth применяют subscribed managers |
 | `place_trade(std::unique_ptr<TradeRequest>)` | User-facing вход для сделки | В base возвращает `false`; concrete platform должна override |
+| `fetch_trade_result(TradeResultQuery, callback)` | Проверить результат одной сделки | В base возвращает `false`; используется для recovery по broker trade id |
+| `fetch_trade_history(request, callback)` | Выгрузить историю закрытых сделок | Возвращает `TradeHistoryResult` с `TradeRecord` records |
+| `fetch_trade_history(callback)` | Выгрузить всю доступную историю | Делегирует в `TradeHistoryRequest::all()` |
 | `fetch_candle_data(...)` | История свечей | В base возвращает `false`; реализация platform-specific |
 | `fetch_symbol_list(...)` | Список symbols | В base возвращает `false`; реализация platform-specific |
 | `connect(callback)` | Публикует `ConnectRequestEvent` | Реальное подключение делает manager |
@@ -74,6 +77,8 @@
 Методы:
 
 - `place_trade()` делегирует в `m_trade_execution.place_trade(...)`.
+- `fetch_trade_result()` делегирует в `m_trade_manager.fetch_trade_result(...)`.
+- `fetch_trade_history()` делегирует в `m_trade_manager.fetch_trade_history(...)`.
 - `platform_type()` возвращает `PlatformType::INTRADE_BAR`.
 
 Используй эту платформу как основной working example для новой реализации.
@@ -259,6 +264,63 @@ Ownership:
 Смотри `include/optionx_cpp/data/trading/TradeResult.hpp`.
 Используется вместе с `TradeRequest`, `TradeState`, `TradeErrorCode` и
 callback/event flow.
+
+`TradeResult` описывает результат одной сделки в lifecycle/callback API. Его
+можно передать в `TradeResultQuery` как частично заполненный результат, если
+бот восстановился после перезапуска и знает только broker id, amount,
+account/currency и open timing/price.
+
+### `TradeResultQuery`
+
+Файл: `include/optionx_cpp/data/trading/TradeResultQuery.hpp`.
+
+Используется `BaseTradingPlatform::fetch_trade_result(...)` для проверки одной
+сделки по broker identity. У разных брокеров identity может быть числом,
+строкой или hash; текущий Intrade Bar использует `broker_option_id`.
+
+Это не замена `TradeRequest`: запрос на проверку результата не должен тащить
+полный request, если для broker API достаточно id и минимального контекста
+результата.
+
+### `TradeHistoryRequest` / `TradeHistoryResult`
+
+Файлы:
+
+- `include/optionx_cpp/data/trading/TradeHistoryRequest.hpp`
+- `include/optionx_cpp/data/trading/TradeHistoryResult.hpp`
+- `include/optionx_cpp/data/trading/TradeRecordTimeRange.hpp`
+
+`fetch_trade_history` возвращает историю аккаунта как `TradeRecord`, потому что
+это storage/statistics model, а не callback-результат одной активной сделки.
+
+`TradeHistoryRequest` задает:
+
+- `start_ms`, `stop_ms`;
+- `range_mode`;
+- `time_field`, по умолчанию `CLOSE_DATE`;
+- optional `comment`, который копируется в каждый returned `TradeRecord`.
+
+`TradeHistoryRequest::all()` отключает client-side range filtering и означает
+"выгрузить все доступное через broker source". Для broker endpoints, которые
+требуют конечный date range, adapter может преобразовать это в практический
+широкий диапазон.
+
+`TradeHistoryResult` не маскирует ошибку пустым массивом: в нем отдельно есть
+`success`, `status_code`, `error_desc` и `records`.
+
+### `TradeRecord`
+
+Файл: `include/optionx_cpp/data/trading/TradeRecord.hpp`.
+
+`TradeRecord` - нормализованная запись сделки для storage, statistics и import
+history. Он может быть создан из `TradeRequest` + `TradeResult`, а также из
+broker history export.
+
+`TradeRecord::close_date` означает planned or known option close timestamp. Для
+classic options это фиксированное `TradeRequest::expiry_time`, известное до
+открытия сделки. Для sprint options close time зависит от фактического
+`open_date`, поэтому обычно становится известным после открытия как
+`open_date + duration`.
 
 ## Account/Auth Data
 

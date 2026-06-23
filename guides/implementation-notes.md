@@ -15,6 +15,14 @@
 - Domain aggregates such as `data/trading.hpp` own common include context for
   their leaf DTO headers. Leaf DTO headers should not recreate sibling include
   order or pull broad dependencies unless that leaf truly owns the dependency.
+- External consumers include through `<optionx_cpp/...>`. Internal headers under
+  `include/optionx_cpp` include other project headers through local paths from
+  that root: `"data/..."`, `"utils/..."`, `"modules/..."`,
+  `"platforms/..."`, `"storages/..."`.
+- Do not use `"optionx_cpp/..."` inside `include/optionx_cpp`, and do not use
+  `../` include paths. The local test/example CMake setup exposes both
+  `include` and `include/optionx_cpp` so public and internal include contracts
+  can be checked together.
 - При добавлении public header обновляй ближайший aggregate header; при
   внутреннем helper не расширяй public surface.
 
@@ -128,6 +136,29 @@ overloads. `run()` запускает worker thread, `process()` выполня�
 - Exceptions из future ловятся и переводятся в error response.
 - Rate limit ids хранятся в `m_rate_limits`; используй enum class
   `RateLimitType` внутри конкретной платформы.
+
+## Broker HTTP Adapter Pattern
+
+Platform `RequestManager` classes should keep broker-specific HTTP and parser
+quirks inside the platform folder, but expose typed workflow results to higher
+managers.
+
+Current pattern:
+
+- Low-level request methods keep the broker request/response flow close to the
+  existing implementation.
+- New `*_result` methods wrap the same parser path into `ApiResult<T>` payloads.
+- `ApiResult<T>` separates `success`, `status_code`, `error_desc`, and typed
+  payload. Do not represent a failed request as an empty successful payload.
+- Parser literals and HTML markers are evidence-sensitive. Do not rewrite them
+  just because a normalized API would look cleaner; first prove the broker
+  response changed or add a fixture/live smoke case.
+- Broker-independent raw-response helpers belong in `utils`, not in a concrete
+  platform folder.
+
+For user-facing broker features, add facade methods on
+`BaseTradingPlatform`/concrete platform and delegate into managers. Do not make
+application code call platform managers directly.
 
 ### IntradeBar Settings Switch Acknowledgement
 

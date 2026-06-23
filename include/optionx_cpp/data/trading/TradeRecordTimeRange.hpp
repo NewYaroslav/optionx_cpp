@@ -14,8 +14,7 @@ namespace optionx {
         PLACE_DATE,  ///< Use place_date field.
         SEND_DATE,   ///< Use send_date field.
         OPEN_DATE,   ///< Use open_date field.
-        CLOSE_DATE,  ///< Use close_date field.
-        EXPIRY_DATE  ///< Use expiry_date field.
+        CLOSE_DATE   ///< Use close_date field.
     };
 
     /// \enum TimeRangeMode

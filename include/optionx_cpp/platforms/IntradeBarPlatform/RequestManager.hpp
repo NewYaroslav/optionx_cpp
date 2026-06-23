@@ -995,18 +995,15 @@ namespace optionx::platforms::intrade_bar {
                 return record.open_date;
             case TradeRecordTimeField::CLOSE_DATE:
                 return record.close_date;
-            case TradeRecordTimeField::EXPIRY_DATE:
-                return record.expiry_date;
             case TradeRecordTimeField::AUTO:
             default:
                 if (record.place_date > 0) return record.place_date;
                 if (record.send_date > 0) return record.send_date;
                 if (record.open_date > 0) return record.open_date;
                 if (record.close_date > 0) return record.close_date;
-                if (record.expiry_date > 0) return record.expiry_date;
                 return 0;
-            }
         }
+    }
 
         std::vector<TradeRecord> filter_trade_history_range(
                 std::vector<TradeRecord> records,

@@ -132,9 +132,9 @@ at `2000-01-01` because that endpoint requires dates. Ranged requests default
 to `CLOSE_DATE`, which matches the usual closed-trade DB query semantics;
 callers can choose another `TradeRecordTimeField` when they need a different
 time axis. Records missing the selected timestamp are excluded from ranged
-results. For Intrade Bar closed history, `EXPIRY_DATE` is populated from
-`CLOSE_DATE`. Optional `TradeHistoryRequest::comment` is copied to each returned
-`TradeRecord.comment`.
+results. Intrade Bar closed-history sources provide a close timestamp, which is
+stored in `TradeRecord::close_date`. Optional `TradeHistoryRequest::comment` is
+copied to each returned `TradeRecord.comment`.
 
 ## Manual Trade Result Recovery Check
 

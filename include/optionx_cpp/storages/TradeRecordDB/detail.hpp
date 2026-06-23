@@ -15,14 +15,13 @@ namespace optionx::storage::detail {
 
     /// \brief Selects canonical timestamp used by TradeRecordDB timestamp queries.
     ///
-    /// Order of precedence for AUTO mode: place_date -> send_date -> open_date -> close_date -> expiry_date.
+    /// Order of precedence for AUTO mode: place_date -> send_date -> open_date -> close_date.
     /// The backend must set place_date before writing a record; otherwise the record may not be found by range queries.
     inline std::int64_t selected_timestamp_ms(const TradeRecord& record) noexcept {
         if (record.place_date > 0) return record.place_date;
         if (record.send_date > 0) return record.send_date;
         if (record.open_date > 0) return record.open_date;
         if (record.close_date > 0) return record.close_date;
-        if (record.expiry_date > 0) return record.expiry_date;
         return 0;
     }
 

@@ -8,8 +8,10 @@
 
 `optionx_cpp` - header-only C++17 библиотека для подключения торговых систем,
 broker API и bridges. Основной сценарий: пользователь создает платформу,
-настраивает auth data, подписывает callbacks, запускает lifecycle и отправляет
-`TradeRequest`.
+настраивает auth data, подписывает callbacks, запускает lifecycle, отправляет
+`TradeRequest`, восстанавливает результат одной сделки через
+`fetch_trade_result` или выгружает историю аккаунта через
+`fetch_trade_history`.
 
 Опорные файлы:
 
@@ -63,7 +65,9 @@ broker API и bridges. Основной сценарий: пользовател
 5. `place_trade()` у конкретной платформы делегирует в
    `BaseTradeExecutionModule`, который использует `TradeQueueManager` и
    `TradeStateManager`.
-6. `shutdown()` останавливает tasks, вызывает shutdown у modules, затем
+6. `fetch_trade_result()` и `fetch_trade_history()` у конкретной платформы
+   делегируются в platform managers и возвращают DTO через callbacks.
+7. `shutdown()` останавливает tasks, вызывает shutdown у modules, затем
    draining event bus.
 
 ## Реальные Платформы

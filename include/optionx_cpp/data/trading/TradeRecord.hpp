@@ -54,8 +54,7 @@ namespace optionx {
         std::int64_t place_date = 0;                        ///< Request creation timestamp.
         std::int64_t send_date = 0;                         ///< Broker send timestamp.
         std::int64_t open_date = 0;                         ///< Trade open timestamp.
-        std::int64_t close_date = 0;                        ///< Trade close timestamp.
-        std::int64_t expiry_date = 0;                       ///< Expiration timestamp.
+        std::int64_t close_date = 0;                        ///< Planned or known close timestamp (classic expiry, sprint open + duration).
         std::int64_t duration = 0;                          ///< Requested duration in seconds.
 
         // Money management and extensibility
@@ -101,7 +100,9 @@ namespace optionx {
             refund = request.refund;
             min_payout = request.min_payout;
             duration = request.duration;
-            expiry_date = request.expiry_time > 0 ? request.expiry_time * 1000 : 0;
+            if (request.expiry_time > 0) {
+                close_date = request.expiry_time * 1000;
+            }
         }
 
         /// \brief Copies result-side fields into this record.
@@ -120,7 +121,9 @@ namespace optionx {
             place_date = result.place_date;
             send_date = result.send_date;
             open_date = result.open_date;
-            close_date = result.close_date;
+            if (result.close_date > 0 || close_date == 0) {
+                close_date = result.close_date;
+            }
             trade_state = result.trade_state;
             live_state = result.live_state;
             error_code = result.error_code;
@@ -193,7 +196,7 @@ namespace optionx {
             return same_numeric_id || same_string_id;
         }
 
-        /// \brief Serializes the record using the Binary v2 storage format.
+        /// \brief Serializes the record using the current binary storage format.
         std::vector<std::uint8_t> to_bytes() const {
             std::vector<std::uint8_t> bytes;
             bytes.reserve(512 + request_unique_hash.size() + option_hash.size() +
@@ -242,7 +245,6 @@ namespace optionx {
             append_value(bytes, send_date);
             append_value(bytes, open_date);
             append_value(bytes, close_date);
-            append_value(bytes, expiry_date);
             append_value(bytes, duration);
 
             append_enum8(bytes, mm_type);
@@ -261,7 +263,7 @@ namespace optionx {
             return bytes;
         }
 
-        /// \brief Deserializes a Binary v2 trade record.
+        /// \brief Deserializes a trade record serialized by the current binary storage format.
         static TradeRecord from_bytes(const void* data, std::size_t size) {
             BinaryReader reader(data, size);
 
@@ -313,7 +315,6 @@ namespace optionx {
             record.send_date = reader.read<std::int64_t>();
             record.open_date = reader.read<std::int64_t>();
             record.close_date = reader.read<std::int64_t>();
-            record.expiry_date = reader.read<std::int64_t>();
             record.duration = reader.read<std::int64_t>();
 
             record.mm_type = reader.read_enum8<MmSystemType>();
@@ -368,7 +369,6 @@ namespace optionx {
                    send_date == other.send_date &&
                    open_date == other.open_date &&
                    close_date == other.close_date &&
-                   expiry_date == other.expiry_date &&
                    duration == other.duration &&
                    mm_type == other.mm_type &&
                    mm_step == other.mm_step &&
@@ -389,7 +389,7 @@ namespace optionx {
 
     private:
         static constexpr std::uint32_t kBinaryMagic = 0x5254584fU; // "OXTR" on little-endian hosts.
-        static constexpr std::uint16_t kBinaryVersion = 3;
+        static constexpr std::uint16_t kBinaryVersion = 1;
 
         template<typename T>
         static bool same_known(T lhs, T rhs, T unknown) noexcept {

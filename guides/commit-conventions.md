@@ -6,13 +6,24 @@ Operational rule for AI agents that create commits in this repository.
 
 - Commit messages must be in English and use Conventional Commits.
 - Use the form `type(scope): short summary`.
-- Every commit must include a descriptive body.
+- Use an imperative, concise summary.
+- Include a descriptive body when the change is not obvious from the summary.
+- Prefer a scope that names the touched subsystem: `docs(guides)`,
+  `feat(intrade-bar)`, `fix(storage)`, `test(history)`, `build(cmake)`.
 
 Use:
 
 ```bash
-git commit -a -m "type(scope): short summary" -m "Detailed description of changes."
+git commit -m "type(scope): short summary" -m "Detailed description of changes."
 ```
+
+Before committing:
+
+- Check `git status --short`.
+- Check `git diff` or staged diff.
+- Include only files related to the requested change.
+- Do not commit generated build output, local env files, credentials, broker
+  session databases, logs, or unrelated agent/tool folders.
 
 ## Allowed types
 
