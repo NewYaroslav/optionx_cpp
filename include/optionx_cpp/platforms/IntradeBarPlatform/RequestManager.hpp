@@ -978,6 +978,10 @@ namespace optionx::platforms::intrade_bar {
     }
 
     namespace {
+        int64_t trade_history_timestamp(const TradeResult& trade) {
+            return trade.open_date > 0 ? trade.open_date : trade.close_date;
+        }
+
         std::vector<TradeResult> filter_trade_history_range(
                 std::vector<TradeResult> trades,
                 const TradeHistoryRequest& request) {
@@ -986,14 +990,50 @@ namespace optionx::platforms::intrade_bar {
                     trades.begin(),
                     trades.end(),
                     [&request](const TradeResult& trade) {
-                        const int64_t timestamp =
-                            trade.open_date > 0 ? trade.open_date : trade.close_date;
+                        const int64_t timestamp = trade_history_timestamp(trade);
                         if (timestamp <= 0) return false;
                         return timestamp < request.start_time_ms ||
                             timestamp > request.end_time_ms;
                     }),
                 trades.end());
             return trades;
+        }
+
+        void append_unique_trade_history(
+                std::vector<TradeResult>& target,
+                const std::vector<TradeResult>& source) {
+            for (const auto& trade : source) {
+                const bool duplicate = trade.option_id > 0 &&
+                    std::any_of(target.begin(), target.end(), [&trade](const TradeResult& existing) {
+                        return existing.option_id == trade.option_id;
+                    });
+                if (!duplicate) target.push_back(trade);
+            }
+        }
+
+        bool trade_history_page_reached_start(
+                const std::vector<TradeResult>& trades,
+                const TradeHistoryRequest& request) {
+            for (const auto& trade : trades) {
+                const int64_t timestamp = trade_history_timestamp(trade);
+                if (timestamp > 0 && timestamp < request.start_time_ms) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        std::size_t count_substrings(
+                const std::string& text,
+                const std::string& needle) {
+            if (needle.empty()) return 0;
+            std::size_t count = 0;
+            std::size_t pos = 0;
+            while ((pos = text.find(needle, pos)) != std::string::npos) {
+                ++count;
+                pos += needle.size();
+            }
+            return count;
         }
     }
 
@@ -1121,6 +1161,121 @@ namespace optionx::platforms::intrade_bar {
                 bool success,
                 long status_code,
                 std::vector<TradeResult> trades)> callback) {
+        struct HtmlHistoryState {
+            TradeHistoryRequest request;
+            std::vector<TradeResult> trades;
+            std::vector<std::string> requested_last_values;
+            std::function<void(bool, long, std::vector<TradeResult>)> callback;
+            int page_count = 0;
+            bool completed = false;
+        };
+
+        auto state = std::make_shared<HtmlHistoryState>();
+        state->request = request;
+        state->callback = std::move(callback);
+
+        constexpr int max_html_history_pages = 200;
+        auto complete = std::make_shared<std::function<void(bool, long)>>();
+        *complete = [state](bool success, long status_code) {
+            if (state->completed) return;
+            state->completed = true;
+
+            if (!success) {
+                state->callback(false, status_code, {});
+                return;
+            }
+
+            state->callback(
+                true,
+                status_code,
+                filter_trade_history_range(std::move(state->trades), state->request));
+        };
+
+        auto load_more = std::make_shared<std::function<void(std::string)>>();
+        auto process_page = std::make_shared<std::function<void(TradeHistoryHtmlPage, long)>>();
+
+        *process_page = [state, complete, load_more](
+                TradeHistoryHtmlPage page,
+                long status_code) {
+            ++state->page_count;
+            const bool page_has_trades = !page.trades.empty();
+            const bool reached_start = trade_history_page_reached_start(
+                page.trades,
+                state->request);
+
+            append_unique_trade_history(state->trades, page.trades);
+
+            const bool next_repeats =
+                !page.next_last.empty() &&
+                std::find(
+                    state->requested_last_values.begin(),
+                    state->requested_last_values.end(),
+                    page.next_last) != state->requested_last_values.end();
+
+            if (page_has_trades &&
+                !reached_start &&
+                !page.next_last.empty() &&
+                !next_repeats &&
+                state->page_count < max_html_history_pages) {
+                (*load_more)(page.next_last);
+                return;
+            }
+
+            (*complete)(true, status_code);
+        };
+
+        *load_more = [this, state, process_page, complete](std::string last) {
+            if (last.empty() || state->completed) {
+                (*complete)(true, TradeHistoryResult::NO_HTTP_STATUS);
+                return;
+            }
+
+            state->requested_last_values.push_back(last);
+            kurlyk::QueryParams query = {
+                {"last", std::move(last)},
+                {"user_id", m_user_id},
+                {"user_hash", m_user_hash}
+            };
+
+            kurlyk::Headers headers = m_api_headers;
+            headers.emplace("Cookie", m_cookies);
+
+            auto future = get_http_client().post(
+                "/trade_load_more2.php",
+                kurlyk::QueryParams(),
+                headers,
+                kurlyk::utils::to_query_string(query),
+                get_rate_limit(RateLimitType::ACCOUNT_INFO)
+            );
+
+            auto response_callback = [state, process_page, complete](
+                    kurlyk::HttpResponsePtr response) {
+                if (!validate_response(response)) {
+                    (*complete)(false, response ? response->status_code : -1);
+                    return;
+                }
+
+                try {
+                    auto page = parse_trade_history_html_page(
+                        response->content,
+                        state->request.account_type);
+                    LOGIT_INFO(
+                        "Intrade Bar trade history load-more parsed. bytes=",
+                        response->content.size(),
+                        ", trades=",
+                        page.trades.size(),
+                        ", next_last=",
+                        page.next_last);
+                    (*process_page)(std::move(page), response->status_code);
+                } catch (const std::exception& ex) {
+                    LOGIT_ERROR("Error parsing trade history load-more HTML: ", ex.what());
+                    (*complete)(false, response ? response->status_code : -1);
+                }
+            };
+
+            add_http_request_task(std::move(future), std::move(response_callback));
+        };
+
         auto future = get_http_client().get(
             "/",
             kurlyk::QueryParams(),
@@ -1133,22 +1288,40 @@ namespace optionx::platforms::intrade_bar {
             get_rate_limit(RateLimitType::ACCOUNT_INFO)
         );
 
-        auto response_callback = [request, callback = std::move(callback)](kurlyk::HttpResponsePtr response) {
+        auto response_callback = [state, process_page, complete](
+                kurlyk::HttpResponsePtr response) {
             if (!validate_response(response)) {
-                callback(false, response ? response->status_code : -1, {});
+                (*complete)(false, response ? response->status_code : -1);
                 return;
             }
 
             try {
-                callback(
-                    true,
-                    response->status_code,
-                    filter_trade_history_range(
-                        parse_trade_history_html_snapshot(response->content, request.account_type),
-                        request));
+                auto page = parse_trade_history_html_page(
+                    response->content,
+                    state->request.account_type);
+                LOGIT_INFO(
+                    "Intrade Bar trade history HTML parsed. bytes=",
+                    response->content.size(),
+                    ", has_trade_close=",
+                    (response->content.find("trade_close") != std::string::npos),
+                    ", has_trade_history=",
+                    (response->content.find("trade_history") != std::string::npos),
+                    ", has_load_more=",
+                    (response->content.find("trade_btn_load_more") != std::string::npos),
+                    ", tr_count=",
+                    count_substrings(response->content, "<tr"),
+                    ", th_count=",
+                    count_substrings(response->content, "<th"),
+                    ", td_count=",
+                    count_substrings(response->content, "<td"),
+                    ", trades=",
+                    page.trades.size(),
+                    ", next_last=",
+                    page.next_last);
+                (*process_page)(std::move(page), response->status_code);
             } catch (const std::exception& ex) {
                 LOGIT_ERROR("Error parsing trade history HTML: ", ex.what());
-                callback(false, response ? response->status_code : -1, {});
+                (*complete)(false, response ? response->status_code : -1);
             }
         };
 

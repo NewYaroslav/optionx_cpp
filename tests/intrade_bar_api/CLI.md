@@ -166,9 +166,20 @@ History source modes:
 
 ```text
 CSV       use /stat_trade_export.php; best financial result coverage
-HTML      parse broker IDs from the authenticated page history
-HTML_CSV  use CSV as the financial base and enrich it with HTML broker IDs
+HTML      parse the authenticated page trade_close block and page older rows
+          through /trade_load_more2.php
+HTML_CSV  use CSV as the financial base and enrich it with HTML rows
 ```
+
+`HTML` follows the broker UI flow: `GET /` gives the recent closed trades and
+the `trade_btn_load_more` `data-last` cursor, then `POST /trade_load_more2.php`
+continues while the broker returns older rows. The endpoint uses the currently
+selected account on the broker side, so connect the platform with the desired
+account type before requesting HTML history.
+
+The table HTML does not expose every field. For example, `option_type` can stay
+`UNKNOWN` in pure `HTML` mode. Prefer `HTML_CSV` when you need the CSV financial
+fields plus broker IDs and page-history coverage.
 
 The default source is configurable:
 

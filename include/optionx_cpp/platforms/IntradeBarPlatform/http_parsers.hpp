@@ -338,20 +338,63 @@ namespace optionx::platforms::intrade_bar {
             return symbol;
         }
 
-        inline std::string history_block_from_html(const std::string& content) {
-            const std::size_t history_id = content.find("trade_history");
-            if (history_id == std::string::npos) return {};
-            std::size_t block_start = content.rfind("<tbody", history_id);
-            if (block_start == std::string::npos) {
-                block_start = content.rfind("<table", history_id);
+        inline void replace_all_inplace(
+                std::string& value,
+                const std::string& from,
+                const std::string& to) {
+            if (from.empty()) return;
+            std::size_t pos = 0;
+            while ((pos = value.find(from, pos)) != std::string::npos) {
+                value.replace(pos, from.size(), to);
+                pos += to.size();
             }
-            if (block_start == std::string::npos) block_start = history_id;
+        }
 
-            std::size_t block_end = content.find("</tbody>", history_id);
+        inline std::string html_block_from_element_id(
+                const std::string& content,
+                const std::string& tag_name,
+                const std::string& element_id) {
+            const std::string open_tag = "<" + tag_name;
+            const std::string close_tag = "</" + tag_name + ">";
+
+            std::size_t pos = 0;
+            while ((pos = content.find(open_tag, pos)) != std::string::npos) {
+                const std::size_t tag_end = content.find('>', pos + open_tag.size());
+                if (tag_end == std::string::npos) break;
+
+                const std::string tag_html = content.substr(pos, tag_end - pos + 1);
+                if (auto id = utils::extract_html_attr(tag_html, "id")) {
+                    if (*id == element_id) {
+                        const std::size_t block_end = content.find(close_tag, tag_end + 1);
+                        if (block_end == std::string::npos) {
+                            return content.substr(pos);
+                        }
+                        return content.substr(pos, block_end + close_tag.size() - pos);
+                    }
+                }
+                pos = tag_end + 1;
+            }
+
+            return {};
+        }
+
+        inline std::string html_block_from_marker(
+                const std::string& content,
+                const std::string& marker) {
+            const std::size_t marker_pos = content.find(marker);
+            if (marker_pos == std::string::npos) return {};
+
+            std::size_t block_start = content.rfind("<tbody", marker_pos);
+            if (block_start == std::string::npos) {
+                block_start = content.rfind("<table", marker_pos);
+            }
+            if (block_start == std::string::npos) block_start = marker_pos;
+
+            std::size_t block_end = content.find("</tbody>", marker_pos);
             if (block_end != std::string::npos) {
                 block_end += 8;
             } else {
-                block_end = content.find("</table>", history_id);
+                block_end = content.find("</table>", marker_pos);
                 if (block_end != std::string::npos) {
                     block_end += 8;
                 } else {
@@ -361,6 +404,23 @@ namespace optionx::platforms::intrade_bar {
             return content.substr(block_start, block_end - block_start);
         }
 
+        inline std::string history_block_from_html(const std::string& content) {
+            std::string block = html_block_from_element_id(content, "tbody", "trade_close");
+            if (!block.empty()) return block;
+
+            block = html_block_from_element_id(content, "tbody", "trade_history");
+            if (!block.empty()) return block;
+
+            block = html_block_from_marker(content, "trade_close");
+            if (!block.empty()) return block;
+
+            block = html_block_from_marker(content, "trade_history");
+            if (!block.empty()) return block;
+
+            // trade_load_more2.php may return plain closed-trade rows plus a script.
+            return content.find("<tr") == std::string::npos ? std::string() : content;
+        }
+
         inline std::optional<int64_t> parse_first_i64_from_string(const std::string& value) {
             std::smatch match;
             static const std::regex number_regex(R"([0-9]+)");
@@ -368,6 +428,21 @@ namespace optionx::platforms::intrade_bar {
                 return std::nullopt;
             }
             return utils::parse_i64_strict(match[0].str());
+        }
+
+        inline std::optional<std::string> parse_history_next_last(
+                const std::string& content) {
+            if (auto attr = utils::extract_html_attr(content, "data-last")) {
+                return utils::trim_copy(*attr);
+            }
+
+            std::smatch match;
+            static const std::regex script_data_last(
+                R"(attr\s*\(\s*['"]data-last['"]\s*,\s*['"]([^'"]*)['"]\s*\))");
+            if (std::regex_search(content, match, script_data_last) && match.size() >= 2) {
+                return utils::trim_copy(match[1].str());
+            }
+            return std::nullopt;
         }
 
         inline std::optional<int64_t> parse_history_row_option_id(const std::string& row) {
@@ -415,6 +490,162 @@ namespace optionx::platforms::intrade_bar {
             return std::nullopt;
         }
 
+        inline std::vector<std::string> extract_tag_contents(
+                const std::string& html,
+                const std::string& tag_name) {
+            std::vector<std::string> cells;
+            const std::string open_tag = "<" + tag_name;
+            const std::string close_tag = "</" + tag_name + ">";
+
+            std::size_t pos = 0;
+            while ((pos = html.find(open_tag, pos)) != std::string::npos) {
+                const std::size_t tag_end = html.find('>', pos + open_tag.size());
+                if (tag_end == std::string::npos) break;
+
+                const std::size_t content_start = tag_end + 1;
+                const std::size_t content_end = html.find(close_tag, content_start);
+                if (content_end == std::string::npos) break;
+
+                cells.push_back(html.substr(content_start, content_end - content_start));
+                pos = content_end + close_tag.size();
+            }
+
+            return cells;
+        }
+
+        inline std::string strip_html_tags(const std::string& html) {
+            std::string text;
+            text.reserve(html.size());
+
+            bool in_tag = false;
+            for (char ch : html) {
+                if (ch == '<') {
+                    in_tag = true;
+                    continue;
+                }
+                if (ch == '>') {
+                    in_tag = false;
+                    continue;
+                }
+                if (!in_tag) text.push_back(ch);
+            }
+
+            replace_all_inplace(text, "&nbsp;", " ");
+            replace_all_inplace(text, "&#160;", " ");
+            replace_all_inplace(text, "&amp;", "&");
+            replace_all_inplace(text, "&#36;", "$");
+            return text;
+        }
+
+        inline std::vector<std::string> html_cell_lines(std::string cell_html) {
+            static const std::regex br_regex(R"(<\s*br\s*/?\s*>)", std::regex_constants::icase);
+            cell_html = std::regex_replace(cell_html, br_regex, "\n");
+
+            const std::string text = strip_html_tags(cell_html);
+            std::vector<std::string> lines;
+            std::istringstream stream(text);
+            std::string line;
+            while (std::getline(stream, line)) {
+                line = utils::trim_copy(line);
+                if (!line.empty()) lines.push_back(std::move(line));
+            }
+            return lines;
+        }
+
+        inline std::optional<TradeResult> parse_history_attr_row(
+                const std::string& row,
+                AccountType account_type) {
+            auto option_id = parse_history_row_option_id(row);
+            if (!option_id || *option_id <= 0) return std::nullopt;
+
+            TradeResult trade;
+            trade.option_id = *option_id;
+            if (auto symbol = utils::extract_html_attr(row, "data-option")) {
+                trade.symbol = normalize_history_symbol(*symbol);
+            }
+            if (auto open_price = utils::parse_double_attr(row, "data-rate")) {
+                trade.open_price = *open_price;
+            }
+            if (auto close_price = utils::parse_double_attr(row, "data-close-rate")) {
+                trade.close_price = *close_price;
+            }
+            if (auto open_time = parse_history_row_time_ms(row)) {
+                trade.open_date = *open_time;
+            }
+            if (auto close_time = parse_history_row_close_time_ms(row)) {
+                trade.close_date = *close_time;
+                if (trade.open_date > 0 && trade.close_date >= trade.open_date) {
+                    trade.duration = time_shield::ms_to_sec(trade.close_date - trade.open_date);
+                }
+            }
+            if (auto status = utils::parse_int_attr(row, "data-status")) {
+                if (*status == 1) trade.order_type = OrderType::BUY;
+                if (*status == 2) trade.order_type = OrderType::SELL;
+            }
+            if (auto contract = utils::parse_int_attr(row, "data-contract")) {
+                if (*contract == 0) trade.option_type = OptionType::SPRINT;
+                if (*contract == 1) trade.option_type = OptionType::CLASSIC;
+            }
+            trade.account_type = account_type;
+            trade.platform_type = PlatformType::INTRADE_BAR;
+            return trade;
+        }
+
+        inline std::optional<TradeResult> parse_trade_close_table_row(
+                const std::string& row,
+                AccountType account_type) {
+            const auto cells = extract_tag_contents(row, "th");
+            if (cells.size() < 4) return std::nullopt;
+
+            const auto id_lines = html_cell_lines(cells[1]);
+            const auto price_lines = html_cell_lines(cells[2]);
+            const auto money_lines = html_cell_lines(cells[3]);
+            if (id_lines.size() < 3 || price_lines.size() < 3 || money_lines.size() < 2) {
+                return std::nullopt;
+            }
+
+            auto option_id = parse_first_i64_from_string(id_lines[0]);
+            auto open_time = parse_history_datetime_ms(id_lines[1]);
+            auto close_time = parse_history_datetime_ms(id_lines[2]);
+            auto open_price = utils::parse_double_strict(price_lines[1]);
+            auto close_price = utils::parse_double_strict(price_lines[2]);
+            auto amount = parse_history_money(money_lines[0]);
+            auto gross_result = parse_history_money(money_lines[1]);
+            if (!option_id || *option_id <= 0 ||
+                !open_time || !close_time ||
+                !open_price || !close_price ||
+                !amount || !gross_result) {
+                return std::nullopt;
+            }
+
+            TradeResult trade;
+            trade.option_id = *option_id;
+            trade.symbol = normalize_history_symbol(price_lines[0]);
+            trade.open_date = *open_time;
+            trade.close_date = *close_time;
+            if (trade.close_date >= trade.open_date) {
+                trade.duration = time_shield::ms_to_sec(trade.close_date - trade.open_date);
+            }
+            trade.open_price = *open_price;
+            trade.close_price = *close_price;
+            trade.amount = amount->amount;
+            trade.currency = amount->currency;
+            if (trade.currency == CurrencyType::UNKNOWN) {
+                trade.currency = gross_result->currency;
+            }
+            if (row.find("trading-table__up-td") != std::string::npos) {
+                trade.order_type = OrderType::BUY;
+            } else if (row.find("trading-table__down-td") != std::string::npos) {
+                trade.order_type = OrderType::SELL;
+            }
+            trade.account_type = account_type;
+            trade.platform_type = PlatformType::INTRADE_BAR;
+            apply_trade_check_info_to_result(
+                TradeCheckInfo{trade.close_price, gross_result->amount},
+                trade);
+            return trade;
+        }
+
         inline OptionType parse_history_option_type(const std::string& value) {
             const std::string normalized = lower_ascii_copy(utils::trim_copy(value));
             if (normalized.find("sprint") != std::string::npos) return OptionType::SPRINT;
@@ -431,16 +662,26 @@ namespace optionx::platforms::intrade_bar {
 
     } // namespace detail
 
-    /// \brief Parses closed trade rows from the authenticated HTML page.
-    /// \param content Raw authenticated HTML page.
+    /// \brief Parsed closed trade history page or load-more fragment.
+    struct TradeHistoryHtmlPage {
+        std::vector<TradeResult> trades; ///< Closed trades parsed from the fragment.
+        std::string next_last;           ///< Next value for trade_load_more2.php last parameter.
+    };
+
+    /// \brief Parses closed trade rows and pagination marker from HTML.
+    /// \param content Raw authenticated page or trade_load_more2.php fragment.
     /// \param account_type Account type used for the request.
-    /// \return Best-effort history rows; financial result fields may be unknown.
-    std::vector<TradeResult> parse_trade_history_html_snapshot(
+    /// \return Parsed closed trades and next pagination cursor.
+    TradeHistoryHtmlPage parse_trade_history_html_page(
             const std::string& content,
             AccountType account_type) {
-        std::vector<TradeResult> trades;
+        TradeHistoryHtmlPage page;
+        if (auto next_last = detail::parse_history_next_last(content)) {
+            page.next_last = *next_last;
+        }
+
         const std::string history_html = detail::history_block_from_html(content);
-        if (history_html.empty()) return trades;
+        if (history_html.empty()) return page;
 
         std::size_t pos = 0;
         for (;;) {
@@ -451,40 +692,26 @@ namespace optionx::platforms::intrade_bar {
             const std::string row = history_html.substr(row_start, row_end - row_start);
             pos = row_end + 5;
 
-            auto option_id = detail::parse_history_row_option_id(row);
-            if (!option_id || *option_id <= 0) continue;
-
-            TradeResult trade;
-            trade.option_id = *option_id;
-            if (auto symbol = utils::extract_html_attr(row, "data-option")) {
-                trade.symbol = detail::normalize_history_symbol(*symbol);
+            if (auto trade = detail::parse_history_attr_row(row, account_type)) {
+                page.trades.push_back(std::move(*trade));
+                continue;
             }
-            if (auto open_price = utils::parse_double_attr(row, "data-rate")) {
-                trade.open_price = *open_price;
+            if (auto trade = detail::parse_trade_close_table_row(row, account_type)) {
+                page.trades.push_back(std::move(*trade));
             }
-            if (auto open_time = detail::parse_history_row_time_ms(row)) {
-                trade.open_date = *open_time;
-            }
-            if (auto close_time = detail::parse_history_row_close_time_ms(row)) {
-                trade.close_date = *close_time;
-                if (trade.open_date > 0 && trade.close_date >= trade.open_date) {
-                    trade.duration = time_shield::ms_to_sec(trade.close_date - trade.open_date);
-                }
-            }
-            if (auto status = utils::parse_int_attr(row, "data-status")) {
-                if (*status == 1) trade.order_type = OrderType::BUY;
-                if (*status == 2) trade.order_type = OrderType::SELL;
-            }
-            if (auto contract = utils::parse_int_attr(row, "data-contract")) {
-                if (*contract == 0) trade.option_type = OptionType::SPRINT;
-                if (*contract == 1) trade.option_type = OptionType::CLASSIC;
-            }
-            trade.account_type = account_type;
-            trade.platform_type = PlatformType::INTRADE_BAR;
-            trades.push_back(std::move(trade));
         }
 
-        return trades;
+        return page;
+    }
+
+    /// \brief Parses closed trade rows from the authenticated HTML page.
+    /// \param content Raw authenticated HTML page.
+    /// \param account_type Account type used for the request.
+    /// \return Best-effort history rows; financial result fields may be unknown.
+    std::vector<TradeResult> parse_trade_history_html_snapshot(
+            const std::string& content,
+            AccountType account_type) {
+        return parse_trade_history_html_page(content, account_type).trades;
     }
 
     /// \brief Merges CSV financial history with HTML broker identifiers.
@@ -525,6 +752,7 @@ namespace optionx::platforms::intrade_bar {
                 if (csv_trade.option_id == 0) csv_trade.option_id = html_trade.option_id;
                 if (csv_trade.symbol.empty()) csv_trade.symbol = html_trade.symbol;
                 if (csv_trade.open_price == 0.0) csv_trade.open_price = html_trade.open_price;
+                if (csv_trade.close_price == 0.0) csv_trade.close_price = html_trade.close_price;
                 if (csv_trade.open_date == 0) csv_trade.open_date = html_trade.open_date;
                 if (csv_trade.close_date == 0) csv_trade.close_date = html_trade.close_date;
                 if (csv_trade.duration == 0) csv_trade.duration = html_trade.duration;

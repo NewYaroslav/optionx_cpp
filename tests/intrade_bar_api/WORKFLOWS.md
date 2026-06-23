@@ -113,10 +113,16 @@ Started from `BaseTradingPlatform::fetch_trade_history` or
    `AuthData::trade_history_source`.
 3. `CSV` calls `/stat_trade_export.php` with `name_method=stat_export`,
    `status_real`, `date1`, and `date2`, then parses closed financial results.
-4. `HTML` requests the authenticated main page and parses best-effort broker
-   identifiers from the history table.
+4. `HTML` requests the authenticated main page, parses `trade_close`, reads the
+   `trade_btn_load_more` `data-last` cursor, and keeps paging older closed rows
+   through `/trade_load_more2.php` until the cursor is empty, repeats, the page
+   is empty, or the requested start time is reached.
 5. `HTML_CSV` uses CSV as the financial base and enriches rows with matching
-   HTML broker IDs when symbol/time/open-price matching is possible.
+   HTML rows when symbol/time/open-price matching is possible.
+
+The HTML load-more endpoint does not take `status_real`; it follows the account
+currently selected in the broker session. The auth/connect workflow must switch
+the broker to the desired account before an HTML history request.
 
 ## Manual Trade Result Recovery Check
 

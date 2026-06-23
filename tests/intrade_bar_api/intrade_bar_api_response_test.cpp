@@ -256,6 +256,151 @@ TEST(IntradeBarApiResponses, ParsesTradeHistoryHtmlSnapshotAndMergesWithCsv) {
     EXPECT_EQ(merged[1].option_id, 224157358);
 }
 
+TEST(IntradeBarApiResponses, ParsesTradeCloseHtmlPageAndNextCursor) {
+    const std::string html = R"HTML(
+        <div id="trade_close_block" class="hide">
+            <table class="">
+                <tbody class="table_tbody" id="trade_close">
+                    <tr class="trade_list_type trade_list_type_1" >
+                        <th class="center"><div class="trading-table__up-td"></div></th>
+                        <th>
+                            224157357
+                            <br>
+                            19:06:42, 22.06.26
+                            <br>
+                            19:11:42, 22.06.26
+                        </th>
+                        <th>
+                            BTC/USDT
+                            <br>
+                            64708.01
+                            <br>
+                            64735.64
+                        </th>
+                        <th>
+                            <br>
+                            1 $
+                            <br>
+                            1.79 $
+                        </th>
+                    </tr>
+                    <tr class="trade_list_type trade_list_type_1" >
+                        <th class="center"><div class="trading-table__down-td"></div></th>
+                        <th>
+                            224130715
+                            <br>
+                            09:57:43, 19.06.26
+                            <br>
+                            10:03:43, 19.06.26
+                        </th>
+                        <th>
+                            BTC/USDT
+                            <br>
+                            62884.8
+                            <br>
+                            62854.73
+                        </th>
+                        <th>
+                            <br>
+                            1 $
+                            <br>
+                            1.79 $
+                        </th>
+                    </tr>
+                    <tr class="trade_list_type trade_list_type_1" >
+                        <th class="center"><div class="trading-table__up-td"></div></th>
+                        <th>
+                            224130651
+                            <br>
+                            09:29:34, 19.06.26
+                            <br>
+                            09:34:34, 19.06.26
+                        </th>
+                        <th>
+                            BTC/USDT
+                            <br>
+                            62830.01
+                            <br>
+                            62825.99
+                        </th>
+                        <th>
+                            <br>
+                            1 $
+                            <br>
+                            0 $
+                        </th>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="text-center">
+                <a class="trading-tables__btn btn btn--gray trade_btn_load_more" id="trade_btn_load_more" data-last="224130496">load more</a>
+            </div>
+        </div>
+    )HTML";
+
+    const auto page = parse_trade_history_html_page(html, AccountType::DEMO);
+    ASSERT_EQ(page.trades.size(), 3u);
+    EXPECT_EQ(page.next_last, "224130496");
+
+    EXPECT_EQ(page.trades[0].option_id, 224157357);
+    EXPECT_EQ(page.trades[0].symbol, "BTCUSDT");
+    EXPECT_EQ(page.trades[0].order_type, OrderType::BUY);
+    EXPECT_EQ(page.trades[0].trade_state, TradeState::WIN);
+    EXPECT_EQ(page.trades[0].duration, 300);
+    EXPECT_DOUBLE_EQ(page.trades[0].amount, 1.0);
+    EXPECT_DOUBLE_EQ(page.trades[0].profit, 0.79);
+    EXPECT_DOUBLE_EQ(page.trades[0].payout, 0.79);
+    EXPECT_EQ(page.trades[0].currency, CurrencyType::USD);
+
+    EXPECT_EQ(page.trades[1].option_id, 224130715);
+    EXPECT_EQ(page.trades[1].order_type, OrderType::SELL);
+    EXPECT_EQ(page.trades[1].duration, 360);
+    EXPECT_EQ(page.trades[1].trade_state, TradeState::WIN);
+
+    EXPECT_EQ(page.trades[2].option_id, 224130651);
+    EXPECT_EQ(page.trades[2].order_type, OrderType::BUY);
+    EXPECT_EQ(page.trades[2].trade_state, TradeState::LOSS);
+    EXPECT_DOUBLE_EQ(page.trades[2].profit, -1.0);
+}
+
+TEST(IntradeBarApiResponses, ParsesTradeLoadMoreRowsWithoutTableWrapper) {
+    const std::string html = R"HTML(
+        <tr class="trade_list_type trade_list_type_1" >
+            <th class="center"><div class="trading-table__up-td"></div></th>
+            <th>
+                224130496
+                <br>
+                08:02:55, 19.06.26
+                <br>
+                08:07:55, 19.06.26
+            </th>
+            <th>
+                BTC/USDT
+                <br>
+                62577.98
+                <br>
+                62615.99
+            </th>
+            <th>
+                <br>
+                1 $
+                <br>
+                1.6 $
+            </th>
+        </tr>
+        <script>
+            $('#trade_btn_load_more').attr('data-last', '')
+        </script>
+    )HTML";
+
+    const auto page = parse_trade_history_html_page(html, AccountType::DEMO);
+    ASSERT_EQ(page.trades.size(), 1u);
+    EXPECT_TRUE(page.next_last.empty());
+    EXPECT_EQ(page.trades[0].option_id, 224130496);
+    EXPECT_EQ(page.trades[0].trade_state, TradeState::WIN);
+    EXPECT_DOUBLE_EQ(page.trades[0].profit, 0.6);
+}
+
 TEST(IntradeBarApiResponses, ParsesActiveTradesAndLatestCloseTime) {
     const std::string html = R"HTML(
         <tbody class="table_tbody" id="trade_active">
