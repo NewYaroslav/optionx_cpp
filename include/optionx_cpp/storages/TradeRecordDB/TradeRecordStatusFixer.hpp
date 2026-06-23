@@ -187,8 +187,8 @@ namespace optionx::storage {
                 record.platform_type = result.platform_type;
                 updated = true;
             }
-            if (result.spread_pack.raw != 0 || result.spread_pack.digits != 0) {
-                record.spread_pack = result.spread_pack;
+            if (result.spread.raw != 0 || result.spread.digits != 0) {
+                record.spread = result.spread;
                 updated = true;
             }
 

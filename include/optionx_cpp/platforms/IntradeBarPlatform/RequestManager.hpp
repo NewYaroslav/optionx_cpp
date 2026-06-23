@@ -5,8 +5,6 @@
 /// \file RequestManager.hpp
 /// \brief Handles HTTP requests for user authentication, trade execution, balance updates, and market data retrieval.
 
-#include <memory>
-
 #include "ApiResponses.hpp"
 
 namespace optionx::platforms::intrade_bar {

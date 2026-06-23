@@ -81,7 +81,7 @@ namespace optionx {
         }
 
         // Spread
-        SpreadPack spread_pack;                              ///< Packed open/close spread data.
+        SpreadPack spread;                                   ///< Packed open/close spread data.
 
         /// \brief Copies request-side fields into this record.
         void assign_request(const TradeRequest& request) {
@@ -128,7 +128,7 @@ namespace optionx {
             account_type = result.account_type;
             currency = result.currency;
             platform_type = result.platform_type;
-            spread_pack = result.spread_pack;
+            spread = result.spread;
         }
 
         /// \brief Copies request and money-management fields from a signal.
@@ -255,8 +255,8 @@ namespace optionx {
             append_string(bytes, metadata_json);
 
             append_value(bytes, flags);
-            append_value(bytes, spread_pack.raw);
-            append_value(bytes, spread_pack.digits);
+            append_value(bytes, spread.raw);
+            append_value(bytes, spread.digits);
 
             return bytes;
         }
@@ -327,8 +327,8 @@ namespace optionx {
 
             record.flags = reader.read<std::uint8_t>();
 
-            record.spread_pack.raw = reader.read<std::uint64_t>();
-            record.spread_pack.digits = reader.read<std::uint8_t>();
+            record.spread.raw = reader.read<std::uint64_t>();
+            record.spread.digits = reader.read<std::uint8_t>();
 
             reader.ensure_finished();
             return record;
@@ -379,8 +379,8 @@ namespace optionx {
                    decision_params_json == other.decision_params_json &&
                    metadata_json == other.metadata_json &&
                    flags == other.flags &&
-                   spread_pack.raw == other.spread_pack.raw &&
-                   spread_pack.digits == other.spread_pack.digits;
+                   spread.raw == other.spread.raw &&
+                   spread.digits == other.spread.digits;
         }
 
         bool operator!=(const TradeRecord& other) const {

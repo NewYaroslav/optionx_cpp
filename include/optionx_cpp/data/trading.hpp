@@ -8,6 +8,8 @@
 /// This header file provides access to essential trading-related classes 
 /// and enumerations, including trade request and result structures, 
 /// trade signals, and decision-making parameters.
+/// \note Headers from the trading/ directory are internal components and are
+/// intended to be included through this umbrella header.
 
 #include <cstddef>
 #include <cstdint>
@@ -30,7 +32,6 @@
 #include "optionx_cpp/utils/string_utils.hpp"
 
 #include "trading/enums.hpp"
-#include "trading/SpreadPack.hpp"
 #include "trading/TradeResult.hpp"
 #include "trading/TradeResultQuery.hpp"
 #include "trading/TradeRecordTimeRange.hpp"

@@ -6,6 +6,8 @@
 /// \brief Includes headers for bars, ticks, trading, accounts, 
 /// bridges, symbols, and events, consolidating them into a single
 /// inclusion point for ease of use.
+/// \note Headers under data subdirectories are internal components and are
+/// intended to be included through this umbrella header.
 
 #include "utils.hpp"
 #include "data/bars.hpp"

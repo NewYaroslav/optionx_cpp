@@ -4,6 +4,8 @@
 
 /// \file platforms.hpp
 /// \brief Includes platform-related headers.
+/// \note Headers under platforms subdirectories are internal components and are
+/// intended to be included through this umbrella header.
 
 #include "utils.hpp"
 #include "data.hpp"
