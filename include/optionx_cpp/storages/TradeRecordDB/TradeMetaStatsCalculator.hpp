@@ -9,7 +9,7 @@
 #include <set>
 #include <vector>
 
-#include "optionx_cpp/data/trading/TradeStats.hpp"
+#include "data/trading/TradeStats.hpp"
 #include "TradeStatsCalculator.hpp"
 
 namespace optionx::storage {

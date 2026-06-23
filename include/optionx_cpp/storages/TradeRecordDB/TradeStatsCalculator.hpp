@@ -15,10 +15,10 @@
 
 #include <time_shield.hpp>
 
-#include "optionx_cpp/data/trading/TradeStats.hpp"
-#include "optionx_cpp/data/trading/TradeRecordQuery.hpp"
-#include "optionx_cpp/storages/TradeRecordDB/TradeRecordFilterMatcher.hpp"
-#include "optionx_cpp/utils/trade_state_utils.hpp"
+#include "data/trading/TradeStats.hpp"
+#include "data/trading/TradeRecordQuery.hpp"
+#include "storages/TradeRecordDB/TradeRecordFilterMatcher.hpp"
+#include "utils/trade_state_utils.hpp"
 
 namespace optionx::storage {
 

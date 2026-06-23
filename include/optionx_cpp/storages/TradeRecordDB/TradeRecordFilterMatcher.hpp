@@ -11,9 +11,9 @@
 
 #include <time_shield.hpp>
 
-#include "optionx_cpp/data/trading/TradeRecordQuery.hpp"
-#include "optionx_cpp/data/trading/TradeRecordFilter.hpp"
-#include "optionx_cpp/utils/trade_state_utils.hpp"
+#include "data/trading/TradeRecordQuery.hpp"
+#include "data/trading/TradeRecordFilter.hpp"
+#include "utils/trade_state_utils.hpp"
 
 namespace optionx::storage {
 

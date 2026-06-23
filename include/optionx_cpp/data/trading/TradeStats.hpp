@@ -15,7 +15,7 @@
 #include "enums.hpp"
 #include "TradeRecord.hpp"
 #include "TradeRecordFilter.hpp"
-#include "optionx_cpp/utils/trade_state_utils.hpp"
+#include "utils/trade_state_utils.hpp"
 
 namespace optionx {
 

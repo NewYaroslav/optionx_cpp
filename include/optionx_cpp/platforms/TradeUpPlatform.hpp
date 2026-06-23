@@ -5,10 +5,10 @@
 /// \file TradeUpPlatform.hpp
 /// \brief Defines the TradeUpPlatform class implementing TradeUp broker API.
 
-#include <optionx_cpp/utils.hpp>
-#include <optionx_cpp/data.hpp>
-#include <optionx_cpp/storages.hpp>
-#include <optionx_cpp/modules.hpp>
+#include "utils.hpp"
+#include "data.hpp"
+#include "storages.hpp"
+#include "modules.hpp"
 
 #include "common/BaseTradingPlatform.hpp"
 #include "TradeUpPlatform/AuthData.hpp"

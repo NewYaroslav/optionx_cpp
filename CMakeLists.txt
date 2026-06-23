@@ -33,6 +33,7 @@ if(BUILD_EXAMPLES)
 
     set(EXAMPLE_INCLUDE_DIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/optionx_cpp
     )
 
     set(EXAMPLE_DEPS_INCLUDE_DIRS
@@ -103,6 +104,7 @@ if(BUILD_TESTS)
 
     set(PROJECT_INCLUDE_DIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/optionx_cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/tests
     )
 

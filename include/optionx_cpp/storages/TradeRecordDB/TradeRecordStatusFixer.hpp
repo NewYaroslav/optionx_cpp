@@ -11,9 +11,9 @@
 #include <algorithm>
 #include <limits>
 
-#include "optionx_cpp/data/trading/TradeRecord.hpp"
-#include "optionx_cpp/data/trading/TradeResult.hpp"
-#include "optionx_cpp/utils/trade_state_utils.hpp"
+#include "data/trading/TradeRecord.hpp"
+#include "data/trading/TradeResult.hpp"
+#include "utils/trade_state_utils.hpp"
 
 namespace optionx::storage {
 

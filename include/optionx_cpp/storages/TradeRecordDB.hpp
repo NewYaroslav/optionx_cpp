@@ -18,7 +18,7 @@
 #include <mdbx_containers/KeyValueTable.hpp>
 #include <mdbx_containers/ValueTable.hpp>
 
-#include "optionx_cpp/data/trading.hpp"
+#include "data/trading.hpp"
 #include "TradeRecordDB/enums.hpp"
 #include "TradeRecordDB/data.hpp"
 #include "TradeRecordDB/detail.hpp"

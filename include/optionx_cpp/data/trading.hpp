@@ -28,8 +28,8 @@
 #include <utility>
 #include <vector>
 
-#include "optionx_cpp/utils/enum_utils.hpp"
-#include "optionx_cpp/utils/string_utils.hpp"
+#include "utils/enum_utils.hpp"
+#include "utils/string_utils.hpp"
 
 #include "trading/enums.hpp"
 #include "trading/TradeResult.hpp"
