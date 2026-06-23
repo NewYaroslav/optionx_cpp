@@ -14,8 +14,8 @@ if (MSVC)
 endif()
 
 # Подключение исходников MDBX
-add_subdirectory(${CMAKE_SOURCE_DIR}/libs/libmdbx EXCLUDE_FROM_ALL)
-# add_subdirectory(${CMAKE_SOURCE_DIR}/libs/libmdbx)
+add_subdirectory(${CMAKE_SOURCE_DIR}/external/libmdbx EXCLUDE_FROM_ALL)
+# add_subdirectory(${CMAKE_SOURCE_DIR}/external/libmdbx)
 
 # Конфигурация флагов под компилятор
 foreach(target mdbx-static)
@@ -40,11 +40,10 @@ if(TARGET mdbx-static)
 endif()
 
 # Копирование заголовка mdbx.h в include/
-set(MDBX_HEADER_SRC "${CMAKE_SOURCE_DIR}/libs/libmdbx/mdbx.h")
+set(MDBX_HEADER_SRC "${CMAKE_SOURCE_DIR}/external/libmdbx/mdbx.h")
 set(MDBX_HEADER_DST_DIR "${CMAKE_BINARY_DIR}/include")
 
 file(MAKE_DIRECTORY "${MDBX_HEADER_DST_DIR}")
 file(COPY "${MDBX_HEADER_SRC}" DESTINATION "${MDBX_HEADER_DST_DIR}")
 message(STATUS "Copied mdbx.h to ${MDBX_HEADER_DST_DIR}")
-
 

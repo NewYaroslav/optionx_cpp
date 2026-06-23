@@ -1,7 +1,7 @@
 # Build And Test
 
 Краткая инструкция по сборке, зависимостям и проверкам. Код библиотеки в
-основном header-only, но tests/examples линкуются с зависимостями из `libs`.
+основном header-only, но tests/examples линкуются с зависимостями из `external`.
 
 ## CMake Options
 
@@ -9,7 +9,7 @@
 
 | Option / cache var | Default | Назначение |
 |---|---:|---|
-| `BUILD_DEPS` | `OFF` | Собрать зависимости из `libs/` |
+| `BUILD_DEPS` | `OFF` | Собрать зависимости из `external/` |
 | `BUILD_EXAMPLES` | `OFF` | Включить examples, если они поддержаны CMake |
 | `BUILD_TESTS` | `OFF` | Собрать tests из `tests/*.cpp` |
 | `DEPS_BUILD_DIR` | empty | Путь к уже собранным зависимостям, когда `BUILD_DEPS=OFF` |
@@ -143,12 +143,32 @@ Direct leaf includes допустимы для white-box tests, но они не
 
 | Путь | Роль |
 |---|---|
-| `libs/` | Third-party submodules и CMake scripts |
-| `libs/cmake/*.cmake` | Сборка/подключение зависимостей |
-| `libs/mdbx-containers` | Storage dependency для `ServiceSessionDB` |
-| `libs/libmdbx` | MDBX dependency |
+| `external/` | Third-party submodules и CMake scripts |
+| `external/cmake/*.cmake` | Сборка/подключение зависимостей |
+| `external/mdbx-containers` | Storage dependency для `ServiceSessionDB` |
+| `external/libmdbx` | MDBX dependency |
 
 Не меняй submodules или dependency scripts при обычных правках API/доков.
+
+## Existing Clone Migration
+
+После переименования `libs/` в `external/` существующим клонам стоит
+синхронизировать submodule paths:
+
+```bash
+git submodule sync --recursive
+git submodule update --init --recursive
+```
+
+Если после обновления на диске осталась старая неотслеживаемая папка `libs/`,
+сначала убедись, что в ней нет локальных файлов, затем удали только этот путь:
+
+```bash
+git clean -fd -- libs/
+```
+
+Не запускай общий `git clean -fd` без проверки: он удаляет все untracked файлы
+и каталоги в рабочем дереве.
 
 ## Generated Output
 

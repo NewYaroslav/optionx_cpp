@@ -1,6 +1,6 @@
-# libs/CMakeLists.txt
+# external/CMakeLists.txt
 cmake_minimum_required(VERSION 3.18)
-project(LibsProject LANGUAGES C CXX)
+project(ExternalDependencies LANGUAGES C CXX)
 
 option(BUILD_SHARED_LIBS "Build shared libraries by default" OFF)
 
@@ -24,13 +24,13 @@ elseif (MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "" FORCE)
 endif()
 
-set(LIBS_CMAKE_DIR ${CMAKE_CURRENT_LIST_DIR}/cmake)
-include(${LIBS_CMAKE_DIR}/install-headers.cmake)
-include(${LIBS_CMAKE_DIR}/install-static-libs.cmake)
-include(${LIBS_CMAKE_DIR}/install-runtime-dlls.cmake)
+set(EXTERNAL_CMAKE_DIR ${CMAKE_CURRENT_LIST_DIR}/cmake)
+include(${EXTERNAL_CMAKE_DIR}/install-headers.cmake)
+include(${EXTERNAL_CMAKE_DIR}/install-static-libs.cmake)
+include(${EXTERNAL_CMAKE_DIR}/install-runtime-dlls.cmake)
 
 # mdbx
-include(${LIBS_CMAKE_DIR}/libmdbx-wrapper.cmake)
+include(${EXTERNAL_CMAKE_DIR}/libmdbx-wrapper.cmake)
 
 # openssl
 install_headers_to_include(openssl ${CMAKE_CURRENT_LIST_DIR}/openssl-win64-v3.4.0/include/openssl)
@@ -57,7 +57,7 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/AES)
 install_headers_to_include("." ${CMAKE_CURRENT_LIST_DIR}/AES/src)
 
 # googletest
-include(${LIBS_CMAKE_DIR}/libgtest-wrapper.cmake)
+include(${EXTERNAL_CMAKE_DIR}/libgtest-wrapper.cmake)
 # install_static_libs_to_lib(${GTEST_DIR}/build)
 
 # header-only

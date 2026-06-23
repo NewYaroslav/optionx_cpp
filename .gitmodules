@@ -1,39 +1,39 @@
-[submodule "libs/kurlyk"]
-	path = libs/kurlyk
+[submodule "external/kurlyk"]
+	path = external/kurlyk
 	url = https://github.com/NewYaroslav/kurlyk.git
-[submodule "libs/asio"]
-	path = libs/asio
+[submodule "external/asio"]
+	path = external/asio
 	url = https://github.com/chriskohlhoff/asio.git
-[submodule "libs/openssl-win64-v3.4.0"]
-	path = libs/openssl-win64-v3.4.0
+[submodule "external/openssl-win64-v3.4.0"]
+	path = external/openssl-win64-v3.4.0
 	url = https://github.com/NewYaroslav/openssl-win64-v3.4.0.git
-[submodule "libs/curl-8.11.0_1-win64-mingw"]
-	path = libs/curl-8.11.0_1-win64-mingw
+[submodule "external/curl-8.11.0_1-win64-mingw"]
+	path = external/curl-8.11.0_1-win64-mingw
 	url = https://github.com/NewYaroslav/curl-8.11.0_1-win64-mingw.git
-[submodule "libs/log-it-cpp"]
-	path = libs/log-it-cpp
+[submodule "external/log-it-cpp"]
+	path = external/log-it-cpp
 	url = https://github.com/NewYaroslav/log-it-cpp.git
-[submodule "libs/Simple-WebSocket-Server"]
-	path = libs/Simple-WebSocket-Server
+[submodule "external/Simple-WebSocket-Server"]
+	path = external/Simple-WebSocket-Server
 	url = https://gitlab.com/eidheim/Simple-WebSocket-Server.git
-[submodule "libs/json"]
-	path = libs/json
+[submodule "external/json"]
+	path = external/json
 	url = https://github.com/nlohmann/json.git
-[submodule "libs/time-shield-cpp"]
-	path = libs/time-shield-cpp
+[submodule "external/time-shield-cpp"]
+	path = external/time-shield-cpp
 	url = https://github.com/NewYaroslav/time-shield-cpp.git
-[submodule "libs/SimpleNamedPipe"]
-	path = libs/SimpleNamedPipe
+[submodule "external/SimpleNamedPipe"]
+	path = external/SimpleNamedPipe
 	url = https://github.com/NewYaroslav/SimpleNamedPipe.git
-[submodule "libs/AES"]
-	path = libs/AES
+[submodule "external/AES"]
+	path = external/AES
 	url = https://github.com/SergeyBel/AES.git
-[submodule "libs/googletest"]
-	path = libs/googletest
+[submodule "external/googletest"]
+	path = external/googletest
 	url = https://github.com/google/googletest.git
-[submodule "libs/mdbx-containers"]
-	path = libs/mdbx-containers
+[submodule "external/mdbx-containers"]
+	path = external/mdbx-containers
 	url = https://github.com/NewYaroslav/mdbx-containers.git
-[submodule "libs/libmdbx"]
-	path = libs/libmdbx
+[submodule "external/libmdbx"]
+	path = external/libmdbx
 	url = https://github.com/Mithril-mine/libmdbx.git

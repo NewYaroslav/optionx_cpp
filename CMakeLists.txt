@@ -18,7 +18,7 @@ set(LOGIT_BASE_PATH "${CMAKE_SOURCE_DIR}" CACHE PATH "Base path for LOGIT logs")
 file(TO_CMAKE_PATH "${LOGIT_BASE_PATH}" LOGIT_BASE_PATH_FWD)
 
 if(BUILD_DEPS)
-    add_subdirectory(libs)
+    add_subdirectory(external)
 endif()
 
 if(BUILD_EXAMPLES)
