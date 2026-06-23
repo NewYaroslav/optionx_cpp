@@ -6,6 +6,7 @@
 /// \brief Defines account trade-history lookup parameters.
 
 #include <cstdint>
+#include <string>
 
 #include <nlohmann/json.hpp>
 
@@ -21,6 +22,7 @@ namespace optionx {
         int64_t stop_ms = 0;  ///< Range end in Unix milliseconds.
         TradeRecordTimeField time_field = TradeRecordTimeField::CLOSE_DATE; ///< Timestamp field used for range filtering.
         TimeRangeMode range_mode = TimeRangeMode::CLOSED; ///< Range inclusion mode; NONE means no time filtering.
+        std::string comment; ///< Optional comment copied to exported TradeRecord entries.
 
         /// \brief Creates a request that loads all available closed trade history.
         /// \return Trade history request with range filtering disabled.
@@ -42,7 +44,8 @@ namespace optionx {
             start_ms,
             stop_ms,
             time_field,
-            range_mode
+            range_mode,
+            comment
         )
     };
 

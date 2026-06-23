@@ -160,7 +160,7 @@ Fetch closed trade history:
 
 ```powershell
 .\build-codex\intrade_bar_smoke_cli.exe history --source=CSV --days=14 --account-type=DEMO
-.\build-codex\intrade_bar_smoke_cli.exe history --source=HTML_CSV --all --account-type=DEMO
+.\build-codex\intrade_bar_smoke_cli.exe history --source=HTML_CSV --all --account-type=DEMO --comment=account-history-export
 ```
 
 History source modes:
@@ -170,7 +170,7 @@ CSV       use /stat_trade_export.php; best financial result coverage
 HTML      parse the authenticated page trade_close block and page older rows
           through /trade_load_more2.php
 HTML_CSV  return only rows found in both CSV and HTML, using CSV financial
-          fields enriched with matching HTML broker IDs
+          fields enriched with matching HTML broker IDs as TradeRecord entries
 ```
 
 `HTML` follows the broker UI flow: `GET /` gives the recent closed trades and
@@ -205,15 +205,17 @@ Useful options:
 --range-mode=CLOSED
 --range-mode=HALF_OPEN
 --account-type=DEMO
+--comment=account-history-export
 --timeout-ms=90000
 ```
 
 `--account-type` selects the account used during authentication. The history
 request itself uses the account that is currently selected in the broker
 session. By default the time range filters by `CLOSE_DATE`; `--all` disables
-time filtering and asks the broker for all available rows.
+time filtering and asks the broker for all available rows. `--comment` is
+copied to each returned `TradeRecord.comment`.
 
-The command prints a compact summary to stdout and writes every fetched trade
+The command prints a compact summary to stdout and writes every fetched record
 to the normal log files under `build-codex\data\logs\`.
 
 Check automatic account/currency recovery:

@@ -362,7 +362,7 @@ struct TradeHistoryFetchAttempt {
     bool success = false;
     long status_code = optionx::TradeHistoryResult::NO_RESPONSE_STATUS;
     std::string error_desc;
-    std::vector<optionx::TradeResult> trades;
+    std::vector<optionx::TradeRecord> records;
     int64_t elapsed_ms = 0;
 };
 
@@ -767,7 +767,7 @@ public:
                 shared->attempt.success = result.success;
                 shared->attempt.status_code = result.status_code;
                 shared->attempt.error_desc = std::move(result.error_desc);
-                shared->attempt.trades = std::move(result.trades);
+                shared->attempt.records = std::move(result.records);
                 shared->done.store(true, std::memory_order_release);
                 LOGIT_INFO(
                     "Intrade Bar smoke history callback: success=",
@@ -776,24 +776,24 @@ public:
                     shared->attempt.status_code,
                     ", error=",
                     shared->attempt.error_desc,
-                    ", trades=",
-                    shared->attempt.trades.size());
-                for (const auto& trade : shared->attempt.trades) {
+                    ", records=",
+                    shared->attempt.records.size());
+                for (const auto& record : shared->attempt.records) {
                     LOGIT_INFO(
-                        "Intrade Bar smoke history trade: option_id=",
-                        trade.option_id,
+                        "Intrade Bar smoke history record: option_id=",
+                        record.option_id,
                         ", symbol=",
-                        trade.symbol,
+                        record.symbol,
                         ", state=",
-                        optionx::to_str(trade.trade_state),
+                        optionx::to_str(record.trade_state),
                         ", amount=",
-                        trade.amount,
+                        record.amount,
                         ", profit=",
-                        trade.profit,
+                        record.profit,
                         ", open_date=",
-                        trade.open_date,
+                        record.open_date,
                         ", close_date=",
-                        trade.close_date);
+                        record.close_date);
                 }
             });
         {

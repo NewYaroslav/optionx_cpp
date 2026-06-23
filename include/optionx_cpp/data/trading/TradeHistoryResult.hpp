@@ -9,9 +9,11 @@
 #include <utility>
 #include <vector>
 
-#include <nlohmann/json.hpp>
-
-#include "TradeResult.hpp"
+#include "TradeRequest.hpp"
+#include "IMoneyManagementParams.hpp"
+#include "ITradeDecisionParams.hpp"
+#include "TradeSignal.hpp"
+#include "TradeRecord.hpp"
 
 namespace optionx {
 
@@ -24,19 +26,19 @@ namespace optionx {
         bool success = false;              ///< Whether the history request succeeded.
         long status_code = NO_HTTP_STATUS; ///< HTTP status code, when available.
         std::string error_desc;            ///< Human-readable failure reason.
-        std::vector<TradeResult> trades;   ///< Closed trades returned by the broker.
+        std::vector<TradeRecord> records;  ///< Closed trade records returned by the broker.
 
         /// \brief Creates a successful history result.
-        /// \param history_trades Closed trades returned by the broker.
+        /// \param history_records Closed trade records returned by the broker.
         /// \param status HTTP status code, if available.
         /// \return Successful result.
         static TradeHistoryResult ok(
-                std::vector<TradeResult> history_trades,
+                std::vector<TradeRecord> history_records,
                 long status = NO_HTTP_STATUS) {
             TradeHistoryResult result;
             result.success = true;
             result.status_code = status;
-            result.trades = std::move(history_trades);
+            result.records = std::move(history_records);
             return result;
         }
 
@@ -64,14 +66,6 @@ namespace optionx {
         explicit operator bool() const noexcept {
             return success;
         }
-
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE(
-            TradeHistoryResult,
-            success,
-            status_code,
-            error_desc,
-            trades
-        )
     };
 
 } // namespace optionx

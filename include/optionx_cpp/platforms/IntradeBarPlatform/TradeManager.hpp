@@ -144,7 +144,7 @@ namespace optionx::platforms::intrade_bar {
                     return;
                 }
                 callback(TradeHistoryResult::ok(
-                    std::move(history_result.value.trades),
+                    std::move(history_result.value.records),
                     history_result.status_code));
             });
         return true;

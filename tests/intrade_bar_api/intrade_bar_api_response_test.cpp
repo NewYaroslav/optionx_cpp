@@ -243,15 +243,15 @@ TEST(IntradeBarApiResponses, ParsesTradeHistoryHtmlSnapshotAndMergesWithCsv) {
     EXPECT_EQ(html_trades[0].close_date, time_shield::sec_to_ms(1719146373));
     EXPECT_EQ(html_trades[0].duration, 300);
 
-    std::vector<TradeResult> csv_trades;
-    TradeResult csv_trade;
+    std::vector<TradeRecord> csv_trades;
+    TradeRecord csv_trade;
     csv_trade.symbol = "BTCUSDT";
     csv_trade.open_date = time_shield::sec_to_ms(1719146074);
     csv_trade.open_price = 62830.01;
     csv_trade.amount = 1.0;
     csv_trade.trade_state = TradeState::WIN;
     csv_trades.push_back(csv_trade);
-    TradeResult csv_only_trade;
+    TradeRecord csv_only_trade;
     csv_only_trade.symbol = "GBPUSD";
     csv_only_trade.open_date = time_shield::sec_to_ms(1719146074);
     csv_only_trade.open_price = 1.25001;
@@ -268,23 +268,23 @@ TEST(IntradeBarApiResponses, ParsesTradeHistoryHtmlSnapshotAndMergesWithCsv) {
 }
 
 TEST(IntradeBarApiResponses, DoesNotFuzzyMatchDifferentBrokerIds) {
-    std::vector<TradeResult> csv_trades;
-    TradeResult first_csv;
+    std::vector<TradeRecord> csv_trades;
+    TradeRecord first_csv;
     first_csv.option_id = 1;
     first_csv.symbol = "BTCUSDT";
     first_csv.open_date = time_shield::sec_to_ms(1000);
     first_csv.open_price = 64006.0;
     csv_trades.push_back(first_csv);
 
-    TradeResult second_csv;
+    TradeRecord second_csv;
     second_csv.option_id = 2;
     second_csv.symbol = "BTCUSDT";
     second_csv.open_date = time_shield::sec_to_ms(1004);
     second_csv.open_price = 64006.0;
     csv_trades.push_back(second_csv);
 
-    std::vector<TradeResult> html_trades;
-    TradeResult second_html;
+    std::vector<TradeRecord> html_trades;
+    TradeRecord second_html;
     second_html.option_id = 2;
     second_html.symbol = "BTCUSDT";
     second_html.open_date = time_shield::sec_to_ms(1004);
@@ -292,7 +292,7 @@ TEST(IntradeBarApiResponses, DoesNotFuzzyMatchDifferentBrokerIds) {
     second_html.duration = 300;
     html_trades.push_back(second_html);
 
-    TradeResult first_html;
+    TradeRecord first_html;
     first_html.option_id = 1;
     first_html.symbol = "BTCUSDT";
     first_html.open_date = time_shield::sec_to_ms(1000);
@@ -391,28 +391,28 @@ TEST(IntradeBarApiResponses, ParsesTradeCloseHtmlPageAndNextCursor) {
     )HTML";
 
     const auto page = parse_trade_history_html_page(html, AccountType::DEMO);
-    ASSERT_EQ(page.trades.size(), 3u);
+    ASSERT_EQ(page.records.size(), 3u);
     EXPECT_EQ(page.next_last, "224130496");
 
-    EXPECT_EQ(page.trades[0].option_id, 224157357);
-    EXPECT_EQ(page.trades[0].symbol, "BTCUSDT");
-    EXPECT_EQ(page.trades[0].order_type, OrderType::BUY);
-    EXPECT_EQ(page.trades[0].trade_state, TradeState::WIN);
-    EXPECT_EQ(page.trades[0].duration, 300);
-    EXPECT_DOUBLE_EQ(page.trades[0].amount, 1.0);
-    EXPECT_DOUBLE_EQ(page.trades[0].profit, 0.79);
-    EXPECT_DOUBLE_EQ(page.trades[0].payout, 0.79);
-    EXPECT_EQ(page.trades[0].currency, CurrencyType::USD);
+    EXPECT_EQ(page.records[0].option_id, 224157357);
+    EXPECT_EQ(page.records[0].symbol, "BTCUSDT");
+    EXPECT_EQ(page.records[0].order_type, OrderType::BUY);
+    EXPECT_EQ(page.records[0].trade_state, TradeState::WIN);
+    EXPECT_EQ(page.records[0].duration, 300);
+    EXPECT_DOUBLE_EQ(page.records[0].amount, 1.0);
+    EXPECT_DOUBLE_EQ(page.records[0].profit, 0.79);
+    EXPECT_DOUBLE_EQ(page.records[0].payout, 0.79);
+    EXPECT_EQ(page.records[0].currency, CurrencyType::USD);
 
-    EXPECT_EQ(page.trades[1].option_id, 224130715);
-    EXPECT_EQ(page.trades[1].order_type, OrderType::SELL);
-    EXPECT_EQ(page.trades[1].duration, 360);
-    EXPECT_EQ(page.trades[1].trade_state, TradeState::WIN);
+    EXPECT_EQ(page.records[1].option_id, 224130715);
+    EXPECT_EQ(page.records[1].order_type, OrderType::SELL);
+    EXPECT_EQ(page.records[1].duration, 360);
+    EXPECT_EQ(page.records[1].trade_state, TradeState::WIN);
 
-    EXPECT_EQ(page.trades[2].option_id, 224130651);
-    EXPECT_EQ(page.trades[2].order_type, OrderType::BUY);
-    EXPECT_EQ(page.trades[2].trade_state, TradeState::LOSS);
-    EXPECT_DOUBLE_EQ(page.trades[2].profit, -1.0);
+    EXPECT_EQ(page.records[2].option_id, 224130651);
+    EXPECT_EQ(page.records[2].order_type, OrderType::BUY);
+    EXPECT_EQ(page.records[2].trade_state, TradeState::LOSS);
+    EXPECT_DOUBLE_EQ(page.records[2].profit, -1.0);
 }
 
 TEST(IntradeBarApiResponses, ParsesTradeLoadMoreRowsWithoutTableWrapper) {
@@ -446,11 +446,11 @@ TEST(IntradeBarApiResponses, ParsesTradeLoadMoreRowsWithoutTableWrapper) {
     )HTML";
 
     const auto page = parse_trade_history_html_page(html, AccountType::DEMO);
-    ASSERT_EQ(page.trades.size(), 1u);
+    ASSERT_EQ(page.records.size(), 1u);
     EXPECT_TRUE(page.next_last.empty());
-    EXPECT_EQ(page.trades[0].option_id, 224130496);
-    EXPECT_EQ(page.trades[0].trade_state, TradeState::WIN);
-    EXPECT_DOUBLE_EQ(page.trades[0].profit, 0.6);
+    EXPECT_EQ(page.records[0].option_id, 224130496);
+    EXPECT_EQ(page.records[0].trade_state, TradeState::WIN);
+    EXPECT_DOUBLE_EQ(page.records[0].profit, 0.6);
 }
 
 TEST(IntradeBarApiResponses, ParsesActiveTradesAndLatestCloseTime) {

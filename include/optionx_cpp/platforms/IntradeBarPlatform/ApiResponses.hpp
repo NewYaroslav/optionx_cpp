@@ -114,7 +114,7 @@ namespace optionx::platforms::intrade_bar {
 
     /// \brief Closed trade history payload.
     struct TradeHistory {
-        std::vector<TradeResult> trades;
+        std::vector<TradeRecord> records;
     };
 
     /// \brief Applies Intrade Bar trade-check payload to a common TradeResult.

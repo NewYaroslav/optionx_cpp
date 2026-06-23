@@ -55,6 +55,20 @@ TEST(TradeHistoryRequest, ValidatesRangeModes) {
     EXPECT_TRUE(all.has_valid_range());
 }
 
+TEST(TradeHistoryRequest, RoundTripsCommentJson) {
+    TradeHistoryRequest request;
+    request.start_ms = 1000;
+    request.stop_ms = 2000;
+    request.comment = "account-history-export";
+
+    nlohmann::json json = request;
+    const auto restored = json.get<TradeHistoryRequest>();
+
+    EXPECT_EQ(restored.start_ms, request.start_ms);
+    EXPECT_EQ(restored.stop_ms, request.stop_ms);
+    EXPECT_EQ(restored.comment, request.comment);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

@@ -28,7 +28,7 @@ void print_usage(std::ostream& out) {
         << "  intrade_bar_smoke_cli show-account\n"
         << "  intrade_bar_smoke_cli domain-check [--domain-min=-1] [--domain-max=1000]\n"
         << "  intrade_bar_smoke_cli quotes [--symbol=EURUSD]\n"
-        << "  intrade_bar_smoke_cli history [--source=CSV|HTML|HTML_CSV] [--days=14|--all] [--time-field=CLOSE_DATE] [--account-type=DEMO]\n"
+        << "  intrade_bar_smoke_cli history [--source=CSV|HTML|HTML_CSV] [--days=14|--all] [--time-field=CLOSE_DATE] [--comment=...]\n"
         << "  intrade_bar_smoke_cli switch-check --confirm [--account-type=DEMO] [--currency=USD]\n"
         << "  intrade_bar_smoke_cli open-trade --confirm [--symbol=EURUSD] [--amount=1] [--duration=60] [--buy|--sell]\n"
         << "  intrade_bar_smoke_cli open-check-result --confirm [--symbol=BTCUSDT] [--amount=1] [--duration=300] [--buy|--sell]\n"
@@ -461,6 +461,30 @@ void print_trade_result_line(
         << '\n';
 }
 
+void print_trade_record_line(
+        std::ostream& out,
+        const std::string& prefix,
+        const optionx::TradeRecord& record) {
+    out << prefix
+        << " state=" << optionx::to_str(record.trade_state)
+        << " option_id=" << record.option_id
+        << " symbol=" << record.symbol
+        << " option_type=" << optionx::to_str(record.option_type)
+        << " order=" << optionx::to_str(record.order_type)
+        << " amount=" << std::setprecision(12) << record.amount
+        << " currency=" << optionx::to_str(record.currency)
+        << " open_price=" << std::setprecision(12) << record.open_price
+        << " close_price=" << std::setprecision(12) << record.close_price
+        << " profit=" << std::setprecision(12) << record.profit
+        << " payout=" << std::setprecision(12) << record.payout
+        << " balance=" << std::setprecision(12) << record.balance
+        << " open_date=" << record.open_date
+        << " close_date=" << record.close_date
+        << " comment=" << record.comment
+        << " error=" << record.error_desc
+        << '\n';
+}
+
 int run_history(smoke::IntradeBarSmokeConfig config, const CliOptions& options) {
     if (!smoke::require_live_config(config, std::cerr)) return 2;
 
@@ -501,6 +525,10 @@ int run_history(smoke::IntradeBarSmokeConfig config, const CliOptions& options) 
             "time-field",
             trade_history_time_field_to_string(request.time_field)),
         request.time_field);
+    request.comment = smoke::option_value_or(
+        options.values,
+        "comment",
+        request.comment);
     if (!fetch_all) {
         request.start_ms = from_ms;
         request.stop_ms = to_ms;
@@ -520,6 +548,7 @@ int run_history(smoke::IntradeBarSmokeConfig config, const CliOptions& options) 
               << " time_field=" << trade_history_time_field_to_string(request.time_field)
               << " from_ms=" << request.start_ms
               << " to_ms=" << request.stop_ms
+              << " comment=" << request.comment
               << " timeout_ms=" << timeout_ms
               << '\n';
 
@@ -532,12 +561,12 @@ int run_history(smoke::IntradeBarSmokeConfig config, const CliOptions& options) 
               << " callback=" << history.callback_received
               << " success=" << history.success
               << " status_code=" << history.status_code
-              << " trades=" << history.trades.size()
+              << " records=" << history.records.size()
               << " elapsed_ms=" << history.elapsed_ms
               << " error=" << history.error_desc
               << '\n';
-    for (const auto& trade : history.trades) {
-        print_trade_result_line(std::cout, "history_trade", trade);
+    for (const auto& record : history.records) {
+        print_trade_record_line(std::cout, "history_record", record);
     }
 
     runtime.disconnect();

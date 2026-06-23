@@ -33,7 +33,6 @@
 #include "trading/TradeResultQuery.hpp"
 #include "trading/TradeRecordTimeRange.hpp"
 #include "trading/TradeHistoryRequest.hpp"
-#include "trading/TradeHistoryResult.hpp"
 #include "trading/TradeRequest.hpp"
 #include "trading/IMoneyManagementParams.hpp"
 #include "trading/ITradeDecisionParams.hpp"
@@ -41,6 +40,7 @@
 #include "trading/TradeRecord.hpp"
 #include "trading/TradeRecordFilter.hpp"
 #include "trading/TradeRecordQuery.hpp"
+#include "trading/TradeHistoryResult.hpp"
 #include "trading/TradeStats.hpp"
 
 #endif // _OPTIONX_TRADING_HPP_INCLUDED
