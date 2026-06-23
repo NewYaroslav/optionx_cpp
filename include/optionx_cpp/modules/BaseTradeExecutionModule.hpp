@@ -21,6 +21,8 @@ namespace optionx::modules {
     /// - `PriceUpdateEvent` – Updates trade states based on market prices.
     /// - `DisconnectRequestEvent` – Handles connection loss and forces trade finalization.
     ///
+    /// - `OpenTradesSnapshotEvent` - Synchronizes broker-side active trades when the local queue is idle.
+    ///
     /// ### Emitted Events:
     /// - `TradeTransactionEvent` – Notifies about trade request updates.
     /// - `TradeRequestEvent` – Sent when a trade request is accepted for processing.

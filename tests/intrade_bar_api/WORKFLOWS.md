@@ -33,6 +33,9 @@ Used by `AuthManager` for `AuthMethod::EMAIL_PASSWORD`.
    optional `request_switch_currency` -> `request_balance`.
 7. On successful balance fetch, mark the account connected and publish account
    updates.
+8. `ActiveTradesSyncManager` reacts to the connected account update and calls
+   `request_active_trades_snapshot` to synchronize broker-side active trades
+   with the trade queue counter.
 
 Negative password/auth checks are manual smoke tests only: repeated failed
 broker logins can lock the account for hours.
@@ -69,6 +72,22 @@ Started after `AccountInfoUpdateEvent::CONNECTED`.
 4. While disconnected, retry host check using
    `AuthData::disconnected_domain_retry_period_ms`; if it fails, run domain
    discovery and then request balance again.
+
+## Active Trades Sync
+
+Started by `ActiveTradesSyncManager` after a connected account update, and also
+when `RestartAuthEvent` indicates suspicious account state.
+
+1. Call `request_active_trades_snapshot`, which fetches the authenticated main
+   page and parses rows from the `trade_active` block.
+2. Publish `OpenTradesSnapshotEvent` with the broker active-trade count and
+   known close timestamps.
+3. `TradeQueueManager` accepts the snapshot only while its local pending/open
+   queues are empty.
+4. Snapshot trades are counted separately from locally opened trades. The
+   public `OpenTradesEvent` reports the combined count.
+5. For each known close timestamp, `TradeQueueManager` decreases the snapshot
+   part after `AuthData::active_trades_close_buffer_ms`.
 
 ## Price Polling
 

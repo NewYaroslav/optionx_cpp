@@ -58,6 +58,7 @@ struct IntradeBarSmokeConfig {
     int64_t settings_switch_retry_timeout_ms = time_shield::MS_PER_10_MIN;
     int64_t settings_switch_retry_delay_ms = time_shield::MS_PER_15_SEC;
     int64_t settings_switch_active_trade_buffer_ms = time_shield::MS_PER_5_SEC;
+    int64_t active_trades_close_buffer_ms = time_shield::MS_PER_SEC;
     optionx::platforms::intrade_bar::TradeHistorySource trade_history_source =
         optionx::platforms::intrade_bar::TradeHistorySource::CSV;
     std::string quote_symbol = "EURUSD";
@@ -165,6 +166,9 @@ inline IntradeBarSmokeConfig load_config() {
     config.settings_switch_active_trade_buffer_ms = parse_i64(
         config_value(file_values, "OPTIONX_INTRADE_BAR_SETTINGS_SWITCH_ACTIVE_TRADE_BUFFER_MS", "5000"),
         time_shield::MS_PER_5_SEC);
+    config.active_trades_close_buffer_ms = parse_i64(
+        config_value(file_values, "OPTIONX_INTRADE_BAR_ACTIVE_TRADES_CLOSE_BUFFER_MS", "1000"),
+        time_shield::MS_PER_SEC);
     config.trade_history_source =
         optionx::platforms::intrade_bar::trade_history_source_from_string(
             config_value(file_values, "OPTIONX_INTRADE_BAR_TRADE_HISTORY_SOURCE", "CSV"),
@@ -216,6 +220,8 @@ inline std::unique_ptr<optionx::platforms::intrade_bar::AuthData> make_auth_data
     auth_data->settings_switch_retry_delay_ms = config.settings_switch_retry_delay_ms;
     auth_data->settings_switch_active_trade_buffer_ms =
         config.settings_switch_active_trade_buffer_ms;
+    auth_data->active_trades_close_buffer_ms =
+        config.active_trades_close_buffer_ms;
     auth_data->trade_history_source = config.trade_history_source;
     auth_data->proxy_server = config.proxy_server;
     auth_data->proxy_auth = config.proxy_auth;
