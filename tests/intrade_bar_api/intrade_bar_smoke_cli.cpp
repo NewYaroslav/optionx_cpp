@@ -80,8 +80,6 @@ const char* trade_history_time_field_to_string(optionx::TradeRecordTimeField val
         return "OPEN_DATE";
     case optionx::TradeRecordTimeField::CLOSE_DATE:
         return "CLOSE_DATE";
-    case optionx::TradeRecordTimeField::EXPIRY_DATE:
-        return "EXPIRY_DATE";
     case optionx::TradeRecordTimeField::AUTO:
     default:
         return "AUTO";
@@ -98,7 +96,6 @@ optionx::TradeRecordTimeField parse_trade_history_time_field(
     if (normalized == "SEND_DATE" || normalized == "SEND") return optionx::TradeRecordTimeField::SEND_DATE;
     if (normalized == "OPEN_DATE" || normalized == "OPEN") return optionx::TradeRecordTimeField::OPEN_DATE;
     if (normalized == "CLOSE_DATE" || normalized == "CLOSE") return optionx::TradeRecordTimeField::CLOSE_DATE;
-    if (normalized == "EXPIRY_DATE" || normalized == "EXPIRY") return optionx::TradeRecordTimeField::EXPIRY_DATE;
     return fallback;
 }
 
@@ -477,7 +474,6 @@ void print_trade_record_line(
         << " balance=" << std::setprecision(12) << record.balance
         << " open_date=" << record.open_date
         << " close_date=" << record.close_date
-        << " expiry_date=" << record.expiry_date
         << " comment=" << record.comment
         << " error=" << record.error_desc
         << '\n';

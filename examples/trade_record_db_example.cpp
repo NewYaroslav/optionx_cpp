@@ -17,7 +17,7 @@ optionx::TradeRecord make_open_record(const optionx::TradeRequest& request, std:
     record.place_date = timestamp_ms - 25;
     record.send_date = timestamp_ms - 10;
     record.open_date = timestamp_ms;
-    record.expiry_date = timestamp_ms + request.duration * 1000;
+    record.close_date = timestamp_ms + request.duration * 1000;
     record.trade_state = optionx::TradeState::IN_PROGRESS;
     record.live_state = optionx::TradeState::IN_PROGRESS;
     record.option_id = 123456;

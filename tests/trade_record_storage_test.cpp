@@ -152,10 +152,28 @@ TEST(TradeRecordFactoryTest, AssignsRequestResultAndSignalData) {
     EXPECT_EQ(record.request_unique_hash, "request-hash");
     EXPECT_EQ(record.option_id, 123456);
     EXPECT_EQ(record.option_hash, "broker-hash");
-    EXPECT_EQ(record.expiry_date, 1712345700000);
+    EXPECT_EQ(record.close_date, 1712345700000);
     EXPECT_EQ(record.mm_type, optionx::MmSystemType::MARTINGALE_SIGNAL);
     EXPECT_EQ(nlohmann::json::parse(record.mm_params_json).at("step"), 3);
     EXPECT_EQ(nlohmann::json::parse(record.decision_params_json).at("threshold"), 0.65);
+}
+
+TEST(TradeRecordFactoryTest, UsesCloseDateForPlannedAndKnownCloseTime) {
+    const auto request = make_request();
+
+    const auto request_record = optionx::TradeRecord::from_trade(request);
+    EXPECT_EQ(request_record.close_date, 1712345700000);
+
+    auto partial_result = make_result();
+    partial_result.close_date = 0;
+    const auto partial_record = optionx::TradeRecord::from_trade(request, partial_result);
+    EXPECT_EQ(partial_record.close_date, 1712345700000);
+
+    auto sprint_request = make_request();
+    sprint_request.option_type = optionx::OptionType::SPRINT;
+    sprint_request.expiry_time = 0;
+    const auto sprint_record = optionx::TradeRecord::from_trade(sprint_request);
+    EXPECT_EQ(sprint_record.close_date, 0);
 }
 
 TEST(TradeRecordIdentityTest, MatchesBrokerIdentityWithKnownContext) {

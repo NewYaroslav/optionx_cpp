@@ -69,7 +69,6 @@ TradeRecord make_record(
     record.send_date = open_date;
     record.open_date = open_date;
     record.close_date = open_date + 60000;
-    record.expiry_date = open_date + 60000;
     record.duration = 60;
     record.mm_type = optionx::MmSystemType::MARTINGALE_SIGNAL;
     record.mm_step = 2;

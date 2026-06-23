@@ -43,22 +43,85 @@ cmake -G "CodeBlocks - MinGW Makefiles" -S . -B build-cb
 
 ## Tests
 
-Текущие test files:
+CMake берет `tests/**/*.cpp` через `GLOB_RECURSE CONFIGURE_DEPENDS` и создает
+отдельный executable для каждого test source.
 
-- `tests/intrade_bar_platform_test.cpp`
-- `tests/intrade_ping_sweep.cpp`
-- `tests/trade_manager_test.cpp`
-- `tests/tradeup_ws_invalid_token_probe.cpp`
+Target naming:
 
-CMake берет `tests/*.cpp` и создает executable с именем файла без расширения.
-Для нового теста достаточно добавить `.cpp` в `tests`, если он использует
-существующую схему include/link.
+- Если basename уникален, target name равен имени файла без расширения:
+  `tests/trade_result_query_test.cpp` -> `trade_result_query_test`.
+- Если в разных подпапках есть одинаковый basename, для этого basename
+  используется path-derived target:
+  `tests/platforms/intrade_bar/api_response_test.cpp` ->
+  `tests_platforms_intrade_bar_api_response_test`.
+- После нормализации `MAKE_C_IDENTIFIER` CMake дополнительно проверяет
+  target-name collisions и показывает оба конфликтующих source path.
+
+Для нового теста достаточно добавить `.cpp` в `tests` или подпапку `tests/*`,
+если он использует существующую схему include/link.
+
+Полезные текущие targets:
+
+- `intrade_bar_api_response_test` - parser/typed-result fixtures Intrade Bar.
+- `intrade_bar_auth_smoke_test` - guarded online auth smoke; требует proxy.
+- `intrade_bar_smoke_cli` - ручная CLI для broker workflows.
+- `trade_result_query_test` - DTO/query behavior.
+- `trade_record_storage_test`, `trade_record_db_test`,
+  `trade_record_stats_test` - storage/statistics behavior.
+- `trade_manager_test` - trade execution lifecycle.
+- `tradeup_ws_invalid_token_probe` - TradeUp WebSocket probe.
 
 Линкуемые libs для tests в `CMakeLists.txt`: `ws2_32`, `wsock32`, `crypt32`,
 `ssl`, `crypto`, `curl`, `mdbx`, `ntdll`, `bcrypt`, `AES`, `gtest`.
 
 Compile definition: `ASIO_STANDALONE`. Для tests также задается
 `LOGIT_BASE_PATH`.
+
+## Intrade Bar Smoke CLI
+
+Живые broker workflows вынесены в `tests/intrade_bar_api`.
+
+Документы:
+
+- `tests/intrade_bar_api/README.md` - обзор smoke-подхода.
+- `tests/intrade_bar_api/CLI.md` - команды `intrade_bar_smoke_cli`.
+- `tests/intrade_bar_api/WORKFLOWS.md` - фактические HTTP sequences.
+
+Правила:
+
+- Любой автоматический credentialed broker request должен идти через proxy.
+- Credentials/proxy хранятся только в untracked `*.local.env`.
+- `OPTIONX_INTRADE_BAR_CONFIG_FILE` указывает на локальный env-файл.
+- Negative-auth сценарии не автоматизировать: broker может заблокировать вход
+  на несколько часов после failed login attempts.
+- Guarded trade commands требуют `--confirm` или
+  `OPTIONX_INTRADE_BAR_ALLOW_TRADE=1`.
+
+Пример сборки CLI:
+
+```bash
+cmake --build build-codex --target intrade_bar_smoke_cli -- -j1
+```
+
+Пример запуска с локальным config file:
+
+```powershell
+$env:OPTIONX_INTRADE_BAR_CONFIG_FILE="tests\intrade_bar_api\intrade_bar_api.local.env"
+.\build-codex\intrade_bar_smoke_cli.exe show-account
+```
+
+## Include-Contract Checks
+
+При изменении публичных aggregate headers или include policy добавляй или
+обновляй тест, который подключает intended public entry point:
+
+```cpp
+#include <optionx_cpp/data.hpp>
+#include <optionx_cpp/platforms/IntradeBarPlatform.hpp>
+```
+
+Direct leaf includes допустимы для white-box tests, но они не должны заменять
+проверку публичного include contract.
 
 ## Examples
 

@@ -605,7 +605,6 @@ namespace optionx::platforms::intrade_bar {
             }
             if (auto close_time = parse_history_row_close_time_ms(row)) {
                 record.close_date = *close_time;
-                record.expiry_date = record.close_date;
                 if (record.open_date > 0 && record.close_date >= record.open_date) {
                     record.duration = time_shield::ms_to_sec(record.close_date - record.open_date);
                 }
@@ -655,7 +654,6 @@ namespace optionx::platforms::intrade_bar {
             record.symbol = normalize_history_symbol(price_lines[0]);
             record.open_date = *open_time;
             record.close_date = *close_time;
-            record.expiry_date = record.close_date;
             if (record.close_date >= record.open_date) {
                 record.duration = time_shield::ms_to_sec(record.close_date - record.open_date);
             }
@@ -847,7 +845,6 @@ namespace optionx::platforms::intrade_bar {
 
             record.open_date = *open_time;
             record.close_date = *close_time;
-            record.expiry_date = record.close_date;
             if (record.close_date >= record.open_date) {
                 record.duration = time_shield::ms_to_sec(record.close_date - record.open_date);
             }

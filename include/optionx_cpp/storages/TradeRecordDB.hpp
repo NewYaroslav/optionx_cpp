@@ -75,7 +75,7 @@ namespace optionx::storage {
     ///
     /// For correct chronological ordering and range queries, callers should set
     /// TradeRecord::place_date before writing. The AUTO timestamp selector uses
-    /// place_date as the first priority (place -> send -> open -> close -> expiry).
+    /// place_date as the first priority (place -> send -> open -> close).
     ///
     /// Callbacks are delivered only by process(), flush(), or shutdown() on the
     /// calling thread. For broker execution, either call assign_trade_id() before
@@ -174,7 +174,7 @@ namespace optionx::storage {
         TradeRecordDBReadResult find_by_uid(std::int64_t request_unique_id) const;
 
         /// \brief Finds all records whose selected trade timestamp equals timestamp_ms.
-        /// \param timestamp_ms Millisecond timestamp matched against open/place/send/close/expiry date.
+        /// \param timestamp_ms Millisecond timestamp matched against open/place/send/close date.
         /// \return List result sorted by selected timestamp and trade_id.
         TradeRecordDBListResult find_by_timestamp(std::int64_t timestamp_ms) const;
 

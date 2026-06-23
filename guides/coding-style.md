@@ -10,6 +10,14 @@
 - Public headers используют `#pragma once` и macro guard:
   `_OPTIONX_<AREA>_<NAME>_HPP_INCLUDED`.
 - Public aggregate headers лежат в `include/optionx_cpp/*.hpp`.
+- External consumers include public headers with the installed prefix, for
+  example `<optionx_cpp/data.hpp>` or
+  `<optionx_cpp/platforms/IntradeBarPlatform.hpp>`.
+- Internal headers under `include/optionx_cpp` include other project headers
+  with local paths from `include/optionx_cpp`, for example
+  `"data/trading.hpp"`, `"utils/http_utils.hpp"`, and
+  `"platforms/common/ApiResult.hpp"`.
+- Do not use `"optionx_cpp/..."` inside `include/optionx_cpp`.
 - Prefer the nearest aggregate header for public-domain and cross-domain
   dependencies; do not rebuild aggregate include order inside leaf DTO headers.
 - Do not use `../` in `#include` directives.

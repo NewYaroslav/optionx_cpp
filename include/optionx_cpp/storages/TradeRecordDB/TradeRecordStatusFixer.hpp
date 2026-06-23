@@ -70,8 +70,6 @@ namespace optionx::storage {
                 bool should_check_error = false;
                 if (rec.close_date > 0 && rec.close_date < stale_border) {
                     should_check_error = true;
-                } else if (rec.expiry_date > 0 && rec.expiry_date < stale_border) {
-                    should_check_error = true;
                 } else if (rec.open_date > 0 && rec.duration > 0 &&
                            (rec.open_date + rec.duration * 1000) < stale_border) {
                     should_check_error = true;

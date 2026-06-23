@@ -220,7 +220,6 @@ TEST(IntradeBarApiResponses, ParsesTradeHistoryCsvExport) {
     EXPECT_EQ(trades[0].account_type, AccountType::DEMO);
     EXPECT_EQ(trades[0].platform_type, PlatformType::INTRADE_BAR);
     EXPECT_EQ(trades[0].duration, 180);
-    EXPECT_EQ(trades[0].expiry_date, trades[0].close_date);
 
     EXPECT_EQ(trades[1].option_id, 123);
     EXPECT_EQ(trades[1].symbol, "AUDNZD");
@@ -241,7 +240,6 @@ TEST(IntradeBarApiResponses, ParsesTradeHistoryCsvExport) {
     EXPECT_EQ(trades[4].currency, CurrencyType::RUB);
     EXPECT_EQ(trades[4].trade_state, TradeState::WIN);
     EXPECT_DOUBLE_EQ(trades[4].profit, 80.0);
-    EXPECT_EQ(trades[4].expiry_date, trades[4].close_date);
 }
 
 TEST(IntradeBarApiResponses, ParsesTradeHistoryHtmlSnapshotAndMergesWithCsv) {
@@ -262,7 +260,6 @@ TEST(IntradeBarApiResponses, ParsesTradeHistoryHtmlSnapshotAndMergesWithCsv) {
     EXPECT_EQ(html_trades[0].option_type, OptionType::SPRINT);
     EXPECT_EQ(html_trades[0].open_date, time_shield::sec_to_ms(1719146073));
     EXPECT_EQ(html_trades[0].close_date, time_shield::sec_to_ms(1719146373));
-    EXPECT_EQ(html_trades[0].expiry_date, html_trades[0].close_date);
     EXPECT_EQ(html_trades[0].duration, 300);
 
     std::vector<TradeRecord> csv_trades;
@@ -421,7 +418,6 @@ TEST(IntradeBarApiResponses, ParsesTradeCloseHtmlPageAndNextCursor) {
     EXPECT_EQ(page.records[0].order_type, OrderType::BUY);
     EXPECT_EQ(page.records[0].trade_state, TradeState::WIN);
     EXPECT_EQ(page.records[0].duration, 300);
-    EXPECT_EQ(page.records[0].expiry_date, page.records[0].close_date);
     EXPECT_DOUBLE_EQ(page.records[0].amount, 1.0);
     EXPECT_DOUBLE_EQ(page.records[0].profit, 0.79);
     EXPECT_DOUBLE_EQ(page.records[0].payout, 0.79);
