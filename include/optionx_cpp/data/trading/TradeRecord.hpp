@@ -389,7 +389,7 @@ namespace optionx {
 
     private:
         static constexpr std::uint32_t kBinaryMagic = 0x5254584fU; // "OXTR" on little-endian hosts.
-        static constexpr std::uint16_t kBinaryVersion = 1;
+        static constexpr std::uint16_t kBinaryVersion = 4;
 
         template<typename T>
         static bool same_known(T lhs, T rhs, T unknown) noexcept {
