@@ -445,9 +445,6 @@ void print_trade_result_line(
     out << prefix
         << " state=" << optionx::to_str(result.trade_state)
         << " option_id=" << result.option_id
-        << " symbol=" << result.symbol
-        << " option_type=" << optionx::to_str(result.option_type)
-        << " order=" << optionx::to_str(result.order_type)
         << " amount=" << std::setprecision(12) << result.amount
         << " currency=" << optionx::to_str(result.currency)
         << " open_price=" << std::setprecision(12) << result.open_price
@@ -480,6 +477,7 @@ void print_trade_record_line(
         << " balance=" << std::setprecision(12) << record.balance
         << " open_date=" << record.open_date
         << " close_date=" << record.close_date
+        << " expiry_date=" << record.expiry_date
         << " comment=" << record.comment
         << " error=" << record.error_desc
         << '\n';

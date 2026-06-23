@@ -126,11 +126,15 @@ The HTML load-more endpoint does not take `status_real`; it follows the account
 currently selected in the broker session. The auth/connect workflow must switch
 the broker to the desired account before an HTML history request.
 
-`TradeHistoryRequest::all()` disables time filtering for full broker export
-workflows. Ranged requests default to `CLOSE_DATE`, which matches the usual
-closed-trade DB query semantics; callers can choose another
-`TradeRecordTimeField` when they need a different time axis. Optional
-`TradeHistoryRequest::comment` is copied to each returned `TradeRecord.comment`.
+`TradeHistoryRequest::all()` disables client-side time filtering for full broker
+export workflows; the CSV source still sends the broker a finite range starting
+at `2000-01-01` because that endpoint requires dates. Ranged requests default
+to `CLOSE_DATE`, which matches the usual closed-trade DB query semantics;
+callers can choose another `TradeRecordTimeField` when they need a different
+time axis. Records missing the selected timestamp are excluded from ranged
+results. For Intrade Bar closed history, `EXPIRY_DATE` is populated from
+`CLOSE_DATE`. Optional `TradeHistoryRequest::comment` is copied to each returned
+`TradeRecord.comment`.
 
 ## Manual Trade Result Recovery Check
 

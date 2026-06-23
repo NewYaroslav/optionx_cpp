@@ -212,8 +212,12 @@ Useful options:
 `--account-type` selects the account used during authentication. The history
 request itself uses the account that is currently selected in the broker
 session. By default the time range filters by `CLOSE_DATE`; `--all` disables
-time filtering and asks the broker for all available rows. `--comment` is
-copied to each returned `TradeRecord.comment`.
+time filtering and asks the broker for all available rows. For the CSV source,
+the adapter maps this to the broker-required date range starting at
+`2000-01-01`. `--comment` is copied to each returned `TradeRecord.comment`.
+Rows without the selected `--time-field` timestamp are excluded from ranged
+requests. Intrade Bar history currently provides `OPEN_DATE`, `CLOSE_DATE`, and
+`EXPIRY_DATE` (`EXPIRY_DATE` matches `CLOSE_DATE` for closed binary trades).
 
 The command prints a compact summary to stdout and writes every fetched record
 to the normal log files under `build-codex\data\logs\`.

@@ -1022,7 +1022,7 @@ namespace optionx::platforms::intrade_bar {
                     [&request](const TradeRecord& record) {
                         const int64_t timestamp =
                             select_trade_history_timestamp(record, request.time_field);
-                        if (timestamp <= 0) return false;
+                        if (timestamp <= 0) return true;
                         if (request.range_mode == TimeRangeMode::HALF_OPEN) {
                             return timestamp < request.start_ms ||
                                 timestamp >= request.stop_ms;
@@ -1150,6 +1150,8 @@ namespace optionx::platforms::intrade_bar {
                 long status_code,
                 std::vector<TradeRecord> records)> callback) {
         constexpr int64_t broker_offset_sec = 3 * time_shield::SEC_PER_HOUR;
+        // The broker CSV export endpoint requires finite dates; 2000-01-01 is
+        // used as a practical lower bound for "all available" history.
         const int64_t start_ms = request.range_mode == TimeRangeMode::NONE ?
             time_shield::sec_to_ms(time_shield::to_timestamp(2000, 1, 1)) :
             request.start_ms;

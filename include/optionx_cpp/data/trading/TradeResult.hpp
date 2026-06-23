@@ -26,9 +26,6 @@ namespace optionx {
         std::string error_desc;                                ///< Human-readable error description
 
         // Trade identification
-        std::string symbol;         ///< Trading symbol.
-        OptionType option_type = OptionType::UNKNOWN; ///< Binary option type.
-        OrderType order_type = OrderType::UNKNOWN;   ///< Trade direction.
         std::string option_hash;    ///< Unique broker-side order identifier
         int64_t option_id = 0;      ///< Numeric broker-side order ID
 
@@ -43,7 +40,6 @@ namespace optionx {
         double close_price = 0.0;   ///< Exit price at position closing
 
         // Timing parameters (milliseconds)
-        int64_t duration = 0;       ///< Trade duration in seconds.
         int64_t delay = 0;          ///< Order processing delay
         int64_t ping = 0;           ///< Network latency measurement
         int64_t place_date = 0;     ///< Order creation timestamp
@@ -81,9 +77,6 @@ namespace optionx {
             trade_id,
             error_code,
             error_desc,
-            symbol,
-            option_type,
-            order_type,
             option_hash,
             option_id,
             amount,
@@ -92,7 +85,6 @@ namespace optionx {
             balance,
             open_price,
             close_price,
-            duration,
             delay,
             ping,
             place_date,
