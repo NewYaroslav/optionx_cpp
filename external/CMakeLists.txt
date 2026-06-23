@@ -1,6 +1,6 @@
 # external/CMakeLists.txt
 cmake_minimum_required(VERSION 3.18)
-project(LibsProject LANGUAGES C CXX)
+project(ExternalDependencies LANGUAGES C CXX)
 
 option(BUILD_SHARED_LIBS "Build shared libraries by default" OFF)
 

@@ -150,6 +150,26 @@ Direct leaf includes допустимы для white-box tests, но они не
 
 Не меняй submodules или dependency scripts при обычных правках API/доков.
 
+## Existing Clone Migration
+
+После переименования `libs/` в `external/` существующим клонам стоит
+синхронизировать submodule paths:
+
+```bash
+git submodule sync --recursive
+git submodule update --init --recursive
+```
+
+Если после обновления на диске осталась старая неотслеживаемая папка `libs/`,
+сначала убедись, что в ней нет локальных файлов, затем удали только этот путь:
+
+```bash
+git clean -fd -- libs/
+```
+
+Не запускай общий `git clean -fd` без проверки: он удаляет все untracked файлы
+и каталоги в рабочем дереве.
+
 ## Generated Output
 
 Обычно generated и не редактируется вручную:
