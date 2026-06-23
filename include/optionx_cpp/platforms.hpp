@@ -9,6 +9,7 @@
 #include "data.hpp"
 #include "storages.hpp"
 #include "modules.hpp"
+#include "platforms/common/ApiResult.hpp"
 #include "platforms/common/BaseTradingPlatform.hpp"
 #include "platforms/IntradeBarPlatform.hpp"
 //#include "platforms/TradeUpPlatform.hpp"

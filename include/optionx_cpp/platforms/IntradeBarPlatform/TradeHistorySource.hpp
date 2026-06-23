@@ -5,10 +5,6 @@
 /// \file TradeHistorySource.hpp
 /// \brief Defines Intrade Bar closed trade history source modes.
 
-#include <algorithm>
-#include <cctype>
-#include <string>
-
 namespace optionx::platforms::intrade_bar {
 
     /// \brief Source used to load closed trade history.

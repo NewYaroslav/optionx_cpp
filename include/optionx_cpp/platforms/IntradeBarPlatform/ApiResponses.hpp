@@ -5,17 +5,6 @@
 /// \file ApiResponses.hpp
 /// \brief Typed response payloads for Intrade Bar HTTP workflows.
 
-#include <cmath>
-#include <cstdint>
-#include <string>
-#include <utility>
-#include <vector>
-
-#include <optionx_cpp/data.hpp>
-
-#include "../common/ApiResult.hpp"
-#include "TradeHistorySource.hpp"
-
 namespace optionx::platforms::intrade_bar {
 
     /// \brief Result of selecting an available Intrade Bar domain.

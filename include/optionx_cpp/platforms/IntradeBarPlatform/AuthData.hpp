@@ -5,8 +5,6 @@
 /// \file AuthData.hpp
 /// \brief Contains the AuthData class for Intrade Bar platform authorization.
 
-#include "TradeHistorySource.hpp"
-
 namespace optionx::platforms::intrade_bar {
 
     /// \class AuthData

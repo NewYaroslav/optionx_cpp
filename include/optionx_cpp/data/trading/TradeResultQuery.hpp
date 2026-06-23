@@ -5,11 +5,6 @@
 /// \file TradeResultQuery.hpp
 /// \brief Defines broker-side trade result lookup parameters.
 
-#include <cstdint>
-#include <string>
-
-#include <nlohmann/json.hpp>
-
 namespace optionx {
 
     /// \class TradeResultQuery

@@ -23,12 +23,14 @@
 #include <string>
 #include <type_traits>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "optionx_cpp/utils/enum_utils.hpp"
 #include "optionx_cpp/utils/string_utils.hpp"
 
 #include "trading/enums.hpp"
+#include "trading/SpreadPack.hpp"
 #include "trading/TradeResult.hpp"
 #include "trading/TradeResultQuery.hpp"
 #include "trading/TradeRecordTimeRange.hpp"

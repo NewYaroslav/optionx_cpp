@@ -5,13 +5,6 @@
 /// \file TradeHistoryRequest.hpp
 /// \brief Defines account trade-history lookup parameters.
 
-#include <cstdint>
-#include <string>
-
-#include <nlohmann/json.hpp>
-
-#include "TradeRecordTimeRange.hpp"
-
 namespace optionx {
 
     /// \class TradeHistoryRequest

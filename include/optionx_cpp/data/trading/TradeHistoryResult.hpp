@@ -5,16 +5,6 @@
 /// \file TradeHistoryResult.hpp
 /// \brief Defines the result of a broker trade-history request.
 
-#include <string>
-#include <utility>
-#include <vector>
-
-#include "TradeRequest.hpp"
-#include "IMoneyManagementParams.hpp"
-#include "ITradeDecisionParams.hpp"
-#include "TradeSignal.hpp"
-#include "TradeRecord.hpp"
-
 namespace optionx {
 
     /// \struct TradeHistoryResult
