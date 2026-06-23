@@ -27,6 +27,7 @@ namespace optionx::platforms::intrade_bar {
             subscribe<events::RestartAuthEvent>();
             subscribe<events::DisconnectRequestEvent>();
             subscribe<events::AccountInfoUpdateEvent>();
+            subscribe<events::OpenTradesSnapshotRefreshRequestEvent>();
             platform.register_module(this);
         }
 
@@ -37,16 +38,29 @@ namespace optionx::platforms::intrade_bar {
         /// \param event Incoming event.
         void on_event(const utils::Event* const event) override;
 
+        /// \brief Processes delayed refresh tasks.
+        void process() override;
+
+        /// \brief Shuts down delayed refresh tasks and invalidates active callbacks.
+        void shutdown() override;
+
     private:
         RequestManager& m_request_manager; ///< Reference to the request manager.
+        utils::TaskManager m_task_manager; ///< Task manager for delayed refresh requests.
         std::shared_ptr<BaseAccountInfoData> m_account_info; ///< Shared pointer to account information.
         int64_t m_active_trades_close_buffer_ms = time_shield::MS_PER_SEC; ///< Safety delay after broker close time.
+        int64_t m_active_trades_sync_period_ms = time_shield::MS_PER_15_SEC; ///< Delayed refresh period for uncertain snapshots.
         bool m_sync_in_progress = false; ///< True while a snapshot request is running.
+        bool m_refresh_scheduled = false; ///< True while a delayed refresh task is pending.
         std::uint64_t m_sync_generation = 0; ///< Monotonic request generation for stale callback filtering.
 
         /// \brief Starts a broker active-trades snapshot request.
         /// \param reason Human-readable trigger reason for logs.
-        void request_sync(const char* reason);
+        void request_sync(std::string reason);
+
+        /// \brief Schedules a delayed broker active-trades snapshot request.
+        /// \param reason Human-readable trigger reason for logs.
+        void schedule_sync(std::string reason);
 
         /// \brief Handles updated auth/settings data.
         /// \param event Auth data event.
@@ -63,6 +77,10 @@ namespace optionx::platforms::intrade_bar {
         /// \brief Handles account info state changes.
         /// \param event Account info update event.
         void handle_event(const events::AccountInfoUpdateEvent& event);
+
+        /// \brief Handles snapshot refresh requests from the trade queue.
+        /// \param event Refresh request event.
+        void handle_event(const events::OpenTradesSnapshotRefreshRequestEvent& event);
 
         /// \brief Retrieves the account information as an AccountInfoData instance.
         /// \return A shared pointer to AccountInfoData.
@@ -81,10 +99,24 @@ namespace optionx::platforms::intrade_bar {
         } else
         if (const auto* msg = dynamic_cast<const events::AccountInfoUpdateEvent*>(event)) {
             handle_event(*msg);
+        } else
+        if (const auto* msg = dynamic_cast<const events::OpenTradesSnapshotRefreshRequestEvent*>(event)) {
+            handle_event(*msg);
         }
     }
 
-    void ActiveTradesSyncManager::request_sync(const char* reason) {
+    void ActiveTradesSyncManager::process() {
+        m_task_manager.process();
+    }
+
+    void ActiveTradesSyncManager::shutdown() {
+        m_task_manager.shutdown();
+        m_sync_in_progress = false;
+        m_refresh_scheduled = false;
+        ++m_sync_generation;
+    }
+
+    void ActiveTradesSyncManager::request_sync(std::string reason) {
         if (m_sync_in_progress) {
             LOGIT_DEBUG(
                 "Intrade Bar active trades sync: snapshot already in progress. reason=",
@@ -101,6 +133,7 @@ namespace optionx::platforms::intrade_bar {
         }
 
         m_sync_in_progress = true;
+        m_refresh_scheduled = false;
         const std::uint64_t generation = ++m_sync_generation;
         LOGIT_INFO(
             "Intrade Bar active trades sync: requesting broker snapshot. reason=",
@@ -125,6 +158,7 @@ namespace optionx::platforms::intrade_bar {
                         result.status_code,
                         ", error=",
                         result.error_message);
+                    schedule_sync("snapshot-failed");
                     return;
                 }
 
@@ -153,12 +187,47 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
+    void ActiveTradesSyncManager::schedule_sync(std::string reason) {
+        if (m_refresh_scheduled) {
+            LOGIT_DEBUG(
+                "Intrade Bar active trades sync: refresh already scheduled. reason=",
+                reason);
+            return;
+        }
+
+        const auto account_info = get_account_info();
+        if (!account_info->connect) {
+            LOGIT_DEBUG(
+                "Intrade Bar active trades sync: refresh skipped for disconnected account. reason=",
+                reason);
+            return;
+        }
+
+        m_refresh_scheduled = true;
+        LOGIT_INFO(
+            "Intrade Bar active trades sync: scheduling broker snapshot refresh. reason=",
+            reason,
+            ", delay_ms=",
+            m_active_trades_sync_period_ms);
+        m_task_manager.add_delayed_task(
+            "active-trades-sync-refresh",
+            m_active_trades_sync_period_ms,
+            [this, reason = std::move(reason)](std::shared_ptr<utils::Task> task) mutable {
+                m_refresh_scheduled = false;
+                if (task->is_shutdown()) return;
+                request_sync(std::move(reason));
+            });
+    }
+
     void ActiveTradesSyncManager::handle_event(const events::AuthDataEvent& event) {
         if (auto auth_data = std::dynamic_pointer_cast<AuthData>(event.auth_data)) {
             m_active_trades_close_buffer_ms = auth_data->active_trades_close_buffer_ms;
+            m_active_trades_sync_period_ms = auth_data->active_trades_sync_period_ms;
             LOGIT_INFO(
                 "Intrade Bar active trades sync: configured close buffer ms=",
-                m_active_trades_close_buffer_ms);
+                m_active_trades_close_buffer_ms,
+                ", sync_period_ms=",
+                m_active_trades_sync_period_ms);
         }
     }
 
@@ -167,7 +236,9 @@ namespace optionx::platforms::intrade_bar {
     }
 
     void ActiveTradesSyncManager::handle_event(const events::DisconnectRequestEvent& event) {
+        m_task_manager.shutdown();
         m_sync_in_progress = false;
+        m_refresh_scheduled = false;
         ++m_sync_generation;
     }
 
@@ -178,9 +249,16 @@ namespace optionx::platforms::intrade_bar {
         } else
         if (event.status == Status::DISCONNECTED ||
             event.status == Status::FAILED_TO_CONNECT) {
+            m_task_manager.shutdown();
             m_sync_in_progress = false;
+            m_refresh_scheduled = false;
             ++m_sync_generation;
         }
+    }
+
+    void ActiveTradesSyncManager::handle_event(
+            const events::OpenTradesSnapshotRefreshRequestEvent& event) {
+        schedule_sync(event.reason.empty() ? "refresh-request" : event.reason);
     }
 
     std::shared_ptr<AccountInfoData> ActiveTradesSyncManager::get_account_info() {

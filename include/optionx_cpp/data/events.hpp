@@ -26,5 +26,6 @@
 #include "events/TradeStatusEvent.hpp"
 #include "events/OpenTradesEvent.hpp"
 #include "events/OpenTradesSnapshotEvent.hpp"
+#include "events/OpenTradesSnapshotRefreshRequestEvent.hpp"
 
 #endif // _OPTIONX_EVENTS_HPP_INCLUDED

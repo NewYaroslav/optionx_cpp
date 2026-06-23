@@ -152,6 +152,8 @@ namespace optionx::modules {
         std::chrono::steady_clock::time_point m_last_order_time; ///< Last processed order timestamp.
         int64_t                  m_local_open_trades = 0; ///< Number of locally tracked open trades.
         int64_t                  m_snapshot_open_trades = 0; ///< Number of active trades loaded from a broker snapshot.
+        int64_t                  m_snapshot_unknown_close_trades = 0; ///< Snapshot trades without a known close time.
+        bool                     m_snapshot_refresh_requested = false; ///< True after emitting a refresh request for current snapshot state.
         std::vector<int64_t>     m_snapshot_close_due_times_ms; ///< Close timestamps with the configured safety buffer.
 
         /// \brief Dispatches a trade event notification.
@@ -170,6 +172,18 @@ namespace optionx::modules {
         /// \brief Clears broker-snapshot open trade state.
         /// \return True if the effective counter changed.
         bool clear_snapshot_open_trades();
+
+        /// \brief Requests a broker snapshot refresh once for the current snapshot state.
+        /// \param reason Human-readable refresh reason.
+        void request_snapshot_refresh(const char* reason);
+
+        /// \brief Adds a close buffer to a close timestamp without overflowing.
+        /// \param close_time_ms Close timestamp in milliseconds.
+        /// \param close_buffer_ms Non-negative close buffer in milliseconds.
+        /// \return Saturated close timestamp with the buffer applied.
+        int64_t add_snapshot_close_buffer(
+                int64_t close_time_ms,
+                int64_t close_buffer_ms) const;
 
         /// \brief Handles incoming price updates.
         /// \param event The received price update event.
@@ -455,24 +469,43 @@ namespace optionx::modules {
     }
 
     void TradeQueueManager::process_snapshot_open_trades() {
-        if (m_snapshot_open_trades <= 0 || m_snapshot_close_due_times_ms.empty()) return;
-
-        const int64_t now_ms = OPTIONX_TIMESTAMP_MS;
-        int64_t closed_count = 0;
-        auto it = m_snapshot_close_due_times_ms.begin();
-        while (it != m_snapshot_close_due_times_ms.end() && *it <= now_ms) {
-            ++closed_count;
-            it = m_snapshot_close_due_times_ms.erase(it);
+        if (m_snapshot_open_trades <= 0) return;
+        if (m_snapshot_close_due_times_ms.empty()) {
+            if (m_snapshot_unknown_close_trades > 0) {
+                request_snapshot_refresh("missing-close-times");
+            }
+            return;
         }
 
+        const int64_t now_ms = OPTIONX_TIMESTAMP_MS;
+        const auto first_active = std::upper_bound(
+            m_snapshot_close_due_times_ms.begin(),
+            m_snapshot_close_due_times_ms.end(),
+            now_ms);
+        const int64_t closed_count = static_cast<int64_t>(
+            std::distance(m_snapshot_close_due_times_ms.begin(), first_active));
+
         if (closed_count <= 0) return;
+
+        m_snapshot_close_due_times_ms.erase(
+            m_snapshot_close_due_times_ms.begin(),
+            first_active);
 
         if (closed_count >= m_snapshot_open_trades) {
             m_snapshot_open_trades = 0;
         } else {
             m_snapshot_open_trades -= closed_count;
         }
+        if (m_snapshot_unknown_close_trades > m_snapshot_open_trades) {
+            m_snapshot_unknown_close_trades = m_snapshot_open_trades;
+        }
         emit_open_trades(nullptr, nullptr);
+
+        if (m_snapshot_open_trades > 0 &&
+            m_snapshot_unknown_close_trades > 0 &&
+            m_snapshot_close_due_times_ms.empty()) {
+            request_snapshot_refresh("unknown-close-times");
+        }
     }
 
     int64_t TradeQueueManager::current_open_trades() const {
@@ -489,10 +522,28 @@ namespace optionx::modules {
     bool TradeQueueManager::clear_snapshot_open_trades() {
         const bool changed =
             m_snapshot_open_trades != 0 ||
+            m_snapshot_unknown_close_trades != 0 ||
             !m_snapshot_close_due_times_ms.empty();
         m_snapshot_open_trades = 0;
+        m_snapshot_unknown_close_trades = 0;
+        m_snapshot_refresh_requested = false;
         m_snapshot_close_due_times_ms.clear();
         return changed;
+    }
+
+    void TradeQueueManager::request_snapshot_refresh(const char* reason) {
+        if (m_snapshot_refresh_requested) return;
+        m_snapshot_refresh_requested = true;
+        notify(events::OpenTradesSnapshotRefreshRequestEvent(reason ? reason : ""));
+    }
+
+    int64_t TradeQueueManager::add_snapshot_close_buffer(
+            int64_t close_time_ms,
+            int64_t close_buffer_ms) const {
+        if (close_buffer_ms <= 0) return close_time_ms;
+        const int64_t max_ms = std::numeric_limits<int64_t>::max();
+        if (close_time_ms > max_ms - close_buffer_ms) return max_ms;
+        return close_time_ms + close_buffer_ms;
     }
 
     void TradeQueueManager::dispatch_trade_event(const transaction_t& transaction) {
@@ -540,6 +591,7 @@ namespace optionx::modules {
 
     void TradeQueueManager::handle_event(const events::OpenTradesSnapshotEvent& event) {
         std::unique_lock<std::mutex> lock(m_pending_mutex);
+        m_snapshot_refresh_requested = false;
         if (!m_pending_transactions.empty() ||
             !m_open_transactions.empty() ||
             m_local_open_trades > 0) {
@@ -548,16 +600,20 @@ namespace optionx::modules {
                 event.open_trades,
                 ", local_open_trades=",
                 m_local_open_trades);
+            lock.unlock();
+            request_snapshot_refresh("local-queue-active");
             return;
         }
 
         m_snapshot_open_trades = std::max<int64_t>(0, event.open_trades);
+        m_snapshot_unknown_close_trades = 0;
         m_snapshot_close_due_times_ms.clear();
         const int64_t close_buffer_ms = std::max<int64_t>(0, event.close_buffer_ms);
         if (m_snapshot_open_trades > 0) {
             for (const int64_t close_time_ms : event.close_times_ms) {
                 if (close_time_ms <= 0) continue;
-                m_snapshot_close_due_times_ms.push_back(close_time_ms + close_buffer_ms);
+                m_snapshot_close_due_times_ms.push_back(
+                    add_snapshot_close_buffer(close_time_ms, close_buffer_ms));
             }
         }
         std::sort(
@@ -568,14 +624,24 @@ namespace optionx::modules {
             m_snapshot_close_due_times_ms.resize(
                 static_cast<std::size_t>(m_snapshot_open_trades));
         }
+        m_snapshot_unknown_close_trades = std::max<int64_t>(
+            0,
+            m_snapshot_open_trades -
+                static_cast<int64_t>(m_snapshot_close_due_times_ms.size()));
         lock.unlock();
 
         LOGIT_INFO(
             "Open trades snapshot applied. snapshot_open_trades=",
             m_snapshot_open_trades,
+            ", unknown_close_times=",
+            m_snapshot_unknown_close_trades,
             ", close_times=",
             m_snapshot_close_due_times_ms.size());
         emit_open_trades(nullptr, nullptr);
+
+        if (m_snapshot_unknown_close_trades > 0) {
+            request_snapshot_refresh("unknown-close-times");
+        }
     }
 
 } // namespace optionx::modules

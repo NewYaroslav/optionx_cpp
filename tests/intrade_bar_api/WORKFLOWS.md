@@ -88,6 +88,11 @@ when `RestartAuthEvent` indicates suspicious account state.
    public `OpenTradesEvent` reports the combined count.
 5. For each known close timestamp, `TradeQueueManager` decreases the snapshot
    part after `AuthData::active_trades_close_buffer_ms`.
+6. If the snapshot has active trades without known close timestamps, or the
+   local queue is busy when the snapshot arrives, `TradeQueueManager` publishes
+   `OpenTradesSnapshotRefreshRequestEvent`.
+7. `ActiveTradesSyncManager` schedules the next broker snapshot after
+   `AuthData::active_trades_sync_period_ms`.
 
 ## Price Polling
 

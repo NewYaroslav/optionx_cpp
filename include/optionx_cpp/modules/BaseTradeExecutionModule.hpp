@@ -28,6 +28,7 @@ namespace optionx::modules {
     /// - `TradeRequestEvent` – Sent when a trade request is accepted for processing.
     /// - `TradeStatusEvent` – Updates listeners on trade state changes.
     /// - `OpenTradesEvent` – Notifies about changes in the number of open trades.
+    /// - `OpenTradesSnapshotRefreshRequestEvent` - Requests a broker active-trades snapshot refresh.
     class BaseTradeExecutionModule : public BaseModule {
     public:
         using trade_result_callback_t = std::function<void(std::unique_ptr<TradeRequest>, std::unique_ptr<TradeResult>)>;

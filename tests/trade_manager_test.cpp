@@ -388,6 +388,27 @@ namespace optionx::modules {
         std::shared_ptr<AccountInfoData> m_account_info;
     };
 
+    class SnapshotRefreshCapture : public utils::EventMediator {
+    public:
+        explicit SnapshotRefreshCapture(utils::EventBus& bus)
+            : utils::EventMediator(bus) {
+            subscribe<events::OpenTradesSnapshotRefreshRequestEvent>();
+        }
+
+        void on_event(const utils::Event* const event) override {
+            if (auto refresh_event =
+                    dynamic_cast<const events::OpenTradesSnapshotRefreshRequestEvent*>(event)) {
+                reasons.push_back(refresh_event->reason);
+            }
+        }
+
+        std::size_t count() const {
+            return reasons.size();
+        }
+
+        std::vector<std::string> reasons;
+    };
+
     /// \brief Outputs the details of a TradeRequest.
     /// \param request The TradeRequest instance to output.
     void print_trade_request(const TradeRequest& request) {
@@ -512,6 +533,216 @@ TEST_F(TradeManagerTestFixture, BrokerSnapshotOpenTradesCountDownByCloseTime) {
     trade_manager.shutdown();
 }
 
+TEST_F(TradeManagerTestFixture, BrokerSnapshotWithMissingCloseTimesRequestsRefresh) {
+    utils::EventBus bus;
+    auto account_info = std::make_shared<AccountInfoData>();
+    account_info->user_id = 12345;
+    account_info->balance = 1000.0;
+    account_info->currency = CurrencyType::USD;
+    account_info->account_type = AccountType::DEMO;
+    account_info->connect = true;
+    account_info->order_interval_ms = 0;
+
+    TradeManagerTest trade_manager(bus, account_info);
+    OpenTradesCapture capture(bus, account_info);
+    SnapshotRefreshCapture refresh_capture(bus);
+
+    const int64_t now_ms = OPTIONX_TIMESTAMP_MS;
+    events::OpenTradesSnapshotEvent snapshot(
+        3,
+        { now_ms + 100 },
+        0);
+    bus.notify(snapshot);
+
+    ASSERT_EQ(capture.last_count(), 3);
+    ASSERT_EQ(refresh_capture.count(), 1u);
+    EXPECT_EQ(refresh_capture.reasons.back(), "unknown-close-times");
+
+    EXPECT_TRUE(wait_for_open_trades_count(trade_manager, bus, capture, 2, 1000));
+    EXPECT_EQ(account_info->open_trades, 2);
+    EXPECT_EQ(refresh_capture.count(), 1u);
+
+    trade_manager.shutdown();
+}
+
+TEST_F(TradeManagerTestFixture, BrokerSnapshotReplacementUpdatesCount) {
+    utils::EventBus bus;
+    auto account_info = std::make_shared<AccountInfoData>();
+    account_info->user_id = 12345;
+    account_info->balance = 1000.0;
+    account_info->currency = CurrencyType::USD;
+    account_info->account_type = AccountType::DEMO;
+    account_info->connect = true;
+
+    TradeManagerTest trade_manager(bus, account_info);
+    OpenTradesCapture capture(bus, account_info);
+
+    const int64_t now_ms = OPTIONX_TIMESTAMP_MS;
+    bus.notify(events::OpenTradesSnapshotEvent(
+        3,
+        {
+            now_ms + time_shield::MS_PER_MIN,
+            now_ms + time_shield::MS_PER_MIN * 2,
+            now_ms + time_shield::MS_PER_MIN * 3
+        },
+        0));
+    ASSERT_EQ(capture.last_count(), 3);
+
+    bus.notify(events::OpenTradesSnapshotEvent(
+        1,
+        { now_ms + time_shield::MS_PER_MIN },
+        0));
+    EXPECT_EQ(capture.last_count(), 1);
+    EXPECT_EQ(account_info->open_trades, 1);
+
+    trade_manager.shutdown();
+}
+
+TEST_F(TradeManagerTestFixture, BrokerSnapshotWithZeroTradesClearsPreviousCount) {
+    utils::EventBus bus;
+    auto account_info = std::make_shared<AccountInfoData>();
+    account_info->user_id = 12345;
+    account_info->balance = 1000.0;
+    account_info->currency = CurrencyType::USD;
+    account_info->account_type = AccountType::DEMO;
+    account_info->connect = true;
+
+    TradeManagerTest trade_manager(bus, account_info);
+    OpenTradesCapture capture(bus, account_info);
+
+    const int64_t now_ms = OPTIONX_TIMESTAMP_MS;
+    bus.notify(events::OpenTradesSnapshotEvent(
+        2,
+        {
+            now_ms + time_shield::MS_PER_MIN,
+            now_ms + time_shield::MS_PER_MIN * 2
+        },
+        0));
+    ASSERT_EQ(capture.last_count(), 2);
+
+    bus.notify(events::OpenTradesSnapshotEvent(0, {}, 0));
+    EXPECT_EQ(capture.last_count(), 0);
+    EXPECT_EQ(account_info->open_trades, 0);
+
+    trade_manager.shutdown();
+}
+
+TEST_F(TradeManagerTestFixture, BrokerSnapshotClearsOnDisconnect) {
+    utils::EventBus bus;
+    auto account_info = std::make_shared<AccountInfoData>();
+    account_info->user_id = 12345;
+    account_info->balance = 1000.0;
+    account_info->currency = CurrencyType::USD;
+    account_info->account_type = AccountType::DEMO;
+    account_info->connect = true;
+
+    TradeManagerTest trade_manager(bus, account_info);
+    OpenTradesCapture capture(bus, account_info);
+
+    const int64_t now_ms = OPTIONX_TIMESTAMP_MS;
+    bus.notify(events::OpenTradesSnapshotEvent(
+        2,
+        {
+            now_ms + time_shield::MS_PER_MIN,
+            now_ms + time_shield::MS_PER_MIN * 2
+        },
+        0));
+    ASSERT_EQ(capture.last_count(), 2);
+
+    events::DisconnectRequestEvent disconnect([](const ConnectionResult&) {});
+    bus.notify(disconnect);
+
+    EXPECT_EQ(capture.last_count(), 0);
+    EXPECT_EQ(account_info->open_trades, 0);
+}
+
+TEST_F(TradeManagerTestFixture, BrokerSnapshotTrimsExtraCloseTimes) {
+    utils::EventBus bus;
+    auto account_info = std::make_shared<AccountInfoData>();
+    account_info->user_id = 12345;
+    account_info->balance = 1000.0;
+    account_info->currency = CurrencyType::USD;
+    account_info->account_type = AccountType::DEMO;
+    account_info->connect = true;
+
+    TradeManagerTest trade_manager(bus, account_info);
+    OpenTradesCapture capture(bus, account_info);
+
+    const int64_t now_ms = OPTIONX_TIMESTAMP_MS;
+    bus.notify(events::OpenTradesSnapshotEvent(
+        1,
+        {
+            now_ms + 100,
+            now_ms + 200,
+            now_ms + 300
+        },
+        0));
+    ASSERT_EQ(capture.last_count(), 1);
+
+    EXPECT_TRUE(wait_for_open_trades_count(trade_manager, bus, capture, 0, 1000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    trade_manager.process();
+    bus.process();
+    EXPECT_EQ(capture.last_count(), 0);
+
+    trade_manager.shutdown();
+}
+
+TEST_F(TradeManagerTestFixture, BrokerSnapshotCloseBufferDelaysCountDown) {
+    utils::EventBus bus;
+    auto account_info = std::make_shared<AccountInfoData>();
+    account_info->user_id = 12345;
+    account_info->balance = 1000.0;
+    account_info->currency = CurrencyType::USD;
+    account_info->account_type = AccountType::DEMO;
+    account_info->connect = true;
+
+    TradeManagerTest trade_manager(bus, account_info);
+    OpenTradesCapture capture(bus, account_info);
+
+    const int64_t now_ms = OPTIONX_TIMESTAMP_MS;
+    bus.notify(events::OpenTradesSnapshotEvent(
+        1,
+        { now_ms + 100 },
+        250));
+    ASSERT_EQ(capture.last_count(), 1);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(175));
+    trade_manager.process();
+    bus.process();
+    EXPECT_EQ(capture.last_count(), 1);
+
+    EXPECT_TRUE(wait_for_open_trades_count(trade_manager, bus, capture, 0, 1000));
+
+    trade_manager.shutdown();
+}
+
+TEST_F(TradeManagerTestFixture, BrokerSnapshotCloseBufferSaturatesOnOverflow) {
+    utils::EventBus bus;
+    auto account_info = std::make_shared<AccountInfoData>();
+    account_info->user_id = 12345;
+    account_info->balance = 1000.0;
+    account_info->currency = CurrencyType::USD;
+    account_info->account_type = AccountType::DEMO;
+    account_info->connect = true;
+
+    TradeManagerTest trade_manager(bus, account_info);
+    OpenTradesCapture capture(bus, account_info);
+
+    bus.notify(events::OpenTradesSnapshotEvent(
+        1,
+        { std::numeric_limits<int64_t>::max() - 1 },
+        1000));
+    ASSERT_EQ(capture.last_count(), 1);
+
+    trade_manager.process();
+    bus.process();
+    EXPECT_EQ(capture.last_count(), 1);
+    EXPECT_EQ(account_info->open_trades, 1);
+
+    trade_manager.shutdown();
+}
+
 TEST_F(TradeManagerTestFixture, BrokerSnapshotCombinesWithLocalOpenTrades) {
     utils::EventBus bus;
     auto account_info = std::make_shared<AccountInfoData>();
@@ -566,6 +797,7 @@ TEST_F(TradeManagerTestFixture, BrokerSnapshotIgnoredWhileLocalQueueIsActive) {
 
     TradeManagerTest trade_manager(bus, account_info);
     OpenTradesCapture capture(bus, account_info);
+    SnapshotRefreshCapture refresh_capture(bus);
 
     auto trade_request = std::make_unique<TradeRequest>();
     trade_request->symbol = "EURUSD";
@@ -596,6 +828,8 @@ TEST_F(TradeManagerTestFixture, BrokerSnapshotIgnoredWhileLocalQueueIsActive) {
 
     EXPECT_EQ(capture.last_count(), 1);
     EXPECT_EQ(account_info->open_trades, 1);
+    ASSERT_EQ(refresh_capture.count(), 1u);
+    EXPECT_EQ(refresh_capture.reasons.back(), "local-queue-active");
 
     trade_manager.shutdown();
 }
