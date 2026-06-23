@@ -160,6 +160,7 @@ Fetch closed trade history:
 
 ```powershell
 .\build-codex\intrade_bar_smoke_cli.exe history --source=CSV --days=14 --account-type=DEMO
+.\build-codex\intrade_bar_smoke_cli.exe history --source=HTML_CSV --all --account-type=DEMO
 ```
 
 History source modes:
@@ -168,7 +169,8 @@ History source modes:
 CSV       use /stat_trade_export.php; best financial result coverage
 HTML      parse the authenticated page trade_close block and page older rows
           through /trade_load_more2.php
-HTML_CSV  use CSV as the financial base and enrich it with HTML rows
+HTML_CSV  return only rows found in both CSV and HTML, using CSV financial
+          fields enriched with matching HTML broker IDs
 ```
 
 `HTML` follows the broker UI flow: `GET /` gives the recent closed trades and
@@ -178,8 +180,9 @@ selected account on the broker side, so connect the platform with the desired
 account type before requesting HTML history.
 
 The table HTML does not expose every field. For example, `option_type` can stay
-`UNKNOWN` in pure `HTML` mode. Prefer `HTML_CSV` when you need the CSV financial
-fields plus broker IDs and page-history coverage.
+`UNKNOWN` in pure `HTML` mode. Use `HTML_CSV` when you need rows verified by
+both broker sources. Use `CSV` when you intentionally want the widest export
+coverage, including rows no longer visible in HTML pagination.
 
 The default source is configurable:
 
@@ -194,11 +197,21 @@ Useful options:
 --source=HTML
 --source=HTML_CSV
 --days=14
+--all
 --from-ms=1719000000000
 --to-ms=1719600000000
+--time-field=CLOSE_DATE
+--time-field=OPEN_DATE
+--range-mode=CLOSED
+--range-mode=HALF_OPEN
 --account-type=DEMO
 --timeout-ms=90000
 ```
+
+`--account-type` selects the account used during authentication. The history
+request itself uses the account that is currently selected in the broker
+session. By default the time range filters by `CLOSE_DATE`; `--all` disables
+time filtering and asks the broker for all available rows.
 
 The command prints a compact summary to stdout and writes every fetched trade
 to the normal log files under `build-codex\data\logs\`.

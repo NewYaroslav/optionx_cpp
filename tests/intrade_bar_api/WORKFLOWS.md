@@ -106,9 +106,9 @@ Started from `TradeStatusEvent`.
 Started from `BaseTradingPlatform::fetch_trade_history` or
 `intrade_bar_smoke_cli history`.
 
-1. `TradeManager::fetch_trade_history` validates the requested time range and
-   resolves the account type from the connected account if the request did not
-   specify one.
+1. `TradeManager::fetch_trade_history` validates the requested time range,
+   reads the current account type from the connected account info, and reports
+   success or failure through `TradeHistoryResult`.
 2. `RequestManager::request_trade_history` chooses the source from
    `AuthData::trade_history_source`.
 3. `CSV` calls `/stat_trade_export.php` with `name_method=stat_export`,
@@ -117,12 +117,18 @@ Started from `BaseTradingPlatform::fetch_trade_history` or
    `trade_btn_load_more` `data-last` cursor, and keeps paging older closed rows
    through `/trade_load_more2.php` until the cursor is empty, repeats, the page
    is empty, or the requested start time is reached.
-5. `HTML_CSV` uses CSV as the financial base and enriches rows with matching
-   HTML rows when symbol/time/open-price matching is possible.
+5. `HTML_CSV` requires both sources to succeed and returns only rows that can
+   be matched in both CSV and HTML. The merged rows use CSV financial fields
+   enriched with HTML broker IDs and timing details.
 
 The HTML load-more endpoint does not take `status_real`; it follows the account
 currently selected in the broker session. The auth/connect workflow must switch
 the broker to the desired account before an HTML history request.
+
+`TradeHistoryRequest::all()` disables time filtering for full broker export
+workflows. Ranged requests default to `CLOSE_DATE`, which matches the usual
+closed-trade DB query semantics; callers can choose another
+`TradeRecordTimeField` when they need a different time axis.
 
 ## Manual Trade Result Recovery Check
 

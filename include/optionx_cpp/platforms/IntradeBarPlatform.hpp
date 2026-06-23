@@ -82,13 +82,22 @@ namespace optionx::platforms {
         }
 
         /// \brief Requests closed Intrade Bar trade history.
-        /// \param request Trade history range and account selection.
-        /// \param callback Callback receiving closed trade results.
+        /// \param request Trade history range and timestamp field.
+        /// \param callback Callback receiving closed trade history or an error.
         /// \return True if the history request was accepted for processing; false otherwise.
         bool fetch_trade_history(
                 const TradeHistoryRequest& request,
                 trade_history_callback_t callback) override {
             return m_trade_manager.fetch_trade_history(request, std::move(callback));
+        }
+
+        /// \brief Requests all available closed Intrade Bar trade history.
+        /// \param callback Callback receiving closed trade history or an error.
+        /// \return True if the history request was accepted for processing; false otherwise.
+        bool fetch_trade_history(trade_history_callback_t callback) override {
+            return m_trade_manager.fetch_trade_history(
+                TradeHistoryRequest::all(),
+                std::move(callback));
         }
 
         /// \brief Returns the platform-level trade result callback.

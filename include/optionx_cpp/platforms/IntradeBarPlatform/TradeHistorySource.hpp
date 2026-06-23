@@ -15,7 +15,7 @@ namespace optionx::platforms::intrade_bar {
     enum class TradeHistorySource {
         HTML,    ///< Parse the authenticated HTML page history.
         CSV,     ///< Use /stat_trade_export.php CSV export.
-        HTML_CSV ///< Combine HTML broker IDs with CSV financial history.
+        HTML_CSV ///< Return CSV/HTML intersection with CSV financial fields and HTML broker IDs.
     };
 
     /// \brief Converts trade history source to a stable config string.

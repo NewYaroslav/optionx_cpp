@@ -314,8 +314,11 @@ namespace optionx::platforms::intrade_bar {
             std::replace(raw.begin(), raw.end(), ',', '.');
 
             CurrencyType currency = CurrencyType::UNKNOWN;
+            static const std::string rub_sign_utf8 = "\xE2\x82\xBD";
             if (raw.find("USD") != std::string::npos || raw.find('$') != std::string::npos) {
                 currency = CurrencyType::USD;
+            } else if (raw.find(rub_sign_utf8) != std::string::npos) {
+                currency = CurrencyType::RUB;
             } else if (raw.find("RUB") != std::string::npos || raw.find(u8"в‚Ѕ") != std::string::npos) {
                 currency = CurrencyType::RUB;
             }
@@ -534,6 +537,7 @@ namespace optionx::platforms::intrade_bar {
             replace_all_inplace(text, "&#160;", " ");
             replace_all_inplace(text, "&amp;", "&");
             replace_all_inplace(text, "&#36;", "$");
+            replace_all_inplace(text, "&#8381;", "\xE2\x82\xBD");
             return text;
         }
 
@@ -714,23 +718,27 @@ namespace optionx::platforms::intrade_bar {
         return parse_trade_history_html_page(content, account_type).trades;
     }
 
-    /// \brief Merges CSV financial history with HTML broker identifiers.
+    /// \brief Intersects CSV financial history with HTML broker identifiers.
     /// \param csv_trades Financially complete CSV trades.
     /// \param html_trades Best-effort HTML trades with broker IDs.
-    /// \return CSV trades enriched with HTML IDs and unmatched HTML rows appended.
+    /// \return CSV trades enriched with HTML data only when both sources match.
     std::vector<TradeResult> merge_trade_history_csv_with_html(
             std::vector<TradeResult> csv_trades,
             const std::vector<TradeResult>& html_trades) {
+        std::vector<TradeResult> merged;
         std::vector<bool> html_used(html_trades.size(), false);
         constexpr int64_t time_tolerance_ms = time_shield::MS_PER_5_SEC;
         constexpr double price_tolerance = 0.00001;
 
         for (auto& csv_trade : csv_trades) {
+            bool matched = false;
             for (std::size_t i = 0; i < html_trades.size(); ++i) {
                 if (html_used[i]) continue;
                 const auto& html_trade = html_trades[i];
-                if (csv_trade.option_id > 0 && html_trade.option_id > 0 &&
-                    csv_trade.option_id == html_trade.option_id) {
+                if (csv_trade.option_id > 0 && html_trade.option_id > 0) {
+                    if (csv_trade.option_id != html_trade.option_id) {
+                        continue;
+                    }
                     html_used[i] = true;
                 } else {
                     if (csv_trade.symbol.empty() ||
@@ -758,15 +766,13 @@ namespace optionx::platforms::intrade_bar {
                 if (csv_trade.duration == 0) csv_trade.duration = html_trade.duration;
                 if (csv_trade.option_type == OptionType::UNKNOWN) csv_trade.option_type = html_trade.option_type;
                 if (csv_trade.order_type == OrderType::UNKNOWN) csv_trade.order_type = html_trade.order_type;
+                matched = true;
                 break;
             }
+            if (matched) merged.push_back(std::move(csv_trade));
         }
 
-        for (std::size_t i = 0; i < html_trades.size(); ++i) {
-            if (!html_used[i]) csv_trades.push_back(html_trades[i]);
-        }
-
-        return csv_trades;
+        return merged;
     }
 
     /// \brief Parses closed trades returned by /stat_trade_export.php CSV export.

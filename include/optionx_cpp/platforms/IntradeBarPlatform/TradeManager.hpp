@@ -47,9 +47,9 @@ namespace optionx::platforms::intrade_bar {
         /// \brief Shuts down the trade manager and cleans up resources.
         void shutdown() override;
 
-        /// \brief Requests closed trade history for an account and time range.
-        /// \param request History range and account type.
-        /// \param callback Callback receiving parsed trade results.
+        /// \brief Requests closed trade history for the currently selected account.
+        /// \param request History range and timestamp field.
+        /// \param callback Callback receiving parsed trade history or an error.
         /// \return True if the history request was accepted for processing.
         bool fetch_trade_history(
                 const TradeHistoryRequest& request,
@@ -126,21 +126,26 @@ namespace optionx::platforms::intrade_bar {
             trade_history_callback_t callback) {
         if (!callback || !request.has_valid_range()) return false;
 
-        TradeHistoryRequest effective_request = request;
-        if (effective_request.account_type == AccountType::UNKNOWN) {
-            effective_request.account_type = get_account_info()->account_type;
+        const AccountType account_type = get_account_info()->account_type;
+        if (account_type == AccountType::UNKNOWN) {
+            callback(TradeHistoryResult::fail("Current account type is unknown."));
+            return true;
         }
-        if (effective_request.account_type == AccountType::UNKNOWN) return false;
 
         m_request_manager.request_trade_history_result(
-            effective_request,
-            [callback = std::move(callback)](TradeHistoryResult history_result) mutable {
+            request,
+            account_type,
+            [callback = std::move(callback)](TradeHistoryApiResult history_result) mutable {
                 if (!callback) return;
                 if (!history_result) {
-                    callback({});
+                    callback(TradeHistoryResult::fail(
+                        std::move(history_result.error_message),
+                        history_result.status_code));
                     return;
                 }
-                callback(history_result.value.trades);
+                callback(TradeHistoryResult::ok(
+                    std::move(history_result.value.trades),
+                    history_result.status_code));
             });
         return true;
     }

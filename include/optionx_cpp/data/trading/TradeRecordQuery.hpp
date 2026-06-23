@@ -9,29 +9,11 @@
 #include <cstddef>
 #include <string>
 
+#include "TradeRecordTimeRange.hpp"
 #include "TradeRecordFilter.hpp"
 #include "TradeRecord.hpp"
 
 namespace optionx {
-
-    /// \enum TradeRecordTimeField
-    /// \brief Selects which timestamp field to use for range queries.
-    enum class TradeRecordTimeField {
-        AUTO,        ///< Automatically select: open_date, place_date, send_date, close_date, expiry_date.
-        PLACE_DATE,  ///< Use place_date field.
-        SEND_DATE,   ///< Use send_date field.
-        OPEN_DATE,   ///< Use open_date field.
-        CLOSE_DATE,  ///< Use close_date field.
-        EXPIRY_DATE  ///< Use expiry_date field.
-    };
-
-    /// \enum TimeRangeMode
-    /// \brief Defines how the time range bounds are interpreted.
-    enum class TimeRangeMode {
-        NONE,       ///< No time range filtering.
-        CLOSED,     ///< start_ms <= t <= stop_ms (inclusive both ends).
-        HALF_OPEN   ///< start_ms <= t < stop_ms (inclusive start, exclusive stop).
-    };
 
     /// \brief Extracts the selected timestamp from a TradeRecord.
     /// \param record Trade record to inspect.

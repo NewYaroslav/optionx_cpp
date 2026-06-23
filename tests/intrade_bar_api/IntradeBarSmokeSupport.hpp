@@ -359,6 +359,9 @@ struct TradeResultFetchAttempt {
 struct TradeHistoryFetchAttempt {
     bool accepted = false;
     bool callback_received = false;
+    bool success = false;
+    long status_code = optionx::TradeHistoryResult::NO_RESPONSE_STATUS;
+    std::string error_desc;
     std::vector<optionx::TradeResult> trades;
     int64_t elapsed_ms = 0;
 };
@@ -758,13 +761,24 @@ public:
 
         const bool accepted = m_platform.fetch_trade_history(
             request,
-            [shared](const std::vector<optionx::TradeResult>& trades) {
+            [shared](optionx::TradeHistoryResult result) {
                 std::lock_guard<std::mutex> lock(shared->mutex);
                 shared->attempt.callback_received = true;
-                shared->attempt.trades = trades;
+                shared->attempt.success = result.success;
+                shared->attempt.status_code = result.status_code;
+                shared->attempt.error_desc = std::move(result.error_desc);
+                shared->attempt.trades = std::move(result.trades);
                 shared->done.store(true, std::memory_order_release);
-                LOGIT_INFO("Intrade Bar smoke history callback: trades=", trades.size());
-                for (const auto& trade : trades) {
+                LOGIT_INFO(
+                    "Intrade Bar smoke history callback: success=",
+                    shared->attempt.success,
+                    ", status_code=",
+                    shared->attempt.status_code,
+                    ", error=",
+                    shared->attempt.error_desc,
+                    ", trades=",
+                    shared->attempt.trades.size());
+                for (const auto& trade : shared->attempt.trades) {
                     LOGIT_INFO(
                         "Intrade Bar smoke history trade: option_id=",
                         trade.option_id,

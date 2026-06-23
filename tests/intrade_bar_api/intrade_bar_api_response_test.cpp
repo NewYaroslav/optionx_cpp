@@ -183,10 +183,11 @@ TEST(IntradeBarApiResponses, ParsesTradeHistoryCsvExport) {
         ";Sprint;EUR/GBP;Down;14:44:43, 14 Dec 20;14:47:43, 14 Dec 20;0.90492;0.90512;1 USD;1.82 USD\n"
         "123;Sprint;AUD/NZD;Up;20:52:19, 28 Jun 21;20:55:19, 28 Jun 21;1.07411;1.07417;500 USD;0 USD\n"
         ";Sprint;AUD/CAD;Up;16:34:33, 23 Jun 21;16:37:33, 23 Jun 21;0.93034;0.93008;50 RUB;50 RUB\n"
-        ";Sprint;BTCUSD;Up;16:34:33, 23 Jun 21;16:39:33, 23 Jun 21;62830.01;62850.00;1 USD;1.79 USD\n";
+        ";Sprint;BTCUSD;Up;16:34:33, 23 Jun 21;16:39:33, 23 Jun 21;62830.01;62850.00;1 USD;1.79 USD\n"
+        ";Sprint;EUR/USD;Up;16:34:33, 23 Jun 21;16:37:33, 23 Jun 21;1.16001;1.16002;100 \xE2\x82\xBD;180 \xE2\x82\xBD\n";
 
     const auto trades = parse_trade_history_csv_export(csv, AccountType::DEMO);
-    ASSERT_EQ(trades.size(), 4u);
+    ASSERT_EQ(trades.size(), 5u);
 
     EXPECT_EQ(trades[0].symbol, "EURGBP");
     EXPECT_EQ(trades[0].option_type, OptionType::SPRINT);
@@ -215,6 +216,11 @@ TEST(IntradeBarApiResponses, ParsesTradeHistoryCsvExport) {
     EXPECT_EQ(trades[3].symbol, "BTCUSDT");
     EXPECT_EQ(trades[3].trade_state, TradeState::WIN);
     EXPECT_EQ(trades[3].duration, 300);
+
+    EXPECT_EQ(trades[4].symbol, "EURUSD");
+    EXPECT_EQ(trades[4].currency, CurrencyType::RUB);
+    EXPECT_EQ(trades[4].trade_state, TradeState::WIN);
+    EXPECT_DOUBLE_EQ(trades[4].profit, 80.0);
 }
 
 TEST(IntradeBarApiResponses, ParsesTradeHistoryHtmlSnapshotAndMergesWithCsv) {
@@ -245,15 +251,61 @@ TEST(IntradeBarApiResponses, ParsesTradeHistoryHtmlSnapshotAndMergesWithCsv) {
     csv_trade.amount = 1.0;
     csv_trade.trade_state = TradeState::WIN;
     csv_trades.push_back(csv_trade);
+    TradeResult csv_only_trade;
+    csv_only_trade.symbol = "GBPUSD";
+    csv_only_trade.open_date = time_shield::sec_to_ms(1719146074);
+    csv_only_trade.open_price = 1.25001;
+    csv_only_trade.amount = 1.0;
+    csv_trades.push_back(csv_only_trade);
+
+    const auto merged = merge_trade_history_csv_with_html(
+        std::move(csv_trades),
+        html_trades);
+    ASSERT_EQ(merged.size(), 1u);
+    EXPECT_EQ(merged[0].option_id, 224157357);
+    EXPECT_EQ(merged[0].symbol, "BTCUSDT");
+    EXPECT_EQ(merged[0].duration, 300);
+}
+
+TEST(IntradeBarApiResponses, DoesNotFuzzyMatchDifferentBrokerIds) {
+    std::vector<TradeResult> csv_trades;
+    TradeResult first_csv;
+    first_csv.option_id = 1;
+    first_csv.symbol = "BTCUSDT";
+    first_csv.open_date = time_shield::sec_to_ms(1000);
+    first_csv.open_price = 64006.0;
+    csv_trades.push_back(first_csv);
+
+    TradeResult second_csv;
+    second_csv.option_id = 2;
+    second_csv.symbol = "BTCUSDT";
+    second_csv.open_date = time_shield::sec_to_ms(1004);
+    second_csv.open_price = 64006.0;
+    csv_trades.push_back(second_csv);
+
+    std::vector<TradeResult> html_trades;
+    TradeResult second_html;
+    second_html.option_id = 2;
+    second_html.symbol = "BTCUSDT";
+    second_html.open_date = time_shield::sec_to_ms(1004);
+    second_html.open_price = 64006.0;
+    second_html.duration = 300;
+    html_trades.push_back(second_html);
+
+    TradeResult first_html;
+    first_html.option_id = 1;
+    first_html.symbol = "BTCUSDT";
+    first_html.open_date = time_shield::sec_to_ms(1000);
+    first_html.open_price = 64006.0;
+    first_html.duration = 300;
+    html_trades.push_back(first_html);
 
     const auto merged = merge_trade_history_csv_with_html(
         std::move(csv_trades),
         html_trades);
     ASSERT_EQ(merged.size(), 2u);
-    EXPECT_EQ(merged[0].option_id, 224157357);
-    EXPECT_EQ(merged[0].symbol, "BTCUSDT");
-    EXPECT_EQ(merged[0].duration, 300);
-    EXPECT_EQ(merged[1].option_id, 224157358);
+    EXPECT_EQ(merged[0].option_id, 1);
+    EXPECT_EQ(merged[1].option_id, 2);
 }
 
 TEST(IntradeBarApiResponses, ParsesTradeCloseHtmlPageAndNextCursor) {

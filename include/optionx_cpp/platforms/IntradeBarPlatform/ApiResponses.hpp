@@ -165,7 +165,7 @@ namespace optionx::platforms::intrade_bar {
     using PriceSnapshotResult = ApiResult<PriceSnapshot>;
     using TradeOpenResult = ApiResult<TradeOpenInfo>;
     using TradeCheckResult = ApiResult<TradeCheckInfo>;
-    using TradeHistoryResult = ApiResult<TradeHistory>;
+    using TradeHistoryApiResult = ApiResult<TradeHistory>;
 
     /// \brief Converts a settings-switch failure reason to a stable log string.
     /// \param reason Failure reason.

@@ -39,6 +39,22 @@ TEST(TradeResultQuery, RoundTripsJson) {
     EXPECT_EQ(restored.retry_attempts, query.retry_attempts);
 }
 
+TEST(TradeHistoryRequest, ValidatesRangeModes) {
+    TradeHistoryRequest ranged;
+    EXPECT_FALSE(ranged.has_valid_range());
+
+    ranged.start_ms = 1000;
+    ranged.stop_ms = 2000;
+    EXPECT_TRUE(ranged.has_valid_range());
+
+    ranged.range_mode = TimeRangeMode::HALF_OPEN;
+    EXPECT_TRUE(ranged.has_valid_range());
+
+    const auto all = TradeHistoryRequest::all();
+    EXPECT_EQ(all.range_mode, TimeRangeMode::NONE);
+    EXPECT_TRUE(all.has_valid_range());
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

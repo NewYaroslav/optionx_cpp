@@ -22,6 +22,7 @@ $env:OPTIONX_INTRADE_BAR_CONFIG_FILE="tests\intrade_bar_api\intrade_bar_api.loca
 .\build-codex\intrade_bar_smoke_cli.exe domain-check --domain-min=-1 --domain-max=1000
 .\build-codex\intrade_bar_smoke_cli.exe quotes --symbol=EURUSD
 .\build-codex\intrade_bar_smoke_cli.exe history --source=CSV --days=14 --account-type=DEMO
+.\build-codex\intrade_bar_smoke_cli.exe history --source=HTML_CSV --all --account-type=DEMO
 .\build-codex\intrade_bar_smoke_cli.exe switch-check --confirm --account-type=DEMO --currency=USD
 .\build-codex\intrade_bar_smoke_cli.exe open-trade --confirm --symbol=EURUSD --amount=1 --duration=60 --buy
 .\build-codex\intrade_bar_smoke_cli.exe open-check-result --confirm --symbol=BTCUSDT --amount=1 --duration=300 --buy

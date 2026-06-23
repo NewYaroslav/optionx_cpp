@@ -5,6 +5,8 @@
 /// \file RequestManager.hpp
 /// \brief Handles HTTP requests for user authentication, trade execution, balance updates, and market data retrieval.
 
+#include <memory>
+
 #include "ApiResponses.hpp"
 
 namespace optionx::platforms::intrade_bar {
@@ -227,10 +229,12 @@ namespace optionx::platforms::intrade_bar {
             std::function<void(PriceSnapshotResult)> price_callback);
 
         /// \brief Requests closed trade history export.
-        /// \param request History range and account type.
+        /// \param request History range and timestamp field.
+        /// \param account_type Current broker account type selected during authentication.
         /// \param callback Callback receiving parsed closed trades.
         void request_trade_history(
             const TradeHistoryRequest& request,
+            AccountType account_type,
             std::function<void(
                 bool success,
                 long status_code,
@@ -239,7 +243,8 @@ namespace optionx::platforms::intrade_bar {
         /// \brief Typed variant of request_trade_history.
         void request_trade_history_result(
             const TradeHistoryRequest& request,
-            std::function<void(TradeHistoryResult)> callback);
+            AccountType account_type,
+            std::function<void(TradeHistoryApiResult)> callback);
         /// \brief Requests the trade check result.
         /// \param deal_id The deal ID to check.
         /// \param retry_attempts Number of retries if the response is empty.
@@ -375,6 +380,7 @@ namespace optionx::platforms::intrade_bar {
 
         void request_trade_history_csv(
             const TradeHistoryRequest& request,
+            AccountType account_type,
             std::function<void(
                 bool success,
                 long status_code,
@@ -382,6 +388,7 @@ namespace optionx::platforms::intrade_bar {
 
         void request_trade_history_html(
             const TradeHistoryRequest& request,
+            AccountType account_type,
             std::function<void(
                 bool success,
                 long status_code,
@@ -978,22 +985,49 @@ namespace optionx::platforms::intrade_bar {
     }
 
     namespace {
-        int64_t trade_history_timestamp(const TradeResult& trade) {
-            return trade.open_date > 0 ? trade.open_date : trade.close_date;
+        int64_t select_trade_history_timestamp(
+                const TradeResult& trade,
+                TradeRecordTimeField field) {
+            switch (field) {
+            case TradeRecordTimeField::PLACE_DATE:
+                return trade.place_date;
+            case TradeRecordTimeField::SEND_DATE:
+                return trade.send_date;
+            case TradeRecordTimeField::OPEN_DATE:
+                return trade.open_date;
+            case TradeRecordTimeField::CLOSE_DATE:
+                return trade.close_date;
+            case TradeRecordTimeField::EXPIRY_DATE:
+                return 0;
+            case TradeRecordTimeField::AUTO:
+            default:
+                if (trade.place_date > 0) return trade.place_date;
+                if (trade.send_date > 0) return trade.send_date;
+                if (trade.open_date > 0) return trade.open_date;
+                if (trade.close_date > 0) return trade.close_date;
+                return 0;
+            }
         }
 
         std::vector<TradeResult> filter_trade_history_range(
                 std::vector<TradeResult> trades,
                 const TradeHistoryRequest& request) {
+            if (request.range_mode == TimeRangeMode::NONE) return trades;
+
             trades.erase(
                 std::remove_if(
                     trades.begin(),
                     trades.end(),
                     [&request](const TradeResult& trade) {
-                        const int64_t timestamp = trade_history_timestamp(trade);
+                        const int64_t timestamp =
+                            select_trade_history_timestamp(trade, request.time_field);
                         if (timestamp <= 0) return false;
-                        return timestamp < request.start_time_ms ||
-                            timestamp > request.end_time_ms;
+                        if (request.range_mode == TimeRangeMode::HALF_OPEN) {
+                            return timestamp < request.start_ms ||
+                                timestamp >= request.stop_ms;
+                        }
+                        return timestamp < request.start_ms ||
+                            timestamp > request.stop_ms;
                     }),
                 trades.end());
             return trades;
@@ -1014,9 +1048,12 @@ namespace optionx::platforms::intrade_bar {
         bool trade_history_page_reached_start(
                 const std::vector<TradeResult>& trades,
                 const TradeHistoryRequest& request) {
+            if (request.range_mode == TimeRangeMode::NONE) return false;
+
             for (const auto& trade : trades) {
-                const int64_t timestamp = trade_history_timestamp(trade);
-                if (timestamp > 0 && timestamp < request.start_time_ms) {
+                const int64_t timestamp =
+                    select_trade_history_timestamp(trade, request.time_field);
+                if (timestamp > 0 && timestamp < request.start_ms) {
                     return true;
                 }
             }
@@ -1039,11 +1076,12 @@ namespace optionx::platforms::intrade_bar {
 
     void RequestManager::request_trade_history(
             const TradeHistoryRequest& request,
+            AccountType account_type,
             std::function<void(
                 bool success,
                 long status_code,
                 std::vector<TradeResult> trades)> callback) {
-        if (!request.has_valid_range() || request.account_type == AccountType::UNKNOWN) {
+        if (!request.has_valid_range() || account_type == AccountType::UNKNOWN) {
             callback(false, -1, {});
             return;
         }
@@ -1052,25 +1090,27 @@ namespace optionx::platforms::intrade_bar {
             "Intrade Bar trade history request. source=",
             trade_history_source_to_string(m_trade_history_source),
             ", account=",
-            to_str(request.account_type));
+            to_str(account_type));
 
         if (m_trade_history_source == TradeHistorySource::HTML) {
-            request_trade_history_html(request, std::move(callback));
+            request_trade_history_html(request, account_type, std::move(callback));
             return;
         }
         if (m_trade_history_source == TradeHistorySource::CSV) {
-            request_trade_history_csv(request, std::move(callback));
+            request_trade_history_csv(request, account_type, std::move(callback));
             return;
         }
 
         request_trade_history_csv(
             request,
-            [this, request, callback = std::move(callback)](
+            account_type,
+            [this, request, account_type, callback = std::move(callback)](
                     bool csv_success,
                     long csv_status_code,
                     std::vector<TradeResult> csv_trades) mutable {
                 request_trade_history_html(
                     request,
+                    account_type,
                     [callback = std::move(callback),
                      csv_success,
                      csv_status_code,
@@ -1078,23 +1118,13 @@ namespace optionx::platforms::intrade_bar {
                             bool html_success,
                             long html_status_code,
                             std::vector<TradeResult> html_trades) mutable {
-                        if (csv_success) {
-                            const long status_code = csv_status_code >= 0 ?
-                                csv_status_code : html_status_code;
-                            if (html_success) {
-                                callback(
-                                    true,
-                                    status_code,
-                                    merge_trade_history_csv_with_html(
-                                        std::move(csv_trades),
-                                        html_trades));
-                                return;
-                            }
-                            callback(true, status_code, std::move(csv_trades));
-                            return;
-                        }
-                        if (html_success) {
-                            callback(true, html_status_code, std::move(html_trades));
+                        if (csv_success && html_success) {
+                            callback(
+                                true,
+                                csv_status_code >= 0 ? csv_status_code : html_status_code,
+                                merge_trade_history_csv_with_html(
+                                    std::move(csv_trades),
+                                    html_trades));
                             return;
                         }
                         callback(false, csv_status_code >= 0 ? csv_status_code : html_status_code, {});
@@ -1104,20 +1134,27 @@ namespace optionx::platforms::intrade_bar {
 
     void RequestManager::request_trade_history_csv(
             const TradeHistoryRequest& request,
+            AccountType account_type,
             std::function<void(
                 bool success,
                 long status_code,
                 std::vector<TradeResult> trades)> callback) {
         constexpr int64_t broker_offset_sec = 3 * time_shield::SEC_PER_HOUR;
+        const int64_t start_ms = request.range_mode == TimeRangeMode::NONE ?
+            time_shield::sec_to_ms(time_shield::to_timestamp(2000, 1, 1)) :
+            request.start_ms;
+        const int64_t stop_ms = request.range_mode == TimeRangeMode::NONE ?
+            OPTIONX_TIMESTAMP_MS :
+            request.stop_ms;
         kurlyk::QueryParams query = {
             {"name_method", "stat_export"},
-            {"status_real", request.account_type == AccountType::REAL ? "1" : "0"},
+            {"status_real", account_type == AccountType::REAL ? "1" : "0"},
             {"date1", time_shield::to_string(
                 "%DD.%MM.%YYYY",
-                time_shield::ms_to_sec(request.start_time_ms) + broker_offset_sec)},
+                time_shield::ms_to_sec(start_ms) + broker_offset_sec)},
             {"date2", time_shield::to_string(
                 "%DD.%MM.%YYYY",
-                time_shield::ms_to_sec(request.end_time_ms) + broker_offset_sec)}
+                time_shield::ms_to_sec(stop_ms) + broker_offset_sec)}
         };
 
         auto future = get_http_client().post(
@@ -1133,7 +1170,8 @@ namespace optionx::platforms::intrade_bar {
             get_rate_limit(RateLimitType::ACCOUNT_INFO)
         );
 
-        auto response_callback = [request, callback = std::move(callback)](kurlyk::HttpResponsePtr response) {
+        auto response_callback = [request, account_type, callback = std::move(callback)](
+                kurlyk::HttpResponsePtr response) {
             if (!validate_response(response)) {
                 callback(false, response ? response->status_code : -1, {});
                 return;
@@ -1144,7 +1182,7 @@ namespace optionx::platforms::intrade_bar {
                     true,
                     response->status_code,
                     filter_trade_history_range(
-                        parse_trade_history_csv_export(response->content, request.account_type),
+                        parse_trade_history_csv_export(response->content, account_type),
                         request));
             } catch (const std::exception& ex) {
                 LOGIT_ERROR("Error parsing trade history CSV export: ", ex.what());
@@ -1157,12 +1195,14 @@ namespace optionx::platforms::intrade_bar {
 
     void RequestManager::request_trade_history_html(
             const TradeHistoryRequest& request,
+            AccountType account_type,
             std::function<void(
                 bool success,
                 long status_code,
                 std::vector<TradeResult> trades)> callback) {
         struct HtmlHistoryState {
             TradeHistoryRequest request;
+            AccountType account_type = AccountType::UNKNOWN;
             std::vector<TradeResult> trades;
             std::vector<std::string> requested_last_values;
             std::function<void(bool, long, std::vector<TradeResult>)> callback;
@@ -1172,6 +1212,7 @@ namespace optionx::platforms::intrade_bar {
 
         auto state = std::make_shared<HtmlHistoryState>();
         state->request = request;
+        state->account_type = account_type;
         state->callback = std::move(callback);
 
         constexpr int max_html_history_pages = 200;
@@ -1224,9 +1265,18 @@ namespace optionx::platforms::intrade_bar {
             (*complete)(true, status_code);
         };
 
-        *load_more = [this, state, process_page, complete](std::string last) {
+        const std::weak_ptr<std::function<void(TradeHistoryHtmlPage, long)>> weak_process_page =
+            process_page;
+
+        *load_more = [this, state, weak_process_page, complete](std::string last) {
             if (last.empty() || state->completed) {
-                (*complete)(true, TradeHistoryResult::NO_HTTP_STATUS);
+                (*complete)(true, TradeHistoryApiResult::NO_HTTP_STATUS);
+                return;
+            }
+
+            auto process_page_ref = weak_process_page.lock();
+            if (!process_page_ref) {
+                (*complete)(false, -1);
                 return;
             }
 
@@ -1248,8 +1298,10 @@ namespace optionx::platforms::intrade_bar {
                 get_rate_limit(RateLimitType::ACCOUNT_INFO)
             );
 
-            auto response_callback = [state, process_page, complete](
-                    kurlyk::HttpResponsePtr response) {
+            auto response_callback = [state,
+                                      process_page_ref = std::move(process_page_ref),
+                                      complete](
+                    kurlyk::HttpResponsePtr response) mutable {
                 if (!validate_response(response)) {
                     (*complete)(false, response ? response->status_code : -1);
                     return;
@@ -1258,7 +1310,7 @@ namespace optionx::platforms::intrade_bar {
                 try {
                     auto page = parse_trade_history_html_page(
                         response->content,
-                        state->request.account_type);
+                        state->account_type);
                     LOGIT_INFO(
                         "Intrade Bar trade history load-more parsed. bytes=",
                         response->content.size(),
@@ -1266,7 +1318,7 @@ namespace optionx::platforms::intrade_bar {
                         page.trades.size(),
                         ", next_last=",
                         page.next_last);
-                    (*process_page)(std::move(page), response->status_code);
+                    (*process_page_ref)(std::move(page), response->status_code);
                 } catch (const std::exception& ex) {
                     LOGIT_ERROR("Error parsing trade history load-more HTML: ", ex.what());
                     (*complete)(false, response ? response->status_code : -1);
@@ -1298,7 +1350,7 @@ namespace optionx::platforms::intrade_bar {
             try {
                 auto page = parse_trade_history_html_page(
                     response->content,
-                    state->request.account_type);
+                    state->account_type);
                 LOGIT_INFO(
                     "Intrade Bar trade history HTML parsed. bytes=",
                     response->content.size(),
@@ -1664,21 +1716,23 @@ namespace optionx::platforms::intrade_bar {
 
     void RequestManager::request_trade_history_result(
             const TradeHistoryRequest& request,
-            std::function<void(TradeHistoryResult)> callback) {
+            AccountType account_type,
+            std::function<void(TradeHistoryApiResult)> callback) {
         request_trade_history(
             request,
+            account_type,
             [callback = std::move(callback)](
                     bool success,
                     long status_code,
                     std::vector<TradeResult> trades) mutable {
                 if (!callback) return;
                 if (!success) {
-                    callback(TradeHistoryResult::fail(
+                    callback(TradeHistoryApiResult::fail(
                         "Failed to retrieve trade history.",
                         status_code));
                     return;
                 }
-                callback(TradeHistoryResult::ok(TradeHistory{std::move(trades)}, status_code));
+                callback(TradeHistoryApiResult::ok(TradeHistory{std::move(trades)}, status_code));
             });
     }
     void RequestManager::request_trade_check_result(

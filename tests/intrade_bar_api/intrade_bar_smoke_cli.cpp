@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <iomanip>
 #include <map>
@@ -27,7 +28,7 @@ void print_usage(std::ostream& out) {
         << "  intrade_bar_smoke_cli show-account\n"
         << "  intrade_bar_smoke_cli domain-check [--domain-min=-1] [--domain-max=1000]\n"
         << "  intrade_bar_smoke_cli quotes [--symbol=EURUSD]\n"
-        << "  intrade_bar_smoke_cli history [--source=CSV|HTML|HTML_CSV] [--days=14] [--account-type=DEMO]\n"
+        << "  intrade_bar_smoke_cli history [--source=CSV|HTML|HTML_CSV] [--days=14|--all] [--time-field=CLOSE_DATE] [--account-type=DEMO]\n"
         << "  intrade_bar_smoke_cli switch-check --confirm [--account-type=DEMO] [--currency=USD]\n"
         << "  intrade_bar_smoke_cli open-trade --confirm [--symbol=EURUSD] [--amount=1] [--duration=60] [--buy|--sell]\n"
         << "  intrade_bar_smoke_cli open-check-result --confirm [--symbol=BTCUSDT] [--amount=1] [--duration=300] [--buy|--sell]\n"
@@ -45,6 +46,8 @@ CliOptions parse_args(int argc, char** argv) {
             options.confirm = true;
         } else if (arg == "--allow-real") {
             options.allow_real = true;
+        } else if (arg == "--all") {
+            options.values["all"] = "1";
         } else if (arg == "--buy") {
             options.values["order"] = "BUY";
         } else if (arg == "--sell") {
@@ -57,6 +60,69 @@ CliOptions parse_args(int argc, char** argv) {
         }
     }
     return options;
+}
+
+std::string upper_ascii(std::string value) {
+    value = optionx::utils::trim_copy(std::move(value));
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::toupper(ch));
+    });
+    return value;
+}
+
+const char* trade_history_time_field_to_string(optionx::TradeRecordTimeField value) noexcept {
+    switch (value) {
+    case optionx::TradeRecordTimeField::PLACE_DATE:
+        return "PLACE_DATE";
+    case optionx::TradeRecordTimeField::SEND_DATE:
+        return "SEND_DATE";
+    case optionx::TradeRecordTimeField::OPEN_DATE:
+        return "OPEN_DATE";
+    case optionx::TradeRecordTimeField::CLOSE_DATE:
+        return "CLOSE_DATE";
+    case optionx::TradeRecordTimeField::EXPIRY_DATE:
+        return "EXPIRY_DATE";
+    case optionx::TradeRecordTimeField::AUTO:
+    default:
+        return "AUTO";
+    }
+}
+
+optionx::TradeRecordTimeField parse_trade_history_time_field(
+        const std::string& value,
+        optionx::TradeRecordTimeField fallback) {
+    const std::string normalized = upper_ascii(value);
+    if (normalized.empty()) return fallback;
+    if (normalized == "AUTO") return optionx::TradeRecordTimeField::AUTO;
+    if (normalized == "PLACE_DATE" || normalized == "PLACE") return optionx::TradeRecordTimeField::PLACE_DATE;
+    if (normalized == "SEND_DATE" || normalized == "SEND") return optionx::TradeRecordTimeField::SEND_DATE;
+    if (normalized == "OPEN_DATE" || normalized == "OPEN") return optionx::TradeRecordTimeField::OPEN_DATE;
+    if (normalized == "CLOSE_DATE" || normalized == "CLOSE") return optionx::TradeRecordTimeField::CLOSE_DATE;
+    if (normalized == "EXPIRY_DATE" || normalized == "EXPIRY") return optionx::TradeRecordTimeField::EXPIRY_DATE;
+    return fallback;
+}
+
+const char* time_range_mode_to_string(optionx::TimeRangeMode value) noexcept {
+    switch (value) {
+    case optionx::TimeRangeMode::NONE:
+        return "NONE";
+    case optionx::TimeRangeMode::HALF_OPEN:
+        return "HALF_OPEN";
+    case optionx::TimeRangeMode::CLOSED:
+    default:
+        return "CLOSED";
+    }
+}
+
+optionx::TimeRangeMode parse_time_range_mode(
+        const std::string& value,
+        optionx::TimeRangeMode fallback) {
+    const std::string normalized = upper_ascii(value);
+    if (normalized.empty()) return fallback;
+    if (normalized == "NONE" || normalized == "ALL") return optionx::TimeRangeMode::NONE;
+    if (normalized == "HALF_OPEN" || normalized == "HALF-OPEN") return optionx::TimeRangeMode::HALF_OPEN;
+    if (normalized == "CLOSED") return optionx::TimeRangeMode::CLOSED;
+    return fallback;
 }
 
 bool restore_settings_direct(
@@ -415,6 +481,7 @@ int run_history(smoke::IntradeBarSmokeConfig config, const CliOptions& options) 
 
     const int64_t now_ms = OPTIONX_TIMESTAMP_MS;
     const int64_t days = smoke::option_i64_or(options.values, "days", 14);
+    const bool fetch_all = options.values.find("all") != options.values.end();
     const int64_t from_ms = smoke::option_i64_or(
         options.values,
         "from-ms",
@@ -425,17 +492,34 @@ int run_history(smoke::IntradeBarSmokeConfig config, const CliOptions& options) 
         "timeout-ms",
         config.auth_timeout_ms);
 
-    optionx::TradeHistoryRequest request;
-    request.start_time_ms = from_ms;
-    request.end_time_ms = to_ms;
-    request.account_type = config.account_type;
+    optionx::TradeHistoryRequest request = fetch_all ?
+        optionx::TradeHistoryRequest::all() :
+        optionx::TradeHistoryRequest{};
+    request.time_field = parse_trade_history_time_field(
+        smoke::option_value_or(
+            options.values,
+            "time-field",
+            trade_history_time_field_to_string(request.time_field)),
+        request.time_field);
+    if (!fetch_all) {
+        request.start_ms = from_ms;
+        request.stop_ms = to_ms;
+        request.range_mode = parse_time_range_mode(
+            smoke::option_value_or(
+                options.values,
+                "range-mode",
+                time_range_mode_to_string(request.range_mode)),
+            request.range_mode);
+    }
 
     std::cout << "history source="
               << optionx::platforms::intrade_bar::trade_history_source_to_string(
                      config.trade_history_source)
-              << " account_type=" << optionx::to_str(request.account_type)
-              << " from_ms=" << request.start_time_ms
-              << " to_ms=" << request.end_time_ms
+              << " account_type=" << optionx::to_str(config.account_type)
+              << " range_mode=" << time_range_mode_to_string(request.range_mode)
+              << " time_field=" << trade_history_time_field_to_string(request.time_field)
+              << " from_ms=" << request.start_ms
+              << " to_ms=" << request.stop_ms
               << " timeout_ms=" << timeout_ms
               << '\n';
 
@@ -446,15 +530,18 @@ int run_history(smoke::IntradeBarSmokeConfig config, const CliOptions& options) 
     const auto history = runtime.fetch_trade_history_and_wait(request, timeout_ms);
     std::cout << "history accepted=" << history.accepted
               << " callback=" << history.callback_received
+              << " success=" << history.success
+              << " status_code=" << history.status_code
               << " trades=" << history.trades.size()
               << " elapsed_ms=" << history.elapsed_ms
+              << " error=" << history.error_desc
               << '\n';
     for (const auto& trade : history.trades) {
         print_trade_result_line(std::cout, "history_trade", trade);
     }
 
     runtime.disconnect();
-    return history.accepted && history.callback_received ? 0 : 1;
+    return history.accepted && history.callback_received && history.success ? 0 : 1;
 }
 
 int run_open_check_result(smoke::IntradeBarSmokeConfig config, const CliOptions& options) {
