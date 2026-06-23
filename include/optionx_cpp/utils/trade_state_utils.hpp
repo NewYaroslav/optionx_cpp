@@ -5,7 +5,7 @@
 /// \file trade_state_utils.hpp
 /// \brief Terminal-state and outcome predicates for TradeState.
 
-#include "optionx_cpp/data/trading/enums.hpp"
+#include "data/trading/enums.hpp"
 
 namespace optionx {
 

@@ -56,7 +56,7 @@ namespace optionx {
         PlatformType platform_type = PlatformType::UNKNOWN; ///< API protocol version
 
         // Spread
-        SpreadPack spread_pack;                                ///< Packed open/close spread data
+        SpreadPack spread;                                     ///< Packed open/close spread data
 
         /// \brief Creates a unique pointer to a copy of this TradeResult
         virtual std::unique_ptr<TradeResult> clone_unique() const {
@@ -95,8 +95,8 @@ namespace optionx {
             account_type,
             currency,
             platform_type,
-            spread_pack.raw,
-            spread_pack.digits
+            spread.raw,
+            spread.digits
         )
     };
 

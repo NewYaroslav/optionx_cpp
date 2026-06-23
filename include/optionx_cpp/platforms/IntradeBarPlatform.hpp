@@ -5,12 +5,14 @@
 /// \file IntradeBarPlatform.hpp
 /// \brief Defines the IntradeBarPlatform class, which provides an implementation of the trading platform API.
 
-#include <optionx_cpp/utils.hpp>
-#include <optionx_cpp/data.hpp>
-#include <optionx_cpp/storages.hpp>
-#include <optionx_cpp/modules.hpp>
+#include "utils.hpp"
+#include "data.hpp"
+#include "storages.hpp"
+#include "modules.hpp"
 
+#include "common/ApiResult.hpp"
 #include "common/BaseTradingPlatform.hpp"
+#include "IntradeBarPlatform/TradeHistorySource.hpp"
 #include "IntradeBarPlatform/AuthData.hpp"
 #include "IntradeBarPlatform/AccountInfoData.hpp"
 #include "IntradeBarPlatform/ApiResponses.hpp"
@@ -64,6 +66,40 @@ namespace optionx::platforms {
         /// \return True if the trade was placed successfully; false otherwise.
         bool place_trade(std::unique_ptr<TradeRequest> trade_request) override {
             return m_trade_execution.place_trade(std::move(trade_request));
+        }
+
+        /// \brief Requests the final result for a previously opened Intrade Bar trade.
+        /// \param query Broker-side trade identity and retry settings.
+        /// \param result Partially filled result object to update with broker data.
+        /// \param callback Callback receiving the updated result.
+        /// \return True if the check was accepted for processing; false otherwise.
+        bool fetch_trade_result(
+                TradeResultQuery query,
+                std::unique_ptr<TradeResult> result,
+                trade_result_check_callback_t callback) override {
+            return m_trade_manager.fetch_trade_result(
+                std::move(query),
+                std::move(result),
+                std::move(callback));
+        }
+
+        /// \brief Requests closed Intrade Bar trade history.
+        /// \param request Trade history range and timestamp field.
+        /// \param callback Callback receiving closed trade history or an error.
+        /// \return True if the history request was accepted for processing; false otherwise.
+        bool fetch_trade_history(
+                const TradeHistoryRequest& request,
+                trade_history_callback_t callback) override {
+            return m_trade_manager.fetch_trade_history(request, std::move(callback));
+        }
+
+        /// \brief Requests all available closed Intrade Bar trade history.
+        /// \param callback Callback receiving closed trade history or an error.
+        /// \return True if the history request was accepted for processing; false otherwise.
+        bool fetch_trade_history(trade_history_callback_t callback) override {
+            return m_trade_manager.fetch_trade_history(
+                TradeHistoryRequest::all(),
+                std::move(callback));
         }
 
         /// \brief Returns the platform-level trade result callback.

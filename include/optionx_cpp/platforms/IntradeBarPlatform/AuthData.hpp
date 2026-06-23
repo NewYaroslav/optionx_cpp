@@ -34,6 +34,7 @@ namespace optionx::platforms::intrade_bar {
         int64_t settings_switch_retry_timeout_ms = time_shield::MS_PER_10_MIN; ///< Max time to retry broker settings switches.
         int64_t settings_switch_retry_delay_ms = time_shield::MS_PER_15_SEC; ///< Fallback retry delay for settings switches.
         int64_t settings_switch_active_trade_buffer_ms = time_shield::MS_PER_5_SEC; ///< Delay after active trade close before retry.
+        TradeHistorySource trade_history_source = TradeHistorySource::CSV; ///< Source used for closed trade history requests.
 
         AuthData() :
             user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"),
@@ -126,6 +127,7 @@ namespace optionx::platforms::intrade_bar {
                 j["settings_switch_retry_timeout_ms"] = settings_switch_retry_timeout_ms;
                 j["settings_switch_retry_delay_ms"] = settings_switch_retry_delay_ms;
                 j["settings_switch_active_trade_buffer_ms"] = settings_switch_active_trade_buffer_ms;
+                j["trade_history_source"] = trade_history_source_to_string(trade_history_source);
             } catch (const std::exception& ex) {
                 LOGIT_ERROR(ex);
             }
@@ -172,6 +174,9 @@ namespace optionx::platforms::intrade_bar {
                 settings_switch_active_trade_buffer_ms = j.value(
                     "settings_switch_active_trade_buffer_ms",
                     settings_switch_active_trade_buffer_ms);
+                trade_history_source = trade_history_source_from_string(
+                    j.value("trade_history_source", trade_history_source_to_string(trade_history_source)),
+                    trade_history_source);
             } catch (const std::exception& ex) {
                 LOGIT_ERROR(ex);
             }

@@ -5,9 +5,6 @@
 /// \file ApiResult.hpp
 /// \brief Small typed result wrapper for broker HTTP API calls.
 
-#include <string>
-#include <utility>
-
 namespace optionx::platforms {
 
     /// \brief Typed result for one broker API operation.

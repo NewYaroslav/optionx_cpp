@@ -1,0 +1,75 @@
+#include <gtest/gtest.h>
+
+#include <optionx_cpp/data.hpp>
+
+using namespace optionx;
+
+TEST(TradeResultQuery, DetectsLocalAndBrokerIdentities) {
+    TradeResultQuery query;
+
+    EXPECT_FALSE(query.has_local_identity());
+    EXPECT_FALSE(query.has_broker_identity());
+    EXPECT_EQ(query.retry_attempts, 15);
+
+    query.trade_id = 42;
+    EXPECT_TRUE(query.has_local_identity());
+    EXPECT_FALSE(query.has_broker_identity());
+
+    query.option_id = 123;
+    EXPECT_TRUE(query.has_broker_identity());
+
+    query.option_id = 0;
+    query.option_hash = "broker-hash";
+    EXPECT_TRUE(query.has_broker_identity());
+}
+
+TEST(TradeResultQuery, RoundTripsJson) {
+    TradeResultQuery query;
+    query.trade_id = 42;
+    query.option_id = 123;
+    query.option_hash = "hash";
+    query.retry_attempts = 3;
+
+    nlohmann::json json = query;
+    const auto restored = json.get<TradeResultQuery>();
+
+    EXPECT_EQ(restored.trade_id, query.trade_id);
+    EXPECT_EQ(restored.option_id, query.option_id);
+    EXPECT_EQ(restored.option_hash, query.option_hash);
+    EXPECT_EQ(restored.retry_attempts, query.retry_attempts);
+}
+
+TEST(TradeHistoryRequest, ValidatesRangeModes) {
+    TradeHistoryRequest ranged;
+    EXPECT_FALSE(ranged.has_valid_range());
+
+    ranged.start_ms = 1000;
+    ranged.stop_ms = 2000;
+    EXPECT_TRUE(ranged.has_valid_range());
+
+    ranged.range_mode = TimeRangeMode::HALF_OPEN;
+    EXPECT_TRUE(ranged.has_valid_range());
+
+    const auto all = TradeHistoryRequest::all();
+    EXPECT_EQ(all.range_mode, TimeRangeMode::NONE);
+    EXPECT_TRUE(all.has_valid_range());
+}
+
+TEST(TradeHistoryRequest, RoundTripsCommentJson) {
+    TradeHistoryRequest request;
+    request.start_ms = 1000;
+    request.stop_ms = 2000;
+    request.comment = "account-history-export";
+
+    nlohmann::json json = request;
+    const auto restored = json.get<TradeHistoryRequest>();
+
+    EXPECT_EQ(restored.start_ms, request.start_ms);
+    EXPECT_EQ(restored.stop_ms, request.stop_ms);
+    EXPECT_EQ(restored.comment, request.comment);
+}
+
+int main(int argc, char** argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}

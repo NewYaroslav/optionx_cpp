@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "optionx_cpp/data/trading.hpp"
+#include "data/trading.hpp"
 #include "enums.hpp"
 
 namespace optionx::storage {

@@ -4,11 +4,14 @@
 
 /// \file platforms.hpp
 /// \brief Includes platform-related headers.
+/// \note Headers under platforms subdirectories are internal components and are
+/// intended to be included through this umbrella header.
 
 #include "utils.hpp"
 #include "data.hpp"
 #include "storages.hpp"
 #include "modules.hpp"
+#include "platforms/common/ApiResult.hpp"
 #include "platforms/common/BaseTradingPlatform.hpp"
 #include "platforms/IntradeBarPlatform.hpp"
 //#include "platforms/TradeUpPlatform.hpp"

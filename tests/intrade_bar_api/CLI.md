@@ -156,6 +156,72 @@ auth callback=1 success=1 elapsed_ms=3639
 EURUSD bid=1.14911 ask=1.14914 mid=1.14913
 ```
 
+Fetch closed trade history:
+
+```powershell
+.\build-codex\intrade_bar_smoke_cli.exe history --source=CSV --days=14 --account-type=DEMO
+.\build-codex\intrade_bar_smoke_cli.exe history --source=HTML_CSV --all --account-type=DEMO --comment=account-history-export
+```
+
+History source modes:
+
+```text
+CSV       use /stat_trade_export.php; best financial result coverage
+HTML      parse the authenticated page trade_close block and page older rows
+          through /trade_load_more2.php
+HTML_CSV  return only rows found in both CSV and HTML, using CSV financial
+          fields enriched with matching HTML broker IDs as TradeRecord entries
+```
+
+`HTML` follows the broker UI flow: `GET /` gives the recent closed trades and
+the `trade_btn_load_more` `data-last` cursor, then `POST /trade_load_more2.php`
+continues while the broker returns older rows. The endpoint uses the currently
+selected account on the broker side, so connect the platform with the desired
+account type before requesting HTML history.
+
+The table HTML does not expose every field. For example, `option_type` can stay
+`UNKNOWN` in pure `HTML` mode. Use `HTML_CSV` when you need rows verified by
+both broker sources. Use `CSV` when you intentionally want the widest export
+coverage, including rows no longer visible in HTML pagination.
+
+The default source is configurable:
+
+```text
+OPTIONX_INTRADE_BAR_TRADE_HISTORY_SOURCE=CSV
+```
+
+Useful options:
+
+```text
+--source=CSV
+--source=HTML
+--source=HTML_CSV
+--days=14
+--all
+--from-ms=1719000000000
+--to-ms=1719600000000
+--time-field=CLOSE_DATE
+--time-field=OPEN_DATE
+--range-mode=CLOSED
+--range-mode=HALF_OPEN
+--account-type=DEMO
+--comment=account-history-export
+--timeout-ms=90000
+```
+
+`--account-type` selects the account used during authentication. The history
+request itself uses the account that is currently selected in the broker
+session. By default the time range filters by `CLOSE_DATE`; `--all` disables
+time filtering and asks the broker for all available rows. For the CSV source,
+the adapter maps this to the broker-required date range starting at
+`2000-01-01`. `--comment` is copied to each returned `TradeRecord.comment`.
+Rows without the selected `--time-field` timestamp are excluded from ranged
+requests. Intrade Bar history currently provides `OPEN_DATE`, `CLOSE_DATE`, and
+`EXPIRY_DATE` (`EXPIRY_DATE` matches `CLOSE_DATE` for closed binary trades).
+
+The command prints a compact summary to stdout and writes every fetched record
+to the normal log files under `build-codex\data\logs\`.
+
 Check automatic account/currency recovery:
 
 ```powershell
@@ -230,6 +296,37 @@ OPTIONX_INTRADE_BAR_ALLOW_REAL_TRADE=1
 ```
 
 Keep `OPTIONX_INTRADE_BAR_ACCOUNT_TYPE=DEMO` for routine smoke checks.
+
+Open a guarded demo trade and then recover its final result by broker ID:
+
+```powershell
+.\build-codex\intrade_bar_smoke_cli.exe open-check-result --confirm --symbol=BTCUSDT --amount=1 --duration=300 --buy
+```
+
+`open-check-result` first waits for the normal lifecycle callback to reach a
+terminal state. Then it creates a new `TradeResult` with only the intermediate
+fields a restarted bot would reasonably know: local trade id, broker option id,
+amount, account/currency, and open timing/price fields. The command calls
+`fetch_trade_result` with `TradeResultQuery` and compares the fetched state and
+profit with the lifecycle result.
+
+Useful options:
+
+```text
+--symbol=BTCUSDT
+--amount=1
+--duration=300
+--buy
+--sell
+--result-timeout-ms=420000
+--retry-attempts=15
+```
+
+The default result timeout can also be set globally:
+
+```text
+OPTIONX_INTRADE_BAR_TRADE_RESULT_TIMEOUT_MS=420000
+```
 
 ## Logs And Data
 

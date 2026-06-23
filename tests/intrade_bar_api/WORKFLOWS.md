@@ -101,6 +101,54 @@ Started from `TradeStatusEvent`.
 6. Combine close price, broker profit, payout rules, and balance to set final
    trade state.
 
+## Trade History Export
+
+Started from `BaseTradingPlatform::fetch_trade_history` or
+`intrade_bar_smoke_cli history`.
+
+1. `TradeManager::fetch_trade_history` validates the requested time range,
+   reads the current account type from the connected account info, and reports
+   success or failure through `TradeHistoryResult`.
+2. `RequestManager::request_trade_history` chooses the source from
+   `AuthData::trade_history_source`.
+3. `CSV` calls `/stat_trade_export.php` with `name_method=stat_export`,
+   `status_real`, `date1`, and `date2`, then parses closed financial
+   `TradeRecord` entries.
+4. `HTML` requests the authenticated main page, parses `trade_close`, reads the
+   `trade_btn_load_more` `data-last` cursor, and keeps paging older closed rows
+   through `/trade_load_more2.php` until the cursor is empty, repeats, the page
+   is empty, or the requested start time is reached.
+5. `HTML_CSV` requires both sources to succeed and returns only records that
+   can be matched in both CSV and HTML. The merged records use CSV financial
+   fields enriched with HTML broker IDs and timing details.
+
+The HTML load-more endpoint does not take `status_real`; it follows the account
+currently selected in the broker session. The auth/connect workflow must switch
+the broker to the desired account before an HTML history request.
+
+`TradeHistoryRequest::all()` disables client-side time filtering for full broker
+export workflows; the CSV source still sends the broker a finite range starting
+at `2000-01-01` because that endpoint requires dates. Ranged requests default
+to `CLOSE_DATE`, which matches the usual closed-trade DB query semantics;
+callers can choose another `TradeRecordTimeField` when they need a different
+time axis. Records missing the selected timestamp are excluded from ranged
+results. For Intrade Bar closed history, `EXPIRY_DATE` is populated from
+`CLOSE_DATE`. Optional `TradeHistoryRequest::comment` is copied to each returned
+`TradeRecord.comment`.
+
+## Manual Trade Result Recovery Check
+
+Started from `intrade_bar_smoke_cli open-check-result`.
+
+1. Open a guarded demo sprint trade, usually `BTCUSDT`, amount `1`, duration
+   `300` seconds.
+2. Wait for the normal trade lifecycle to reach a terminal callback.
+3. Create a fresh `TradeResult` containing only the recovered intermediate
+   context: local trade id, broker option id, amount, account/currency, and
+   open timing/price fields.
+4. Call `BaseTradingPlatform::fetch_trade_result` with `TradeResultQuery`.
+5. Compare the fetched terminal result with the lifecycle terminal result.
+
 ## Typed Adapter Surface
 
 `RequestManager` keeps the old callback methods intact. New `*_result` methods
@@ -118,4 +166,5 @@ shape without changing Intrade Bar parser literals.
 4. Account type, currency, balance, and one live quote snapshot after auth.
 
 `intrade_bar_smoke_cli` exposes the same pieces manually through `auth`,
-`auth-cache`, `show-account`, `quotes`, and guarded `open-trade` commands.
+`auth-cache`, `show-account`, `quotes`, `history`, guarded `open-trade`, and
+`open-check-result` commands.

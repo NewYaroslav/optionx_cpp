@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
+#include <cmath>
 #include <iomanip>
 #include <map>
 
@@ -26,8 +28,10 @@ void print_usage(std::ostream& out) {
         << "  intrade_bar_smoke_cli show-account\n"
         << "  intrade_bar_smoke_cli domain-check [--domain-min=-1] [--domain-max=1000]\n"
         << "  intrade_bar_smoke_cli quotes [--symbol=EURUSD]\n"
+        << "  intrade_bar_smoke_cli history [--source=CSV|HTML|HTML_CSV] [--days=14|--all] [--time-field=CLOSE_DATE] [--comment=...]\n"
         << "  intrade_bar_smoke_cli switch-check --confirm [--account-type=DEMO] [--currency=USD]\n"
         << "  intrade_bar_smoke_cli open-trade --confirm [--symbol=EURUSD] [--amount=1] [--duration=60] [--buy|--sell]\n"
+        << "  intrade_bar_smoke_cli open-check-result --confirm [--symbol=BTCUSDT] [--amount=1] [--duration=300] [--buy|--sell]\n"
         << "\n"
         << "Configuration comes from environment variables or OPTIONX_INTRADE_BAR_CONFIG_FILE.\n"
         << "Credentials always require proxy settings before any broker request is sent.\n";
@@ -42,6 +46,8 @@ CliOptions parse_args(int argc, char** argv) {
             options.confirm = true;
         } else if (arg == "--allow-real") {
             options.allow_real = true;
+        } else if (arg == "--all") {
+            options.values["all"] = "1";
         } else if (arg == "--buy") {
             options.values["order"] = "BUY";
         } else if (arg == "--sell") {
@@ -54,6 +60,69 @@ CliOptions parse_args(int argc, char** argv) {
         }
     }
     return options;
+}
+
+std::string upper_ascii(std::string value) {
+    value = optionx::utils::trim_copy(std::move(value));
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::toupper(ch));
+    });
+    return value;
+}
+
+const char* trade_history_time_field_to_string(optionx::TradeRecordTimeField value) noexcept {
+    switch (value) {
+    case optionx::TradeRecordTimeField::PLACE_DATE:
+        return "PLACE_DATE";
+    case optionx::TradeRecordTimeField::SEND_DATE:
+        return "SEND_DATE";
+    case optionx::TradeRecordTimeField::OPEN_DATE:
+        return "OPEN_DATE";
+    case optionx::TradeRecordTimeField::CLOSE_DATE:
+        return "CLOSE_DATE";
+    case optionx::TradeRecordTimeField::EXPIRY_DATE:
+        return "EXPIRY_DATE";
+    case optionx::TradeRecordTimeField::AUTO:
+    default:
+        return "AUTO";
+    }
+}
+
+optionx::TradeRecordTimeField parse_trade_history_time_field(
+        const std::string& value,
+        optionx::TradeRecordTimeField fallback) {
+    const std::string normalized = upper_ascii(value);
+    if (normalized.empty()) return fallback;
+    if (normalized == "AUTO") return optionx::TradeRecordTimeField::AUTO;
+    if (normalized == "PLACE_DATE" || normalized == "PLACE") return optionx::TradeRecordTimeField::PLACE_DATE;
+    if (normalized == "SEND_DATE" || normalized == "SEND") return optionx::TradeRecordTimeField::SEND_DATE;
+    if (normalized == "OPEN_DATE" || normalized == "OPEN") return optionx::TradeRecordTimeField::OPEN_DATE;
+    if (normalized == "CLOSE_DATE" || normalized == "CLOSE") return optionx::TradeRecordTimeField::CLOSE_DATE;
+    if (normalized == "EXPIRY_DATE" || normalized == "EXPIRY") return optionx::TradeRecordTimeField::EXPIRY_DATE;
+    return fallback;
+}
+
+const char* time_range_mode_to_string(optionx::TimeRangeMode value) noexcept {
+    switch (value) {
+    case optionx::TimeRangeMode::NONE:
+        return "NONE";
+    case optionx::TimeRangeMode::HALF_OPEN:
+        return "HALF_OPEN";
+    case optionx::TimeRangeMode::CLOSED:
+    default:
+        return "CLOSED";
+    }
+}
+
+optionx::TimeRangeMode parse_time_range_mode(
+        const std::string& value,
+        optionx::TimeRangeMode fallback) {
+    const std::string normalized = upper_ascii(value);
+    if (normalized.empty()) return fallback;
+    if (normalized == "NONE" || normalized == "ALL") return optionx::TimeRangeMode::NONE;
+    if (normalized == "HALF_OPEN" || normalized == "HALF-OPEN") return optionx::TimeRangeMode::HALF_OPEN;
+    if (normalized == "CLOSED") return optionx::TimeRangeMode::CLOSED;
+    return fallback;
 }
 
 bool restore_settings_direct(
@@ -369,6 +438,258 @@ int run_open_trade(smoke::IntradeBarSmokeConfig config, const CliOptions& option
         open.state == optionx::TradeState::OPEN_SUCCESS ? 0 : 1;
 }
 
+void print_trade_result_line(
+        std::ostream& out,
+        const std::string& prefix,
+        const optionx::TradeResult& result) {
+    out << prefix
+        << " state=" << optionx::to_str(result.trade_state)
+        << " option_id=" << result.option_id
+        << " amount=" << std::setprecision(12) << result.amount
+        << " currency=" << optionx::to_str(result.currency)
+        << " open_price=" << std::setprecision(12) << result.open_price
+        << " close_price=" << std::setprecision(12) << result.close_price
+        << " profit=" << std::setprecision(12) << result.profit
+        << " payout=" << std::setprecision(12) << result.payout
+        << " balance=" << std::setprecision(12) << result.balance
+        << " open_date=" << result.open_date
+        << " close_date=" << result.close_date
+        << " error=" << result.error_desc
+        << '\n';
+}
+
+void print_trade_record_line(
+        std::ostream& out,
+        const std::string& prefix,
+        const optionx::TradeRecord& record) {
+    out << prefix
+        << " state=" << optionx::to_str(record.trade_state)
+        << " option_id=" << record.option_id
+        << " symbol=" << record.symbol
+        << " option_type=" << optionx::to_str(record.option_type)
+        << " order=" << optionx::to_str(record.order_type)
+        << " amount=" << std::setprecision(12) << record.amount
+        << " currency=" << optionx::to_str(record.currency)
+        << " open_price=" << std::setprecision(12) << record.open_price
+        << " close_price=" << std::setprecision(12) << record.close_price
+        << " profit=" << std::setprecision(12) << record.profit
+        << " payout=" << std::setprecision(12) << record.payout
+        << " balance=" << std::setprecision(12) << record.balance
+        << " open_date=" << record.open_date
+        << " close_date=" << record.close_date
+        << " expiry_date=" << record.expiry_date
+        << " comment=" << record.comment
+        << " error=" << record.error_desc
+        << '\n';
+}
+
+int run_history(smoke::IntradeBarSmokeConfig config, const CliOptions& options) {
+    if (!smoke::require_live_config(config, std::cerr)) return 2;
+
+    config.trade_history_source =
+        optionx::platforms::intrade_bar::trade_history_source_from_string(
+            smoke::option_value_or(
+                options.values,
+                "source",
+                optionx::platforms::intrade_bar::trade_history_source_to_string(
+                    config.trade_history_source)),
+            config.trade_history_source);
+    config.account_type = smoke::parse_enum_or<optionx::AccountType>(
+        smoke::option_value_or(
+            options.values,
+            "account-type",
+            optionx::to_str(config.account_type)),
+        config.account_type);
+
+    const int64_t now_ms = OPTIONX_TIMESTAMP_MS;
+    const int64_t days = smoke::option_i64_or(options.values, "days", 14);
+    const bool fetch_all = options.values.find("all") != options.values.end();
+    const int64_t from_ms = smoke::option_i64_or(
+        options.values,
+        "from-ms",
+        now_ms - days * time_shield::MS_PER_DAY);
+    const int64_t to_ms = smoke::option_i64_or(options.values, "to-ms", now_ms);
+    const int64_t timeout_ms = smoke::option_i64_or(
+        options.values,
+        "timeout-ms",
+        config.auth_timeout_ms);
+
+    optionx::TradeHistoryRequest request = fetch_all ?
+        optionx::TradeHistoryRequest::all() :
+        optionx::TradeHistoryRequest{};
+    request.time_field = parse_trade_history_time_field(
+        smoke::option_value_or(
+            options.values,
+            "time-field",
+            trade_history_time_field_to_string(request.time_field)),
+        request.time_field);
+    request.comment = smoke::option_value_or(
+        options.values,
+        "comment",
+        request.comment);
+    if (!fetch_all) {
+        request.start_ms = from_ms;
+        request.stop_ms = to_ms;
+        request.range_mode = parse_time_range_mode(
+            smoke::option_value_or(
+                options.values,
+                "range-mode",
+                time_range_mode_to_string(request.range_mode)),
+            request.range_mode);
+    }
+
+    std::cout << "history source="
+              << optionx::platforms::intrade_bar::trade_history_source_to_string(
+                     config.trade_history_source)
+              << " account_type=" << optionx::to_str(config.account_type)
+              << " range_mode=" << time_range_mode_to_string(request.range_mode)
+              << " time_field=" << trade_history_time_field_to_string(request.time_field)
+              << " from_ms=" << request.start_ms
+              << " to_ms=" << request.stop_ms
+              << " comment=" << request.comment
+              << " timeout_ms=" << timeout_ms
+              << '\n';
+
+    smoke::IntradeBarSmokeRuntime runtime(config);
+    if (!smoke::connect_or_report(runtime, std::cout, std::cerr)) return 1;
+    smoke::print_account(std::cout, runtime.platform());
+
+    const auto history = runtime.fetch_trade_history_and_wait(request, timeout_ms);
+    std::cout << "history accepted=" << history.accepted
+              << " callback=" << history.callback_received
+              << " success=" << history.success
+              << " status_code=" << history.status_code
+              << " records=" << history.records.size()
+              << " elapsed_ms=" << history.elapsed_ms
+              << " error=" << history.error_desc
+              << '\n';
+    for (const auto& record : history.records) {
+        print_trade_record_line(std::cout, "history_record", record);
+    }
+
+    runtime.disconnect();
+    return history.accepted && history.callback_received && history.success ? 0 : 1;
+}
+
+int run_open_check_result(smoke::IntradeBarSmokeConfig config, const CliOptions& options) {
+    if (!smoke::require_live_config(config, std::cerr)) return 2;
+    const bool confirmed = options.confirm || config.allow_trade;
+    if (!confirmed) {
+        std::cerr << "open-check-result opens a broker trade; pass --confirm or OPTIONX_INTRADE_BAR_ALLOW_TRADE=1.\n";
+        return 2;
+    }
+    if (config.account_type != optionx::AccountType::DEMO &&
+        !(options.allow_real && config.allow_real_trade)) {
+        std::cerr << "Refusing real-account trade. Use DEMO or set both --allow-real and OPTIONX_INTRADE_BAR_ALLOW_REAL_TRADE=1.\n";
+        return 2;
+    }
+
+    const std::string symbol = smoke::option_value_or(
+        options.values,
+        "symbol",
+        "BTCUSDT");
+    const double amount = smoke::option_double_or(
+        options.values,
+        "amount",
+        1.0);
+    const int64_t duration = smoke::option_i64_or(
+        options.values,
+        "duration",
+        5 * time_shield::SEC_PER_MIN);
+    const int64_t result_timeout_ms = smoke::option_i64_or(
+        options.values,
+        "result-timeout-ms",
+        config.trade_result_timeout_ms);
+    const int retry_attempts = static_cast<int>(smoke::option_i64_or(
+        options.values,
+        "retry-attempts",
+        15));
+    const auto order_type = smoke::parse_enum_or<optionx::OrderType>(
+        smoke::option_value_or(
+            options.values,
+            "order",
+            optionx::to_str(config.trade_order_type)),
+        config.trade_order_type);
+
+    smoke::IntradeBarSmokeRuntime runtime(config);
+    if (!smoke::connect_or_report(runtime, std::cout, std::cerr)) return 1;
+    smoke::print_account(std::cout, runtime.platform());
+
+    std::cout << "open_check_result symbol=" << symbol
+              << " amount=" << amount
+              << " duration=" << duration
+              << " order=" << optionx::to_str(order_type)
+              << " result_timeout_ms=" << result_timeout_ms
+              << " retry_attempts=" << retry_attempts
+              << '\n';
+
+    const auto lifecycle = runtime.open_trade_and_wait_for_result(
+        symbol,
+        amount,
+        order_type,
+        duration,
+        result_timeout_ms);
+
+    std::cout << "lifecycle accepted=" << lifecycle.accepted
+              << " callback=" << lifecycle.callback_received
+              << " open_received=" << lifecycle.open_received
+              << " terminal_received=" << lifecycle.terminal_received
+              << " elapsed_ms=" << lifecycle.elapsed_ms
+              << '\n';
+    print_trade_result_line(std::cout, "lifecycle_result", lifecycle.result);
+
+    if (!lifecycle.accepted ||
+        !lifecycle.callback_received ||
+        !lifecycle.open_received ||
+        !lifecycle.terminal_received ||
+        lifecycle.result.option_id <= 0) {
+        runtime.disconnect();
+        return 1;
+    }
+
+    optionx::TradeResultQuery query;
+    query.trade_id = lifecycle.result.trade_id;
+    query.option_id = lifecycle.result.option_id;
+    query.retry_attempts = retry_attempts;
+
+    auto restored_result = std::make_unique<optionx::TradeResult>();
+    restored_result->trade_id = lifecycle.result.trade_id;
+    restored_result->option_id = lifecycle.result.option_id;
+    restored_result->amount = lifecycle.result.amount;
+    restored_result->payout = lifecycle.result.payout;
+    restored_result->account_type = lifecycle.result.account_type;
+    restored_result->currency = lifecycle.result.currency;
+    restored_result->platform_type = lifecycle.result.platform_type;
+    restored_result->open_price = lifecycle.result.open_price;
+    restored_result->open_date = lifecycle.result.open_date;
+    restored_result->close_date = lifecycle.result.close_date;
+
+    const auto fetch = runtime.fetch_trade_result_and_wait(
+        std::move(query),
+        std::move(restored_result),
+        config.trade_open_timeout_ms);
+
+    std::cout << "fetch accepted=" << fetch.accepted
+              << " callback=" << fetch.callback_received
+              << " elapsed_ms=" << fetch.elapsed_ms
+              << '\n';
+    print_trade_result_line(std::cout, "fetched_result", fetch.result);
+
+    const bool state_match = fetch.result.trade_state == lifecycle.result.trade_state;
+    const bool profit_match = std::abs(fetch.result.profit - lifecycle.result.profit) < 0.01;
+    std::cout << "compare state_match=" << state_match
+              << " profit_match=" << profit_match
+              << '\n';
+
+    runtime.disconnect();
+    return fetch.accepted &&
+        fetch.callback_received &&
+        optionx::is_terminal_trade_state(fetch.result.trade_state) &&
+        fetch.result.trade_state != optionx::TradeState::CHECK_ERROR &&
+        state_match &&
+        profit_match ? 0 : 1;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -396,10 +717,14 @@ int main(int argc, char** argv) {
         result = run_domain_check(std::move(config), options);
     } else if (options.command == "quotes") {
         result = run_quotes(std::move(config), options);
+    } else if (options.command == "history") {
+        result = run_history(std::move(config), options);
     } else if (options.command == "switch-check") {
         result = run_switch_check(std::move(config), options);
     } else if (options.command == "open-trade") {
         result = run_open_trade(std::move(config), options);
+    } else if (options.command == "open-check-result") {
+        result = run_open_check_result(std::move(config), options);
     } else {
         std::cerr << "Unknown command: " << options.command << "\n\n";
         print_usage(std::cerr);

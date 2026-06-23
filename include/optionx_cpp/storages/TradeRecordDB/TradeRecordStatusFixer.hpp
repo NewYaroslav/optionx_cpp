@@ -11,9 +11,9 @@
 #include <algorithm>
 #include <limits>
 
-#include "optionx_cpp/data/trading/TradeRecord.hpp"
-#include "optionx_cpp/data/trading/TradeResult.hpp"
-#include "optionx_cpp/utils/trade_state_utils.hpp"
+#include "data/trading/TradeRecord.hpp"
+#include "data/trading/TradeResult.hpp"
+#include "utils/trade_state_utils.hpp"
 
 namespace optionx::storage {
 
@@ -187,8 +187,8 @@ namespace optionx::storage {
                 record.platform_type = result.platform_type;
                 updated = true;
             }
-            if (result.spread_pack.raw != 0 || result.spread_pack.digits != 0) {
-                record.spread_pack = result.spread_pack;
+            if (result.spread.raw != 0 || result.spread.digits != 0) {
+                record.spread = result.spread;
                 updated = true;
             }
 
