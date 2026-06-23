@@ -196,7 +196,7 @@ namespace optionx {
             return same_numeric_id || same_string_id;
         }
 
-        /// \brief Serializes the record using the Binary v2 storage format.
+        /// \brief Serializes the record using the current binary storage format.
         std::vector<std::uint8_t> to_bytes() const {
             std::vector<std::uint8_t> bytes;
             bytes.reserve(512 + request_unique_hash.size() + option_hash.size() +
@@ -263,7 +263,7 @@ namespace optionx {
             return bytes;
         }
 
-        /// \brief Deserializes a Binary v2 trade record.
+        /// \brief Deserializes a trade record serialized by the current binary storage format.
         static TradeRecord from_bytes(const void* data, std::size_t size) {
             BinaryReader reader(data, size);
 
@@ -389,7 +389,7 @@ namespace optionx {
 
     private:
         static constexpr std::uint32_t kBinaryMagic = 0x5254584fU; // "OXTR" on little-endian hosts.
-        static constexpr std::uint16_t kBinaryVersion = 4;
+        static constexpr std::uint16_t kBinaryVersion = 1;
 
         template<typename T>
         static bool same_known(T lhs, T rhs, T unknown) noexcept {
