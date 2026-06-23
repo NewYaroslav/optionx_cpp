@@ -118,4 +118,4 @@ Enums живут рядом с доменом и имеют `to_str`, `to_enum`,
 | Добавить DTO/enum | `data/<domain>/*.hpp`, `data/trading/enums.hpp` |
 | Изменить HTTP flow | `BaseHttpClientModule.hpp`, platform `HttpClientModule.hpp`, `http_utils.hpp` |
 | Изменить trade lifecycle | `BaseTradeExecutionModule.hpp`, `TradeQueueManager.hpp`, `TradeStateManager.hpp` |
-| Изменить build/tests | `CMakeLists.txt`, `libs/`, `tests/`, `guides/build-and-test.md` |
+| Изменить build/tests | `CMakeLists.txt`, `external/`, `tests/`, `guides/build-and-test.md` |

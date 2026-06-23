@@ -18,7 +18,7 @@
 | `include/optionx_cpp/bridges` | Base bridge контракт | При интеграции внешних систем |
 | `examples` | Ручные usage samples | Когда меняется user-facing flow |
 | `tests` | GoogleTest/probes | Для регрессионных проверок |
-| `libs` | Submodules/dependency CMake scripts | Только при изменении third-party build/deps |
+| `external` | Submodules/dependency CMake scripts | Только при изменении third-party build/deps |
 | `build`, `build-*` | Generated build output | Обычно не редактировать и не коммитить |
 
 ## Public Include Points
@@ -159,4 +159,4 @@ Avoid:
 | `include/optionx_cpp/utils/pubsub/*` | Центральная доставка событий и awaiters |
 | `include/optionx_cpp/utils/tasks/*` | Threading/lifecycle всех платформ |
 | `include/optionx_cpp/storages/ServiceSessionDB.hpp` | Encryption key/session persistence |
-| `libs/*` | Third-party build/submodules |
+| `external/*` | Third-party build/submodules |

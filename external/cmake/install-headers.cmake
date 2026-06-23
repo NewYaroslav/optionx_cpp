@@ -1,6 +1,6 @@
 # install_headers.cmake
 #
-# Утилита для копирования заголовков в build-libs/include/<target_name>/
+# Утилита для копирования заголовков в build-dir/include/<target_name>/
 
 function(install_headers_to_include target_name include_dir)
     file(GLOB_RECURSE headers
