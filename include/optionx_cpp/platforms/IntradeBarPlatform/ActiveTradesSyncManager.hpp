@@ -53,6 +53,7 @@ namespace optionx::platforms::intrade_bar {
         bool m_sync_in_progress = false; ///< True while a snapshot request is running.
         bool m_refresh_scheduled = false; ///< True while a delayed refresh task is pending.
         std::uint64_t m_sync_generation = 0; ///< Monotonic request generation for stale callback filtering.
+        std::uint64_t m_active_sync_generation = 0; ///< Generation of the currently active snapshot request.
 
         /// \brief Starts a broker active-trades snapshot request.
         /// \param reason Human-readable trigger reason for logs.
@@ -61,6 +62,9 @@ namespace optionx::platforms::intrade_bar {
         /// \brief Schedules a delayed broker active-trades snapshot request.
         /// \param reason Human-readable trigger reason for logs.
         void schedule_sync(std::string reason);
+
+        /// \brief Resets active sync request state and invalidates pending callbacks.
+        void reset_sync_state();
 
         /// \brief Handles updated auth/settings data.
         /// \param event Auth data event.
@@ -111,9 +115,8 @@ namespace optionx::platforms::intrade_bar {
 
     void ActiveTradesSyncManager::shutdown() {
         m_task_manager.shutdown();
-        m_sync_in_progress = false;
         m_refresh_scheduled = false;
-        ++m_sync_generation;
+        reset_sync_state();
     }
 
     void ActiveTradesSyncManager::request_sync(std::string reason) {
@@ -135,13 +138,15 @@ namespace optionx::platforms::intrade_bar {
         m_sync_in_progress = true;
         m_refresh_scheduled = false;
         const std::uint64_t generation = ++m_sync_generation;
+        m_active_sync_generation = generation;
         LOGIT_INFO(
             "Intrade Bar active trades sync: requesting broker snapshot. reason=",
             reason);
 
         m_request_manager.request_active_trades_snapshot_result(
             [this, reason, generation](ActiveTradesSnapshotResult result) {
-                if (generation != m_sync_generation) return;
+                if (generation != m_active_sync_generation) return;
+                m_active_sync_generation = 0;
                 m_sync_in_progress = false;
                 const auto account_info = get_account_info();
                 if (!account_info->connect) {
@@ -185,6 +190,12 @@ namespace optionx::platforms::intrade_bar {
                     std::move(close_times_ms),
                     m_active_trades_close_buffer_ms));
             });
+    }
+
+    void ActiveTradesSyncManager::reset_sync_state() {
+        m_sync_in_progress = false;
+        m_active_sync_generation = 0;
+        ++m_sync_generation;
     }
 
     void ActiveTradesSyncManager::schedule_sync(std::string reason) {
@@ -237,9 +248,8 @@ namespace optionx::platforms::intrade_bar {
 
     void ActiveTradesSyncManager::handle_event(const events::DisconnectRequestEvent& event) {
         m_task_manager.shutdown();
-        m_sync_in_progress = false;
         m_refresh_scheduled = false;
-        ++m_sync_generation;
+        reset_sync_state();
     }
 
     void ActiveTradesSyncManager::handle_event(const events::AccountInfoUpdateEvent& event) {
@@ -250,9 +260,8 @@ namespace optionx::platforms::intrade_bar {
         if (event.status == Status::DISCONNECTED ||
             event.status == Status::FAILED_TO_CONNECT) {
             m_task_manager.shutdown();
-            m_sync_in_progress = false;
             m_refresh_scheduled = false;
-            ++m_sync_generation;
+            reset_sync_state();
         }
     }
 
