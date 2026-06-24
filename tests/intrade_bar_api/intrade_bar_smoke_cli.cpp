@@ -545,6 +545,7 @@ int run_open_trades_sync_check(
     opened_trades.reserve(static_cast<std::size_t>(trade_count));
     bool local_counter_ok = true;
     for (int64_t index = 0; index < trade_count; ++index) {
+        const int64_t open_attempt_started_ms = OPTIONX_TIMESTAMP_MS;
         const std::size_t before_open_updates = open_runtime.open_trades_update_count();
         const auto open = open_runtime.open_trade_and_wait(
             symbol,
@@ -582,7 +583,8 @@ int run_open_trades_sync_check(
                   << '\n';
 
         if (index + 1 < trade_count && open_interval_ms > 0) {
-            open_runtime.pump_for(open_interval_ms);
+            const int64_t elapsed_ms = OPTIONX_TIMESTAMP_MS - open_attempt_started_ms;
+            open_runtime.pump_for(std::max<int64_t>(0, open_interval_ms - elapsed_ms));
         }
     }
 
