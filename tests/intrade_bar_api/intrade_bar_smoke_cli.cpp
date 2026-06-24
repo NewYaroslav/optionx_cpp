@@ -8,6 +8,7 @@
 #include <cmath>
 #include <iomanip>
 #include <map>
+#include <vector>
 
 namespace smoke = optionx::tests::intrade_bar_smoke;
 
@@ -31,7 +32,7 @@ void print_usage(std::ostream& out) {
         << "  intrade_bar_smoke_cli history [--source=CSV|HTML|HTML_CSV] [--days=14|--all] [--time-field=CLOSE_DATE] [--comment=...]\n"
         << "  intrade_bar_smoke_cli switch-check --confirm [--account-type=DEMO] [--currency=USD]\n"
         << "  intrade_bar_smoke_cli open-trade --confirm [--symbol=EURUSD] [--amount=1] [--duration=60] [--buy|--sell]\n"
-        << "  intrade_bar_smoke_cli open-trades-sync-check --confirm [--symbol=BTCUSDT|EURUSD] [--amount=1] [--duration=300] [--buy|--sell]\n"
+        << "  intrade_bar_smoke_cli open-trades-sync-check --confirm [--symbol=BTCUSDT|EURUSD] [--amount=1] [--duration=300] [--count=1] [--interval-ms=15000] [--buy|--sell]\n"
         << "  intrade_bar_smoke_cli open-check-result --confirm [--symbol=BTCUSDT] [--amount=1] [--duration=300] [--buy|--sell]\n"
         << "\n"
         << "Configuration comes from environment variables or OPTIONX_INTRADE_BAR_CONFIG_FILE.\n"
@@ -497,6 +498,15 @@ int run_open_trades_sync_check(
         options.values,
         "local-counter-timeout-ms",
         10000);
+    const int64_t trade_count = std::max<int64_t>(
+        1,
+        smoke::option_i64_or(options.values, "count", 1));
+    const int64_t open_interval_ms = std::max<int64_t>(
+        0,
+        smoke::option_i64_or(options.values, "interval-ms", 15000));
+    const int64_t min_accepted = std::max<int64_t>(
+        1,
+        smoke::option_i64_or(options.values, "min-accepted", trade_count));
 
     std::cout << "open_trades_sync_check symbol=" << symbol;
     if (requested_symbol != symbol) {
@@ -505,6 +515,9 @@ int run_open_trades_sync_check(
     std::cout << " amount=" << amount
               << " duration=" << duration
               << " order=" << optionx::to_str(order_type)
+              << " count=" << trade_count
+              << " interval_ms=" << open_interval_ms
+              << " min_accepted=" << min_accepted
               << " close_buffer_ms=" << config.active_trades_close_buffer_ms
               << " sync_period_ms=" << config.active_trades_sync_period_ms
               << " snapshot_timeout_ms=" << snapshot_timeout_ms
@@ -528,40 +541,61 @@ int run_open_trades_sync_check(
         return 1;
     }
 
-    const std::size_t before_open_updates = open_runtime.open_trades_update_count();
-    const auto open = open_runtime.open_trade_and_wait(
-        symbol,
-        amount,
-        order_type,
-        duration,
-        config.trade_open_timeout_ms);
-    const bool local_increment = open_runtime.wait_for_open_trades_at_least_after(
-        initial_open_trades + 1,
-        before_open_updates,
-        local_counter_timeout_ms);
-    const int64_t local_open_trades = open_runtime.current_open_trades();
+    std::vector<smoke::TradeOpenAttempt> opened_trades;
+    opened_trades.reserve(static_cast<std::size_t>(trade_count));
+    bool local_counter_ok = true;
+    for (int64_t index = 0; index < trade_count; ++index) {
+        const std::size_t before_open_updates = open_runtime.open_trades_update_count();
+        const auto open = open_runtime.open_trade_and_wait(
+            symbol,
+            amount,
+            order_type,
+            duration,
+            config.trade_open_timeout_ms);
 
-    std::cout << "open accepted=" << open.accepted
-              << " callback=" << open.callback_received
-              << " state=" << optionx::to_str(open.state)
-              << " option_id=" << open.option_id
-              << " open_price=" << std::setprecision(12) << open.open_price
-              << " open_date=" << open.open_date
-              << " close_date=" << open.close_date
-              << " elapsed_ms=" << open.elapsed_ms
-              << " error=" << open.error_desc
-              << '\n';
-    std::cout << "local_increment=" << local_increment
-              << " local_open_trades=" << local_open_trades
+        bool local_increment = false;
+        if (open.accepted &&
+            open.callback_received &&
+            open.state == optionx::TradeState::OPEN_SUCCESS &&
+            open.option_id > 0) {
+            opened_trades.push_back(open);
+            local_increment = open_runtime.wait_for_open_trades_at_least_after(
+                initial_open_trades + static_cast<int64_t>(opened_trades.size()),
+                before_open_updates,
+                local_counter_timeout_ms);
+            local_counter_ok = local_counter_ok && local_increment;
+        }
+        const int64_t local_open_trades = open_runtime.current_open_trades();
+
+        std::cout << "open[" << (index + 1) << "/" << trade_count << "]"
+                  << " accepted=" << open.accepted
+                  << " callback=" << open.callback_received
+                  << " state=" << optionx::to_str(open.state)
+                  << " option_id=" << open.option_id
+                  << " open_price=" << std::setprecision(12) << open.open_price
+                  << " open_date=" << open.open_date
+                  << " close_date=" << open.close_date
+                  << " elapsed_ms=" << open.elapsed_ms
+                  << " local_increment=" << local_increment
+                  << " local_open_trades=" << local_open_trades
+                  << " error=" << open.error_desc
+                  << '\n';
+
+        if (index + 1 < trade_count && open_interval_ms > 0) {
+            open_runtime.pump_for(open_interval_ms);
+        }
+    }
+
+    std::cout << "open_summary requested=" << trade_count
+              << " accepted=" << opened_trades.size()
+              << " local_counter_ok=" << local_counter_ok
+              << " local_open_trades=" << open_runtime.current_open_trades()
               << '\n';
 
     open_runtime.disconnect();
 
-    if (!open.accepted ||
-        !open.callback_received ||
-        open.state != optionx::TradeState::OPEN_SUCCESS ||
-        open.option_id <= 0 ||
-        !local_increment) {
+    if (static_cast<int64_t>(opened_trades.size()) < min_accepted ||
+        !local_counter_ok) {
         return 1;
     }
 
@@ -578,7 +612,7 @@ int run_open_trades_sync_check(
     }
 
     const bool broker_snapshot = snapshot_runtime.wait_for_open_trades_at_least_after(
-        1,
+        static_cast<int64_t>(opened_trades.size()),
         reconnect_updates,
         snapshot_timeout_ms);
     const int64_t broker_snapshot_open_trades = snapshot_runtime.current_open_trades();
@@ -592,10 +626,14 @@ int run_open_trades_sync_check(
         return 1;
     }
 
+    int64_t latest_close_date = 0;
+    for (const auto& trade : opened_trades) {
+        latest_close_date = std::max(latest_close_date, trade.close_date);
+    }
     const int64_t now_ms = OPTIONX_TIMESTAMP_MS;
     const int64_t default_close_timeout_ms = std::max<int64_t>(
         30000,
-        std::max<int64_t>(0, open.close_date - now_ms) +
+        std::max<int64_t>(0, latest_close_date - now_ms) +
             config.active_trades_close_buffer_ms +
             2 * config.active_trades_sync_period_ms +
             60000);
@@ -603,15 +641,38 @@ int run_open_trades_sync_check(
         options.values,
         "close-timeout-ms",
         default_close_timeout_ms);
-    const std::size_t before_close_updates = snapshot_runtime.open_trades_update_count();
+    const int64_t target_open_trades = std::max<int64_t>(
+        0,
+        broker_snapshot_open_trades - static_cast<int64_t>(opened_trades.size()));
+    std::size_t last_update_count = snapshot_runtime.open_trades_update_count();
     std::cout << "waiting_for_decrement close_timeout_ms=" << close_timeout_ms
-              << " expected_close_date=" << open.close_date
+              << " expected_close_date=" << latest_close_date
+              << " target_open_trades=" << target_open_trades
               << '\n';
-    const bool broker_decrement = snapshot_runtime.wait_for_open_trades_below_after(
-        broker_snapshot_open_trades,
-        before_close_updates,
-        close_timeout_ms);
+
+    const int64_t close_wait_started_ms = OPTIONX_TIMESTAMP_MS;
+    const int64_t close_deadline_ms = close_wait_started_ms + close_timeout_ms;
+    while (snapshot_runtime.current_open_trades() > target_open_trades &&
+           OPTIONX_TIMESTAMP_MS < close_deadline_ms) {
+        const int64_t remaining_ms = close_deadline_ms - OPTIONX_TIMESTAMP_MS;
+        const bool update = snapshot_runtime.wait_for_open_trades_update_after(
+            last_update_count,
+            std::max<int64_t>(1, remaining_ms));
+        const auto updates = snapshot_runtime.open_trades_updates();
+        if (updates.size() > last_update_count) {
+            for (std::size_t i = last_update_count; i < updates.size(); ++i) {
+                std::cout << "broker_counter_update index=" << (i + 1)
+                          << " open_trades=" << updates[i]
+                          << " elapsed_ms=" << (OPTIONX_TIMESTAMP_MS - close_wait_started_ms)
+                          << '\n';
+            }
+            last_update_count = updates.size();
+        }
+        if (!update) break;
+    }
+
     const int64_t final_open_trades = snapshot_runtime.current_open_trades();
+    const bool broker_decrement = final_open_trades <= target_open_trades;
     std::cout << "broker_decrement=" << broker_decrement
               << " final_open_trades=" << final_open_trades
               << " open_trades_updates=" << snapshot_runtime.open_trades_update_count()

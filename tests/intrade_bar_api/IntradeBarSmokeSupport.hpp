@@ -528,8 +528,22 @@ public:
         return m_open_trades_updates.empty() ? -1 : m_open_trades_updates.back();
     }
 
+    std::vector<int64_t> open_trades_updates() const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_open_trades_updates;
+    }
+
     int64_t current_open_trades() {
         return m_platform.get_info<int64_t>(optionx::AccountInfoType::OPEN_TRADES);
+    }
+
+    void pump_for(int64_t timeout_ms) {
+        pump_until(
+            m_platform,
+            [] {
+                return false;
+            },
+            timeout_ms);
     }
 
     bool has_account_settings(
