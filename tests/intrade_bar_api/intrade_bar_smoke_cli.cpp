@@ -31,6 +31,7 @@ void print_usage(std::ostream& out) {
         << "  intrade_bar_smoke_cli history [--source=CSV|HTML|HTML_CSV] [--days=14|--all] [--time-field=CLOSE_DATE] [--comment=...]\n"
         << "  intrade_bar_smoke_cli switch-check --confirm [--account-type=DEMO] [--currency=USD]\n"
         << "  intrade_bar_smoke_cli open-trade --confirm [--symbol=EURUSD] [--amount=1] [--duration=60] [--buy|--sell]\n"
+        << "  intrade_bar_smoke_cli open-trades-sync-check --confirm [--symbol=BTCUSDT|EURUSD] [--amount=1] [--duration=300] [--buy|--sell]\n"
         << "  intrade_bar_smoke_cli open-check-result --confirm [--symbol=BTCUSDT] [--amount=1] [--duration=300] [--buy|--sell]\n"
         << "\n"
         << "Configuration comes from environment variables or OPTIONX_INTRADE_BAR_CONFIG_FILE.\n"
@@ -435,6 +436,192 @@ int run_open_trade(smoke::IntradeBarSmokeConfig config, const CliOptions& option
         open.state == optionx::TradeState::OPEN_SUCCESS ? 0 : 1;
 }
 
+bool is_btc_symbol(const std::string& symbol) {
+    const std::string normalized = upper_ascii(symbol);
+    return normalized == "BTCUSD" || normalized == "BTCUSDT";
+}
+
+int64_t default_open_trades_sync_duration_sec(const std::string& symbol) {
+    return is_btc_symbol(symbol) ? 5 * time_shield::SEC_PER_MIN :
+        3 * time_shield::SEC_PER_MIN;
+}
+
+int run_open_trades_sync_check(
+        smoke::IntradeBarSmokeConfig config,
+        const CliOptions& options) {
+    if (!smoke::require_live_config(config, std::cerr)) return 2;
+    const bool confirmed = options.confirm || config.allow_trade;
+    if (!confirmed) {
+        std::cerr << "open-trades-sync-check opens a broker trade; pass --confirm or OPTIONX_INTRADE_BAR_ALLOW_TRADE=1.\n";
+        return 2;
+    }
+    if (config.account_type != optionx::AccountType::DEMO &&
+        !(options.allow_real && config.allow_real_trade)) {
+        std::cerr << "Refusing real-account trade. Use DEMO or set both --allow-real and OPTIONX_INTRADE_BAR_ALLOW_REAL_TRADE=1.\n";
+        return 2;
+    }
+
+    config.active_trades_close_buffer_ms = smoke::option_i64_or(
+        options.values,
+        "close-buffer-ms",
+        config.active_trades_close_buffer_ms);
+    config.active_trades_sync_period_ms = smoke::option_i64_or(
+        options.values,
+        "sync-period-ms",
+        config.active_trades_sync_period_ms);
+
+    const std::string requested_symbol = smoke::option_value_or(
+        options.values,
+        "symbol",
+        "BTCUSDT");
+    const std::string symbol = smoke::normalize_quote_symbol(requested_symbol);
+    const int64_t duration = smoke::option_i64_or(
+        options.values,
+        "duration",
+        default_open_trades_sync_duration_sec(symbol));
+    const double amount = smoke::option_double_or(
+        options.values,
+        "amount",
+        config.trade_amount);
+    const auto order_type = smoke::parse_enum_or<optionx::OrderType>(
+        smoke::option_value_or(
+            options.values,
+            "order",
+            optionx::to_str(config.trade_order_type)),
+        config.trade_order_type);
+    const int64_t snapshot_timeout_ms = smoke::option_i64_or(
+        options.values,
+        "snapshot-timeout-ms",
+        std::max<int64_t>(30000, config.active_trades_sync_period_ms + 15000));
+    const int64_t local_counter_timeout_ms = smoke::option_i64_or(
+        options.values,
+        "local-counter-timeout-ms",
+        10000);
+
+    std::cout << "open_trades_sync_check symbol=" << symbol;
+    if (requested_symbol != symbol) {
+        std::cout << " requested=" << requested_symbol;
+    }
+    std::cout << " amount=" << amount
+              << " duration=" << duration
+              << " order=" << optionx::to_str(order_type)
+              << " close_buffer_ms=" << config.active_trades_close_buffer_ms
+              << " sync_period_ms=" << config.active_trades_sync_period_ms
+              << " snapshot_timeout_ms=" << snapshot_timeout_ms
+              << '\n';
+
+    smoke::IntradeBarSmokeRuntime open_runtime(config);
+    const std::size_t first_initial_updates = open_runtime.open_trades_update_count();
+    if (!smoke::connect_or_report(open_runtime, std::cout, std::cerr)) return 1;
+    const bool first_snapshot = open_runtime.wait_for_open_trades_update_after(
+        first_initial_updates,
+        snapshot_timeout_ms);
+    const int64_t initial_open_trades = open_runtime.current_open_trades();
+    std::cout << "initial_snapshot=" << first_snapshot
+              << " initial_open_trades=" << initial_open_trades
+              << " open_trades_updates=" << open_runtime.open_trades_update_count()
+              << ' ';
+    smoke::print_account(std::cout, open_runtime.platform());
+    if (!first_snapshot) {
+        std::cerr << "Initial broker open-trades snapshot was not received.\n";
+        open_runtime.disconnect();
+        return 1;
+    }
+
+    const std::size_t before_open_updates = open_runtime.open_trades_update_count();
+    const auto open = open_runtime.open_trade_and_wait(
+        symbol,
+        amount,
+        order_type,
+        duration,
+        config.trade_open_timeout_ms);
+    const bool local_increment = open_runtime.wait_for_open_trades_at_least_after(
+        initial_open_trades + 1,
+        before_open_updates,
+        local_counter_timeout_ms);
+    const int64_t local_open_trades = open_runtime.current_open_trades();
+
+    std::cout << "open accepted=" << open.accepted
+              << " callback=" << open.callback_received
+              << " state=" << optionx::to_str(open.state)
+              << " option_id=" << open.option_id
+              << " open_price=" << std::setprecision(12) << open.open_price
+              << " open_date=" << open.open_date
+              << " close_date=" << open.close_date
+              << " elapsed_ms=" << open.elapsed_ms
+              << " error=" << open.error_desc
+              << '\n';
+    std::cout << "local_increment=" << local_increment
+              << " local_open_trades=" << local_open_trades
+              << '\n';
+
+    open_runtime.disconnect();
+
+    if (!open.accepted ||
+        !open.callback_received ||
+        open.state != optionx::TradeState::OPEN_SUCCESS ||
+        open.option_id <= 0 ||
+        !local_increment) {
+        return 1;
+    }
+
+    smoke::IntradeBarSmokeRuntime snapshot_runtime(config);
+    const std::size_t reconnect_updates = snapshot_runtime.open_trades_update_count();
+    const auto reconnect = snapshot_runtime.connect(config.auth_timeout_ms);
+    std::cout << "reconnect callback=" << reconnect.callback_received
+              << " success=" << reconnect.success
+              << " elapsed_ms=" << reconnect.elapsed_ms << '\n';
+    if (!reconnect.success) {
+        std::cerr << "reconnect auth failed: " << reconnect.reason << '\n';
+        snapshot_runtime.disconnect();
+        return 1;
+    }
+
+    const bool broker_snapshot = snapshot_runtime.wait_for_open_trades_at_least_after(
+        1,
+        reconnect_updates,
+        snapshot_timeout_ms);
+    const int64_t broker_snapshot_open_trades = snapshot_runtime.current_open_trades();
+    std::cout << "broker_snapshot=" << broker_snapshot
+              << " broker_open_trades=" << broker_snapshot_open_trades
+              << " open_trades_updates=" << snapshot_runtime.open_trades_update_count()
+              << ' ';
+    smoke::print_account(std::cout, snapshot_runtime.platform());
+    if (!broker_snapshot || broker_snapshot_open_trades <= 0) {
+        snapshot_runtime.disconnect();
+        return 1;
+    }
+
+    const int64_t now_ms = OPTIONX_TIMESTAMP_MS;
+    const int64_t default_close_timeout_ms = std::max<int64_t>(
+        30000,
+        std::max<int64_t>(0, open.close_date - now_ms) +
+            config.active_trades_close_buffer_ms +
+            2 * config.active_trades_sync_period_ms +
+            60000);
+    const int64_t close_timeout_ms = smoke::option_i64_or(
+        options.values,
+        "close-timeout-ms",
+        default_close_timeout_ms);
+    const std::size_t before_close_updates = snapshot_runtime.open_trades_update_count();
+    std::cout << "waiting_for_decrement close_timeout_ms=" << close_timeout_ms
+              << " expected_close_date=" << open.close_date
+              << '\n';
+    const bool broker_decrement = snapshot_runtime.wait_for_open_trades_below_after(
+        broker_snapshot_open_trades,
+        before_close_updates,
+        close_timeout_ms);
+    const int64_t final_open_trades = snapshot_runtime.current_open_trades();
+    std::cout << "broker_decrement=" << broker_decrement
+              << " final_open_trades=" << final_open_trades
+              << " open_trades_updates=" << snapshot_runtime.open_trades_update_count()
+              << ' ';
+    smoke::print_account(std::cout, snapshot_runtime.platform());
+
+    snapshot_runtime.disconnect();
+    return broker_decrement ? 0 : 1;
+}
+
 void print_trade_result_line(
         std::ostream& out,
         const std::string& prefix,
@@ -719,6 +906,8 @@ int main(int argc, char** argv) {
         result = run_switch_check(std::move(config), options);
     } else if (options.command == "open-trade") {
         result = run_open_trade(std::move(config), options);
+    } else if (options.command == "open-trades-sync-check") {
+        result = run_open_trades_sync_check(std::move(config), options);
     } else if (options.command == "open-check-result") {
         result = run_open_check_result(std::move(config), options);
     } else {

@@ -347,6 +347,8 @@ struct TradeOpenAttempt {
     optionx::TradeState state = optionx::TradeState::UNKNOWN;
     std::string error_desc;
     int64_t option_id = 0;
+    int64_t open_date = 0;
+    int64_t close_date = 0;
     double open_price = 0.0;
     int64_t elapsed_ms = 0;
 };
@@ -388,6 +390,17 @@ public:
             std::lock_guard<std::mutex> lock(m_mutex);
             m_last_account = update.account_info;
             ++m_account_update_count;
+            if (update.status == optionx::AccountUpdateStatus::OPEN_TRADES_CHANGED &&
+                update.account_info) {
+                const int64_t open_trades = update.account_info->get_info<int64_t>(
+                    optionx::AccountInfoType::OPEN_TRADES);
+                m_open_trades_updates.push_back(open_trades);
+                LOGIT_INFO(
+                    "Intrade Bar open trades update: open_trades=",
+                    open_trades,
+                    ", updates=",
+                    m_open_trades_updates.size());
+            }
             LOGIT_INFO(
                 "Intrade Bar account update: status=",
                 optionx::to_str(update.status),
@@ -505,6 +518,20 @@ public:
         return m_account_update_count;
     }
 
+    std::size_t open_trades_update_count() const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_open_trades_updates.size();
+    }
+
+    int64_t latest_open_trades_update() const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_open_trades_updates.empty() ? -1 : m_open_trades_updates.back();
+    }
+
+    int64_t current_open_trades() {
+        return m_platform.get_info<int64_t>(optionx::AccountInfoType::OPEN_TRADES);
+    }
+
     bool has_account_settings(
             optionx::AccountType account_type,
             optionx::CurrencyType currency) {
@@ -522,6 +549,43 @@ public:
             [&] {
                 return account_update_count() > previous_update_count &&
                     has_account_settings(account_type, currency);
+            },
+            timeout_ms);
+    }
+
+    bool wait_for_open_trades_update_after(
+            std::size_t previous_update_count,
+            int64_t timeout_ms) {
+        return pump_until(
+            m_platform,
+            [&] {
+                return open_trades_update_count() > previous_update_count;
+            },
+            timeout_ms);
+    }
+
+    bool wait_for_open_trades_at_least_after(
+            int64_t expected_open_trades,
+            std::size_t previous_update_count,
+            int64_t timeout_ms) {
+        return pump_until(
+            m_platform,
+            [&] {
+                return open_trades_update_count() > previous_update_count &&
+                    latest_open_trades_update() >= expected_open_trades;
+            },
+            timeout_ms);
+    }
+
+    bool wait_for_open_trades_below_after(
+            int64_t previous_open_trades,
+            std::size_t previous_update_count,
+            int64_t timeout_ms) {
+        return pump_until(
+            m_platform,
+            [&] {
+                return open_trades_update_count() > previous_update_count &&
+                    latest_open_trades_update() < previous_open_trades;
             },
             timeout_ms);
     }
@@ -580,6 +644,8 @@ public:
                     shared->attempt.state = result->trade_state;
                     shared->attempt.error_desc = result->error_desc;
                     shared->attempt.option_id = result->option_id;
+                    shared->attempt.open_date = result->open_date;
+                    shared->attempt.close_date = result->close_date;
                     shared->attempt.open_price = result->open_price;
                     if (opens_finished) {
                         shared->done.store(true, std::memory_order_release);
@@ -834,6 +900,7 @@ private:
     mutable std::mutex m_mutex;
     std::shared_ptr<optionx::BaseAccountInfoData> m_last_account;
     std::size_t m_account_update_count = 0;
+    std::vector<int64_t> m_open_trades_updates;
     bool m_started = false;
 };
 
