@@ -259,6 +259,7 @@ OPTIONX_INTRADE_BAR_SETTINGS_SWITCH_TIMEOUT_MS=120000
 OPTIONX_INTRADE_BAR_SETTINGS_SWITCH_RETRY_TIMEOUT_MS=600000
 OPTIONX_INTRADE_BAR_SETTINGS_SWITCH_RETRY_DELAY_MS=15000
 OPTIONX_INTRADE_BAR_SETTINGS_SWITCH_ACTIVE_TRADE_BUFFER_MS=5000
+OPTIONX_INTRADE_BAR_ORDER_INTERVAL_MS=1000
 ```
 
 When testing switch retries blocked by open trades, make the auth timeout longer
@@ -296,6 +297,52 @@ OPTIONX_INTRADE_BAR_ALLOW_REAL_TRADE=1
 ```
 
 Keep `OPTIONX_INTRADE_BAR_ACCOUNT_TYPE=DEMO` for routine smoke checks.
+
+Check active-trade counter synchronization:
+
+```powershell
+.\build-codex\intrade_bar_smoke_cli.exe open-trades-sync-check --confirm --symbol=BTCUSDT --amount=1 --duration=300 --count=1
+```
+
+`open-trades-sync-check` opens guarded demo trades, verifies that the local
+counter increments, reconnects, waits for the broker active-trades snapshot,
+and then waits for the snapshot counter to decrease after the planned close
+time. Use `BTCUSDT` for weekend/holiday checks; use `EURUSD` with a shorter
+duration while the normal market is open:
+
+```powershell
+.\build-codex\intrade_bar_smoke_cli.exe open-trades-sync-check --confirm --symbol=EURUSD --amount=1 --duration=180
+```
+
+To observe staggered close-time countdowns, open several trades with a gap
+between attempts:
+
+```powershell
+.\build-codex\intrade_bar_smoke_cli.exe open-trades-sync-check --confirm --symbol=BTCUSDT --amount=1 --duration=300 --count=5 --interval-ms=15000 --min-accepted=1
+```
+
+Useful options:
+
+```text
+--symbol=BTCUSDT
+--amount=1
+--duration=300
+--count=1
+--interval-ms=15000
+--min-accepted=1
+--order-interval-ms=1000
+--close-buffer-ms=1000
+--sync-period-ms=15000
+--snapshot-timeout-ms=30000
+--local-counter-timeout-ms=10000
+--close-timeout-ms=420000
+--buy
+--sell
+```
+
+`--interval-ms` is the CLI pause between requested trades. `--order-interval-ms`
+configures `AuthData::order_interval_ms`, which the trade queue uses as the
+minimum delay between broker order requests.
 
 Open a guarded demo trade and then recover its final result by broker ID:
 

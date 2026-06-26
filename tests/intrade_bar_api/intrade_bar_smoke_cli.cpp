@@ -32,7 +32,7 @@ void print_usage(std::ostream& out) {
         << "  intrade_bar_smoke_cli history [--source=CSV|HTML|HTML_CSV] [--days=14|--all] [--time-field=CLOSE_DATE] [--comment=...]\n"
         << "  intrade_bar_smoke_cli switch-check --confirm [--account-type=DEMO] [--currency=USD]\n"
         << "  intrade_bar_smoke_cli open-trade --confirm [--symbol=EURUSD] [--amount=1] [--duration=60] [--buy|--sell]\n"
-        << "  intrade_bar_smoke_cli open-trades-sync-check --confirm [--symbol=BTCUSDT|EURUSD] [--amount=1] [--duration=300] [--count=1] [--interval-ms=15000] [--buy|--sell]\n"
+        << "  intrade_bar_smoke_cli open-trades-sync-check --confirm [--symbol=BTCUSDT|EURUSD] [--amount=1] [--duration=300] [--count=1] [--interval-ms=15000] [--order-interval-ms=1000] [--buy|--sell]\n"
         << "  intrade_bar_smoke_cli open-check-result --confirm [--symbol=BTCUSDT] [--amount=1] [--duration=300] [--buy|--sell]\n"
         << "\n"
         << "Configuration comes from environment variables or OPTIONX_INTRADE_BAR_CONFIG_FILE.\n"
@@ -470,6 +470,10 @@ int run_open_trades_sync_check(
         options.values,
         "sync-period-ms",
         config.active_trades_sync_period_ms);
+    config.order_interval_ms = smoke::option_i64_or(
+        options.values,
+        "order-interval-ms",
+        config.order_interval_ms);
 
     const std::string requested_symbol = smoke::option_value_or(
         options.values,
@@ -518,6 +522,7 @@ int run_open_trades_sync_check(
               << " count=" << trade_count
               << " interval_ms=" << open_interval_ms
               << " min_accepted=" << min_accepted
+              << " order_interval_ms=" << config.order_interval_ms
               << " close_buffer_ms=" << config.active_trades_close_buffer_ms
               << " sync_period_ms=" << config.active_trades_sync_period_ms
               << " snapshot_timeout_ms=" << snapshot_timeout_ms

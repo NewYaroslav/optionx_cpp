@@ -82,17 +82,24 @@ when `RestartAuthEvent` indicates suspicious account state.
    page and parses rows from the `trade_active` block.
 2. Publish `OpenTradesSnapshotEvent` with the broker active-trade count and
    known close timestamps.
-3. `TradeQueueManager` accepts the snapshot only while its local pending/open
+3. Stale callbacks are ignored if the active request generation or account
+   identity (`user_id`, account type, currency) changed while the HTTP request
+   was in flight.
+4. `TradeQueueManager` accepts the snapshot only while its local pending/open
    queues are empty.
-4. Snapshot trades are counted separately from locally opened trades. The
+5. Snapshot trades are counted separately from locally opened trades. The
    public `OpenTradesEvent` reports the combined count.
-5. For each known close timestamp, `TradeQueueManager` decreases the snapshot
+6. For each known close timestamp, `TradeQueueManager` decreases the snapshot
    part after `AuthData::active_trades_close_buffer_ms`.
-6. If the snapshot has active trades without known close timestamps, or the
+7. If the snapshot has active trades without known close timestamps, or the
    local queue is busy when the snapshot arrives, `TradeQueueManager` publishes
    `OpenTradesSnapshotRefreshRequestEvent`.
-7. `ActiveTradesSyncManager` schedules the next broker snapshot after
+8. `ActiveTradesSyncManager` schedules the next broker snapshot after
    `AuthData::active_trades_sync_period_ms`.
+
+`TradeQueueManager` applies snapshots on the platform event loop. Its pending
+queue mutex protects external enqueueing, while local/snapshot open-trade
+counters are event-loop-owned state.
 
 ## Price Polling
 
@@ -107,11 +114,13 @@ Started after `AccountInfoUpdateEvent::CONNECTED`.
 
 Started from `TradeRequestEvent`.
 
-1. `TradeManager` calls `request_execute_trade`.
-2. On failure, mark trade `OPEN_ERROR`; HTTP 451 also disconnects the account.
-3. On success, fill broker option id/open time/open price.
-4. Call `request_balance`.
-5. Balance success updates trade/account balance and marks trade `OPEN_SUCCESS`.
+1. `TradeQueueManager` releases queued requests no faster than
+   `AuthData::order_interval_ms`.
+2. `TradeManager` calls `request_execute_trade`.
+3. On failure, mark trade `OPEN_ERROR`; HTTP 451 also disconnects the account.
+4. On success, fill broker option id/open time/open price.
+5. Call `request_balance`.
+6. Balance success updates trade/account balance and marks trade `OPEN_SUCCESS`.
 
 ## Trade Result Check
 

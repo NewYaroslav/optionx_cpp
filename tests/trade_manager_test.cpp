@@ -500,6 +500,47 @@ bool wait_for_open_trades_count(
     return capture.last_count() == expected_count;
 }
 
+std::unique_ptr<TradeRequest> make_valid_sprint_trade_request() {
+    auto trade_request = std::make_unique<TradeRequest>();
+    trade_request->symbol = "EURUSD";
+    trade_request->amount = 100.0;
+    trade_request->option_type = OptionType::SPRINT;
+    trade_request->order_type = OrderType::BUY;
+    trade_request->duration = 10;
+    return trade_request;
+}
+
+TEST_F(TradeManagerTestFixture, OrderIntervalDelaysQueuedTrades) {
+    utils::EventBus bus;
+    auto account_info = std::make_shared<AccountInfoData>();
+    account_info->user_id = 12345;
+    account_info->balance = 1000.0;
+    account_info->currency = CurrencyType::USD;
+    account_info->account_type = AccountType::DEMO;
+    account_info->connect = true;
+    account_info->order_interval_ms = 80;
+
+    TradeManagerTest trade_manager(bus, account_info);
+    OpenTradesCapture capture(bus, account_info);
+
+    ASSERT_TRUE(trade_manager.place_trade(make_valid_sprint_trade_request()));
+    ASSERT_TRUE(trade_manager.place_trade(make_valid_sprint_trade_request()));
+
+    ASSERT_TRUE(wait_for_open_trades_count(trade_manager, bus, capture, 1, 1000));
+    const std::size_t updates_after_first_trade = capture.counts.size();
+
+    trade_manager.process();
+    bus.process();
+
+    EXPECT_EQ(capture.last_count(), 1);
+    EXPECT_EQ(capture.counts.size(), updates_after_first_trade);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(120));
+    EXPECT_TRUE(wait_for_open_trades_count(trade_manager, bus, capture, 2, 1000));
+
+    trade_manager.shutdown();
+}
+
 TEST_F(TradeManagerTestFixture, BrokerSnapshotOpenTradesCountDownByCloseTime) {
     utils::EventBus bus;
     auto account_info = std::make_shared<AccountInfoData>();

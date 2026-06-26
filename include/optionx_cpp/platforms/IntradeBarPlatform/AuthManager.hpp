@@ -57,6 +57,10 @@ namespace optionx::platforms::intrade_bar {
         void set_auth_credentials(
                 const std::string& user_id,
                 const std::string& user_hash);
+
+        /// \brief Stores the numeric broker user id in shared account info.
+        /// \param user_id Broker user id string from cookies/token auth.
+        void set_account_user_id(const std::string& user_id);
         
         /// \brief Handles optional domain discovery and proceeds with authentication 
         /// \param callback Callback to be invoked with the result of the authentication process.
@@ -203,6 +207,19 @@ namespace optionx::platforms::intrade_bar {
         std::string cookies = "user_id=" + user_id + "; user_hash=" + user_hash;
         storage::ServiceSessionDB::get_instance().set_session_value(to_str(PlatformType::INTRADE_BAR), m_auth_data->email, cookies);
         m_request_manager.set_auth_credentials(user_id, user_hash);
+        set_account_user_id(user_id);
+    }
+
+    void AuthManager::set_account_user_id(const std::string& user_id) {
+        auto account_info = get_account_info();
+        if (auto parsed = utils::parse_i64_strict(user_id)) {
+            account_info->user_id = *parsed;
+        } else {
+            account_info->user_id = 0;
+            LOGIT_WARN(
+                "Intrade Bar auth: failed to parse broker user_id. user_id=",
+                user_id);
+        }
     }
 
     void AuthManager::handle_event(const events::AuthDataEvent& event) {
@@ -291,6 +308,8 @@ namespace optionx::platforms::intrade_bar {
                 m_auth_data = std::make_shared<AuthData>(*m_temp_auth_data.get());
                 account_info->account_type = m_auth_data->account_type;
                 account_info->currency     = m_auth_data->currency;
+                account_info->order_interval_ms = m_auth_data->order_interval_ms;
+                account_info->user_id = 0;
                 notify(events::AccountInfoUpdateEvent(
                     account_info,
                     Status::CONNECTING));
@@ -466,6 +485,7 @@ namespace optionx::platforms::intrade_bar {
             const auto& [user_id, user_hash] = *parsed_data;
             LOGIT_PRINT_TRACE("Cookies parsed successfully for user_id: ", user_id);
             m_request_manager.set_auth_credentials(user_id, user_hash);
+            set_account_user_id(user_id);
 
             // Start authentication flow
             start_authentication(
@@ -499,6 +519,7 @@ namespace optionx::platforms::intrade_bar {
 
         // Set user ID, token, and cookies
         m_request_manager.set_auth_credentials(m_auth_data->user_id, m_auth_data->token);
+        set_account_user_id(m_auth_data->user_id);
         start_authentication([this, callback](const ConnectionResult& result) {
             if (!result.success) {
                 const std::string error_text("Login failed: Please provide both User ID and token.");

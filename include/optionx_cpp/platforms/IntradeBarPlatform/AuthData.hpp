@@ -36,6 +36,7 @@ namespace optionx::platforms::intrade_bar {
         int64_t settings_switch_active_trade_buffer_ms = time_shield::MS_PER_5_SEC; ///< Delay after active trade close before retry.
         int64_t active_trades_close_buffer_ms = time_shield::MS_PER_SEC; ///< Delay after broker close time before reducing snapshot open trades.
         int64_t active_trades_sync_period_ms = time_shield::MS_PER_15_SEC; ///< Delayed refresh period for uncertain active-trades snapshots.
+        int64_t order_interval_ms = 1000; ///< Minimum delay between broker order requests.
         TradeHistorySource trade_history_source = TradeHistorySource::CSV; ///< Source used for closed trade history requests.
 
         AuthData() :
@@ -131,6 +132,7 @@ namespace optionx::platforms::intrade_bar {
                 j["settings_switch_active_trade_buffer_ms"] = settings_switch_active_trade_buffer_ms;
                 j["active_trades_close_buffer_ms"] = active_trades_close_buffer_ms;
                 j["active_trades_sync_period_ms"] = active_trades_sync_period_ms;
+                j["order_interval_ms"] = order_interval_ms;
                 j["trade_history_source"] = trade_history_source_to_string(trade_history_source);
             } catch (const std::exception& ex) {
                 LOGIT_ERROR(ex);
@@ -184,6 +186,9 @@ namespace optionx::platforms::intrade_bar {
                 active_trades_sync_period_ms = j.value(
                     "active_trades_sync_period_ms",
                     active_trades_sync_period_ms);
+                order_interval_ms = j.value(
+                    "order_interval_ms",
+                    order_interval_ms);
                 trade_history_source = trade_history_source_from_string(
                     j.value("trade_history_source", trade_history_source_to_string(trade_history_source)),
                     trade_history_source);
@@ -224,6 +229,9 @@ namespace optionx::platforms::intrade_bar {
             }
             if (active_trades_sync_period_ms <= 0) {
                 return { false, "Active trades sync period must be positive" };
+            }
+            if (order_interval_ms < 0) {
+                return { false, "Order interval must be non-negative" };
             }
 
             // Validate required fields based on selected authentication method

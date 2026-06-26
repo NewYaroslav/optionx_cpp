@@ -45,6 +45,13 @@ namespace optionx::platforms::intrade_bar {
         void shutdown() override;
 
     private:
+        struct AccountContext {
+            int64_t user_id = 0;
+            AccountType account_type = AccountType::UNKNOWN;
+            CurrencyType currency = CurrencyType::UNKNOWN;
+            std::uint64_t generation = 0;
+        };
+
         RequestManager& m_request_manager; ///< Reference to the request manager.
         utils::TaskManager m_task_manager; ///< Task manager for delayed refresh requests.
         std::shared_ptr<BaseAccountInfoData> m_account_info; ///< Shared pointer to account information.
@@ -54,6 +61,7 @@ namespace optionx::platforms::intrade_bar {
         bool m_refresh_scheduled = false; ///< True while a delayed refresh task is pending.
         std::uint64_t m_sync_generation = 0; ///< Monotonic request generation for stale callback filtering.
         std::uint64_t m_active_sync_generation = 0; ///< Generation of the currently active snapshot request.
+        std::uint64_t m_account_context_generation = 0; ///< Changes whenever broker account identity changes.
 
         /// \brief Starts a broker active-trades snapshot request.
         /// \param reason Human-readable trigger reason for logs.
@@ -65,6 +73,24 @@ namespace optionx::platforms::intrade_bar {
 
         /// \brief Resets active sync request state and invalidates pending callbacks.
         void reset_sync_state();
+
+        /// \brief Invalidates sync state because account identity or connection context changed.
+        /// \param reason Human-readable reason for diagnostics.
+        void invalidate_account_context(const char* reason);
+
+        /// \brief Captures current account identity used by an outgoing snapshot request.
+        /// \param account_info Current Intrade Bar account data.
+        /// \return Account context token for stale callback filtering.
+        AccountContext capture_account_context(
+            const std::shared_ptr<AccountInfoData>& account_info) const;
+
+        /// \brief Checks that a callback still belongs to the current account context.
+        /// \param expected Context captured when the request was sent.
+        /// \param current Current Intrade Bar account data.
+        /// \return True if the callback may update the trade queue.
+        bool is_account_context_current(
+            const AccountContext& expected,
+            const std::shared_ptr<AccountInfoData>& current) const;
 
         /// \brief Handles updated auth/settings data.
         /// \param event Auth data event.
@@ -124,6 +150,7 @@ namespace optionx::platforms::intrade_bar {
             LOGIT_DEBUG(
                 "Intrade Bar active trades sync: snapshot already in progress. reason=",
                 reason);
+            schedule_sync(std::move(reason));
             return;
         }
 
@@ -139,12 +166,13 @@ namespace optionx::platforms::intrade_bar {
         m_refresh_scheduled = false;
         const std::uint64_t generation = ++m_sync_generation;
         m_active_sync_generation = generation;
+        const AccountContext account_context = capture_account_context(account_info);
         LOGIT_INFO(
             "Intrade Bar active trades sync: requesting broker snapshot. reason=",
             reason);
 
         m_request_manager.request_active_trades_snapshot_result(
-            [this, reason, generation](ActiveTradesSnapshotResult result) {
+            [this, reason, generation, account_context](ActiveTradesSnapshotResult result) {
                 if (generation != m_active_sync_generation) return;
                 m_active_sync_generation = 0;
                 m_sync_in_progress = false;
@@ -153,6 +181,24 @@ namespace optionx::platforms::intrade_bar {
                     LOGIT_DEBUG(
                         "Intrade Bar active trades sync: stale snapshot ignored for disconnected account. reason=",
                         reason);
+                    return;
+                }
+                if (!is_account_context_current(account_context, account_info)) {
+                    LOGIT_DEBUG(
+                        "Intrade Bar active trades sync: stale snapshot ignored because account context changed. reason=",
+                        reason,
+                        ", expected_user_id=",
+                        account_context.user_id,
+                        ", current_user_id=",
+                        account_info->user_id,
+                        ", expected_account_type=",
+                        to_str(account_context.account_type),
+                        ", current_account_type=",
+                        to_str(account_info->account_type),
+                        ", expected_currency=",
+                        to_str(account_context.currency),
+                        ", current_currency=",
+                        to_str(account_info->currency));
                     return;
                 }
                 if (!result) {
@@ -198,6 +244,38 @@ namespace optionx::platforms::intrade_bar {
         ++m_sync_generation;
     }
 
+    void ActiveTradesSyncManager::invalidate_account_context(const char* reason) {
+        ++m_account_context_generation;
+        m_task_manager.shutdown();
+        m_refresh_scheduled = false;
+        reset_sync_state();
+        LOGIT_DEBUG(
+            "Intrade Bar active trades sync: account context invalidated. reason=",
+            reason,
+            ", generation=",
+            m_account_context_generation);
+    }
+
+    ActiveTradesSyncManager::AccountContext
+    ActiveTradesSyncManager::capture_account_context(
+            const std::shared_ptr<AccountInfoData>& account_info) const {
+        AccountContext context;
+        context.user_id = account_info->user_id;
+        context.account_type = account_info->account_type;
+        context.currency = account_info->currency;
+        context.generation = m_account_context_generation;
+        return context;
+    }
+
+    bool ActiveTradesSyncManager::is_account_context_current(
+            const AccountContext& expected,
+            const std::shared_ptr<AccountInfoData>& current) const {
+        return expected.generation == m_account_context_generation &&
+            expected.user_id == current->user_id &&
+            expected.account_type == current->account_type &&
+            expected.currency == current->currency;
+    }
+
     void ActiveTradesSyncManager::schedule_sync(std::string reason) {
         if (m_refresh_scheduled) {
             LOGIT_DEBUG(
@@ -214,13 +292,13 @@ namespace optionx::platforms::intrade_bar {
             return;
         }
 
-        m_refresh_scheduled = true;
         LOGIT_INFO(
             "Intrade Bar active trades sync: scheduling broker snapshot refresh. reason=",
             reason,
             ", delay_ms=",
             m_active_trades_sync_period_ms);
-        m_task_manager.add_delayed_task(
+        const std::string log_reason = reason;
+        m_refresh_scheduled = m_task_manager.add_delayed_task(
             "active-trades-sync-refresh",
             m_active_trades_sync_period_ms,
             [this, reason = std::move(reason)](std::shared_ptr<utils::Task> task) mutable {
@@ -228,12 +306,25 @@ namespace optionx::platforms::intrade_bar {
                 if (task->is_shutdown()) return;
                 request_sync(std::move(reason));
             });
+        if (!m_refresh_scheduled) {
+            LOGIT_WARN(
+                "Intrade Bar active trades sync: failed to schedule broker snapshot refresh. reason=",
+                log_reason);
+        }
     }
 
     void ActiveTradesSyncManager::handle_event(const events::AuthDataEvent& event) {
         if (auto auth_data = std::dynamic_pointer_cast<AuthData>(event.auth_data)) {
             m_active_trades_close_buffer_ms = auth_data->active_trades_close_buffer_ms;
             m_active_trades_sync_period_ms = auth_data->active_trades_sync_period_ms;
+            const auto account_info = get_account_info();
+            if (account_info->connect &&
+                ((auth_data->account_type != AccountType::UNKNOWN &&
+                  auth_data->account_type != account_info->account_type) ||
+                 (auth_data->currency != CurrencyType::UNKNOWN &&
+                  auth_data->currency != account_info->currency))) {
+                invalidate_account_context("auth-data-account-context-change");
+            }
             LOGIT_INFO(
                 "Intrade Bar active trades sync: configured close buffer ms=",
                 m_active_trades_close_buffer_ms,
@@ -247,9 +338,7 @@ namespace optionx::platforms::intrade_bar {
     }
 
     void ActiveTradesSyncManager::handle_event(const events::DisconnectRequestEvent& event) {
-        m_task_manager.shutdown();
-        m_refresh_scheduled = false;
-        reset_sync_state();
+        invalidate_account_context("disconnect-request");
     }
 
     void ActiveTradesSyncManager::handle_event(const events::AccountInfoUpdateEvent& event) {
@@ -257,11 +346,14 @@ namespace optionx::platforms::intrade_bar {
         if (event.status == Status::CONNECTED) {
             request_sync("connected");
         } else
+        if (event.status == Status::ACCOUNT_TYPE_CHANGED ||
+            event.status == Status::CURRENCY_CHANGED) {
+            invalidate_account_context("account-settings-changed");
+            request_sync("account-settings-changed");
+        } else
         if (event.status == Status::DISCONNECTED ||
             event.status == Status::FAILED_TO_CONNECT) {
-            m_task_manager.shutdown();
-            m_refresh_scheduled = false;
-            reset_sync_state();
+            invalidate_account_context("account-disconnected");
         }
     }
 

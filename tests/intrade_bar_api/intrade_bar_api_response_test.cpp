@@ -47,16 +47,19 @@ TEST(IntradeBarAuthData, KeepsDisconnectedDomainRetryPeriodInConfig) {
     auth_data.account_type = AccountType::DEMO;
     auth_data.currency = CurrencyType::USD;
     auth_data.disconnected_domain_retry_period_ms = 12345;
+    auth_data.order_interval_ms = 250;
     auth_data.trade_history_source = TradeHistorySource::HTML_CSV;
 
     nlohmann::json json;
     auth_data.to_json(json);
     ASSERT_EQ(json.at("disconnected_domain_retry_period_ms").get<int64_t>(), 12345);
+    ASSERT_EQ(json.at("order_interval_ms").get<int64_t>(), 250);
     ASSERT_EQ(json.at("trade_history_source").get<std::string>(), "HTML_CSV");
 
     AuthData restored;
     restored.from_json(json);
     EXPECT_EQ(restored.disconnected_domain_retry_period_ms, 12345);
+    EXPECT_EQ(restored.order_interval_ms, 250);
     EXPECT_EQ(restored.trade_history_source, TradeHistorySource::HTML_CSV);
 
     auto [valid, message] = restored.validate();
@@ -66,6 +69,12 @@ TEST(IntradeBarAuthData, KeepsDisconnectedDomainRetryPeriodInConfig) {
     auto [invalid, invalid_message] = restored.validate();
     EXPECT_FALSE(invalid);
     EXPECT_EQ(invalid_message, "Disconnected domain retry period must be positive");
+
+    restored.disconnected_domain_retry_period_ms = 12345;
+    restored.order_interval_ms = -1;
+    auto [invalid_order_interval, order_interval_message] = restored.validate();
+    EXPECT_FALSE(invalid_order_interval);
+    EXPECT_EQ(order_interval_message, "Order interval must be non-negative");
 }
 
 TEST(IntradeBarApiResponses, TradeWorkflowPayloadsKeepBrokerSpecificFieldsTyped) {
