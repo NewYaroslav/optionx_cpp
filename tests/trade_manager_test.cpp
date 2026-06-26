@@ -526,7 +526,11 @@ TEST_F(TradeManagerTestFixture, OrderIntervalDelaysQueuedTrades) {
     ASSERT_TRUE(trade_manager.place_trade(make_valid_sprint_trade_request()));
     ASSERT_TRUE(trade_manager.place_trade(make_valid_sprint_trade_request()));
 
-    ASSERT_TRUE(wait_for_open_trades_count(trade_manager, bus, capture, 1, 1000));
+    trade_manager.process();
+    bus.process();
+
+    ASSERT_EQ(capture.last_count(), 1);
+    ASSERT_EQ(capture.counts.size(), 1u);
     const std::size_t updates_after_first_trade = capture.counts.size();
 
     trade_manager.process();

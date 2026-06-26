@@ -35,7 +35,6 @@ namespace optionx::modules {
                 TradeStateManager& trade_state_manager)
             : EventMediator(bus), m_account_info(account_info),
               m_trade_state_manager(trade_state_manager) {
-            m_last_order_time = std::chrono::steady_clock::now();
             subscribe<events::PriceUpdateEvent>();
             subscribe<events::DisconnectRequestEvent>();
             subscribe<events::OpenTradesSnapshotEvent>();
@@ -150,6 +149,7 @@ namespace optionx::modules {
         std::list<transaction_t> m_pending_transactions; ///< List of pending transactions.
         std::list<transaction_t> m_open_transactions;  ///< List of open transactions.
         std::chrono::steady_clock::time_point m_last_order_time; ///< Last processed order timestamp.
+        bool                     m_has_sent_order = false; ///< True after the first broker order request is emitted.
         // TradeQueueManager is owned by the platform event loop. m_pending_mutex
         // protects external enqueueing; open/snapshot counters are event-loop state.
         int64_t                  m_local_open_trades = 0; ///< Number of locally tracked open trades.
@@ -243,7 +243,7 @@ namespace optionx::modules {
         auto now = std::chrono::steady_clock::now();
         auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_last_order_time);
 
-        if (elapsed_time.count() >= order_interval_ms) {
+        if (!m_has_sent_order || elapsed_time.count() >= order_interval_ms) {
             auto it = m_pending_transactions.begin();
             auto transaction = *it;
             auto& request = transaction->request;
@@ -326,6 +326,7 @@ namespace optionx::modules {
                 result->payout      = m_account_info.get_for_trade<double>(AccountInfoType::PAYOUT, request, time_shield::ms_to_sec(result->send_date));
 
                 m_last_order_time = std::chrono::steady_clock::now();
+                m_has_sent_order = true;
                 increment_open_trades(request, result);
                 dispatch_trade_event(transaction);
 
@@ -455,6 +456,8 @@ namespace optionx::modules {
         if (clear_snapshot_open_trades()) {
             emit_open_trades(nullptr, nullptr);
         }
+
+        m_has_sent_order = false;
     }
 
     void TradeQueueManager::increment_open_trades(
