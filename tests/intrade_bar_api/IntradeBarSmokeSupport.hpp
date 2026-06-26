@@ -58,6 +58,9 @@ struct IntradeBarSmokeConfig {
     int64_t settings_switch_retry_timeout_ms = time_shield::MS_PER_10_MIN;
     int64_t settings_switch_retry_delay_ms = time_shield::MS_PER_15_SEC;
     int64_t settings_switch_active_trade_buffer_ms = time_shield::MS_PER_5_SEC;
+    int64_t active_trades_close_buffer_ms = time_shield::MS_PER_SEC;
+    int64_t active_trades_sync_period_ms = time_shield::MS_PER_15_SEC;
+    int64_t order_interval_ms = 1000;
     optionx::platforms::intrade_bar::TradeHistorySource trade_history_source =
         optionx::platforms::intrade_bar::TradeHistorySource::CSV;
     std::string quote_symbol = "EURUSD";
@@ -165,6 +168,15 @@ inline IntradeBarSmokeConfig load_config() {
     config.settings_switch_active_trade_buffer_ms = parse_i64(
         config_value(file_values, "OPTIONX_INTRADE_BAR_SETTINGS_SWITCH_ACTIVE_TRADE_BUFFER_MS", "5000"),
         time_shield::MS_PER_5_SEC);
+    config.active_trades_close_buffer_ms = parse_i64(
+        config_value(file_values, "OPTIONX_INTRADE_BAR_ACTIVE_TRADES_CLOSE_BUFFER_MS", "1000"),
+        time_shield::MS_PER_SEC);
+    config.active_trades_sync_period_ms = parse_i64(
+        config_value(file_values, "OPTIONX_INTRADE_BAR_ACTIVE_TRADES_SYNC_PERIOD_MS", "15000"),
+        time_shield::MS_PER_15_SEC);
+    config.order_interval_ms = parse_i64(
+        config_value(file_values, "OPTIONX_INTRADE_BAR_ORDER_INTERVAL_MS", "1000"),
+        1000);
     config.trade_history_source =
         optionx::platforms::intrade_bar::trade_history_source_from_string(
             config_value(file_values, "OPTIONX_INTRADE_BAR_TRADE_HISTORY_SOURCE", "CSV"),
@@ -216,6 +228,11 @@ inline std::unique_ptr<optionx::platforms::intrade_bar::AuthData> make_auth_data
     auth_data->settings_switch_retry_delay_ms = config.settings_switch_retry_delay_ms;
     auth_data->settings_switch_active_trade_buffer_ms =
         config.settings_switch_active_trade_buffer_ms;
+    auth_data->active_trades_close_buffer_ms =
+        config.active_trades_close_buffer_ms;
+    auth_data->active_trades_sync_period_ms =
+        config.active_trades_sync_period_ms;
+    auth_data->order_interval_ms = config.order_interval_ms;
     auth_data->trade_history_source = config.trade_history_source;
     auth_data->proxy_server = config.proxy_server;
     auth_data->proxy_auth = config.proxy_auth;
@@ -335,6 +352,8 @@ struct TradeOpenAttempt {
     optionx::TradeState state = optionx::TradeState::UNKNOWN;
     std::string error_desc;
     int64_t option_id = 0;
+    int64_t open_date = 0;
+    int64_t close_date = 0;
     double open_price = 0.0;
     int64_t elapsed_ms = 0;
 };
@@ -376,6 +395,17 @@ public:
             std::lock_guard<std::mutex> lock(m_mutex);
             m_last_account = update.account_info;
             ++m_account_update_count;
+            if (update.status == optionx::AccountUpdateStatus::OPEN_TRADES_CHANGED &&
+                update.account_info) {
+                const int64_t open_trades = update.account_info->get_info<int64_t>(
+                    optionx::AccountInfoType::OPEN_TRADES);
+                m_open_trades_updates.push_back(open_trades);
+                LOGIT_INFO(
+                    "Intrade Bar open trades update: open_trades=",
+                    open_trades,
+                    ", updates=",
+                    m_open_trades_updates.size());
+            }
             LOGIT_INFO(
                 "Intrade Bar account update: status=",
                 optionx::to_str(update.status),
@@ -493,6 +523,34 @@ public:
         return m_account_update_count;
     }
 
+    std::size_t open_trades_update_count() const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_open_trades_updates.size();
+    }
+
+    int64_t latest_open_trades_update() const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_open_trades_updates.empty() ? -1 : m_open_trades_updates.back();
+    }
+
+    std::vector<int64_t> open_trades_updates() const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_open_trades_updates;
+    }
+
+    int64_t current_open_trades() {
+        return m_platform.get_info<int64_t>(optionx::AccountInfoType::OPEN_TRADES);
+    }
+
+    void pump_for(int64_t timeout_ms) {
+        pump_until(
+            m_platform,
+            [] {
+                return false;
+            },
+            timeout_ms);
+    }
+
     bool has_account_settings(
             optionx::AccountType account_type,
             optionx::CurrencyType currency) {
@@ -510,6 +568,43 @@ public:
             [&] {
                 return account_update_count() > previous_update_count &&
                     has_account_settings(account_type, currency);
+            },
+            timeout_ms);
+    }
+
+    bool wait_for_open_trades_update_after(
+            std::size_t previous_update_count,
+            int64_t timeout_ms) {
+        return pump_until(
+            m_platform,
+            [&] {
+                return open_trades_update_count() > previous_update_count;
+            },
+            timeout_ms);
+    }
+
+    bool wait_for_open_trades_at_least_after(
+            int64_t expected_open_trades,
+            std::size_t previous_update_count,
+            int64_t timeout_ms) {
+        return pump_until(
+            m_platform,
+            [&] {
+                return open_trades_update_count() > previous_update_count &&
+                    latest_open_trades_update() >= expected_open_trades;
+            },
+            timeout_ms);
+    }
+
+    bool wait_for_open_trades_below_after(
+            int64_t previous_open_trades,
+            std::size_t previous_update_count,
+            int64_t timeout_ms) {
+        return pump_until(
+            m_platform,
+            [&] {
+                return open_trades_update_count() > previous_update_count &&
+                    latest_open_trades_update() < previous_open_trades;
             },
             timeout_ms);
     }
@@ -568,6 +663,8 @@ public:
                     shared->attempt.state = result->trade_state;
                     shared->attempt.error_desc = result->error_desc;
                     shared->attempt.option_id = result->option_id;
+                    shared->attempt.open_date = result->open_date;
+                    shared->attempt.close_date = result->close_date;
                     shared->attempt.open_price = result->open_price;
                     if (opens_finished) {
                         shared->done.store(true, std::memory_order_release);
@@ -822,6 +919,7 @@ private:
     mutable std::mutex m_mutex;
     std::shared_ptr<optionx::BaseAccountInfoData> m_last_account;
     std::size_t m_account_update_count = 0;
+    std::vector<int64_t> m_open_trades_updates;
     bool m_started = false;
 };
 

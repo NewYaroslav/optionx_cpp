@@ -13,6 +13,7 @@ namespace optionx::modules {
     /// ### Subscribed events:
     /// - `PriceUpdateEvent`: Updates trade states based on market price movements.
     /// - `DisconnectRequestEvent`: Handles connection loss and finalizes active trades.
+    /// - `OpenTradesSnapshotEvent`: Synchronizes broker-side active trades when the local queue is idle.
     ///
     /// ### Emitted events:
     /// - `TradeRequestEvent`: Notifies when a trade request is sent.
@@ -34,9 +35,9 @@ namespace optionx::modules {
                 TradeStateManager& trade_state_manager)
             : EventMediator(bus), m_account_info(account_info),
               m_trade_state_manager(trade_state_manager) {
-            m_last_order_time = std::chrono::steady_clock::now();
             subscribe<events::PriceUpdateEvent>();
             subscribe<events::DisconnectRequestEvent>();
+            subscribe<events::OpenTradesSnapshotEvent>();
         }
 
         /// \brief Virtual destructor.
@@ -49,6 +50,9 @@ namespace optionx::modules {
                 handle_event(*msg);
             } else
             if (const auto* msg = dynamic_cast<const events::DisconnectRequestEvent*>(event)) {
+                handle_event(*msg);
+            } else
+            if (const auto* msg = dynamic_cast<const events::OpenTradesSnapshotEvent*>(event)) {
                 handle_event(*msg);
             }
         };
@@ -83,6 +87,7 @@ namespace optionx::modules {
 
         /// \brief Processes all pending, closing, and finalizing transactions.
         virtual void process() {
+            process_snapshot_open_trades();
             process_pending_transactions();
             process_closing_transactions();
             process_finalizing_transactions();
@@ -131,6 +136,9 @@ namespace optionx::modules {
                 const std::shared_ptr<TradeRequest>& request,
                 const std::shared_ptr<TradeResult>& result);
 
+        /// \brief Updates broker-snapshot open trades whose planned close time has passed.
+        void process_snapshot_open_trades();
+
     private:
         AccountInfoProvider&     m_account_info;        ///< Reference to account information provider.
         TradeStateManager&       m_trade_state_manager; ///< Manages trade states and transitions.
@@ -141,11 +149,43 @@ namespace optionx::modules {
         std::list<transaction_t> m_pending_transactions; ///< List of pending transactions.
         std::list<transaction_t> m_open_transactions;  ///< List of open transactions.
         std::chrono::steady_clock::time_point m_last_order_time; ///< Last processed order timestamp.
-        int64_t                  m_open_trades = 0;   ///< Number of currently tracked open trades
+        bool                     m_has_sent_order = false; ///< True after the first broker order request is emitted.
+        // TradeQueueManager is owned by the platform event loop. m_pending_mutex
+        // protects external enqueueing; open/snapshot counters are event-loop state.
+        int64_t                  m_local_open_trades = 0; ///< Number of locally tracked open trades.
+        int64_t                  m_snapshot_open_trades = 0; ///< Number of active trades loaded from a broker snapshot.
+        int64_t                  m_snapshot_unknown_close_trades = 0; ///< Snapshot trades without a known close time.
+        bool                     m_snapshot_refresh_requested = false; ///< True after emitting a refresh request for current snapshot state.
+        std::vector<int64_t>     m_snapshot_close_due_times_ms; ///< Close timestamps with the configured safety buffer.
 
         /// \brief Dispatches a trade event notification.
         /// \param transaction The trade transaction event to be dispatched.
         void dispatch_trade_event(const transaction_t& transaction);
+
+        /// \brief Returns the effective open trade count visible to account info providers.
+        /// \return Sum of local and broker-snapshot open trades.
+        int64_t current_open_trades() const;
+
+        /// \brief Emits the effective open trade count.
+        void emit_open_trades(
+                const std::shared_ptr<TradeRequest>& request,
+                const std::shared_ptr<TradeResult>& result);
+
+        /// \brief Clears broker-snapshot open trade state.
+        /// \return True if the effective counter changed.
+        bool clear_snapshot_open_trades();
+
+        /// \brief Requests a broker snapshot refresh once for the current snapshot state.
+        /// \param reason Human-readable refresh reason.
+        void request_snapshot_refresh(const char* reason);
+
+        /// \brief Adds a close buffer to a close timestamp without overflowing.
+        /// \param close_time_ms Close timestamp in milliseconds.
+        /// \param close_buffer_ms Non-negative close buffer in milliseconds.
+        /// \return Saturated close timestamp with the buffer applied.
+        int64_t add_snapshot_close_buffer(
+                int64_t close_time_ms,
+                int64_t close_buffer_ms) const;
 
         /// \brief Handles incoming price updates.
         /// \param event The received price update event.
@@ -154,6 +194,10 @@ namespace optionx::modules {
         /// \brief Handles incoming disconnect requests.
         /// \param event The received disconnect request event.
         void handle_event(const events::DisconnectRequestEvent& event);
+
+        /// \brief Handles a broker-side active-trades snapshot.
+        /// \param event Snapshot event to apply when the local queue is idle.
+        void handle_event(const events::OpenTradesSnapshotEvent& event);
     };
 
     template<typename PreprocessFunction>
@@ -193,11 +237,13 @@ namespace optionx::modules {
     }
 
     TradeQueueManager::transaction_t TradeQueueManager::pop_next_transaction() {
-        const int64_t order_interval_ms = m_account_info.get_info<int64_t>(AccountInfoType::ORDER_INTERVAL_MS);
+        const int64_t order_interval_ms = std::max<int64_t>(
+            0,
+            m_account_info.get_info<int64_t>(AccountInfoType::ORDER_INTERVAL_MS));
         auto now = std::chrono::steady_clock::now();
         auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_last_order_time);
 
-        if (elapsed_time.count() >= order_interval_ms) {
+        if (!m_has_sent_order || elapsed_time.count() >= order_interval_ms) {
             auto it = m_pending_transactions.begin();
             auto transaction = *it;
             auto& request = transaction->request;
@@ -279,6 +325,8 @@ namespace optionx::modules {
                 result->balance     = m_account_info.get_for_trade<double>(AccountInfoType::BALANCE, request);
                 result->payout      = m_account_info.get_for_trade<double>(AccountInfoType::PAYOUT, request, time_shield::ms_to_sec(result->send_date));
 
+                m_last_order_time = std::chrono::steady_clock::now();
+                m_has_sent_order = true;
                 increment_open_trades(request, result);
                 dispatch_trade_event(transaction);
 
@@ -404,24 +452,106 @@ namespace optionx::modules {
             dispatch_trade_event(transaction);
         }
         m_open_transactions.clear();
+
+        if (clear_snapshot_open_trades()) {
+            emit_open_trades(nullptr, nullptr);
+        }
+
+        m_has_sent_order = false;
     }
 
     void TradeQueueManager::increment_open_trades(
         const std::shared_ptr<TradeRequest>& request,
         const std::shared_ptr<TradeResult>& result) {
-        m_open_trades++;
-        events::OpenTradesEvent event(m_open_trades, request, result);
-        notify(event);
+        m_local_open_trades++;
+        emit_open_trades(request, result);
     }
 
     void TradeQueueManager::decrement_open_trades(
         const std::shared_ptr<TradeRequest>& request,
         const std::shared_ptr<TradeResult>& result) {
-        if (m_open_trades > 0) {
-            m_open_trades--;
-            events::OpenTradesEvent event(m_open_trades, request, result);
-            notify(event);
+        if (m_local_open_trades > 0) {
+            m_local_open_trades--;
+            emit_open_trades(request, result);
         }
+    }
+
+    void TradeQueueManager::process_snapshot_open_trades() {
+        if (m_snapshot_open_trades <= 0) return;
+        if (m_snapshot_close_due_times_ms.empty()) {
+            if (m_snapshot_unknown_close_trades > 0) {
+                request_snapshot_refresh("missing-close-times");
+            }
+            return;
+        }
+
+        const int64_t now_ms = OPTIONX_TIMESTAMP_MS;
+        const auto first_active = std::upper_bound(
+            m_snapshot_close_due_times_ms.begin(),
+            m_snapshot_close_due_times_ms.end(),
+            now_ms);
+        const int64_t closed_count = static_cast<int64_t>(
+            std::distance(m_snapshot_close_due_times_ms.begin(), first_active));
+
+        if (closed_count <= 0) return;
+
+        m_snapshot_close_due_times_ms.erase(
+            m_snapshot_close_due_times_ms.begin(),
+            first_active);
+
+        if (closed_count >= m_snapshot_open_trades) {
+            m_snapshot_open_trades = 0;
+        } else {
+            m_snapshot_open_trades -= closed_count;
+        }
+        if (m_snapshot_unknown_close_trades > m_snapshot_open_trades) {
+            m_snapshot_unknown_close_trades = m_snapshot_open_trades;
+        }
+        emit_open_trades(nullptr, nullptr);
+
+        if (m_snapshot_open_trades > 0 &&
+            m_snapshot_unknown_close_trades > 0 &&
+            m_snapshot_close_due_times_ms.empty()) {
+            request_snapshot_refresh("unknown-close-times");
+        }
+    }
+
+    int64_t TradeQueueManager::current_open_trades() const {
+        return m_local_open_trades + m_snapshot_open_trades;
+    }
+
+    void TradeQueueManager::emit_open_trades(
+            const std::shared_ptr<TradeRequest>& request,
+            const std::shared_ptr<TradeResult>& result) {
+        events::OpenTradesEvent event(current_open_trades(), request, result);
+        notify(event);
+    }
+
+    bool TradeQueueManager::clear_snapshot_open_trades() {
+        const bool changed =
+            m_snapshot_open_trades != 0 ||
+            m_snapshot_unknown_close_trades != 0 ||
+            !m_snapshot_close_due_times_ms.empty();
+        m_snapshot_open_trades = 0;
+        m_snapshot_unknown_close_trades = 0;
+        m_snapshot_refresh_requested = false;
+        m_snapshot_close_due_times_ms.clear();
+        return changed;
+    }
+
+    void TradeQueueManager::request_snapshot_refresh(const char* reason) {
+        if (m_snapshot_refresh_requested) return;
+        m_snapshot_refresh_requested = true;
+        notify(events::OpenTradesSnapshotRefreshRequestEvent(reason ? reason : ""));
+    }
+
+    int64_t TradeQueueManager::add_snapshot_close_buffer(
+            int64_t close_time_ms,
+            int64_t close_buffer_ms) const {
+        if (close_buffer_ms <= 0) return close_time_ms;
+        const int64_t max_ms = std::numeric_limits<int64_t>::max();
+        if (close_time_ms > max_ms - close_buffer_ms) return max_ms;
+        return close_time_ms + close_buffer_ms;
     }
 
     void TradeQueueManager::dispatch_trade_event(const transaction_t& transaction) {
@@ -465,6 +595,61 @@ namespace optionx::modules {
 
     void TradeQueueManager::handle_event(const events::DisconnectRequestEvent& event) {
         finalize_all_trades();
+    }
+
+    void TradeQueueManager::handle_event(const events::OpenTradesSnapshotEvent& event) {
+        std::unique_lock<std::mutex> lock(m_pending_mutex);
+        m_snapshot_refresh_requested = false;
+        if (!m_pending_transactions.empty() ||
+            !m_open_transactions.empty() ||
+            m_local_open_trades > 0) {
+            LOGIT_DEBUG(
+                "Open trades snapshot skipped because local trade queue is active. snapshot_open_trades=",
+                event.open_trades,
+                ", local_open_trades=",
+                m_local_open_trades);
+            lock.unlock();
+            request_snapshot_refresh("local-queue-active");
+            return;
+        }
+
+        m_snapshot_open_trades = std::max<int64_t>(0, event.open_trades);
+        m_snapshot_unknown_close_trades = 0;
+        m_snapshot_close_due_times_ms.clear();
+        const int64_t close_buffer_ms = std::max<int64_t>(0, event.close_buffer_ms);
+        if (m_snapshot_open_trades > 0) {
+            for (const int64_t close_time_ms : event.close_times_ms) {
+                if (close_time_ms <= 0) continue;
+                m_snapshot_close_due_times_ms.push_back(
+                    add_snapshot_close_buffer(close_time_ms, close_buffer_ms));
+            }
+        }
+        std::sort(
+            m_snapshot_close_due_times_ms.begin(),
+            m_snapshot_close_due_times_ms.end());
+        if (static_cast<int64_t>(m_snapshot_close_due_times_ms.size()) >
+            m_snapshot_open_trades) {
+            m_snapshot_close_due_times_ms.resize(
+                static_cast<std::size_t>(m_snapshot_open_trades));
+        }
+        m_snapshot_unknown_close_trades = std::max<int64_t>(
+            0,
+            m_snapshot_open_trades -
+                static_cast<int64_t>(m_snapshot_close_due_times_ms.size()));
+        lock.unlock();
+
+        LOGIT_INFO(
+            "Open trades snapshot applied. snapshot_open_trades=",
+            m_snapshot_open_trades,
+            ", unknown_close_times=",
+            m_snapshot_unknown_close_trades,
+            ", close_times=",
+            m_snapshot_close_due_times_ms.size());
+        emit_open_trades(nullptr, nullptr);
+
+        if (m_snapshot_unknown_close_trades > 0) {
+            request_snapshot_refresh("unknown-close-times");
+        }
     }
 
 } // namespace optionx::modules

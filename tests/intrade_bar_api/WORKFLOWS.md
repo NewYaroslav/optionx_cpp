@@ -33,6 +33,9 @@ Used by `AuthManager` for `AuthMethod::EMAIL_PASSWORD`.
    optional `request_switch_currency` -> `request_balance`.
 7. On successful balance fetch, mark the account connected and publish account
    updates.
+8. `ActiveTradesSyncManager` reacts to the connected account update and calls
+   `request_active_trades_snapshot` to synchronize broker-side active trades
+   with the trade queue counter.
 
 Negative password/auth checks are manual smoke tests only: repeated failed
 broker logins can lock the account for hours.
@@ -70,6 +73,34 @@ Started after `AccountInfoUpdateEvent::CONNECTED`.
    `AuthData::disconnected_domain_retry_period_ms`; if it fails, run domain
    discovery and then request balance again.
 
+## Active Trades Sync
+
+Started by `ActiveTradesSyncManager` after a connected account update, and also
+when `RestartAuthEvent` indicates suspicious account state.
+
+1. Call `request_active_trades_snapshot`, which fetches the authenticated main
+   page and parses rows from the `trade_active` block.
+2. Publish `OpenTradesSnapshotEvent` with the broker active-trade count and
+   known close timestamps.
+3. Stale callbacks are ignored if the active request generation or account
+   identity (`user_id`, account type, currency) changed while the HTTP request
+   was in flight.
+4. `TradeQueueManager` accepts the snapshot only while its local pending/open
+   queues are empty.
+5. Snapshot trades are counted separately from locally opened trades. The
+   public `OpenTradesEvent` reports the combined count.
+6. For each known close timestamp, `TradeQueueManager` decreases the snapshot
+   part after `AuthData::active_trades_close_buffer_ms`.
+7. If the snapshot has active trades without known close timestamps, or the
+   local queue is busy when the snapshot arrives, `TradeQueueManager` publishes
+   `OpenTradesSnapshotRefreshRequestEvent`.
+8. `ActiveTradesSyncManager` schedules the next broker snapshot after
+   `AuthData::active_trades_sync_period_ms`.
+
+`TradeQueueManager` applies snapshots on the platform event loop. Its pending
+queue mutex protects external enqueueing, while local/snapshot open-trade
+counters are event-loop-owned state.
+
 ## Price Polling
 
 Started after `AccountInfoUpdateEvent::CONNECTED`.
@@ -83,11 +114,13 @@ Started after `AccountInfoUpdateEvent::CONNECTED`.
 
 Started from `TradeRequestEvent`.
 
-1. `TradeManager` calls `request_execute_trade`.
-2. On failure, mark trade `OPEN_ERROR`; HTTP 451 also disconnects the account.
-3. On success, fill broker option id/open time/open price.
-4. Call `request_balance`.
-5. Balance success updates trade/account balance and marks trade `OPEN_SUCCESS`.
+1. `TradeQueueManager` releases queued requests no faster than
+   `AuthData::order_interval_ms`.
+2. `TradeManager` calls `request_execute_trade`.
+3. On failure, mark trade `OPEN_ERROR`; HTTP 451 also disconnects the account.
+4. On success, fill broker option id/open time/open price.
+5. Call `request_balance`.
+6. Balance success updates trade/account balance and marks trade `OPEN_SUCCESS`.
 
 ## Trade Result Check
 
