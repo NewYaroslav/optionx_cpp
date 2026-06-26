@@ -511,7 +511,7 @@ namespace optionx::platforms::intrade_bar {
                 const std::string& user_hash,
                 const std::string& cookies,
                 const std::string& reason)> result_callback) {
-        LOGIT_DEBUG(req_id, req_value, cookies);
+        LOGIT_DEBUG(req_id, req_value, utils::redact_secret(cookies));
 
         // Prepare query parameters
         kurlyk::QueryParams query = {

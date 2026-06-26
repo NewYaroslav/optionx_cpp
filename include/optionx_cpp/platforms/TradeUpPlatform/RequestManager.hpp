@@ -109,7 +109,7 @@ namespace optionx::platforms::tradeup {
             std::shared_ptr<AuthData> auth_data, 
             const std::string &token) {
         if (!token.empty()) {
-            LOGIT_DEBUG(token);
+            LOGIT_DEBUG(utils::redact_secret(token));
             
             auto& client = get_http_client();
             m_host = auth_data->host;
@@ -273,7 +273,7 @@ namespace optionx::platforms::tradeup {
                 return;
             }
 
-            LOGIT_DEBUG(user_id, token, affs_id, cookies);
+            LOGIT_DEBUG(user_id, utils::redact_secret(token), affs_id, utils::redact_secret(cookies));
             result_callback(
                 true, 
                 {}, 
@@ -378,7 +378,7 @@ namespace optionx::platforms::tradeup {
                 m_api_headers.insert_or_assign("Cookie", cookies);
             }
 
-            LOGIT_DEBUG(success, ret, message, cookies, expire);
+            LOGIT_DEBUG(success, ret, message, utils::redact_secret(cookies), expire);
 
             result_callback(success, {}, std::move(ret), std::move(message), m_token, std::move(cookies), expire);
         };

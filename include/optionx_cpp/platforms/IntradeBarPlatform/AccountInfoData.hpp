@@ -131,7 +131,7 @@ namespace optionx::platforms::intrade_bar {
             }
             case AccountInfoType::PAYOUT_ABOVE_MIN:
                 if (request.min_payout == 0.0) return true;
-                return (request.min_payout >= get_payout(request));
+                return (get_payout(request) >= request.min_payout);
             case AccountInfoType::AMOUNT_BELOW_BALANCE:
                 return (request.amount <= balance);
             default:

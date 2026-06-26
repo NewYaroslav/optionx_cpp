@@ -10,6 +10,7 @@
 #include <mutex>
 #include <chrono>
 #include <memory>
+#include <string>
 #include <time_shield.hpp>
 #include <logit_cpp/logit.hpp>
 
@@ -78,6 +79,13 @@ namespace optionx::utils {
         }
 
         ~Task() = default;
+
+        /// \brief Checks if a periodic task period can be used safely.
+        /// \param period_ms Period in milliseconds.
+        /// \return True when the period is positive.
+        static bool is_valid_period(int64_t period_ms) noexcept {
+            return period_ms > 0;
+        }
         
         const std::string& name() const {
             return m_name;
@@ -110,11 +118,17 @@ namespace optionx::utils {
 
         /// \brief Sets a new period for periodic tasks.
         /// \param new_period_ms The new period in milliseconds.
-        void set_period(int64_t new_period_ms) {
+        /// \return True if the period was updated; false if the value is invalid.
+        bool set_period(int64_t new_period_ms) {
+            if (!is_valid_period(new_period_ms)) {
+                LOGIT_ERROR("Task period must be positive.");
+                return false;
+            }
             std::lock_guard<std::mutex> lock(m_mutex);
             m_start_time -= m_period_ms;
             m_period_ms = new_period_ms;
             m_start_time += m_period_ms;
+            return true;
         }
 
         /// \brief Resets the timer for periodic tasks.
@@ -258,6 +272,12 @@ namespace optionx::utils {
             }
             case TaskType::PERIODIC: {
                 std::unique_lock<std::mutex> lock(m_mutex);
+                if (!is_valid_period(m_period_ms)) {
+                    lock.unlock();
+                    LOGIT_ERROR("Periodic task has invalid period.");
+                    m_completed = true;
+                    break;
+                }
                 m_execution_time = m_start_time;
                 if (current_time_ms >= m_start_time || m_force_execute || m_shutdown) {
                     while (current_time_ms >= m_start_time) {
@@ -270,6 +290,12 @@ namespace optionx::utils {
             }
             case TaskType::DELAYED_PERIODIC: {
                 std::unique_lock<std::mutex> lock(m_mutex);
+                if (!is_valid_period(m_period_ms)) {
+                    lock.unlock();
+                    LOGIT_ERROR("Delayed periodic task has invalid period.");
+                    m_completed = true;
+                    break;
+                }
                 m_execution_time = m_next_execution_time;
                 if (current_time_ms >= m_next_execution_time || m_force_execute || m_shutdown) {
                     while (current_time_ms >= m_next_execution_time) {
@@ -292,6 +318,12 @@ namespace optionx::utils {
             }
             case TaskType::PERIODIC_ON_DATE: {
                 std::unique_lock<std::mutex> lock(m_mutex);
+                if (!is_valid_period(m_period_ms)) {
+                    lock.unlock();
+                    LOGIT_ERROR("Periodic on-date task has invalid period.");
+                    m_completed = true;
+                    break;
+                }
                 m_execution_time = m_timestamp_ms;
                 if (current_time_ms >= m_timestamp_ms || m_force_execute || m_shutdown) {
                     while (current_time_ms >= m_timestamp_ms) {

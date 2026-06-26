@@ -50,7 +50,7 @@ namespace optionx {
         std::int64_t time_zone_sec = 0;  ///< Time zone offset in seconds for local-time filtering.
 
         TradeRecordTimeField time_field = TradeRecordTimeField::AUTO; ///< Which timestamp to query on.
-        TimeRangeMode range_mode = TimeRangeMode::CLOSED;             ///< Range inclusion mode.
+        TimeRangeMode range_mode = TimeRangeMode::NONE;               ///< Range inclusion mode.
 
         std::size_t limit = 0;       ///< Maximum records to return (0 = unlimited).
         std::size_t offset = 0;      ///< Skip first N matched records.
@@ -61,6 +61,12 @@ namespace optionx {
         bool fix_stale_status = true;        ///< Apply stale-status correction to results.
         std::int64_t wait_status_sec = 30;   ///< Staleness threshold in seconds.
         std::int64_t coarse_expansion_ms = 86400000; ///< Scan expansion for non-AUTO time_field (default 24h).
+
+        /// \brief Creates a query that returns all records matching the field filters.
+        /// \return Query without a time range.
+        static TradeRecordQuery all() {
+            return TradeRecordQuery();
+        }
     };
 
 } // namespace optionx

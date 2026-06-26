@@ -180,6 +180,19 @@ TEST(TradeRecordDBTest, UpsertFindMigrateEraseClearAndCount) {
     EXPECT_EQ(db.get_trade_id(), 1u);
 }
 
+TEST(TradeRecordDBTest, DefaultQueryReturnsAllModernRecords) {
+    const auto config = make_config("trade_record_db_default_query");
+    TradeRecordDB db(config);
+    ASSERT_TRUE(db.is_open());
+
+    ASSERT_TRUE(db.upsert(make_record(1, 1712345600100)).ok());
+
+    const auto result = db.find_records(optionx::TradeRecordQuery{});
+    ASSERT_TRUE(result.ok()) << result.message;
+    ASSERT_EQ(result.records.size(), 1u);
+    EXPECT_EQ(result.records[0].request_unique_id, 1);
+}
+
 TEST(TradeRecordDBTest, WriteRemovesStaleUidIndexWhenUidChanges) {
     const auto config = make_config("trade_record_db_stale_uid");
     TradeRecordDB db(config);

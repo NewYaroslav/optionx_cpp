@@ -169,7 +169,7 @@ namespace optionx::modules {
             }
             case AccountInfoType::PAYOUT_ABOVE_MIN:
                 if (request.min_payout == 0.0) return true;
-                return (request.min_payout >= get_payout(request));
+                return (get_payout(request) >= request.min_payout);
             case AccountInfoType::AMOUNT_BELOW_BALANCE:
                 return (request.amount <= balance);
             default:
@@ -508,6 +508,40 @@ std::unique_ptr<TradeRequest> make_valid_sprint_trade_request() {
     trade_request->order_type = OrderType::BUY;
     trade_request->duration = 10;
     return trade_request;
+}
+
+TEST(AccountInfoDataTest, PayoutAboveMinAcceptsBrokerPayoutGreaterThanMinimum) {
+    optionx::platforms::intrade_bar::AccountInfoData account_info;
+    account_info.currency = CurrencyType::USD;
+    account_info.account_type = AccountType::DEMO;
+
+    auto request = std::make_shared<TradeRequest>();
+    request->symbol = "EURUSD";
+    request->amount = 10.0;
+    request->currency = CurrencyType::USD;
+    request->account_type = AccountType::DEMO;
+    request->option_type = OptionType::SPRINT;
+    request->order_type = OrderType::BUY;
+    request->duration = 180;
+    const int64_t timestamp = 1719302400;
+
+    request->min_payout = 0.81;
+    EXPECT_TRUE(account_info.get_for_trade<bool>(
+        AccountInfoType::PAYOUT_ABOVE_MIN,
+        request,
+        timestamp));
+
+    request->min_payout = 0.82;
+    EXPECT_TRUE(account_info.get_for_trade<bool>(
+        AccountInfoType::PAYOUT_ABOVE_MIN,
+        request,
+        timestamp));
+
+    request->min_payout = 0.83;
+    EXPECT_FALSE(account_info.get_for_trade<bool>(
+        AccountInfoType::PAYOUT_ABOVE_MIN,
+        request,
+        timestamp));
 }
 
 TEST_F(TradeManagerTestFixture, OrderIntervalDelaysQueuedTrades) {

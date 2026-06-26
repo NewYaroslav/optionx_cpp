@@ -59,10 +59,13 @@ namespace optionx::platforms::intrade_bar {
     std::optional<std::pair<double, CurrencyType>> parse_balance(const std::string& content) {
         try {
             const std::string STR_RUB = u8"₽";
+            const std::string STR_RUB_UTF8 = "\xE2\x82\xBD";
             const std::string STR_USD = u8"$";
 
             CurrencyType currency = CurrencyType::UNKNOWN;
-            if (content.find(STR_RUB) != std::string::npos || content.find("RUB") != std::string::npos) {
+            if (content.find(STR_RUB_UTF8) != std::string::npos ||
+                content.find(STR_RUB) != std::string::npos ||
+                content.find("RUB") != std::string::npos) {
                 currency = CurrencyType::RUB;
             } else if (content.find(STR_USD) != std::string::npos || content.find("USD") != std::string::npos) {
                 currency = CurrencyType::USD;
@@ -72,9 +75,17 @@ namespace optionx::platforms::intrade_bar {
             }
 
             std::string cleaned_content = content;
-            cleaned_content.replace(cleaned_content.find(","), 1, ".");
-            const std::string marker = (currency == CurrencyType::RUB) ? STR_RUB : STR_USD;
+            std::replace(cleaned_content.begin(), cleaned_content.end(), ',', '.');
+            const std::string marker = (currency == CurrencyType::RUB) ? STR_RUB_UTF8 : STR_USD;
             size_t pos = cleaned_content.find(marker);
+            if (pos == std::string::npos && currency == CurrencyType::RUB) {
+                pos = cleaned_content.find(STR_RUB);
+            }
+            if (pos == std::string::npos && currency == CurrencyType::RUB) {
+                pos = cleaned_content.find("RUB");
+            } else if (pos == std::string::npos && currency == CurrencyType::USD) {
+                pos = cleaned_content.find("USD");
+            }
             if (pos != std::string::npos) {
                 cleaned_content = cleaned_content.substr(0, pos);
             }
