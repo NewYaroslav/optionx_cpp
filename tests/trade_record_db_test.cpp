@@ -16,6 +16,7 @@ using optionx::TradeRecord;
 using optionx::storage::TradeRecordDB;
 using optionx::storage::TradeRecordDBStatus;
 using optionx::storage::detail::selected_timestamp_ms;
+using optionx::storage::detail::timestamp_ms_to_unix_minutes;
 
 std::string unique_db_path(const std::string& name) {
     static std::atomic<std::uint64_t> counter{0};
@@ -389,6 +390,12 @@ TEST(CompositeKeyTest, OrdersAcrossMinuteBuckets) {
     EXPECT_EQ(selected_timestamp_ms(range.records[0]), ts_bucket0);
     EXPECT_EQ(selected_timestamp_ms(range.records[1]), ts_bucket1);
     EXPECT_EQ(selected_timestamp_ms(range.records[2]), ts_bucket2);
+}
+
+TEST(CompositeKeyTest, ConvertsNegativeTimestampsUsingFloorMinutes) {
+    EXPECT_EQ(timestamp_ms_to_unix_minutes(-1), -1);
+    EXPECT_EQ(timestamp_ms_to_unix_minutes(-60000), -1);
+    EXPECT_EQ(timestamp_ms_to_unix_minutes(-60001), -2);
 }
 
 TEST(CompositeKeyTest, UpdateMovesBetweenMinuteBuckets) {

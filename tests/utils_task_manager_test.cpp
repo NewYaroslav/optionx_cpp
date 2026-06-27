@@ -3,8 +3,26 @@
 #include <optionx_cpp/utils.hpp>
 
 TEST(LogRedactionTest, RedactsNonEmptySecrets) {
-    EXPECT_TRUE(optionx::utils::redact_secret("").empty());
-    EXPECT_EQ(optionx::utils::redact_secret("session=abc"), "***");
+    EXPECT_TRUE(optionx::utils::redact_secret_value("").empty());
+    EXPECT_EQ(optionx::utils::redact_secret_value("session=abc"), "***");
+    EXPECT_EQ(optionx::utils::redact_secret("legacy-token"), "***");
+}
+
+TEST(LogRedactionTest, RedactsSecretFieldsInsideText) {
+    using optionx::utils::redact_secrets_in_text;
+
+    EXPECT_EQ(
+        redact_secrets_in_text("status=ok token=abc123 user_hash=deadbeef"),
+        "status=ok token=*** user_hash=***");
+    EXPECT_EQ(
+        redact_secrets_in_text("password=secret&symbol=EURUSD"),
+        "password=***&symbol=EURUSD");
+    EXPECT_EQ(
+        redact_secrets_in_text("Cookie: user_id=42; user_hash=deadbeef"),
+        "Cookie: ***");
+    EXPECT_EQ(
+        redact_secrets_in_text("plain diagnostic text"),
+        "plain diagnostic text");
 }
 
 TEST(TaskManagerTest, RejectsInvalidPeriodicPeriods) {

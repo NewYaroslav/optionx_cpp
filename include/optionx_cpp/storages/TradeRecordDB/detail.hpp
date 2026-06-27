@@ -10,6 +10,8 @@
 #include <string>
 #include <utility>
 
+#include <time_shield/time_unit_conversions.hpp>
+
 #include "data.hpp"
 
 namespace optionx::storage::detail {
@@ -52,13 +54,11 @@ namespace optionx::storage::detail {
     inline std::int32_t timestamp_ms_to_unix_minutes(std::int64_t timestamp_ms) noexcept {
         constexpr auto kMinMinutes = std::numeric_limits<std::int32_t>::min();
         constexpr auto kMaxMinutes = std::numeric_limits<std::int32_t>::max();
-        constexpr auto kMsPerMinute = static_cast<std::int64_t>(60000);
-        constexpr auto kMinMs = static_cast<std::int64_t>(kMinMinutes) * kMsPerMinute;
-        constexpr auto kMaxMs = static_cast<std::int64_t>(kMaxMinutes) * kMsPerMinute;
+        const auto minutes = time_shield::ms_to_min<std::int64_t>(timestamp_ms);
 
-        if (timestamp_ms <= kMinMs) return kMinMinutes;
-        if (timestamp_ms >= kMaxMs) return kMaxMinutes;
-        return static_cast<std::int32_t>(timestamp_ms / kMsPerMinute);
+        if (minutes <= static_cast<std::int64_t>(kMinMinutes)) return kMinMinutes;
+        if (minutes >= static_cast<std::int64_t>(kMaxMinutes)) return kMaxMinutes;
+        return static_cast<std::int32_t>(minutes);
     }
 
     /// \brief Extracts trade index from a composite key.
