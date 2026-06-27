@@ -538,7 +538,7 @@ namespace optionx::storage {
 
         const auto existing_composite_opt = m_trade_id_index->find(record.trade_id, txn);
         const auto ts_ms = detail::selected_timestamp_ms(record);
-        const auto unix_minutes = static_cast<std::int32_t>(ts_ms / 60000);
+        const auto unix_minutes = detail::timestamp_ms_to_unix_minutes(ts_ms);
         const auto new_composite_key = detail::make_composite_key(
             unix_minutes,
             static_cast<std::uint32_t>(record.trade_id));
@@ -618,7 +618,7 @@ namespace optionx::storage {
 
         const auto existing_composite_opt = m_trade_id_index->find(selected_trade_id, txn);
         const auto ts_ms = detail::selected_timestamp_ms(record);
-        const auto unix_minutes = static_cast<std::int32_t>(ts_ms / 60000);
+        const auto unix_minutes = detail::timestamp_ms_to_unix_minutes(ts_ms);
         const auto new_composite_key = detail::make_composite_key(
             unix_minutes,
             static_cast<std::uint32_t>(selected_trade_id));
@@ -722,7 +722,7 @@ namespace optionx::storage {
             return detail::list_error(TradeRecordDBStatus::INVALID_ARGUMENT, "TradeRecord timestamp is invalid");
         }
 
-        const auto target_min = static_cast<std::int32_t>(timestamp_ms / 60000);
+        const auto target_min = detail::timestamp_ms_to_unix_minutes(timestamp_ms);
         const auto start_key = detail::make_composite_key(target_min, 0);
         const auto stop_key = detail::make_composite_key(target_min, 0xFFFFFFFFu);
 
@@ -756,8 +756,8 @@ namespace optionx::storage {
             return detail::list_error(TradeRecordDBStatus::INVALID_ARGUMENT, "TradeRecord timestamp range is invalid");
         }
 
-        const auto start_min = static_cast<std::int32_t>(start_ms / 60000);
-        const auto stop_min = static_cast<std::int32_t>(stop_ms / 60000);
+        const auto start_min = detail::timestamp_ms_to_unix_minutes(start_ms);
+        const auto stop_min = detail::timestamp_ms_to_unix_minutes(stop_ms);
         const auto start_key = detail::make_composite_key(start_min, 0);
         const auto stop_key = detail::make_composite_key(stop_min, 0xFFFFFFFFu);
 
@@ -814,8 +814,14 @@ namespace optionx::storage {
             }
         }
 
-        const auto start_min = static_cast<std::int32_t>(coarse_start_ms / 60000);
-        const auto stop_min = static_cast<std::int32_t>(coarse_stop_ms / 60000);
+        const auto start_min =
+            query.range_mode == optionx::TimeRangeMode::NONE
+                ? std::numeric_limits<std::int32_t>::min()
+                : detail::timestamp_ms_to_unix_minutes(coarse_start_ms);
+        const auto stop_min =
+            query.range_mode == optionx::TimeRangeMode::NONE
+                ? std::numeric_limits<std::int32_t>::max()
+                : detail::timestamp_ms_to_unix_minutes(coarse_stop_ms);
         const auto start_key = detail::make_composite_key(start_min, 0);
         const auto stop_key = detail::make_composite_key(stop_min, 0xFFFFFFFFu);
 

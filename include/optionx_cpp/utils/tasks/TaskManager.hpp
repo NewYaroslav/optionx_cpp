@@ -6,6 +6,7 @@
 /// \brief Contains the definition of the TaskManager class for managing tasks.
 
 #include "Task.hpp"
+#include <algorithm>
 #include <list>
 #include <mutex>
 #include <atomic>
@@ -52,7 +53,7 @@ namespace optionx::utils {
         /// \param period_ms Period in milliseconds between executions.
         /// \param callback The callback function to execute.
         bool add_periodic_task(int64_t period_ms, Task::Callback callback) {
-            if (m_shutdown) return false;
+            if (!can_add_periodic_task(period_ms)) return false;
             add_task(std::make_shared<Task>(TaskType::PERIODIC, std::move(callback), 0, period_ms));
             return true;
         }
@@ -62,7 +63,7 @@ namespace optionx::utils {
         /// \param period_ms Period in milliseconds between executions.
         /// \param callback The callback function to execute.
         bool add_delayed_periodic_task(int64_t delay_ms, int64_t period_ms, Task::Callback callback) {
-            if (m_shutdown) return false;
+            if (!can_add_periodic_task(period_ms)) return false;
             add_task(std::make_shared<Task>(TaskType::DELAYED_PERIODIC, std::move(callback), delay_ms, period_ms));
             return true;
         }
@@ -81,7 +82,7 @@ namespace optionx::utils {
         /// \param period_ms Period in milliseconds between executions.
         /// \param callback The callback function to execute.
         bool add_periodic_on_date_task(int64_t timestamp_ms, int64_t period_ms, Task::Callback callback) {
-            if (m_shutdown) return false;
+            if (!can_add_periodic_task(period_ms)) return false;
             add_task(std::make_shared<Task>(TaskType::PERIODIC_ON_DATE, std::move(callback), 0, period_ms, timestamp_ms));
             return true;
         }
@@ -112,7 +113,7 @@ namespace optionx::utils {
         /// \param period_ms Period in milliseconds between executions.
         /// \param callback The callback function to execute.
         bool add_periodic_task(std::string name, int64_t period_ms, Task::Callback callback) {
-            if (m_shutdown) return false;
+            if (!can_add_periodic_task(period_ms)) return false;
             add_task(std::make_shared<Task>(std::move(name), TaskType::PERIODIC, std::move(callback), 0, period_ms));
             return true;
         }
@@ -123,7 +124,7 @@ namespace optionx::utils {
         /// \param period_ms Period in milliseconds between executions.
         /// \param callback The callback function to execute.
         bool add_delayed_periodic_task(std::string name, int64_t delay_ms, int64_t period_ms, Task::Callback callback) {
-            if (m_shutdown) return false;
+            if (!can_add_periodic_task(period_ms)) return false;
             add_task(std::make_shared<Task>(std::move(name), TaskType::DELAYED_PERIODIC, std::move(callback), delay_ms, period_ms));
             return true;
         }
@@ -144,7 +145,7 @@ namespace optionx::utils {
         /// \param period_ms Period in milliseconds between executions.
         /// \param callback The callback function to execute.
         bool add_periodic_on_date_task(std::string name, int64_t timestamp_ms, int64_t period_ms, Task::Callback callback) {
-            if (m_shutdown) return false;
+            if (!can_add_periodic_task(period_ms)) return false;
             add_task(std::make_shared<Task>(std::move(name), TaskType::PERIODIC_ON_DATE, std::move(callback), 0, period_ms, timestamp_ms));
             return true;
         }
@@ -263,6 +264,16 @@ namespace optionx::utils {
             m_pending_tasks.push_back(std::move(task));
             lock.unlock();
             m_cv.notify_one();
+        }
+
+        /// \brief Validates state and period before adding a periodic task.
+        bool can_add_periodic_task(int64_t period_ms) const {
+            if (m_shutdown) return false;
+            if (!Task::is_valid_period(period_ms)) {
+                LOGIT_ERROR("Periodic task period must be positive.");
+                return false;
+            }
+            return true;
         }
     }; // TaskManager
 

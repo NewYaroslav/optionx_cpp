@@ -64,12 +64,23 @@ namespace optionx::storage {
             return m_aes.set_key(key);
         }
 
+        /// \brief Checks whether the session database was opened successfully.
+        /// \return True when the backing database is available.
+        bool is_open() const {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            return static_cast<bool>(m_db);
+        }
+
         /// \brief Retrieves session value by platform and email.
         /// \param platform Platform name.
         /// \param email Email address.
         /// \return Session value as a string, or std::nullopt if not found.
         std::optional<std::string> get_session_value(const std::string& platform, const std::string& email) {
             std::lock_guard<std::mutex> lock(m_mutex);
+            if (!m_db) {
+                LOGIT_WARN("Session database is not open.");
+                return std::nullopt;
+            }
             std::string key = platform + ":" + email;
             try {
                 std::string base64_encrypted_value;
@@ -95,6 +106,10 @@ namespace optionx::storage {
         /// \return True if session value is stored successfully, otherwise false.
         bool set_session_value(const std::string& platform, const std::string& email, const std::string& value) {
             std::lock_guard<std::mutex> lock(m_mutex);
+            if (!m_db) {
+                LOGIT_WARN("Session database is not open.");
+                return false;
+            }
             std::string key = platform + ":" + email;
             try {
                 m_db->insert_or_assign(utils::Base64::encode(key), utils::Base64::encode(m_aes.encrypt(value)));
@@ -113,6 +128,10 @@ namespace optionx::storage {
         /// \return True if session value is removed successfully, otherwise false.
         bool remove_session(const std::string& platform, const std::string& email) {
             std::lock_guard<std::mutex> lock(m_mutex);
+            if (!m_db) {
+                LOGIT_WARN("Session database is not open.");
+                return false;
+            }
             std::string key = platform + ":" + email;
             try {
                 m_db->erase(utils::Base64::encode(key));
@@ -129,6 +148,10 @@ namespace optionx::storage {
         /// \return True if database is cleared successfully, otherwise false.
         bool clear() {
             std::lock_guard<std::mutex> lock(m_mutex);
+            if (!m_db) {
+                LOGIT_WARN("Session database is not open.");
+                return false;
+            }
             try {
                 m_db->clear();
                 return true;
@@ -144,12 +167,15 @@ namespace optionx::storage {
         /// \details Disconnects database and clears encryption key.
         void shutdown() {
             std::lock_guard<std::mutex> lock(m_mutex);
-            m_db->disconnect();
+            if (m_db) {
+                m_db->disconnect();
+                m_db.reset();
+            }
             m_aes.clear_key();
         }
 
     private:
-        std::mutex       m_mutex; ///< Mutex for thread safety.
+        mutable std::mutex m_mutex; ///< Mutex for thread safety.
         crypto::AESCrypt m_aes;   ///< AES encryption and decryption instance.
         std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>> m_db; ///< The SQLite KeyValueDB instance.
 

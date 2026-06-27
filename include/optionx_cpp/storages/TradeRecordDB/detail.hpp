@@ -6,8 +6,11 @@
 /// \brief Internal helpers used only by TradeRecordDB.
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <utility>
+
+#include <time_shield/time_unit_conversions.hpp>
 
 #include "data.hpp"
 
@@ -45,6 +48,17 @@ namespace optionx::storage::detail {
     /// \brief Extracts unix minutes from a composite key.
     inline std::int32_t composite_key_minutes(std::uint64_t key) noexcept {
         return unbias_minutes(static_cast<std::uint32_t>(key >> 32));
+    }
+
+    /// \brief Converts milliseconds to unix minutes with int32 composite-key bounds.
+    inline std::int32_t timestamp_ms_to_unix_minutes(std::int64_t timestamp_ms) noexcept {
+        constexpr auto kMinMinutes = std::numeric_limits<std::int32_t>::min();
+        constexpr auto kMaxMinutes = std::numeric_limits<std::int32_t>::max();
+        const auto minutes = time_shield::ms_to_min<std::int64_t>(timestamp_ms);
+
+        if (minutes <= static_cast<std::int64_t>(kMinMinutes)) return kMinMinutes;
+        if (minutes >= static_cast<std::int64_t>(kMaxMinutes)) return kMaxMinutes;
+        return static_cast<std::int32_t>(minutes);
     }
 
     /// \brief Extracts trade index from a composite key.

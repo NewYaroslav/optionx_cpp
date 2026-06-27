@@ -499,7 +499,7 @@ namespace optionx::platforms::intrade_bar {
                 finalize_authentication(std::move(callback));
             });
         } else {
-            LOGIT_PRINT_ERROR("Failed to parse cookies: ", cookies);
+            LOGIT_PRINT_ERROR("Failed to parse cookies: ", utils::redact_secret_value(cookies));
             execute_authentication_flow(std::move(callback));
         }
     }

@@ -23,6 +23,7 @@
 #include "utils/time_utils.hpp"       ///< Time-related utilities, including timestamp retrieval.
 #include "utils/trade_id.hpp"         ///< Unique trade identifier generator
 #include "utils/correlation_id.hpp"   ///< Unique correlation identifier generator
+#include "utils/log_redaction.hpp"    ///< Secret redaction helpers for diagnostics.
 
 // Data encoding
 #include "utils/Base36.hpp"           ///< Base36 encoding/decoding implementation

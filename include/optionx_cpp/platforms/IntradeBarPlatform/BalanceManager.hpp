@@ -184,7 +184,6 @@ namespace optionx::platforms::intrade_bar {
         if (!account_info->connect) {
             account_info->connect = true;
             notify(events::AccountInfoUpdateEvent(account_info, Status::CONNECTED));
-            handle_connected();
         }
 
         int64_t elapsed = time_shield::ms_to_sec(OPTIONX_TIMESTAMP_MS) - m_last_trades_time;
@@ -211,7 +210,6 @@ namespace optionx::platforms::intrade_bar {
             const std::string error_text("Failed to retrieve balance.");
             LOGIT_ERROR(error_text);
             notify(events::AccountInfoUpdateEvent(account_info, Status::DISCONNECTED, error_text));
-            handle_disconnected();
         }
     }
 
@@ -278,6 +276,8 @@ namespace optionx::platforms::intrade_bar {
     /// \brief Handles account connection event.
     void BalanceManager::handle_connected() {
         LOGIT_TRACE0();
+
+        m_task_manager.shutdown();
         
         LOGIT_INFO(
             "Intrade Bar balance: starting connected balance polling. period_ms=",
@@ -313,7 +313,6 @@ namespace optionx::platforms::intrade_bar {
                         const std::string error_text("Ping to current host failed.");
                         LOGIT_ERROR(error_text);
                         notify(events::AccountInfoUpdateEvent(account_info, Status::DISCONNECTED, error_text));
-                        handle_disconnected();
                     }
                 }
             });

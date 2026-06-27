@@ -16,6 +16,7 @@ using optionx::TradeRecord;
 using optionx::storage::TradeRecordDB;
 using optionx::storage::TradeRecordDBStatus;
 using optionx::storage::detail::selected_timestamp_ms;
+using optionx::storage::detail::timestamp_ms_to_unix_minutes;
 
 std::string unique_db_path(const std::string& name) {
     static std::atomic<std::uint64_t> counter{0};
@@ -178,6 +179,19 @@ TEST(TradeRecordDBTest, UpsertFindMigrateEraseClearAndCount) {
     EXPECT_EQ(db.clear(), TradeRecordDBStatus::SUCCESS);
     EXPECT_EQ(db.count(), 0u);
     EXPECT_EQ(db.get_trade_id(), 1u);
+}
+
+TEST(TradeRecordDBTest, DefaultQueryReturnsAllModernRecords) {
+    const auto config = make_config("trade_record_db_default_query");
+    TradeRecordDB db(config);
+    ASSERT_TRUE(db.is_open());
+
+    ASSERT_TRUE(db.upsert(make_record(1, 1712345600100)).ok());
+
+    const auto result = db.find_records(optionx::TradeRecordQuery{});
+    ASSERT_TRUE(result.ok()) << result.message;
+    ASSERT_EQ(result.records.size(), 1u);
+    EXPECT_EQ(result.records[0].request_unique_id, 1);
 }
 
 TEST(TradeRecordDBTest, WriteRemovesStaleUidIndexWhenUidChanges) {
@@ -376,6 +390,12 @@ TEST(CompositeKeyTest, OrdersAcrossMinuteBuckets) {
     EXPECT_EQ(selected_timestamp_ms(range.records[0]), ts_bucket0);
     EXPECT_EQ(selected_timestamp_ms(range.records[1]), ts_bucket1);
     EXPECT_EQ(selected_timestamp_ms(range.records[2]), ts_bucket2);
+}
+
+TEST(CompositeKeyTest, ConvertsNegativeTimestampsUsingFloorMinutes) {
+    EXPECT_EQ(timestamp_ms_to_unix_minutes(-1), -1);
+    EXPECT_EQ(timestamp_ms_to_unix_minutes(-60000), -1);
+    EXPECT_EQ(timestamp_ms_to_unix_minutes(-60001), -2);
 }
 
 TEST(CompositeKeyTest, UpdateMovesBetweenMinuteBuckets) {

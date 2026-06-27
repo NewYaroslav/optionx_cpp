@@ -77,6 +77,28 @@ TEST(IntradeBarAuthData, KeepsDisconnectedDomainRetryPeriodInConfig) {
     EXPECT_EQ(order_interval_message, "Order interval must be non-negative");
 }
 
+TEST(IntradeBarApiResponses, ParsesBalanceWithCommaDotIntegerAndUtf8Ruble) {
+    const auto comma_usd = parse_balance("12,34 $");
+    ASSERT_TRUE(comma_usd.has_value());
+    EXPECT_DOUBLE_EQ(comma_usd->first, 12.34);
+    EXPECT_EQ(comma_usd->second, CurrencyType::USD);
+
+    const auto dot_usd = parse_balance("12.34 USD");
+    ASSERT_TRUE(dot_usd.has_value());
+    EXPECT_DOUBLE_EQ(dot_usd->first, 12.34);
+    EXPECT_EQ(dot_usd->second, CurrencyType::USD);
+
+    const auto integer_usd = parse_balance("12 $");
+    ASSERT_TRUE(integer_usd.has_value());
+    EXPECT_DOUBLE_EQ(integer_usd->first, 12.0);
+    EXPECT_EQ(integer_usd->second, CurrencyType::USD);
+
+    const auto rub = parse_balance(std::string("123,45 ") + "\xE2\x82\xBD");
+    ASSERT_TRUE(rub.has_value());
+    EXPECT_DOUBLE_EQ(rub->first, 123.45);
+    EXPECT_EQ(rub->second, CurrencyType::RUB);
+}
+
 TEST(IntradeBarApiResponses, TradeWorkflowPayloadsKeepBrokerSpecificFieldsTyped) {
     TradeOpenInfo opened;
     opened.option_id = 123;
