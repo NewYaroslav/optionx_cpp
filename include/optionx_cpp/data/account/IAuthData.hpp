@@ -37,10 +37,14 @@ namespace optionx {
         virtual std::pair<bool, std::string> validate() const = 0;
 
         /// \brief Clones the authorization data instance as a unique pointer.
+        /// \details Implementations should return a data snapshot without
+        /// registered runtime callbacks.
         /// \return A `std::unique_ptr<IAuthData>` pointing to the cloned instance.
         virtual std::unique_ptr<IAuthData> clone_unique() const = 0;
 
         /// \brief Clones the authorization data instance as a shared pointer.
+        /// \details Implementations should return a data snapshot without
+        /// registered runtime callbacks.
         /// \return A `std::shared_ptr<IAuthData>` pointing to the cloned instance.
         virtual std::shared_ptr<IAuthData> clone_shared() const = 0;
 
@@ -65,6 +69,12 @@ namespace optionx {
 
         /// \brief Virtual destructor for `IAuthData`.
         virtual ~IAuthData() = default;
+
+    protected:
+        /// \brief Removes runtime callbacks from cloned authorization snapshots.
+        void clear_callbacks() {
+            m_callbacks.clear();
+        }
 
     private:
         std::list<callback_t> m_callbacks; ///< List of callbacks to notify about authentication results.

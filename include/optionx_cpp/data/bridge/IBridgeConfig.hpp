@@ -34,10 +34,14 @@ namespace optionx {
         virtual std::pair<bool, std::string> validate() const = 0;
 
         /// \brief Clones the configuration data instance as a unique pointer.
+        /// \details Implementations should return a data snapshot without
+        /// registered runtime callbacks.
         /// \return A `std::unique_ptr<IBridgeConfig>` pointing to the cloned instance.
         virtual std::unique_ptr<IBridgeConfig> clone_unique() const = 0;
 
         /// \brief Clones the configuration data instance as a shared pointer.
+        /// \details Implementations should return a data snapshot without
+        /// registered runtime callbacks.
         /// \return A `std::shared_ptr<IBridgeConfig>` pointing to the cloned instance.
         virtual std::shared_ptr<IBridgeConfig> clone_shared() const = 0;
 
@@ -58,6 +62,12 @@ namespace optionx {
             for (const auto& callback : m_callbacks) {
                 callback(success, message);
             }
+        }
+
+    protected:
+        /// \brief Removes runtime callbacks from cloned configuration snapshots.
+        void clear_callbacks() {
+            m_callbacks.clear();
         }
 
     private:

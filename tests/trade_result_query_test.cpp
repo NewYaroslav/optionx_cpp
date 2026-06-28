@@ -1,8 +1,40 @@
 #include <gtest/gtest.h>
 
 #include <optionx_cpp/data.hpp>
+#include <optionx_cpp/platforms.hpp>
 
 using namespace optionx;
+
+namespace {
+
+class TestBridgeConfig final : public IBridgeConfig {
+public:
+    void to_json(nlohmann::json&) const override {}
+
+    void from_json(const nlohmann::json&) override {}
+
+    std::pair<bool, std::string> validate() const override {
+        return {true, std::string()};
+    }
+
+    std::unique_ptr<IBridgeConfig> clone_unique() const override {
+        auto clone = std::make_unique<TestBridgeConfig>(*this);
+        clone->clear_callbacks();
+        return clone;
+    }
+
+    std::shared_ptr<IBridgeConfig> clone_shared() const override {
+        auto clone = std::make_shared<TestBridgeConfig>(*this);
+        clone->clear_callbacks();
+        return clone;
+    }
+
+    BridgeType bridge_type() const override {
+        return BridgeType::UNKNOWN;
+    }
+};
+
+} // namespace
 
 TEST(TradeResultQuery, DetectsLocalAndBrokerIdentities) {
     TradeResultQuery query;
@@ -67,6 +99,74 @@ TEST(TradeHistoryRequest, RoundTripsCommentJson) {
     EXPECT_EQ(restored.start_ms, request.start_ms);
     EXPECT_EQ(restored.stop_ms, request.stop_ms);
     EXPECT_EQ(restored.comment, request.comment);
+}
+
+TEST(DtoClone, TradeRequestSnapshotsDoNotCopyCallbacks) {
+    auto request = std::make_shared<TradeRequest>();
+    auto result = std::make_shared<TradeResult>();
+    int callback_calls = 0;
+
+    request->add_callback(
+        [&callback_calls](
+                std::unique_ptr<TradeRequest>,
+                std::unique_ptr<TradeResult>) {
+            ++callback_calls;
+        });
+
+    auto unique_clone = request->clone_unique();
+    std::shared_ptr<TradeRequest> unique_clone_shared(
+        std::move(unique_clone));
+    unique_clone_shared->dispatch_callbacks(unique_clone_shared, result);
+    EXPECT_EQ(callback_calls, 0);
+
+    auto shared_clone = request->clone_shared();
+    shared_clone->dispatch_callbacks(shared_clone, result);
+    EXPECT_EQ(callback_calls, 0);
+
+    request->dispatch_callbacks(request, result);
+    EXPECT_EQ(callback_calls, 1);
+}
+
+TEST(DtoClone, AuthDataSnapshotsDoNotCopyCallbacks) {
+    platforms::intrade_bar::AuthData auth;
+    int callback_calls = 0;
+
+    auth.add_callback(
+        [&callback_calls](bool, const std::string&) {
+            ++callback_calls;
+        });
+
+    auto unique_clone = auth.clone_unique();
+    unique_clone->dispatch_callbacks(true, "unique clone");
+    EXPECT_EQ(callback_calls, 0);
+
+    auto shared_clone = auth.clone_shared();
+    shared_clone->dispatch_callbacks(true, "shared clone");
+    EXPECT_EQ(callback_calls, 0);
+
+    auth.dispatch_callbacks(true, "original");
+    EXPECT_EQ(callback_calls, 1);
+}
+
+TEST(DtoClone, BridgeConfigSnapshotsCanDropCallbacks) {
+    TestBridgeConfig config;
+    int callback_calls = 0;
+
+    config.add_callback(
+        [&callback_calls](bool, const std::string&) {
+            ++callback_calls;
+        });
+
+    auto unique_clone = config.clone_unique();
+    unique_clone->dispatch_callbacks(true, "unique clone");
+    EXPECT_EQ(callback_calls, 0);
+
+    auto shared_clone = config.clone_shared();
+    shared_clone->dispatch_callbacks(true, "shared clone");
+    EXPECT_EQ(callback_calls, 0);
+
+    config.dispatch_callbacks(true, "original");
+    EXPECT_EQ(callback_calls, 1);
 }
 
 int main(int argc, char** argv) {

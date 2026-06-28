@@ -87,15 +87,23 @@ namespace optionx {
         }
 
         /// \brief Clones the trade request into a unique pointer.
+        /// \details Clone results are data snapshots and do not retain
+        /// registered runtime callbacks.
         /// \return A unique pointer to a cloned `TradeRequest` instance.
         virtual std::unique_ptr<TradeRequest> clone_unique() const {
-            return std::make_unique<TradeRequest>(*this);
+            auto clone = std::make_unique<TradeRequest>(*this);
+            clone->clear_callbacks();
+            return clone;
         }
 
         /// \brief Clones the trade request into a shared pointer.
+        /// \details Clone results are data snapshots and do not retain
+        /// registered runtime callbacks.
         /// \return A shared pointer to a cloned `TradeRequest` instance.
         virtual std::shared_ptr<TradeRequest> clone_shared() const {
-            return std::make_shared<TradeRequest>(*this);
+            auto clone = std::make_shared<TradeRequest>(*this);
+            clone->clear_callbacks();
+            return clone;
         }
 
         /// \brief Destructor for `TradeRequest`.
@@ -122,6 +130,12 @@ namespace optionx {
             duration,
             expiry_time
         )
+
+    protected:
+        /// \brief Removes runtime callbacks from cloned request snapshots.
+        void clear_callbacks() {
+            m_callbacks.clear();
+        }
 
     private:
         std::list<callback_t> m_callbacks; ///< List of registered trade result callbacks.

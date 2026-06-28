@@ -255,13 +255,17 @@ namespace optionx::platforms::intrade_bar {
         /// \brief Clones the authorization data instance to a unique pointer.
         /// \return Unique pointer to a cloned IAuthData instance.
         std::unique_ptr<IAuthData> clone_unique() const override {
-            return std::make_unique<AuthData>(*this);
+            auto clone = std::make_unique<AuthData>(*this);
+            clone->clear_callbacks();
+            return clone;
         }
 
         /// \brief Clones the authorization data instance to a shared pointer.
         /// \return Shared pointer to a cloned IAuthData instance.
         std::shared_ptr<IAuthData> clone_shared() const override {
-            return std::make_shared<AuthData>(*this);
+            auto clone = std::make_shared<AuthData>(*this);
+            clone->clear_callbacks();
+            return clone;
         }
 
         /// \brief Returns the platform type.
