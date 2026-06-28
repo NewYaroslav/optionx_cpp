@@ -160,49 +160,49 @@ namespace optionx {
 
     /// \brief Template specialization for retrieving boolean account information.
     template<>
-    const bool BaseAccountInfoData::get_info<bool>(const AccountInfoRequest& request) const {
+    inline const bool BaseAccountInfoData::get_info<bool>(const AccountInfoRequest& request) const {
         return get_info_bool(request);
     }
 
     /// \brief Template specialization for retrieving integer account information.
     template<>
-    const int BaseAccountInfoData::get_info<int>(const AccountInfoRequest& request) const {
+    inline const int BaseAccountInfoData::get_info<int>(const AccountInfoRequest& request) const {
         return static_cast<int>(get_info_int64(request));
     }
 
     /// \brief Template specialization for retrieving int64_t account information.
     template<>
-    const int64_t BaseAccountInfoData::get_info<int64_t>(const AccountInfoRequest& request) const {
+    inline const int64_t BaseAccountInfoData::get_info<int64_t>(const AccountInfoRequest& request) const {
         return get_info_int64(request);
     }
 
     /// \brief Template specialization for retrieving size_t account information.
     template<>
-    const size_t BaseAccountInfoData::get_info<size_t>(const AccountInfoRequest& request) const {
+    inline const size_t BaseAccountInfoData::get_info<size_t>(const AccountInfoRequest& request) const {
         return static_cast<size_t>(get_info_int64(request));
     }
 
     /// \brief Template specialization for retrieving CurrencyType account information.
     template<>
-    const CurrencyType BaseAccountInfoData::get_info<CurrencyType>(const AccountInfoRequest& request) const {
+    inline const CurrencyType BaseAccountInfoData::get_info<CurrencyType>(const AccountInfoRequest& request) const {
         return static_cast<CurrencyType>(get_info_int64(request));
     }
 
     /// \brief Template specialization for retrieving AccountType account information.
     template<>
-    const AccountType BaseAccountInfoData::get_info<AccountType>(const AccountInfoRequest& request) const {
+    inline const AccountType BaseAccountInfoData::get_info<AccountType>(const AccountInfoRequest& request) const {
         return static_cast<AccountType>(get_info_int64(request));
     }
 
     /// \brief Template specialization for retrieving double account information.
     template<>
-    const double BaseAccountInfoData::get_info<double>(const AccountInfoRequest& request) const {
+    inline const double BaseAccountInfoData::get_info<double>(const AccountInfoRequest& request) const {
         return get_info_f64(request);
     }
 
     /// \brief Template specialization for retrieving string account information.
     template<>
-    const std::string BaseAccountInfoData::get_info<std::string>(const AccountInfoRequest& request) const {
+    inline const std::string BaseAccountInfoData::get_info<std::string>(const AccountInfoRequest& request) const {
         return get_info_str(request);
     }
 

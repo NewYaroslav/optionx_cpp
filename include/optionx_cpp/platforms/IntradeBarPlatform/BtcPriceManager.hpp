@@ -113,7 +113,7 @@ namespace optionx::platforms::intrade_bar {
         void handle_event(const events::AutoDomainSelectedEvent& event);
     };
 
-    void BtcPriceManager::on_event(const utils::Event* const event) {
+    inline void BtcPriceManager::on_event(const utils::Event* const event) {
         if (const auto* msg = dynamic_cast<const events::AuthDataEvent*>(event)) {
             handle_event(*msg);
         } else
@@ -131,7 +131,7 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    void BtcPriceManager::handle_event(const events::AuthDataEvent& event) {
+    inline void BtcPriceManager::handle_event(const events::AuthDataEvent& event) {
         if (auto auth_data = std::dynamic_pointer_cast<AuthData>(event.auth_data)) {
             LOGIT_TRACE0();
 
@@ -154,17 +154,17 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    void BtcPriceManager::handle_event(const events::ConnectRequestEvent& event) {
+    inline void BtcPriceManager::handle_event(const events::ConnectRequestEvent& event) {
         LOGIT_0TRACE();
         m_websocket_client.disconnect();
     }
 
-    void BtcPriceManager::handle_event(const events::DisconnectRequestEvent& event) {
+    inline void BtcPriceManager::handle_event(const events::DisconnectRequestEvent& event) {
         LOGIT_0TRACE();
         m_websocket_client.disconnect();
     }
 
-    void BtcPriceManager::handle_event(const events::AccountInfoUpdateEvent& event) {
+    inline void BtcPriceManager::handle_event(const events::AccountInfoUpdateEvent& event) {
         using Status = events::AccountInfoUpdateEvent::Status;
         if (event.status == Status::CONNECTED) {
             LOGIT_0TRACE();
@@ -176,7 +176,7 @@ namespace optionx::platforms::intrade_bar {
         }
     }
     
-    void BtcPriceManager::handle_event(const events::AutoDomainSelectedEvent& event) {
+    inline void BtcPriceManager::handle_event(const events::AutoDomainSelectedEvent& event) {
         LOGIT_0TRACE();
         if (event.success) {
             std::string host = "wss://" + utils::remove_http_prefix(event.selected_host);
@@ -184,17 +184,17 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    void BtcPriceManager::handle_message(const std::string& message) {
+    inline void BtcPriceManager::handle_message(const std::string& message) {
         if (parse_btcusdt_tick(message, m_tick_data[0])) {
             notify_async(std::make_unique<events::PriceUpdateEvent>(m_tick_data));
         }
     }
 
-    void BtcPriceManager::process() {
+    inline void BtcPriceManager::process() {
 
     }
 
-    void BtcPriceManager::shutdown() {
+    inline void BtcPriceManager::shutdown() {
         m_websocket_client.disconnect_and_wait();
         m_tick_data[0].tick.flags = 0;
         m_tick_data[0].flags = 0;

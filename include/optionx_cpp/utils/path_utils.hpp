@@ -27,7 +27,7 @@ namespace optionx::utils {
     ///          - Linux/Unix: readlink("/proc/self/exe") 
     /// \return UTF-8 encoded path to executable directory
     /// \throw std::runtime_error If path resolution fails
-    std::string get_exec_dir() {
+    inline std::string get_exec_dir() {
 #       ifdef _WIN32
         std::vector<wchar_t> buffer(MAX_PATH);
         HMODULE hModule = GetModuleHandle(NULL);
@@ -69,7 +69,7 @@ namespace optionx::utils {
     /// \param file_path Full path to process (UTF-8 encoded)
     /// \return Filename component including extension. Returns input string if
     ///         no directory separators found.
-    std::string get_file_name(const std::string& file_path) {
+    inline std::string get_file_name(const std::string& file_path) {
         std::size_t pos = file_path.find_last_of("/\\");
         return (pos == std::string::npos) ? file_path : file_path.substr(pos + 1);
     }
@@ -93,7 +93,7 @@ namespace optionx::utils {
     /// \param relative_path Path component to append to executable directory
     /// \return Absolute path constructed as: exec_dir/relative_path
     /// \see get_exec_dir()
-    std::string resolve_exec_path(const std::string& relative_path) {
+    inline std::string resolve_exec_path(const std::string& relative_path) {
         return std::filesystem::absolute(get_exec_dir() + "/" + relative_path).string();
     }
 
@@ -101,7 +101,7 @@ namespace optionx::utils {
     /// \param path Directory path to create (UTF-8 encoded)
     /// \throw std::runtime_error If directory creation fails
     /// \note No-op if directory already exists
-    void create_directories(const std::string& path) {
+    inline void create_directories(const std::string& path) {
         std::filesystem::path dir(path);
         if (!std::filesystem::exists(dir)) {
             std::error_code ec;

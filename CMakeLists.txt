@@ -232,4 +232,8 @@ if(BUILD_TESTS)
             )
         endif()
     endforeach()
+
+    if(TARGET header_only_odr_test)
+        target_sources(header_only_odr_test PRIVATE tests/header_only_odr_companion.cc)
+    endif()
 endif()

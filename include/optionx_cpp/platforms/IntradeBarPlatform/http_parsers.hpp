@@ -25,7 +25,7 @@ namespace optionx::platforms::intrade_bar {
     /// \brief Parses the login response and extracts user ID and hash.
     /// \param content The HTTP response content to parse.
     /// \return A pair of optional values for user_id and user_hash. If parsing fails, both values will be std::nullopt.
-    std::optional<std::pair<std::string, std::string>> parse_login(const std::string& content) {
+    inline std::optional<std::pair<std::string, std::string>> parse_login(const std::string& content) {
         try {
             std::string user_id, user_hash, fragment;
             // Extract "/auth/" fragment
@@ -56,7 +56,7 @@ namespace optionx::platforms::intrade_bar {
     /// \param content Raw HTML fragment containing the balance value and currency symbol.
     /// \return Optional pair of balance amount and detected currency type. Returns
     ///         std::nullopt if the content cannot be parsed.
-    std::optional<std::pair<double, CurrencyType>> parse_balance(const std::string& content) {
+    inline std::optional<std::pair<double, CurrencyType>> parse_balance(const std::string& content) {
         try {
             const std::string STR_RUB = u8"₽";
             const std::string STR_RUB_UTF8 = "\xE2\x82\xBD";
@@ -100,7 +100,7 @@ namespace optionx::platforms::intrade_bar {
     /// \brief Parses the response content to extract account and currency information.
     /// \param content The HTTP response content to parse.
     /// \return A pair of optional values for CurrencyType and AccountType. If parsing fails, both values will be std::nullopt.
-    std::pair<CurrencyType, AccountType> parse_profile_response(const std::string& content) {
+    inline std::pair<CurrencyType, AccountType> parse_profile_response(const std::string& content) {
         // Strings for matching
         const char str_demo_ru[] = u8"Демо";
         const char str_real_ru[] = u8"Реал";
@@ -150,7 +150,7 @@ namespace optionx::platforms::intrade_bar {
     /// \return Optional tuple containing the request identifier, request value
     ///         and a cookie string to be used in subsequent requests. Returns
     ///         std::nullopt if any of the required fields cannot be found.
-    std::optional<std::tuple<std::string, std::string, std::string>> parse_main_page_response(
+    inline std::optional<std::tuple<std::string, std::string, std::string>> parse_main_page_response(
             const std::string& content,
             const kurlyk::Headers& headers) {
         std::string req_id, req_value, cookies;
@@ -718,7 +718,7 @@ namespace optionx::platforms::intrade_bar {
     /// \param content Raw authenticated page or trade_load_more2.php fragment.
     /// \param account_type Account type used for the request.
     /// \return Parsed closed trades and next pagination cursor.
-    TradeHistoryHtmlPage parse_trade_history_html_page(
+    inline TradeHistoryHtmlPage parse_trade_history_html_page(
             const std::string& content,
             AccountType account_type) {
         TradeHistoryHtmlPage page;
@@ -754,7 +754,7 @@ namespace optionx::platforms::intrade_bar {
     /// \param content Raw authenticated HTML page.
     /// \param account_type Account type used for the request.
     /// \return Best-effort history records; financial result fields may be unknown.
-    std::vector<TradeRecord> parse_trade_history_html_snapshot(
+    inline std::vector<TradeRecord> parse_trade_history_html_snapshot(
             const std::string& content,
             AccountType account_type) {
         return parse_trade_history_html_page(content, account_type).records;
@@ -764,7 +764,7 @@ namespace optionx::platforms::intrade_bar {
     /// \param csv_records Financially complete CSV records.
     /// \param html_records Best-effort HTML records with broker IDs.
     /// \return CSV records enriched with HTML data only when both sources match.
-    std::vector<TradeRecord> merge_trade_history_csv_with_html(
+    inline std::vector<TradeRecord> merge_trade_history_csv_with_html(
             std::vector<TradeRecord> csv_records,
             const std::vector<TradeRecord>& html_records) {
         std::vector<TradeRecord> merged;
@@ -821,7 +821,7 @@ namespace optionx::platforms::intrade_bar {
     /// \param content Raw semicolon-separated export body.
     /// \param account_type Account type used for the export request.
     /// \return Parsed closed trade records; malformed rows are skipped.
-    std::vector<TradeRecord> parse_trade_history_csv_export(
+    inline std::vector<TradeRecord> parse_trade_history_csv_export(
             const std::string& content,
             AccountType account_type) {
         std::vector<TradeRecord> records;
@@ -882,7 +882,7 @@ namespace optionx::platforms::intrade_bar {
     /// \brief Parses active trades from the authenticated main page.
     /// \param content Raw HTML of the authenticated main page.
     /// \return Active trades found in the trade_active block.
-    std::vector<ActiveTradeInfo> parse_active_trades_snapshot(const std::string& content) {
+    inline std::vector<ActiveTradeInfo> parse_active_trades_snapshot(const std::string& content) {
         std::vector<ActiveTradeInfo> trades;
 
         std::string active_html;
@@ -953,7 +953,7 @@ namespace optionx::platforms::intrade_bar {
     /// \param status_code HTTP status code.
     /// \param operation_name Human-readable settings operation name.
     /// \return Typed switch result with retry diagnostics on broker rejection.
-    SettingsSwitchResult parse_settings_switch_response(
+    inline SettingsSwitchResult parse_settings_switch_response(
             const std::string& content,
             long status_code,
             const std::string& operation_name) {
@@ -981,7 +981,7 @@ namespace optionx::platforms::intrade_bar {
     /// \param user_id [out] The extracted user_id.
     /// \param user_hash [out] The extracted user_hash.
     /// \return True if both user_id and user_hash are found, otherwise false.
-    bool parse_cookies(const std::string& cookies, std::string& user_id, std::string& user_hash) {
+    inline bool parse_cookies(const std::string& cookies, std::string& user_id, std::string& user_hash) {
         std::unordered_map<std::string, std::string> cookie_map;
         std::istringstream cookie_stream(cookies);
         std::string cookie;
@@ -1016,7 +1016,7 @@ namespace optionx::platforms::intrade_bar {
         return false;
     }
 
-    std::optional<std::tuple<std::string, std::string>> parse_cookies(const std::string& cookies) {
+    inline std::optional<std::tuple<std::string, std::string>> parse_cookies(const std::string& cookies) {
         std::unordered_map<std::string, std::string> cookie_map;
         std::istringstream cookie_stream(cookies);
         std::string cookie;
@@ -1054,7 +1054,7 @@ namespace optionx::platforms::intrade_bar {
     /// \param request A shared pointer to the TradeRequest containing request details.
     /// \param result A shared pointer to the TradeResult where the parsed result will be stored.
     /// \return True if the response was successfully parsed, false otherwise.
-    bool parse_execute_trade(
+    inline bool parse_execute_trade(
             const std::string& content,
             std::shared_ptr<TradeRequest> request,
             std::shared_ptr<TradeResult> result) {
@@ -1204,7 +1204,7 @@ namespace optionx::platforms::intrade_bar {
     ///        - open_date: The trade open date as a timestamp.
     ///        - open_price: The trade open price.
     ///        - error_desc: A description of the error if parsing fails.
-    void parse_execute_trade(
+    inline void parse_execute_trade(
             const std::string& content,
             long status_code,
             std::function<void(
@@ -1297,7 +1297,7 @@ namespace optionx::platforms::intrade_bar {
     /// \param message The JSON-formatted string containing the tick data.
     /// \param tick_data Reference to the TickData structure to be updated.
     /// \return true if parsing is successful and the symbol matches BTCUSDT; false otherwise.
-    bool parse_btcusdt_tick(const std::string& message, TickData& tick_data) {
+    inline bool parse_btcusdt_tick(const std::string& message, TickData& tick_data) {
         auto j = nlohmann::json::parse(message);
 
         if (j.contains("data")) {

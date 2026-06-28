@@ -113,7 +113,7 @@ namespace optionx::platforms::intrade_bar {
         std::shared_ptr<AccountInfoData> get_account_info();
     };
 
-    void BalanceManager::on_event(const utils::Event* const event) {
+    inline void BalanceManager::on_event(const utils::Event* const event) {
         if (const auto* msg = dynamic_cast<const events::ConnectRequestEvent*>(event)) {
             handle_event(*msg);
         } else
@@ -134,16 +134,16 @@ namespace optionx::platforms::intrade_bar {
         }
     };
 
-    void BalanceManager::process() {
+    inline void BalanceManager::process() {
         m_task_manager.process();
     }
 
-    void BalanceManager::shutdown() {
+    inline void BalanceManager::shutdown() {
         m_task_manager.shutdown();
     }
 
     // Handles balance updates.
-    void BalanceManager::handle_balance_update() {
+    inline void BalanceManager::handle_balance_update() {
         if (m_has_balance_update) return;
         m_has_balance_update = true;
         LOGIT_INFO("Intrade Bar balance: requesting balance snapshot.");
@@ -174,7 +174,7 @@ namespace optionx::platforms::intrade_bar {
     }
 
     // Processes successful balance updates.
-    void BalanceManager::process_balance_success(
+    inline void BalanceManager::process_balance_success(
             double balance,
             CurrencyType currency,
             std::shared_ptr<AccountInfoData>& account_info) {
@@ -202,7 +202,7 @@ namespace optionx::platforms::intrade_bar {
     }
 
     // Processes balance update failure.
-    void BalanceManager::process_balance_failure(
+    inline void BalanceManager::process_balance_failure(
             std::shared_ptr<AccountInfoData>& account_info) {
         if (account_info->connect) {
             account_info->connect = false;
@@ -213,12 +213,12 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    void BalanceManager::handle_event(const events::BalanceRequestEvent& event) {
+    inline void BalanceManager::handle_event(const events::BalanceRequestEvent& event) {
         m_last_trades_time = time_shield::ms_to_sec(OPTIONX_TIMESTAMP_MS);
         handle_balance_update();
     }
 
-    void BalanceManager::handle_event(const events::AuthDataEvent& event) {
+    inline void BalanceManager::handle_event(const events::AuthDataEvent& event) {
         if (auto auth_data = std::dynamic_pointer_cast<AuthData>(event.auth_data)) {
             if (auth_data->balance_check_period_ms > 0) {
                 m_balance_check_period_ms = auth_data->balance_check_period_ms;
@@ -236,7 +236,7 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    void BalanceManager::handle_event(const events::TradeRequestEvent& event) {
+    inline void BalanceManager::handle_event(const events::TradeRequestEvent& event) {
         m_last_trades_time = time_shield::ms_to_sec(OPTIONX_TIMESTAMP_MS);
         auto request = event.request;
         //auto result  = event.result;
@@ -253,17 +253,17 @@ namespace optionx::platforms::intrade_bar {
         m_last_trades_time += max_elapsed;
     }
 
-    void BalanceManager::handle_event(const events::ConnectRequestEvent& event) {
+    inline void BalanceManager::handle_event(const events::ConnectRequestEvent& event) {
         LOGIT_TRACE0();
         m_task_manager.shutdown();
     }
 
-    void BalanceManager::handle_event(const events::DisconnectRequestEvent& event) {
+    inline void BalanceManager::handle_event(const events::DisconnectRequestEvent& event) {
         LOGIT_TRACE0();
         m_task_manager.shutdown();
     }
 
-    void BalanceManager::handle_event(const events::AccountInfoUpdateEvent& event) {
+    inline void BalanceManager::handle_event(const events::AccountInfoUpdateEvent& event) {
         using Status = events::AccountInfoUpdateEvent::Status;
         if (event.status == Status::CONNECTED) {
             handle_connected();
@@ -274,7 +274,7 @@ namespace optionx::platforms::intrade_bar {
     }
 
     /// \brief Handles account connection event.
-    void BalanceManager::handle_connected() {
+    inline void BalanceManager::handle_connected() {
         LOGIT_TRACE0();
 
         m_task_manager.shutdown();
@@ -320,7 +320,7 @@ namespace optionx::platforms::intrade_bar {
     }
 
     /// \brief Handles account disconnection event.
-    void BalanceManager::handle_disconnected() {
+    inline void BalanceManager::handle_disconnected() {
         LOGIT_TRACE0();
 
         m_task_manager.shutdown();
@@ -361,7 +361,7 @@ namespace optionx::platforms::intrade_bar {
         });
     }
 
-    std::shared_ptr<AccountInfoData> BalanceManager::get_account_info() {
+    inline std::shared_ptr<AccountInfoData> BalanceManager::get_account_info() {
         if (auto account_info = std::dynamic_pointer_cast<AccountInfoData>(m_account_info)) {
             return account_info;
         }

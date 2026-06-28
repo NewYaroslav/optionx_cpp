@@ -8,6 +8,8 @@
 ///          and trade request pre-processing. Used to query account capabilities, limits
 ///          and validate trading parameters.
 
+#include "utils/enum_utils.hpp"
+
 namespace optionx {
 
     /// \enum AccountInfoType
@@ -78,7 +80,7 @@ namespace optionx {
             "SOCKS5",
             "SOCKS5_HOSTNAME"
         };
-        return data_str[static_cast<size_t>(value)];
+        return utils::enum_string_or_unknown(data_str, static_cast<size_t>(value));
     }
 
     /// \brief Converts a string to its corresponding ProxyType enum value.
@@ -116,7 +118,7 @@ namespace optionx {
     }
 
     /// \brief Stream output operator for kurlyk::ProxyType.
-    std::ostream& operator<<(std::ostream& os, kurlyk::ProxyType value) {
+    inline std::ostream& operator<<(std::ostream& os, kurlyk::ProxyType value) {
         os << optionx::to_str(value);
         return os;
     }
@@ -151,7 +153,7 @@ namespace optionx {
             "CONNECTED",
             "DISCONNECTED",
             "FAILED_TO_CONNECT"};
-        return str_data[static_cast<size_t>(value)];
+        return utils::enum_string_or_unknown(str_data, static_cast<size_t>(value));
     };
 
     /// \brief Converts string to AccountUpdateStatus enumeration.
@@ -199,7 +201,7 @@ namespace optionx {
     }
 
     /// \brief Stream output operator for AccountUpdateStatus.
-    std::ostream& operator<<(std::ostream& os, AccountUpdateStatus value) {
+    inline std::ostream& operator<<(std::ostream& os, AccountUpdateStatus value) {
         os << optionx::to_str(value);
         return os;
     }
@@ -222,7 +224,7 @@ namespace optionx {
             "NONE",
             "EMAIL_PASSWORD",
             "USER_TOKEN"};
-        return str_data[static_cast<size_t>(value)];
+        return utils::enum_string_or_unknown(str_data, static_cast<size_t>(value));
     };
 
     /// \brief Converts string to AuthMethod enumeration.
@@ -264,7 +266,7 @@ namespace optionx {
     }
 
     /// \brief Stream output operator for AuthMethod.
-    std::ostream& operator<<(std::ostream& os, AuthMethod value) {
+    inline std::ostream& operator<<(std::ostream& os, AuthMethod value) {
         os << optionx::to_str(value);
         return os;
     }
