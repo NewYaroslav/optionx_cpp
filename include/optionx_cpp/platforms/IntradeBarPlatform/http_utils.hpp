@@ -46,6 +46,26 @@ namespace optionx::platforms::intrade_bar {
         return symbol;
     }
 
+    /// \brief Returns the broker price precision used for a normalized symbol.
+    /// \param symbol Broker or public symbol name.
+    /// \return Number of price decimal places.
+    inline std::uint8_t price_digits_for_symbol(const std::string& symbol) {
+        const std::string normalized = normalize_symbol_name(symbol);
+        if (normalized == "BTCUSDT") return 2;
+        if (normalized.size() >= 6 && normalized.substr(3, 3) == "JPY") {
+            return 3;
+        }
+        return 5;
+    }
+
+    /// \brief Marks a SpreadPack as a known zero-spread Intrade Bar value.
+    /// \param spread Spread pack to fill.
+    /// \param symbol Symbol whose price precision should be stored.
+    inline void set_zero_spread_for_symbol(SpreadPack& spread, const std::string& symbol) {
+        const auto digits = price_digits_for_symbol(symbol);
+        spread.set_spreads(0.0, 0.0, digits);
+    }
+
     using ::optionx::utils::validate_status;
     using ::optionx::utils::validate_ddos_protection;
     using ::optionx::utils::validate_response;

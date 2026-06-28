@@ -41,6 +41,19 @@ TEST(IntradeBarApiResponses, ApiResultMarksMissingHttpStatusExplicitly) {
     EXPECT_FALSE(failure.has_http_status());
 }
 
+TEST(IntradeBarApiResponses, PriceDigitsMatchBrokerSymbols) {
+    EXPECT_EQ(price_digits_for_symbol("BTCUSD"), 2);
+    EXPECT_EQ(price_digits_for_symbol("BTCUSDT"), 2);
+    EXPECT_EQ(price_digits_for_symbol("EUR/JPY"), 3);
+    EXPECT_EQ(price_digits_for_symbol("EURUSD"), 5);
+
+    SpreadPack spread;
+    set_zero_spread_for_symbol(spread, "BTCUSD");
+    EXPECT_EQ(spread.digits, 2);
+    EXPECT_DOUBLE_EQ(spread.open_spread(), 0.0);
+    EXPECT_DOUBLE_EQ(spread.close_spread(), 0.0);
+}
+
 TEST(IntradeBarAuthData, KeepsDisconnectedDomainRetryPeriodInConfig) {
     AuthData auth_data;
     auth_data.set_email_password("user@example.test", "secret");
@@ -251,6 +264,9 @@ TEST(IntradeBarApiResponses, ParsesTradeHistoryCsvExport) {
     EXPECT_EQ(trades[0].account_type, AccountType::DEMO);
     EXPECT_EQ(trades[0].platform_type, PlatformType::INTRADE_BAR);
     EXPECT_EQ(trades[0].duration, 180);
+    EXPECT_EQ(trades[0].spread.digits, 5);
+    EXPECT_DOUBLE_EQ(trades[0].spread.open_spread(), 0.0);
+    EXPECT_DOUBLE_EQ(trades[0].spread.close_spread(), 0.0);
 
     EXPECT_EQ(trades[1].option_id, 123);
     EXPECT_EQ(trades[1].symbol, "AUDNZD");
@@ -266,11 +282,13 @@ TEST(IntradeBarApiResponses, ParsesTradeHistoryCsvExport) {
     EXPECT_EQ(trades[3].symbol, "BTCUSDT");
     EXPECT_EQ(trades[3].trade_state, TradeState::WIN);
     EXPECT_EQ(trades[3].duration, 300);
+    EXPECT_EQ(trades[3].spread.digits, 2);
 
     EXPECT_EQ(trades[4].symbol, "EURUSD");
     EXPECT_EQ(trades[4].currency, CurrencyType::RUB);
     EXPECT_EQ(trades[4].trade_state, TradeState::WIN);
     EXPECT_DOUBLE_EQ(trades[4].profit, 80.0);
+    EXPECT_EQ(trades[4].spread.digits, 5);
 }
 
 TEST(IntradeBarApiResponses, ParsesTradeHistoryHtmlSnapshotAndMergesWithCsv) {
@@ -292,6 +310,12 @@ TEST(IntradeBarApiResponses, ParsesTradeHistoryHtmlSnapshotAndMergesWithCsv) {
     EXPECT_EQ(html_trades[0].open_date, time_shield::sec_to_ms(1719146073));
     EXPECT_EQ(html_trades[0].close_date, time_shield::sec_to_ms(1719146373));
     EXPECT_EQ(html_trades[0].duration, 300);
+    EXPECT_EQ(html_trades[0].spread.digits, 2);
+    EXPECT_DOUBLE_EQ(html_trades[0].spread.open_spread(), 0.0);
+    EXPECT_DOUBLE_EQ(html_trades[0].spread.close_spread(), 0.0);
+
+    EXPECT_EQ(html_trades[1].symbol, "EURUSD");
+    EXPECT_EQ(html_trades[1].spread.digits, 5);
 
     std::vector<TradeRecord> csv_trades;
     TradeRecord csv_trade;

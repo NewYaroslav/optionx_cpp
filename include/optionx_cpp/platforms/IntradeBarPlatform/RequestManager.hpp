@@ -954,11 +954,7 @@ namespace optionx::platforms::intrade_bar {
                     tick.symbol = normalize_symbol_name(symbol_name);
                     tick.volume_digits = 0;
 
-                    if (tick.symbol.substr(3, 3) == "JPY") {
-                        tick.price_digits = 3;
-                    } else {
-                        tick.price_digits = 5;
-                    }
+                    tick.price_digits = price_digits_for_symbol(tick.symbol);
 
                     tick.tick.ask = el.value()["ask"];
                     tick.tick.bid = el.value()["bid"];

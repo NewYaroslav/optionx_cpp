@@ -594,6 +594,10 @@ namespace optionx::platforms::intrade_bar {
             record.error_desc.clear();
         }
 
+        inline void apply_intrade_bar_zero_spread(TradeRecord& record) {
+            set_zero_spread_for_symbol(record.spread, record.symbol);
+        }
+
         inline std::optional<TradeRecord> parse_history_attr_row(
                 const std::string& row,
                 AccountType account_type) {
@@ -630,6 +634,7 @@ namespace optionx::platforms::intrade_bar {
             }
             record.account_type = account_type;
             record.platform_type = PlatformType::INTRADE_BAR;
+            apply_intrade_bar_zero_spread(record);
             return record;
         }
 
@@ -683,6 +688,7 @@ namespace optionx::platforms::intrade_bar {
             record.account_type = account_type;
             record.platform_type = PlatformType::INTRADE_BAR;
             apply_history_gross_result_to_record(record, gross_result->amount);
+            apply_intrade_bar_zero_spread(record);
             return record;
         }
 
@@ -867,6 +873,7 @@ namespace optionx::platforms::intrade_bar {
             record.platform_type = PlatformType::INTRADE_BAR;
 
             detail::apply_history_gross_result_to_record(record, gross_result->amount);
+            detail::apply_intrade_bar_zero_spread(record);
             records.push_back(std::move(record));
         }
 

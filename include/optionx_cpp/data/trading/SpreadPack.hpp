@@ -10,44 +10,56 @@
 #include <limits>
 #include <stdexcept>
 
-#include "data/trading/enums.hpp"
+#include "enums.hpp"
 
 namespace optionx {
 
     /// \struct SpreadPack
     /// \brief Packs open and close spread values into a single 64-bit word with shared decimal precision.
+    ///
+    /// Both packed values use the same `digits` precision. Prefer set_spreads()
+    /// when open and close spread are known together; individual setters are
+    /// intended for updates that keep the same precision.
     struct SpreadPack {
         std::uint64_t raw = 0;     ///< Lower 32 bits = open spread fixed-point, upper 32 bits = close spread fixed-point.
         std::uint8_t  digits = 0;  ///< Number of decimal places for both spreads.
 
         static constexpr std::uint8_t max_digits = 18;
 
-        void set_open_spread(double value, std::uint8_t d) {
-            if (d > max_digits) throw std::invalid_argument("SpreadPack digits exceeds 18");
+        /// \brief Sets both spreads using one shared decimal precision.
+        /// \param open_value Open spread.
+        /// \param close_value Close spread.
+        /// \param d Number of decimal places for both values.
+        void set_spreads(double open_value, double close_value, std::uint8_t d) {
+            const auto open_fixed = pack_fixed(open_value, d);
+            const auto close_fixed = pack_fixed(close_value, d);
             digits = d;
-            const double scale = std::pow(10.0, digits);
-            const auto fixed = static_cast<std::int32_t>(std::round(value * scale));
-            raw = (raw & ~0xFFFFFFFFu) | (static_cast<std::uint32_t>(fixed) & 0xFFFFFFFFu);
+            raw = (static_cast<std::uint64_t>(close_fixed) << 32) |
+                  (static_cast<std::uint64_t>(open_fixed) & kLowerMask);
         }
 
-        void set_close_spread(double value, std::uint8_t d) {
-            if (d > max_digits) throw std::invalid_argument("SpreadPack digits exceeds 18");
+        /// \brief Sets open spread and updates shared decimal precision.
+        void set_open_spread(double value, std::uint8_t d) {
+            const auto fixed = pack_fixed(value, d);
             digits = d;
-            const double scale = std::pow(10.0, digits);
-            const auto fixed = static_cast<std::int32_t>(std::round(value * scale));
-            raw = (raw & 0xFFFFFFFFu) | (static_cast<std::uint64_t>(static_cast<std::uint32_t>(fixed)) << 32);
+            raw = (raw & kUpperMask) | (static_cast<std::uint64_t>(fixed) & kLowerMask);
+        }
+
+        /// \brief Sets close spread and updates shared decimal precision.
+        void set_close_spread(double value, std::uint8_t d) {
+            const auto fixed = pack_fixed(value, d);
+            digits = d;
+            raw = (raw & kLowerMask) | (static_cast<std::uint64_t>(fixed) << 32);
         }
 
         double open_spread() const {
-            if (digits == 0) return 0.0;
-            const double scale = std::pow(10.0, digits);
+            const double scale = scale_for_digits(digits);
             const auto fixed = static_cast<std::int32_t>(static_cast<std::uint32_t>(raw));
             return static_cast<double>(fixed) / scale;
         }
 
         double close_spread() const {
-            if (digits == 0) return 0.0;
-            const double scale = std::pow(10.0, digits);
+            const double scale = scale_for_digits(digits);
             const auto fixed = static_cast<std::int32_t>(static_cast<std::uint32_t>(raw >> 32));
             return static_cast<double>(fixed) / scale;
         }
@@ -80,6 +92,37 @@ namespace optionx {
                 return price + half;
             }
             return price - half;
+        }
+
+    private:
+        static constexpr std::uint64_t kLowerMask = 0x00000000FFFFFFFFull;
+        static constexpr std::uint64_t kUpperMask = 0xFFFFFFFF00000000ull;
+
+        static double scale_for_digits(std::uint8_t d) {
+            return d == 0 ? 1.0 : std::pow(10.0, d);
+        }
+
+        static std::uint32_t pack_fixed(double value, std::uint8_t d) {
+            if (d > max_digits) {
+                throw std::invalid_argument("SpreadPack digits exceeds 18");
+            }
+            if (!std::isfinite(value)) {
+                throw std::invalid_argument("SpreadPack spread value must be finite");
+            }
+
+            const double scaled = value * scale_for_digits(d);
+            if (!std::isfinite(scaled)) {
+                throw std::out_of_range("SpreadPack fixed-point value is out of range");
+            }
+
+            const double rounded = std::round(scaled);
+            if (rounded < static_cast<double>(std::numeric_limits<std::int32_t>::min()) ||
+                rounded > static_cast<double>(std::numeric_limits<std::int32_t>::max())) {
+                throw std::out_of_range("SpreadPack fixed-point value is out of range");
+            }
+
+            const auto fixed = static_cast<std::int32_t>(rounded);
+            return static_cast<std::uint32_t>(fixed);
         }
     };
 
