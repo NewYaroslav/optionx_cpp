@@ -28,6 +28,11 @@ namespace optionx {
     /// Fixed-offset mode preserves the old `time_zone_sec` behavior. Named-zone
     /// mode delegates offset resolution to time-shield and therefore accounts for
     /// DST transitions supported by `time_shield::TimeZone`.
+    ///
+    /// Conversion helpers are total functions: if an unsupported named-zone
+    /// conversion cannot be resolved, the context falls back to UTC/identity
+    /// semantics instead of pushing error handling into filters, statistics and
+    /// storage queries.
     class TradeTimeZone {
     public:
         /// \brief Creates UTC fixed-offset context.
@@ -82,7 +87,8 @@ namespace optionx {
 
         /// \brief Resolves UTC offset for the provided UTC timestamp.
         /// \param utc_ms UTC timestamp in milliseconds.
-        /// \return Offset in seconds. Unsupported named zones fall back to UTC.
+        /// \return Resolved offset in seconds. Unsupported named-zone resolution
+        ///         falls back to zero, i.e. UTC.
         std::int64_t offset_at_utc_ms(std::int64_t utc_ms) const noexcept {
             if (!is_named_zone()) {
                 return m_offset_sec;
@@ -103,6 +109,8 @@ namespace optionx {
         }
 
         /// \brief Converts local civil milliseconds in this context back to UTC.
+        /// \details Unsupported named-zone conversions fall back to treating the
+        ///          supplied civil timestamp as UTC.
         std::int64_t to_utc_ms(std::int64_t local_ms) const noexcept {
             if (!is_named_zone()) {
                 return local_ms - m_offset_sec * time_shield::MS_PER_SEC;
