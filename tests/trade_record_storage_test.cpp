@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include <mdbx_containers/KeyValueTable.hpp>
 
+#include <limits>
+
 #include <optionx_cpp/data/trading.hpp>
 
 namespace {
@@ -136,6 +138,13 @@ TEST(TradeRecordSerializationTest, RejectsCorruptedPayloads) {
     EXPECT_THROW(optionx::TradeRecord::from_bytes(bytes.data(), bytes.size()), std::runtime_error);
 }
 
+TEST(TradeRecordSerializationTest, RejectsTradeIdOutsideStorageFormat) {
+    auto record = make_record();
+    record.trade_id = static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max()) + 1u;
+
+    EXPECT_THROW(record.to_bytes(), std::overflow_error);
+}
+
 TEST(TradeRecordFactoryTest, AssignsRequestResultAndSignalData) {
     optionx::TradeSignal signal;
     signal.request = make_request();
@@ -156,6 +165,30 @@ TEST(TradeRecordFactoryTest, AssignsRequestResultAndSignalData) {
     EXPECT_EQ(record.mm_type, optionx::MmSystemType::MARTINGALE_SIGNAL);
     EXPECT_EQ(nlohmann::json::parse(record.mm_params_json).at("step"), 3);
     EXPECT_EQ(nlohmann::json::parse(record.decision_params_json).at("threshold"), 0.65);
+}
+
+TEST(TradeRecordFactoryTest, PreservesRequestContextWhenResultIsPartial) {
+    auto request = make_request();
+    request.trade_id = 321;
+    request.account_type = optionx::AccountType::DEMO;
+    request.currency = optionx::CurrencyType::USD;
+    request.amount = 25.0;
+
+    optionx::TradeResult partial_result;
+    partial_result.option_id = 98765;
+    partial_result.error_code = optionx::TradeErrorCode::PARSING_ERROR;
+    partial_result.error_desc = "partial broker response";
+
+    const auto record = optionx::TradeRecord::from_trade(request, partial_result);
+
+    EXPECT_EQ(record.trade_id, 321u);
+    EXPECT_EQ(record.option_id, 98765);
+    EXPECT_EQ(record.amount, 25.0);
+    EXPECT_EQ(record.account_type, optionx::AccountType::DEMO);
+    EXPECT_EQ(record.currency, optionx::CurrencyType::USD);
+    EXPECT_EQ(record.close_date, 1712345700000);
+    EXPECT_EQ(record.error_code, optionx::TradeErrorCode::PARSING_ERROR);
+    EXPECT_EQ(record.error_desc, "partial broker response");
 }
 
 TEST(TradeRecordFactoryTest, UsesCloseDateForPlannedAndKnownCloseTime) {
