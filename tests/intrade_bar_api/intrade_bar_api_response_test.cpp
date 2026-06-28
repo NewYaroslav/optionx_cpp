@@ -1,7 +1,12 @@
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
+#include <memory>
+#include <string>
 #include <thread>
+
+#include <server_http.hpp>
 
 #include <optionx_cpp/platforms/IntradeBarPlatform.hpp>
 
@@ -32,6 +37,197 @@ public:
         return get_rate_limit(TestRateLimitType::GENERAL);
     }
 };
+
+class TestPlatform : public optionx::platforms::BaseTradingPlatform {
+public:
+    TestPlatform()
+        : optionx::platforms::BaseTradingPlatform(
+            std::make_shared<optionx::platforms::intrade_bar::AccountInfoData>()) {}
+
+    optionx::PlatformType platform_type() const override {
+        return optionx::PlatformType::INTRADE_BAR;
+    }
+};
+
+using TradeHistoryHttpServer = SimpleWeb::Server<SimpleWeb::HTTP>;
+
+class BoundPortHttpServer : public TradeHistoryHttpServer {
+public:
+    unsigned short bound_port() const noexcept {
+        return m_bound_port.load();
+    }
+
+protected:
+    void after_bind() override {
+        m_bound_port.store(acceptor->local_endpoint().port());
+    }
+
+private:
+    std::atomic<unsigned short> m_bound_port{0};
+};
+
+struct LocalTradeHistoryServer {
+    explicit LocalTradeHistoryServer(
+            long csv_status_code,
+            std::string csv_response_body,
+            long html_status_code,
+            std::string html_response_body)
+        : csv_status(csv_status_code),
+          csv_body(std::move(csv_response_body)),
+          html_status(html_status_code),
+          html_body(std::move(html_response_body)) {}
+
+    ~LocalTradeHistoryServer() {
+        stop();
+    }
+
+    bool start() {
+        server.config.address = "127.0.0.1";
+        server.config.port = 0;
+
+        server.resource["^/health$"]["GET"] = [](
+                std::shared_ptr<TradeHistoryHttpServer::Response> response,
+                std::shared_ptr<TradeHistoryHttpServer::Request>) {
+            response->write(SimpleWeb::StatusCode::success_ok, "ok");
+        };
+
+        server.resource["^/stat_trade_export\\.php$"]["POST"] = [this](
+                std::shared_ptr<TradeHistoryHttpServer::Response> response,
+                std::shared_ptr<TradeHistoryHttpServer::Request>) {
+            ++csv_requests;
+            response->write(static_cast<SimpleWeb::StatusCode>(csv_status), csv_body);
+        };
+
+        server.resource["^/$"]["GET"] = [this](
+                std::shared_ptr<TradeHistoryHttpServer::Response> response,
+                std::shared_ptr<TradeHistoryHttpServer::Request>) {
+            ++html_requests;
+            response->write(static_cast<SimpleWeb::StatusCode>(html_status), html_body);
+        };
+
+        thread = std::thread([this]() {
+            server.start();
+        });
+
+        if (!wait_until_ready()) {
+            stop();
+            return false;
+        }
+        return true;
+    }
+
+    void stop() {
+        server.stop();
+        if (thread.joinable()) thread.join();
+    }
+
+    std::string host() const {
+        return "http://127.0.0.1:" + std::to_string(server.bound_port());
+    }
+
+    bool wait_until_ready() const {
+        for (int i = 0; i < 100; ++i) {
+            if (server.bound_port() == 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                continue;
+            }
+
+            try {
+                kurlyk::HttpClient client(host());
+                client.set_timeout(1);
+                client.set_connect_timeout(1);
+                auto future = client.get("/health", {}, {});
+                if (future.wait_for(std::chrono::seconds(1)) == std::future_status::ready) {
+                    auto response = future.get();
+                    if (response && response->status_code == 200) return true;
+                }
+            } catch (...) {
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        return false;
+    }
+
+    BoundPortHttpServer server;
+    std::thread thread;
+    long csv_status = 200;
+    std::string csv_body;
+    long html_status = 200;
+    std::string html_body;
+    std::atomic<int> csv_requests{0};
+    std::atomic<int> html_requests{0};
+};
+
+struct CombinedHistoryTestResult {
+    TradeHistoryApiResult result;
+    int callback_count = 0;
+    bool callback_received = false;
+};
+
+std::string valid_trade_history_csv() {
+    return
+        "id;Type;Asset;Direction;Open;Close;Open quote;Close quote;Amount;Result\n"
+        "123;Sprint;BTCUSD;Up;16:34:33, 23 Jun 21;16:39:33, 23 Jun 21;"
+        "62830.01;62850.00;1 USD;1.79 USD\n";
+}
+
+std::string empty_trade_history_html() {
+    return R"HTML(
+        <div id="trade_close_block" class="hide">
+            <table class="">
+                <tbody class="table_tbody" id="trade_close">
+                </tbody>
+            </table>
+            <div class="text-center">
+                <a id="trade_btn_load_more" data-last=""></a>
+            </div>
+        </div>
+    )HTML";
+}
+
+CombinedHistoryTestResult request_combined_trade_history(LocalTradeHistoryServer& server) {
+    TestPlatform platform;
+    HttpClientModule http_client(platform);
+    RequestManager request_manager(platform, http_client);
+
+    auto auth_data = std::make_shared<AuthData>();
+    auth_data->host = server.host();
+    auth_data->trade_history_source = TradeHistorySource::HTML_CSV;
+
+    events::AuthDataEvent auth_event(auth_data);
+    request_manager.on_event(&auth_event);
+    http_client.get_http_client().set_retry_attempts(0, 0);
+    request_manager.set_auth_credentials("866188", "test_hash");
+
+    CombinedHistoryTestResult call;
+    std::atomic<int> callback_count{0};
+
+    request_manager.request_trade_history_result(
+        TradeHistoryRequest::all(),
+        AccountType::DEMO,
+        [&call, &callback_count](TradeHistoryApiResult history_result) {
+            call.result = std::move(history_result);
+            ++callback_count;
+        });
+
+    for (int i = 0; i < 500; ++i) {
+        http_client.process();
+        if (callback_count.load() != 0) {
+            call.callback_received = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    for (int i = 0; i < 20; ++i) {
+        http_client.process();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    call.callback_count = callback_count.load();
+    platform.shutdown();
+    return call;
+}
 
 } // namespace
 
@@ -416,6 +612,42 @@ TEST(IntradeBarApiResponses, CombinedTradeHistoryStatusPrefersFailedSource) {
     EXPECT_EQ(select_combined_trade_history_status(false, -1, false, -2), -1);
     EXPECT_EQ(select_combined_trade_history_status(false, 500, false, 451), 500);
     EXPECT_EQ(select_combined_trade_history_status(true, 200, true, 200), 200);
+}
+
+TEST(IntradeBarApiResponses, CombinedTradeHistoryRequestReportsHtmlFailureStatus) {
+    LocalTradeHistoryServer server(
+        200,
+        valid_trade_history_csv(),
+        451,
+        "blocked");
+    ASSERT_TRUE(server.start());
+
+    const auto call = request_combined_trade_history(server);
+
+    ASSERT_TRUE(call.callback_received);
+    ASSERT_EQ(call.callback_count, 1);
+    EXPECT_FALSE(call.result);
+    EXPECT_EQ(call.result.status_code, 451);
+    EXPECT_EQ(server.csv_requests.load(), 1);
+    EXPECT_EQ(server.html_requests.load(), 1);
+}
+
+TEST(IntradeBarApiResponses, CombinedTradeHistoryRequestReportsCsvFailureStatus) {
+    LocalTradeHistoryServer server(
+        500,
+        "server error",
+        200,
+        empty_trade_history_html());
+    ASSERT_TRUE(server.start());
+
+    const auto call = request_combined_trade_history(server);
+
+    ASSERT_TRUE(call.callback_received);
+    ASSERT_EQ(call.callback_count, 1);
+    EXPECT_FALSE(call.result);
+    EXPECT_EQ(call.result.status_code, 500);
+    EXPECT_EQ(server.csv_requests.load(), 1);
+    EXPECT_EQ(server.html_requests.load(), 1);
 }
 
 TEST(IntradeBarApiResponses, HistoryRangeFilterExcludesRecordsWithoutSelectedTimestamp) {
