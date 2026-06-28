@@ -14,7 +14,7 @@ namespace optionx::platforms::intrade_bar {
     /// \param callback The callback to invoke if the validation fails. The callback is called with a failure flag, a reason message, and cloned authorization data.
     /// \param auth_data The authorization data to pass to the callback upon failure.
     /// \return True if the response is valid; otherwise, false. If false, the callback is invoked.
-    bool validate_response(
+    inline bool validate_response(
             const kurlyk::HttpResponsePtr& response,
             const connection_callback_t& callback,
             const std::shared_ptr<AuthData>& auth_data) {

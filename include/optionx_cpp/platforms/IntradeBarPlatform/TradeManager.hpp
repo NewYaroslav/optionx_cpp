@@ -101,7 +101,7 @@ namespace optionx::platforms::intrade_bar {
         std::shared_ptr<AccountInfoData> get_account_info();
     };
 
-    void TradeManager::on_event(const utils::Event* const event) {
+    inline void TradeManager::on_event(const utils::Event* const event) {
         if (const auto* msg = dynamic_cast<const events::TradeRequestEvent*>(event)) {
             handle_event(*msg);
         } else
@@ -113,15 +113,15 @@ namespace optionx::platforms::intrade_bar {
         }
     };
 
-    void TradeManager::process() {
+    inline void TradeManager::process() {
         m_task_manager.process();
     }
 
-    void TradeManager::shutdown() {
+    inline void TradeManager::shutdown() {
         m_task_manager.shutdown();
     }
 
-    bool TradeManager::fetch_trade_history(
+    inline bool TradeManager::fetch_trade_history(
             const TradeHistoryRequest& request,
             trade_history_callback_t callback) {
         if (!callback || !request.has_valid_range()) return false;
@@ -149,7 +149,7 @@ namespace optionx::platforms::intrade_bar {
             });
         return true;
     }
-    bool TradeManager::fetch_trade_result(
+    inline bool TradeManager::fetch_trade_result(
             TradeResultQuery query,
             std::unique_ptr<TradeResult> result,
             trade_result_check_callback_t callback) {
@@ -260,7 +260,7 @@ namespace optionx::platforms::intrade_bar {
         return true;
     }
 
-    void TradeManager::handle_event(const events::TradeRequestEvent& event) {
+    inline void TradeManager::handle_event(const events::TradeRequestEvent& event) {
         auto request = event.request;
         auto result  = event.result;
         LOGIT_INFO(
@@ -359,7 +359,7 @@ namespace optionx::platforms::intrade_bar {
         });
     }
 
-    void TradeManager::handle_event(const events::TradeStatusEvent& event) {
+    inline void TradeManager::handle_event(const events::TradeStatusEvent& event) {
         auto request = event.request;
         auto result  = event.result;
         if (!request || !result) {
@@ -446,14 +446,14 @@ namespace optionx::platforms::intrade_bar {
         });
     }
 
-    void TradeManager::handle_event(const events::OpenTradesEvent& event) {
+    inline void TradeManager::handle_event(const events::OpenTradesEvent& event) {
         using Status = events::AccountInfoUpdateEvent::Status;
         auto account_info = get_account_info();
         account_info->open_trades = event.open_trades;
         notify(events::AccountInfoUpdateEvent(account_info, Status::OPEN_TRADES_CHANGED));
     }
 
-    void TradeManager::process_trade_status(
+    inline void TradeManager::process_trade_status(
             bool success,
             double price,
             double profit,
@@ -497,7 +497,7 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    std::shared_ptr<AccountInfoData> TradeManager::get_account_info() {
+    inline std::shared_ptr<AccountInfoData> TradeManager::get_account_info() {
         if (auto account_info = std::dynamic_pointer_cast<AccountInfoData>(m_account_info)) {
             return account_info;
         }

@@ -100,7 +100,7 @@ namespace optionx::modules {
         return TradeErrorCode::SUCCESS;
     }
 
-    TradeState TradeStateManager::determine_trade_state(
+    inline TradeState TradeStateManager::determine_trade_state(
             const std::shared_ptr<TradeResult>& result,
             const std::shared_ptr<TradeRequest>& request,
             const TickData& tick) const {
@@ -124,18 +124,18 @@ namespace optionx::modules {
         return TradeState::STANDOFF;
     }
 
-    bool TradeStateManager::is_closable_state(TradeState state) const {
+    inline bool TradeStateManager::is_closable_state(TradeState state) const {
         return state == TradeState::WAITING_CLOSE ||
                state == TradeState::OPEN_SUCCESS ||
                state == TradeState::IN_PROGRESS;
     }
 
-    bool TradeStateManager::is_transition_to_waiting_close(TradeState trade_state) const {
+    inline bool TradeStateManager::is_transition_to_waiting_close(TradeState trade_state) const {
         return trade_state == TradeState::OPEN_SUCCESS ||
                trade_state == TradeState::IN_PROGRESS;
     }
 
-    bool TradeStateManager::is_terminal_state(TradeState trade_state) const {
+    inline bool TradeStateManager::is_terminal_state(TradeState trade_state) const {
         return trade_state == TradeState::OPEN_ERROR ||
                trade_state == TradeState::CHECK_ERROR ||
                trade_state == TradeState::WIN ||
@@ -144,7 +144,7 @@ namespace optionx::modules {
                trade_state == TradeState::REFUND;
     }
 
-    int64_t TradeStateManager::calculate_close_date(
+    inline int64_t TradeStateManager::calculate_close_date(
             const std::shared_ptr<TradeResult>& result,
             const std::shared_ptr<TradeRequest>& request) const {
         if (result->close_date > 0) return result->close_date;
@@ -159,7 +159,7 @@ namespace optionx::modules {
         return 0;
     }
 
-    void TradeStateManager::finalize_transaction_with_error(
+    inline void TradeStateManager::finalize_transaction_with_error(
             const std::shared_ptr<events::TradeTransactionEvent>& transaction,
             TradeErrorCode error_code,
             TradeState state,

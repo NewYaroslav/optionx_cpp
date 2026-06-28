@@ -32,12 +32,12 @@ namespace optionx {
         static const std::vector<std::string> str_data_2 = {"Unknown", "Simulator", "Clicker", "Intrade Bar", "TradeUp"};
 
         switch (mode) {
-            case 0: return str_data_0[static_cast<size_t>(value)];
-            case 1: return str_data_1[static_cast<size_t>(value)];
-            case 2: return str_data_2[static_cast<size_t>(value)];
+            case 0: return utils::enum_string_or_unknown(str_data_0, static_cast<size_t>(value));
+            case 1: return utils::enum_string_or_unknown(str_data_1, static_cast<size_t>(value));
+            case 2: return utils::enum_string_or_unknown(str_data_2, static_cast<size_t>(value));
             default: break;
         }
-		return str_data_0[static_cast<size_t>(value)];
+		return utils::enum_string_or_unknown(str_data_0, static_cast<size_t>(value));
     };
 
 	/// \brief Converts string to PlatformType enumeration.
@@ -81,7 +81,7 @@ namespace optionx {
     }
 
 	/// \brief Stream output operator for PlatformType.
-	std::ostream& operator<<(std::ostream& os, PlatformType value) {
+	inline std::ostream& operator<<(std::ostream& os, PlatformType value) {
         os << optionx::to_str(value);
         return os;
     }
@@ -100,7 +100,7 @@ namespace optionx {
     /// \return Constant reference to the corresponding string.
     inline const std::string& to_str(BridgeType value, int mode = 0) noexcept {
         static const std::vector<std::string> str_data = {"UNKNOWN", "INTRADE_BAR_LEGACY"};
-        return str_data[static_cast<size_t>(value)];
+        return utils::enum_string_or_unknown(str_data, static_cast<size_t>(value));
     }
 
     /// \brief Converts string to BridgeType enumeration.
@@ -164,11 +164,11 @@ namespace optionx {
         static const std::vector<std::string> str_data_1 = {"Unknown", "Demo", "Real"};
 
 		switch (mode) {
-            case 0: return str_data_0[static_cast<size_t>(value)];
-            case 1: return str_data_1[static_cast<size_t>(value)];
+            case 0: return utils::enum_string_or_unknown(str_data_0, static_cast<size_t>(value));
+            case 1: return utils::enum_string_or_unknown(str_data_1, static_cast<size_t>(value));
             default: break;
         }
-		return str_data_0[static_cast<size_t>(value)];
+		return utils::enum_string_or_unknown(str_data_0, static_cast<size_t>(value));
     };
 
 	/// \brief Converts string to AccountType enumeration.
@@ -208,7 +208,7 @@ namespace optionx {
     }
 
 	/// \brief Stream output operator for AccountType.
-	std::ostream& operator<<(std::ostream& os, AccountType value) {
+	inline std::ostream& operator<<(std::ostream& os, AccountType value) {
         os << optionx::to_str(value);
         return os;
     }
@@ -230,11 +230,11 @@ namespace optionx {
         static const std::vector<std::string> str_data_0 = {"UNKNOWN", "SPRINT", "CLASSIC"};
         static const std::vector<std::string> str_data_1 = {"Unknown", "Sprint", "Classic"};
         switch (mode) {
-            case 0: return str_data_0[static_cast<size_t>(value)];
-            case 1: return str_data_1[static_cast<size_t>(value)];
+            case 0: return utils::enum_string_or_unknown(str_data_0, static_cast<size_t>(value));
+            case 1: return utils::enum_string_or_unknown(str_data_1, static_cast<size_t>(value));
             default: break;
         };
-		return str_data_0[static_cast<size_t>(value)];
+		return utils::enum_string_or_unknown(str_data_0, static_cast<size_t>(value));
     };
 
 	/// \brief Converts string to OptionType enumeration.
@@ -273,7 +273,7 @@ namespace optionx {
     }
 
 	/// \brief Stream output operator for OptionType.
-	std::ostream& operator<<(std::ostream& os, OptionType value) {
+	inline std::ostream& operator<<(std::ostream& os, OptionType value) {
         os << optionx::to_str(value);
         return os;
     }
@@ -298,13 +298,13 @@ namespace optionx {
         static const std::vector<std::string> str_data_3 = {"Unknown", "Put", "Call"};
 
         switch (mode) {
-            case 0: return str_data_0[static_cast<size_t>(value)];
-            case 1: return str_data_1[static_cast<size_t>(value)];
-            case 2: return str_data_2[static_cast<size_t>(value)];
-            case 3: return str_data_3[static_cast<size_t>(value)];
+            case 0: return utils::enum_string_or_unknown(str_data_0, static_cast<size_t>(value));
+            case 1: return utils::enum_string_or_unknown(str_data_1, static_cast<size_t>(value));
+            case 2: return utils::enum_string_or_unknown(str_data_2, static_cast<size_t>(value));
+            case 3: return utils::enum_string_or_unknown(str_data_3, static_cast<size_t>(value));
             default: break;
         };
-		return str_data_0[static_cast<size_t>(value)];
+		return utils::enum_string_or_unknown(str_data_0, static_cast<size_t>(value));
     };
 
 	/// \brief Converts string to OrderType enumeration.
@@ -345,7 +345,7 @@ namespace optionx {
     }
 
 	/// \brief Stream output operator for OrderType.
-	std::ostream& operator<<(std::ostream& os, OrderType value) {
+	inline std::ostream& operator<<(std::ostream& os, OrderType value) {
         os << optionx::to_str(value);
         return os;
     }
@@ -383,7 +383,7 @@ namespace optionx {
             "UAH",
             "KZT"
         };
-        return str_data[static_cast<size_t>(value)];
+        return utils::enum_string_or_unknown(str_data, static_cast<size_t>(value));
     };
 
 	/// \brief Converts string to CurrencyType enumeration.
@@ -431,7 +431,7 @@ namespace optionx {
     }
 
 	/// \brief Stream output operator for CurrencyType.
-	std::ostream& operator<<(std::ostream& os, CurrencyType value) {
+	inline std::ostream& operator<<(std::ostream& os, CurrencyType value) {
         os << optionx::to_str(value);
         return os;
     }
@@ -473,7 +473,7 @@ namespace optionx {
             "REFUND",
             "CANCELED_TRADE"
         };
-        return str_data[static_cast<size_t>(value)];
+        return utils::enum_string_or_unknown(str_data, static_cast<size_t>(value));
     }
 
 	/// \brief Converts a string to its corresponding TradeState enumeration value.
@@ -527,7 +527,7 @@ namespace optionx {
     }
 
 	/// \brief Stream output operator for TradeState.
-	std::ostream& operator<<(std::ostream& os, TradeState value) {
+	inline std::ostream& operator<<(std::ostream& os, TradeState value) {
         os << optionx::to_str(value);
         return os;
     }
@@ -656,7 +656,7 @@ namespace optionx {
     }
 
 	/// \brief Stream output operator for TradeErrorCode.
-    std::ostream& operator<<(std::ostream& os, TradeErrorCode value) {
+    inline std::ostream& operator<<(std::ostream& os, TradeErrorCode value) {
         os << optionx::to_str(value);
         return os;
     }
@@ -714,7 +714,7 @@ namespace optionx {
             "SKU_SYMBOL",
             "SKU_BAR"
         };
-        return str_data[static_cast<size_t>(value)];
+        return utils::enum_string_or_unknown(str_data, static_cast<size_t>(value));
     }
 
     /// \brief Converts a string to its corresponding MmSystemType enumeration value.

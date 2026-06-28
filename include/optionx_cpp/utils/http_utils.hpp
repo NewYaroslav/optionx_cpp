@@ -33,7 +33,7 @@ namespace optionx::utils {
     /// \brief Removes the first occurrence of "https://" or "http://" from the given URL.
     /// \param url The URL from which to remove the substring.
     /// \return std::string The modified URL with the first occurrence of "https://" or "http://" removed.
-    std::string remove_http_prefix(const std::string& url) {
+    inline std::string remove_http_prefix(const std::string& url) {
         const std::string https_prefix = "https://";
         const std::string http_prefix = "http://";
 
@@ -61,7 +61,7 @@ namespace optionx::utils {
     /// \param response The HTTP response object.
     /// \param fallback Fallback text used when the response has no detailed error.
     /// \return Detailed error text suitable for callbacks and logs.
-    std::string describe_response_error(
+    inline std::string describe_response_error(
             const kurlyk::HttpResponsePtr& response,
             const std::string& fallback = "HTTP request failed.") {
         if (!response) {
@@ -90,7 +90,7 @@ namespace optionx::utils {
     /// \param response The HTTP response object.
     /// \param log_message A message to log in case of an unexpected status code.
     /// \return True if the response status code is 200; otherwise, false.
-    bool validate_status(
+    inline bool validate_status(
             const kurlyk::HttpResponsePtr& response,
             const std::string& log_message) {
         if (!response || response->status_code != 200) {
@@ -119,7 +119,7 @@ namespace optionx::utils {
     /// \details Logs an error if the response is null or the status code is not 200.
     /// \param response The HTTP response object.
     /// \return True if the response status code is 200; otherwise, false.
-    bool validate_status(const kurlyk::HttpResponsePtr& response) {
+    inline bool validate_status(const kurlyk::HttpResponsePtr& response) {
         return validate_status(response, "HTTP request failed.");
     }
     
@@ -127,7 +127,7 @@ namespace optionx::utils {
     /// \details Logs an error if "DDoS-GUARD" is detected in the response content.
     /// \param response The HTTP response object.
     /// \return True if no DDoS protection is detected; otherwise, false.
-    bool validate_ddos_protection(const kurlyk::HttpResponsePtr& response) {
+    inline bool validate_ddos_protection(const kurlyk::HttpResponsePtr& response) {
         const std::string ddos_marker = "DDoS-GUARD";
         if (response && response->content.find(ddos_marker) != std::string::npos) {
 #           ifdef OPTIONX_LOG_UNIQUE_FILE_INDEX
@@ -151,7 +151,7 @@ namespace optionx::utils {
     /// \param callback The callback to invoke if validation fails. It receives an error message as a parameter.
     /// \return True if the response is valid; otherwise, false. If false, the callback is invoked.
     template <typename Callback>
-    bool validate_response(
+    inline bool validate_response(
             const kurlyk::HttpResponsePtr& response,
             Callback callback) {
         if (!response) {
@@ -173,7 +173,7 @@ namespace optionx::utils {
     /// \brief Validates the HTTP response for status and DDoS protection.
     /// \param response The HTTP response to validate.
     /// \return True if the response is valid; otherwise, false. If false, the callback is invoked.
-    bool validate_response(
+    inline bool validate_response(
         const kurlyk::HttpResponsePtr& response) {
         if (!response) {
             LOGIT_ERROR("No response received from the server.");

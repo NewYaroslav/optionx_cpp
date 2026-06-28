@@ -68,7 +68,7 @@ namespace optionx::platforms::intrade_bar {
         void handle_price_update(std::shared_ptr<utils::Task> task);
     };
 
-    void PriceManager::on_event(const utils::Event* const event) {
+    inline void PriceManager::on_event(const utils::Event* const event) {
         if (const auto* msg = dynamic_cast<const events::ConnectRequestEvent*>(event)) {
             handle_event(*msg);
         } else
@@ -80,19 +80,19 @@ namespace optionx::platforms::intrade_bar {
         }
     };
 
-    void PriceManager::handle_event(const events::ConnectRequestEvent& event) {
+    inline void PriceManager::handle_event(const events::ConnectRequestEvent& event) {
         LOGIT_0TRACE();
         m_task_manager.shutdown();
         m_ticks.clear();
     }
 
-    void PriceManager::handle_event(const events::DisconnectRequestEvent& event) {
+    inline void PriceManager::handle_event(const events::DisconnectRequestEvent& event) {
         LOGIT_0TRACE();
         m_task_manager.shutdown();
         m_ticks.clear();
     }
 
-    void PriceManager::handle_event(const events::AccountInfoUpdateEvent& event) {
+    inline void PriceManager::handle_event(const events::AccountInfoUpdateEvent& event) {
         using Status = events::AccountInfoUpdateEvent::Status;
         if (event.status == Status::CONNECTED) {
             LOGIT_0TRACE();
@@ -115,15 +115,15 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    void PriceManager::process() {
+    inline void PriceManager::process() {
         m_task_manager.process();
     }
 
-    void PriceManager::shutdown() {
+    inline void PriceManager::shutdown() {
         m_task_manager.shutdown();
     }
 
-    void PriceManager::handle_price_update(std::shared_ptr<utils::Task> task) {
+    inline void PriceManager::handle_price_update(std::shared_ptr<utils::Task> task) {
         if (m_has_price_update) return;
         m_has_price_update = true;
         LOGIT_DEBUG("Intrade Bar price: requesting price snapshot.");

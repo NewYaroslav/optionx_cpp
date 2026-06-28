@@ -395,7 +395,7 @@ namespace optionx::platforms::intrade_bar {
 	
     // ------------------------------------------------------------------------
 
-    void RequestManager::request_main_page(
+    inline void RequestManager::request_main_page(
             std::shared_ptr<AuthData> auth_data,
             std::function<void(
                 bool success,
@@ -465,7 +465,7 @@ namespace optionx::platforms::intrade_bar {
         add_http_request_task(std::move(future), std::move(callback));
     }
 
-    void RequestManager::request_active_trades_snapshot(
+    inline void RequestManager::request_active_trades_snapshot(
             std::function<void(
                 bool success,
                 std::vector<ActiveTradeInfo> trades)> callback) {
@@ -500,7 +500,7 @@ namespace optionx::platforms::intrade_bar {
         add_http_request_task(std::move(future), std::move(response_callback));
     }
 
-    void RequestManager::request_login(
+    inline void RequestManager::request_login(
             const std::string& req_id,
             const std::string& req_value,
             const std::string& cookies,
@@ -567,7 +567,7 @@ namespace optionx::platforms::intrade_bar {
         add_http_request_task(std::move(future), std::move(callback));
     }
 
-    void RequestManager::request_auth(
+    inline void RequestManager::request_auth(
             const std::string& user_id,
             const std::string& user_hash,
             const std::string& cookies,
@@ -612,7 +612,7 @@ namespace optionx::platforms::intrade_bar {
         add_http_request_task(std::move(future), std::move(callback));
     }
 
-    void RequestManager::request_balance(
+    inline void RequestManager::request_balance(
             std::function<void(
                 bool success,
                 double balance,
@@ -654,7 +654,7 @@ namespace optionx::platforms::intrade_bar {
         add_http_request_task(std::move(future), std::move(callback));
     }
 
-    void RequestManager::request_switch_account_type(
+    inline void RequestManager::request_switch_account_type(
             std::function<void(bool success)> switch_callback) {
         request_switch_account_type_result(
             [switch_callback = std::move(switch_callback)](SettingsSwitchResult result) {
@@ -662,7 +662,7 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
-    void RequestManager::request_switch_currency(
+    inline void RequestManager::request_switch_currency(
             std::function<void(bool success)> switch_callback) {
         request_switch_currency_result(
             [switch_callback = std::move(switch_callback)](SettingsSwitchResult result) {
@@ -670,7 +670,7 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
-    void RequestManager::request_settings_switch_result(
+    inline void RequestManager::request_settings_switch_result(
             const std::string& operation_name,
             const std::string& endpoint,
             std::function<void(SettingsSwitchResult)> switch_callback) {
@@ -720,7 +720,7 @@ namespace optionx::platforms::intrade_bar {
         add_http_request_task(std::move(future), std::move(callback));
     }
     
-    void RequestManager::request_find_working_domain(
+    inline void RequestManager::request_find_working_domain(
             std::function<void(
                 bool success,
                 std::string& host)> find_callback) {
@@ -843,7 +843,7 @@ namespace optionx::platforms::intrade_bar {
     
     /// \brief Checks if the currently set host in the HTTP client is available.
     /// \param callback Callback that receives the result: true if available, false otherwise.
-    void RequestManager::request_check_current_host_available(
+    inline void RequestManager::request_check_current_host_available(
             std::function<void(bool)> check_callback) {
         LOGIT_TRACE0();
 
@@ -874,7 +874,7 @@ namespace optionx::platforms::intrade_bar {
         client.set_connect_timeout(15);
     }
 
-    void RequestManager::request_profile(
+    inline void RequestManager::request_profile(
             std::function<void(
                 bool success,
                 CurrencyType currency,
@@ -923,7 +923,7 @@ namespace optionx::platforms::intrade_bar {
         add_http_request_task(std::move(future), std::move(callback));
     }
 
-    void RequestManager::request_price(
+    inline void RequestManager::request_price(
             std::function<void(
                 bool success,
                 std::vector<TickData> ticks)> price_callback) {
@@ -1087,7 +1087,7 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    void RequestManager::request_trade_history(
+    inline void RequestManager::request_trade_history(
             const TradeHistoryRequest& request,
             AccountType account_type,
             std::function<void(
@@ -1156,7 +1156,7 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
-    void RequestManager::request_trade_history_csv(
+    inline void RequestManager::request_trade_history_csv(
             const TradeHistoryRequest& request,
             AccountType account_type,
             std::function<void(
@@ -1218,7 +1218,7 @@ namespace optionx::platforms::intrade_bar {
         add_http_request_task(std::move(future), std::move(response_callback));
     }
 
-    void RequestManager::request_trade_history_html(
+    inline void RequestManager::request_trade_history_html(
             const TradeHistoryRequest& request,
             AccountType account_type,
             std::function<void(
@@ -1406,7 +1406,7 @@ namespace optionx::platforms::intrade_bar {
         add_http_request_task(std::move(future), std::move(response_callback));
     }
 
-    void RequestManager::request_trade_check(
+    inline void RequestManager::request_trade_check(
             int64_t deal_id,
             int retry_attempts,
             std::function<void(
@@ -1499,7 +1499,7 @@ namespace optionx::platforms::intrade_bar {
         add_http_request_task(std::move(future), std::move(callback));
     }
 
-    void RequestManager::request_execute_trade(
+    inline void RequestManager::request_execute_trade(
             std::shared_ptr<TradeRequest> request,
             std::function<void(
                 bool success,
@@ -1564,7 +1564,7 @@ namespace optionx::platforms::intrade_bar {
         add_http_request_task(std::move(future), std::move(callback));
     }
 
-    void RequestManager::request_find_working_domain_result(
+    inline void RequestManager::request_find_working_domain_result(
             std::function<void(DomainSelectionResult)> find_callback) {
         request_find_working_domain(
             [find_callback = std::move(find_callback)](
@@ -1579,7 +1579,7 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
-    void RequestManager::request_check_current_host_available_result(
+    inline void RequestManager::request_check_current_host_available_result(
             std::function<void(HostAvailabilityResult)> check_callback) {
         request_check_current_host_available(
             [check_callback = std::move(check_callback)](bool success) {
@@ -1592,7 +1592,7 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
-    void RequestManager::request_profile_result(
+    inline void RequestManager::request_profile_result(
             std::function<void(ProfileInfoResult)> profile_callback) {
         request_profile(
             [profile_callback = std::move(profile_callback)](
@@ -1608,7 +1608,7 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
-    void RequestManager::request_main_page_result(
+    inline void RequestManager::request_main_page_result(
             std::shared_ptr<AuthData> auth_data,
             std::function<void(MainPageChallengeResult)> callback) {
         request_main_page(
@@ -1628,7 +1628,7 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
-    void RequestManager::request_active_trades_snapshot_result(
+    inline void RequestManager::request_active_trades_snapshot_result(
             std::function<void(ActiveTradesSnapshotResult)> callback) {
         request_active_trades_snapshot(
             [callback = std::move(callback)](
@@ -1643,7 +1643,7 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
-    void RequestManager::request_login_result(
+    inline void RequestManager::request_login_result(
             const std::string& req_id,
             const std::string& req_value,
             const std::string& cookies,
@@ -1670,7 +1670,7 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
-    void RequestManager::request_auth_result(
+    inline void RequestManager::request_auth_result(
             const std::string& user_id,
             const std::string& user_hash,
             const std::string& cookies,
@@ -1693,7 +1693,7 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
-    void RequestManager::request_balance_result(
+    inline void RequestManager::request_balance_result(
             std::function<void(BalanceInfoResult)> balance_callback) {
         request_balance(
             [balance_callback = std::move(balance_callback)](
@@ -1709,7 +1709,7 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
-    void RequestManager::request_switch_account_type_result(
+    inline void RequestManager::request_switch_account_type_result(
             std::function<void(SettingsSwitchResult)> switch_callback) {
         request_settings_switch_result(
             "account type",
@@ -1717,7 +1717,7 @@ namespace optionx::platforms::intrade_bar {
             std::move(switch_callback));
     }
 
-    void RequestManager::request_switch_currency_result(
+    inline void RequestManager::request_switch_currency_result(
             std::function<void(SettingsSwitchResult)> switch_callback) {
         request_settings_switch_result(
             "currency",
@@ -1725,7 +1725,7 @@ namespace optionx::platforms::intrade_bar {
             std::move(switch_callback));
     }
 
-    void RequestManager::request_price_result(
+    inline void RequestManager::request_price_result(
             std::function<void(PriceSnapshotResult)> price_callback) {
         request_price(
             [price_callback = std::move(price_callback)](
@@ -1740,7 +1740,7 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
-    void RequestManager::request_trade_history_result(
+    inline void RequestManager::request_trade_history_result(
             const TradeHistoryRequest& request,
             AccountType account_type,
             std::function<void(TradeHistoryApiResult)> callback) {
@@ -1761,7 +1761,7 @@ namespace optionx::platforms::intrade_bar {
                 callback(TradeHistoryApiResult::ok(TradeHistory{std::move(records)}, status_code));
             });
     }
-    void RequestManager::request_trade_check_result(
+    inline void RequestManager::request_trade_check_result(
             int64_t deal_id,
             int retry_attempts,
             std::function<void(TradeCheckResult)> callback_check) {
@@ -1784,7 +1784,7 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
-    void RequestManager::request_execute_trade_result(
+    inline void RequestManager::request_execute_trade_result(
             std::shared_ptr<TradeRequest> request,
             std::function<void(TradeOpenResult)> result_callback) {
         request_execute_trade(

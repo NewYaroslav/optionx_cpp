@@ -178,7 +178,7 @@ namespace optionx::platforms::intrade_bar {
         std::shared_ptr<AccountInfoData> get_account_info();
     };
 
-    void AuthManager::on_event(const utils::Event* const event) {
+    inline void AuthManager::on_event(const utils::Event* const event) {
         if (const auto* msg = dynamic_cast<const events::AuthDataEvent*>(event)) {
             handle_event(*msg);
         } else
@@ -193,15 +193,15 @@ namespace optionx::platforms::intrade_bar {
         }
     };
 
-    void AuthManager::process() {
+    inline void AuthManager::process() {
         m_task_manager.process();
     }
 
-    void AuthManager::shutdown() {
+    inline void AuthManager::shutdown() {
         m_task_manager.shutdown();
     }
 
-    void AuthManager::set_auth_credentials(
+    inline void AuthManager::set_auth_credentials(
             const std::string& user_id,
             const std::string& user_hash) {
         std::string cookies = "user_id=" + user_id + "; user_hash=" + user_hash;
@@ -210,7 +210,7 @@ namespace optionx::platforms::intrade_bar {
         set_account_user_id(user_id);
     }
 
-    void AuthManager::set_account_user_id(const std::string& user_id) {
+    inline void AuthManager::set_account_user_id(const std::string& user_id) {
         auto account_info = get_account_info();
         if (auto parsed = utils::parse_i64_strict(user_id)) {
             account_info->user_id = *parsed;
@@ -222,7 +222,7 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    void AuthManager::handle_event(const events::AuthDataEvent& event) {
+    inline void AuthManager::handle_event(const events::AuthDataEvent& event) {
         if (auto auth_data = std::dynamic_pointer_cast<AuthData>(event.auth_data)) {
             LOGIT_TRACE0();
             auto [success, message] = auth_data->validate();
@@ -235,7 +235,7 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    void AuthManager::handle_event(const events::ConnectRequestEvent& event) {
+    inline void AuthManager::handle_event(const events::ConnectRequestEvent& event) {
         LOGIT_TRACE0();
         auto callback = event.callback;
         m_task_manager.add_single_task(
@@ -345,7 +345,7 @@ namespace optionx::platforms::intrade_bar {
         });
     }
 
-    void AuthManager::handle_event(const events::DisconnectRequestEvent& event) {
+    inline void AuthManager::handle_event(const events::DisconnectRequestEvent& event) {
         LOGIT_TRACE0();
         auto callback = event.callback;
         m_task_manager.add_single_task(
@@ -393,7 +393,7 @@ namespace optionx::platforms::intrade_bar {
         });
     }
 
-    void AuthManager::handle_event(const events::RestartAuthEvent& event) {
+    inline void AuthManager::handle_event(const events::RestartAuthEvent& event) {
         start_authentication([this](const ConnectionResult& result) {
             if (!result.success) {
                 auto account_info = get_account_info();
@@ -414,7 +414,7 @@ namespace optionx::platforms::intrade_bar {
         });
     }
     
-    void AuthManager::handle_auto_domain_and_auth(
+    inline void AuthManager::handle_auto_domain_and_auth(
             connection_callback_t callback,
             std::function<void(connection_callback_t)> auth_func) {
 
@@ -450,7 +450,7 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    void AuthManager::validate_email_pass(connection_callback_t callback) {
+    inline void AuthManager::validate_email_pass(connection_callback_t callback) {
         // Validate email and password
         if (m_auth_data->email.empty() ||
             m_auth_data->password.empty()) {
@@ -504,7 +504,7 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    void AuthManager::validate_user_token(connection_callback_t callback) {
+    inline void AuthManager::validate_user_token(connection_callback_t callback) {
         // Validate user_id and token
         if (m_auth_data->user_id.empty() || m_auth_data->token.empty()) {
             LOGIT_ERROR_IF(m_auth_data->user_id.empty(), "Validation failed: User ID is missing.");
@@ -531,7 +531,7 @@ namespace optionx::platforms::intrade_bar {
         });
     }
 
-    void AuthManager::handle_auth_failure(
+    inline void AuthManager::handle_auth_failure(
             const std::string& reason,
             connection_callback_t callback) {
         using Status = events::AccountInfoUpdateEvent::Status;
@@ -543,7 +543,7 @@ namespace optionx::platforms::intrade_bar {
             reason));
     }
 
-    void AuthManager::execute_authentication_flow(
+    inline void AuthManager::execute_authentication_flow(
             connection_callback_t callback) {
         perform_auth_flow([this, callback](
                 bool success,
@@ -564,7 +564,7 @@ namespace optionx::platforms::intrade_bar {
         });
     }
 
-    void AuthManager::perform_auth_flow(
+    inline void AuthManager::perform_auth_flow(
             std::function<void(
                 bool success,
                 const std::string& reason)> result_callback) {
@@ -645,7 +645,7 @@ namespace optionx::platforms::intrade_bar {
         m_request_manager.request_main_page(m_auth_data, handle_main_page_response);
     }
 
-    void AuthManager::start_authentication(connection_callback_t callback) {
+    inline void AuthManager::start_authentication(connection_callback_t callback) {
         LOGIT_TRACE0();
         LOGIT_INFO("Intrade Bar auth: requesting profile.");
         m_request_manager.request_profile([this, callback](
@@ -662,7 +662,7 @@ namespace optionx::platforms::intrade_bar {
         });
     }
 
-    void AuthManager::handle_account_type_switch(
+    inline void AuthManager::handle_account_type_switch(
             AccountType account_type,
             CurrencyType currency,
             connection_callback_t callback) {
@@ -683,7 +683,7 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    void AuthManager::handle_account_type_switch_attempt(
+    inline void AuthManager::handle_account_type_switch_attempt(
             CurrencyType currency,
             connection_callback_t callback,
             int64_t started_ms,
@@ -742,7 +742,7 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
-    void AuthManager::handle_currency_switch(
+    inline void AuthManager::handle_currency_switch(
             CurrencyType currency,
             connection_callback_t callback) {
         LOGIT_TRACE0();
@@ -761,7 +761,7 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    void AuthManager::handle_currency_switch_attempt(
+    inline void AuthManager::handle_currency_switch_attempt(
             connection_callback_t callback,
             int64_t started_ms,
             int attempt) {
@@ -818,7 +818,7 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
-    void AuthManager::schedule_settings_switch_retry(
+    inline void AuthManager::schedule_settings_switch_retry(
             std::string operation_name,
             int64_t started_ms,
             int attempt,
@@ -898,7 +898,7 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
-    void AuthManager::finalize_authentication(connection_callback_t callback) {
+    inline void AuthManager::finalize_authentication(connection_callback_t callback) {
         LOGIT_TRACE0();
         LOGIT_INFO("Intrade Bar auth: requesting final balance.");
         m_request_manager.request_balance([this, callback](
@@ -941,7 +941,7 @@ namespace optionx::platforms::intrade_bar {
         });
     }
 
-    std::shared_ptr<AccountInfoData> AuthManager::get_account_info() {
+    inline std::shared_ptr<AccountInfoData> AuthManager::get_account_info() {
         if (auto account_info = std::dynamic_pointer_cast<AccountInfoData>(m_account_info)) {
             return account_info;
         }

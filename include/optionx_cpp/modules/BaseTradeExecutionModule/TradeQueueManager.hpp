@@ -201,7 +201,7 @@ namespace optionx::modules {
     };
 
     template<typename PreprocessFunction>
-    bool TradeQueueManager::add_trade(
+    inline bool TradeQueueManager::add_trade(
             std::unique_ptr<TradeRequest> request,
             PlatformType platform_type,
             PreprocessFunction preprocess) {
@@ -231,12 +231,12 @@ namespace optionx::modules {
         return true;
     }
 
-    void TradeQueueManager::set_trade_result_callback(trade_result_callback_t callback) {
+    inline void TradeQueueManager::set_trade_result_callback(trade_result_callback_t callback) {
         std::lock_guard<std::mutex> lock(m_trade_result_mutex);
         m_trade_result_callback = std::move(callback);
     }
 
-    TradeQueueManager::transaction_t TradeQueueManager::pop_next_transaction() {
+    inline TradeQueueManager::transaction_t TradeQueueManager::pop_next_transaction() {
         const int64_t order_interval_ms = std::max<int64_t>(
             0,
             m_account_info.get_info<int64_t>(AccountInfoType::ORDER_INTERVAL_MS));
@@ -256,7 +256,7 @@ namespace optionx::modules {
         return nullptr;
     }
 
-    void TradeQueueManager::handle_canceled_transactions(std::list<transaction_t>& calceled_transactions) {
+    inline void TradeQueueManager::handle_canceled_transactions(std::list<transaction_t>& calceled_transactions) {
         const int64_t timestamp = OPTIONX_TIMESTAMP_MS;
         for (const auto &transaction : calceled_transactions) {
             m_trade_state_manager.finalize_transaction_with_error(
@@ -267,7 +267,7 @@ namespace optionx::modules {
         }
     }
 
-    void TradeQueueManager::clean_expired_transactions(
+    inline void TradeQueueManager::clean_expired_transactions(
             int64_t current_time_ms,
             std::list<transaction_t>& calceled_transactions) {
         const int64_t timeout_ms = time_shield::sec_to_ms(m_account_info.get_info<int64_t>(AccountInfoType::ORDER_QUEUE_TIMEOUT));
@@ -284,7 +284,7 @@ namespace optionx::modules {
         }
     }
 
-    void TradeQueueManager::handle_closing_error(
+    inline void TradeQueueManager::handle_closing_error(
             const transaction_t& transaction,
             int64_t timestamp) {
         auto& result = transaction->result;
@@ -300,7 +300,7 @@ namespace optionx::modules {
         dispatch_trade_event(transaction);
     }
 
-    void TradeQueueManager::process_pending_transactions() {
+    inline void TradeQueueManager::process_pending_transactions() {
         std::unique_lock<std::mutex> lock(m_pending_mutex);
         if (m_pending_transactions.empty()) return;
 
@@ -347,7 +347,7 @@ namespace optionx::modules {
         handle_canceled_transactions(calceled_transactions);
     }
 
-    void TradeQueueManager::process_closing_transactions() {
+    inline void TradeQueueManager::process_closing_transactions() {
         if (m_open_transactions.empty()) return;
         const int64_t timestamp = OPTIONX_TIMESTAMP_MS;
         auto it = m_open_transactions.begin();
@@ -411,7 +411,7 @@ namespace optionx::modules {
         }
     }
 
-    void TradeQueueManager::process_finalizing_transactions() {
+    inline void TradeQueueManager::process_finalizing_transactions() {
         auto it = m_open_transactions.begin();
         while (it != m_open_transactions.end()) {
             auto& transaction = *it;
@@ -430,7 +430,7 @@ namespace optionx::modules {
         }
     }
 
-    void TradeQueueManager::finalize_all_trades() {
+    inline void TradeQueueManager::finalize_all_trades() {
         LOGIT_0TRACE();
 
         std::list<transaction_t> pending_transactions;
@@ -460,14 +460,14 @@ namespace optionx::modules {
         m_has_sent_order = false;
     }
 
-    void TradeQueueManager::increment_open_trades(
+    inline void TradeQueueManager::increment_open_trades(
         const std::shared_ptr<TradeRequest>& request,
         const std::shared_ptr<TradeResult>& result) {
         m_local_open_trades++;
         emit_open_trades(request, result);
     }
 
-    void TradeQueueManager::decrement_open_trades(
+    inline void TradeQueueManager::decrement_open_trades(
         const std::shared_ptr<TradeRequest>& request,
         const std::shared_ptr<TradeResult>& result) {
         if (m_local_open_trades > 0) {
@@ -476,7 +476,7 @@ namespace optionx::modules {
         }
     }
 
-    void TradeQueueManager::process_snapshot_open_trades() {
+    inline void TradeQueueManager::process_snapshot_open_trades() {
         if (m_snapshot_open_trades <= 0) return;
         if (m_snapshot_close_due_times_ms.empty()) {
             if (m_snapshot_unknown_close_trades > 0) {
@@ -516,18 +516,18 @@ namespace optionx::modules {
         }
     }
 
-    int64_t TradeQueueManager::current_open_trades() const {
+    inline int64_t TradeQueueManager::current_open_trades() const {
         return m_local_open_trades + m_snapshot_open_trades;
     }
 
-    void TradeQueueManager::emit_open_trades(
+    inline void TradeQueueManager::emit_open_trades(
             const std::shared_ptr<TradeRequest>& request,
             const std::shared_ptr<TradeResult>& result) {
         events::OpenTradesEvent event(current_open_trades(), request, result);
         notify(event);
     }
 
-    bool TradeQueueManager::clear_snapshot_open_trades() {
+    inline bool TradeQueueManager::clear_snapshot_open_trades() {
         const bool changed =
             m_snapshot_open_trades != 0 ||
             m_snapshot_unknown_close_trades != 0 ||
@@ -539,13 +539,13 @@ namespace optionx::modules {
         return changed;
     }
 
-    void TradeQueueManager::request_snapshot_refresh(const char* reason) {
+    inline void TradeQueueManager::request_snapshot_refresh(const char* reason) {
         if (m_snapshot_refresh_requested) return;
         m_snapshot_refresh_requested = true;
         notify(events::OpenTradesSnapshotRefreshRequestEvent(reason ? reason : ""));
     }
 
-    int64_t TradeQueueManager::add_snapshot_close_buffer(
+    inline int64_t TradeQueueManager::add_snapshot_close_buffer(
             int64_t close_time_ms,
             int64_t close_buffer_ms) const {
         if (close_buffer_ms <= 0) return close_time_ms;
@@ -554,7 +554,7 @@ namespace optionx::modules {
         return close_time_ms + close_buffer_ms;
     }
 
-    void TradeQueueManager::dispatch_trade_event(const transaction_t& transaction) {
+    inline void TradeQueueManager::dispatch_trade_event(const transaction_t& transaction) {
         auto &request = transaction->request;
         auto &result  = transaction->result;
 
@@ -569,7 +569,7 @@ namespace optionx::modules {
         }
     }
 
-    void TradeQueueManager::handle_event(const events::PriceUpdateEvent& event) {
+    inline void TradeQueueManager::handle_event(const events::PriceUpdateEvent& event) {
         for (auto& transaction : m_open_transactions) {
             auto& request = transaction->request;
             auto& result = transaction->result;
@@ -593,11 +593,11 @@ namespace optionx::modules {
         }
     }
 
-    void TradeQueueManager::handle_event(const events::DisconnectRequestEvent& event) {
+    inline void TradeQueueManager::handle_event(const events::DisconnectRequestEvent& event) {
         finalize_all_trades();
     }
 
-    void TradeQueueManager::handle_event(const events::OpenTradesSnapshotEvent& event) {
+    inline void TradeQueueManager::handle_event(const events::OpenTradesSnapshotEvent& event) {
         std::unique_lock<std::mutex> lock(m_pending_mutex);
         m_snapshot_refresh_requested = false;
         if (!m_pending_transactions.empty() ||

@@ -19,7 +19,7 @@ namespace optionx::utils {
     /// \param digits Number of decimal places to preserve (0-18)
     /// \return Normalized value with specified precision
     /// \throw std::invalid_argument If digits exceed maximum supported precision
-    const double normalize_double(double value, size_t digits) {
+    inline const double normalize_double(double value, size_t digits) {
         if (digits > 18) {
             throw std::invalid_argument("Digits exceed maximum precision (18).");
         }
@@ -52,7 +52,7 @@ namespace optionx::utils {
     /// \param digits Number of significant decimal places (0-18)
     /// \return Tolerance value for floating-point comparisons
     /// \throw std::invalid_argument If digits exceed maximum supported precision
-    double precision_tolerance(size_t digits) {
+    inline double precision_tolerance(size_t digits) {
         if (digits > 18) {
             throw std::invalid_argument("Digits exceed maximum precision (18).");
         }

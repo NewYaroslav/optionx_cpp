@@ -117,7 +117,7 @@ namespace optionx::platforms::intrade_bar {
         std::shared_ptr<AccountInfoData> get_account_info();
     };
 
-    void ActiveTradesSyncManager::on_event(const utils::Event* const event) {
+    inline void ActiveTradesSyncManager::on_event(const utils::Event* const event) {
         if (const auto* msg = dynamic_cast<const events::AuthDataEvent*>(event)) {
             handle_event(*msg);
         } else
@@ -135,17 +135,17 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    void ActiveTradesSyncManager::process() {
+    inline void ActiveTradesSyncManager::process() {
         m_task_manager.process();
     }
 
-    void ActiveTradesSyncManager::shutdown() {
+    inline void ActiveTradesSyncManager::shutdown() {
         m_task_manager.shutdown();
         m_refresh_scheduled = false;
         reset_sync_state();
     }
 
-    void ActiveTradesSyncManager::request_sync(std::string reason) {
+    inline void ActiveTradesSyncManager::request_sync(std::string reason) {
         if (m_sync_in_progress) {
             LOGIT_DEBUG(
                 "Intrade Bar active trades sync: snapshot already in progress. reason=",
@@ -238,13 +238,13 @@ namespace optionx::platforms::intrade_bar {
             });
     }
 
-    void ActiveTradesSyncManager::reset_sync_state() {
+    inline void ActiveTradesSyncManager::reset_sync_state() {
         m_sync_in_progress = false;
         m_active_sync_generation = 0;
         ++m_sync_generation;
     }
 
-    void ActiveTradesSyncManager::invalidate_account_context(const char* reason) {
+    inline void ActiveTradesSyncManager::invalidate_account_context(const char* reason) {
         ++m_account_context_generation;
         m_task_manager.shutdown();
         m_refresh_scheduled = false;
@@ -256,7 +256,7 @@ namespace optionx::platforms::intrade_bar {
             m_account_context_generation);
     }
 
-    ActiveTradesSyncManager::AccountContext
+    inline ActiveTradesSyncManager::AccountContext
     ActiveTradesSyncManager::capture_account_context(
             const std::shared_ptr<AccountInfoData>& account_info) const {
         AccountContext context;
@@ -267,7 +267,7 @@ namespace optionx::platforms::intrade_bar {
         return context;
     }
 
-    bool ActiveTradesSyncManager::is_account_context_current(
+    inline bool ActiveTradesSyncManager::is_account_context_current(
             const AccountContext& expected,
             const std::shared_ptr<AccountInfoData>& current) const {
         return expected.generation == m_account_context_generation &&
@@ -276,7 +276,7 @@ namespace optionx::platforms::intrade_bar {
             expected.currency == current->currency;
     }
 
-    void ActiveTradesSyncManager::schedule_sync(std::string reason) {
+    inline void ActiveTradesSyncManager::schedule_sync(std::string reason) {
         if (m_refresh_scheduled) {
             LOGIT_DEBUG(
                 "Intrade Bar active trades sync: refresh already scheduled. reason=",
@@ -313,7 +313,7 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    void ActiveTradesSyncManager::handle_event(const events::AuthDataEvent& event) {
+    inline void ActiveTradesSyncManager::handle_event(const events::AuthDataEvent& event) {
         if (auto auth_data = std::dynamic_pointer_cast<AuthData>(event.auth_data)) {
             m_active_trades_close_buffer_ms = auth_data->active_trades_close_buffer_ms;
             m_active_trades_sync_period_ms = auth_data->active_trades_sync_period_ms;
@@ -333,15 +333,15 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    void ActiveTradesSyncManager::handle_event(const events::RestartAuthEvent& event) {
+    inline void ActiveTradesSyncManager::handle_event(const events::RestartAuthEvent& event) {
         request_sync("restart-auth");
     }
 
-    void ActiveTradesSyncManager::handle_event(const events::DisconnectRequestEvent& event) {
+    inline void ActiveTradesSyncManager::handle_event(const events::DisconnectRequestEvent& event) {
         invalidate_account_context("disconnect-request");
     }
 
-    void ActiveTradesSyncManager::handle_event(const events::AccountInfoUpdateEvent& event) {
+    inline void ActiveTradesSyncManager::handle_event(const events::AccountInfoUpdateEvent& event) {
         using Status = events::AccountInfoUpdateEvent::Status;
         if (event.status == Status::CONNECTED) {
             request_sync("connected");
@@ -357,12 +357,12 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    void ActiveTradesSyncManager::handle_event(
+    inline void ActiveTradesSyncManager::handle_event(
             const events::OpenTradesSnapshotRefreshRequestEvent& event) {
         schedule_sync(event.reason.empty() ? "refresh-request" : event.reason);
     }
 
-    std::shared_ptr<AccountInfoData> ActiveTradesSyncManager::get_account_info() {
+    inline std::shared_ptr<AccountInfoData> ActiveTradesSyncManager::get_account_info() {
         if (auto account_info = std::dynamic_pointer_cast<AccountInfoData>(m_account_info)) {
             return account_info;
         }

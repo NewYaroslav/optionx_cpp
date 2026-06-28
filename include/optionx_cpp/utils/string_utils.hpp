@@ -20,7 +20,7 @@ namespace optionx::utils {
     /// \brief Converts a hexadecimal string to a byte array.
     /// \param source Hexadecimal string.
     /// \return Byte array represented by the hex string.
-    std::vector<uint8_t> str_hex_to_vector(const std::string &source) noexcept {
+    inline std::vector<uint8_t> str_hex_to_vector(const std::string &source) noexcept {
         if (source.find_first_not_of("0123456789ABCDEFabcdef") != std::string::npos) {
             return {};
         }
@@ -68,7 +68,7 @@ namespace optionx::utils {
     /// \brief Converts a byte vector to a hexadecimal string.
     /// \param source Byte vector.
     /// \return Hexadecimal string.
-    std::string vector_to_str_hex(const std::vector<uint8_t> &source) noexcept {
+    inline std::string vector_to_str_hex(const std::vector<uint8_t> &source) noexcept {
         std::string temp;
         for (const auto& byte : source) {
             temp += n2hexstr(byte);
@@ -88,7 +88,7 @@ namespace optionx::utils {
     /// \brief Converts a string to uppercase.
     /// \param str Input string.
     /// \return Uppercase version of the string.
-    std::string to_upper_case(std::string str) {
+    inline std::string to_upper_case(std::string str) {
         std::transform(str.begin(), str.end(), str.begin(), [](unsigned char ch) {
             return std::toupper(ch);
         });
@@ -98,7 +98,7 @@ namespace optionx::utils {
     /// \brief Converts a string to lowercase.
     /// \param str Input string.
     /// \return Lowercase version of the string.
-    std::string to_lower_case(std::string str) {
+    inline std::string to_lower_case(std::string str) {
         std::transform(str.begin(), str.end(), str.begin(), [](unsigned char ch) {
             return std::tolower(ch);
         });
@@ -109,7 +109,7 @@ namespace optionx::utils {
     /// \param inout String to be modified.
     /// \param what Substring to find.
     /// \param with Substring to replace with.
-    void replace_all(std::string& inout, const std::string &what, const std::string &with) {
+    inline void replace_all(std::string& inout, const std::string &what, const std::string &with) {
         for (std::string::size_type pos{};
              (pos = inout.find(what, pos)) != std::string::npos;
              pos += with.length()) {
@@ -122,7 +122,7 @@ namespace optionx::utils {
     /// \param delimiter Starting delimiter.
     /// \param out Output substring.
     /// \return Position of the delimiter in the source string.
-    std::size_t extract_after(const std::string &source, const std::string &delimiter, std::string &out) {
+    inline std::size_t extract_after(const std::string &source, const std::string &delimiter, std::string &out) {
         std::size_t beg_pos = source.find(delimiter);
         if (beg_pos != std::string::npos) {
             out = source.substr(beg_pos + delimiter.size());
@@ -138,7 +138,7 @@ namespace optionx::utils {
     /// \param out Output substring.
     /// \param start_pos Starting position for search.
     /// \return Position of the ending delimiter in the source string.
-    std::size_t extract_between(
+    inline std::size_t extract_between(
         const std::string &source,
         const std::string &start_delimiter,
         const std::string &end_delimiter,
@@ -159,7 +159,7 @@ namespace optionx::utils {
     /// \brief Parses a comma-separated list into a vector of strings.
     /// \param value Comma-separated string.
     /// \param items Vector to store parsed items.
-    void parse_list(std::string value, std::vector<std::string> &items) noexcept {
+    inline void parse_list(std::string value, std::vector<std::string> &items) noexcept {
         if (value.back() != ',') value += ",";
         std::size_t start_pos = 0;
         while (true) {
@@ -175,7 +175,7 @@ namespace optionx::utils {
     /// \brief Formats a string using a printf-style format.
     /// \param fmt Format string.
     /// \return Formatted string.
-    std::string format(const char *fmt, ...) {
+    inline std::string format(const char *fmt, ...) {
         va_list args;
         va_start(args, fmt);
         std::vector<char> buffer(1024);

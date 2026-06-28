@@ -18,7 +18,7 @@ namespace optionx::platforms::tradeup {
     /// \param content The raw JSON response body.
     /// \param headers The HTTP headers returned with the response (used to extract cookies).
     /// \return Optional tuple (user_id, token, affs_id, cookie_string); std::nullopt if parsing fails.
-    std::optional<std::tuple<std::string, std::string, std::string, std::string>> 
+    inline std::optional<std::tuple<std::string, std::string, std::string, std::string>>
         parse_signin_response(
             const std::string& content,
             const kurlyk::Headers& headers) {

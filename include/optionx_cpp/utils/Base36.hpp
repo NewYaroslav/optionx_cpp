@@ -10,6 +10,7 @@
 #include <string>
 #include <random>
 #include <atomic>
+#include <stdexcept>
 
 namespace optionx::utils {
 
@@ -108,7 +109,9 @@ namespace optionx::utils {
         static std::string encode_string(const std::string& input) {
             std::string result;
             for (unsigned char c : input) {
-                result += encode_int(static_cast<long long>(c));
+                std::string encoded = encode_int(static_cast<long long>(c));
+                if (encoded.size() == 1) encoded.insert(encoded.begin(), '0');
+                result += encoded;
             }
             return result;
         }
@@ -118,6 +121,10 @@ namespace optionx::utils {
         /// \return The decoded original string.
         /// \throws std::invalid_argument If the input contains invalid Base36 characters.
         static std::string decode_string(const std::string& input) {
+            if (input.size() % 2 != 0) {
+                throw std::invalid_argument("Invalid Base36 string length for decoding.");
+            }
+
             std::string result;
             size_t i = 0;
             while (i < input.size()) {
@@ -162,22 +169,18 @@ namespace optionx::utils {
             return random_offset++;
         }
 
-        static const int BASE36 = 36; ///< Base36 numeric base.
-        static const char BASE36_INVALID = '?'; ///< Character for invalid Base36 values.
-        static const char BASE36_MAP[36]; ///< Map of Base36 characters.
-        static const std::map<char, int> BASE36_CHAR_MAP; ///< Map of Base36 character values.
+        static constexpr int BASE36 = 36; ///< Base36 numeric base.
+        static constexpr char BASE36_INVALID = '?'; ///< Character for invalid Base36 values.
+        inline static constexpr char BASE36_MAP[36] = {
+            '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+            'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
+            'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+            'u', 'v', 'w', 'x', 'y', 'z'
+        }; ///< Map of Base36 characters.
+        inline static const std::map<char, int> BASE36_CHAR_MAP = init_char_map(); ///< Map of Base36 character values.
 
         inline static std::atomic<uint64_t> random_offset{0}; ///< Random offset for random string generation.
     };
-
-    const char Base36::BASE36_MAP[36] = {
-        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-        'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
-        'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
-        'u', 'v', 'w', 'x', 'y', 'z'
-    };
-
-    const std::map<char, int> Base36::BASE36_CHAR_MAP = Base36::init_char_map();
 
 } // namespace optionx
 

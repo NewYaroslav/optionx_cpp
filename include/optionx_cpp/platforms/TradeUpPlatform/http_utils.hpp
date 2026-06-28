@@ -31,7 +31,7 @@ namespace optionx::platforms::tradeup {
         return {};
     }
     
-    void collect_set_cookie(const Headers& headers, ::kurlyk::Cookies& out) {
+    inline void collect_set_cookie(const Headers& headers, ::kurlyk::Cookies& out) {
         auto [it, end] = headers.equal_range("set-cookie");
         for (; it != end; ++it) {
             ::kurlyk::Cookies c = ::kurlyk::utils::parse_cookie(it->second);

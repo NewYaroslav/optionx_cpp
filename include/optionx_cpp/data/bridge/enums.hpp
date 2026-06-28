@@ -31,7 +31,7 @@ namespace optionx {
             "CLIENT_CONNECTED",
             "CLIENT_DISCONNECTED",
             "CONNECTION_ERROR"};
-		return str_data[static_cast<size_t>(value)];
+		return utils::enum_string_or_unknown(str_data, static_cast<size_t>(value));
     };
 
 	/// \brief Converts string to BridgeStatus enumeration.
@@ -77,7 +77,7 @@ namespace optionx {
     }
 
 	/// \brief Stream output operator for BridgeStatus.
-	std::ostream& operator<<(std::ostream& os, BridgeStatus value) {
+	inline std::ostream& operator<<(std::ostream& os, BridgeStatus value) {
         os << optionx::to_str(value);
         return os;
     }
