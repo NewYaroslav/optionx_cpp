@@ -5,6 +5,8 @@
 /// \file TradeExecutionModule.hpp
 /// \brief Implements trade execution functionality for the Intrade Bar platform.
 
+#include "SymbolUtils.hpp"
+
 namespace optionx::platforms::intrade_bar {
 
     /// \class TradeExecutionModule
@@ -45,6 +47,9 @@ namespace optionx::platforms::intrade_bar {
         bool preprocess_trade_request(
                 std::unique_ptr<TradeRequest> &trade_request,
                 std::unique_ptr<TradeResult> &trade_result) override final {
+            if (trade_request) {
+                trade_request->symbol = normalize_symbol_name(std::move(trade_request->symbol));
+            }
             if (trade_request &&
                 trade_request->option_type == OptionType::CLASSIC) {
                 if (trade_request->expiry_time > 0) {

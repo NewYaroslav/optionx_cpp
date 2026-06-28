@@ -5,6 +5,8 @@
 /// \file AccountInfoData.hpp
 /// \brief Contains the AccountInfoData class for Intrade Bar platform account information.
 
+#include "SymbolUtils.hpp"
+
 namespace optionx::platforms::intrade_bar {
 
     /// \class AccountInfoData
@@ -84,11 +86,11 @@ namespace optionx::platforms::intrade_bar {
                     "USDCAD","USDCHF","USDJPY",
                     "BTCUSDT"
                 };
-                return (symbols.find(request.symbol) != symbols.end());
+                return (symbols.find(normalize_symbol_name(request.symbol)) != symbols.end());
             }
             case AccountInfoType::OPTION_TYPE_AVAILABILITY:
                 if (request.option_type == OptionType::CLASSIC &&
-                    (request.symbol == "BTCUSDT" || request.symbol == "BTCUSD")) return false;
+                    is_btc_symbol(request.symbol)) return false;
                 return (request.option_type == OptionType::CLASSIC || request.option_type == OptionType::SPRINT);
             case AccountInfoType::ORDER_TYPE_AVAILABILITY:
                 return (request.order_type == OrderType::BUY || request.order_type == OrderType::SELL);
@@ -110,10 +112,8 @@ namespace optionx::platforms::intrade_bar {
                 return true;
             case AccountInfoType::DURATION_AVAILABLE: {
                 if (request.option_type == OptionType::CLASSIC) return true;
-                const int64_t req_min_duration = (request.symbol == "BTCUSD" || request.symbol == "BTCUSDT") ?
-                    min_btc_duration : min_duration;
-                const int64_t req_max_duration = (request.symbol == "BTCUSD" || request.symbol == "BTCUSDT") ?
-                    max_duration : std::min(time_shield::start_of_min(end_time - time_shield::sec_of_day(request.timestamp)), max_duration);
+                const int64_t req_min_duration = get_min_duration(request);
+                const int64_t req_max_duration = get_max_duration_sec(request);
                 return (request.duration >= req_min_duration &&
                         request.duration <= req_max_duration &&
                         (request.duration % time_shield::SEC_PER_MIN) == 0 &&
@@ -159,11 +159,13 @@ namespace optionx::platforms::intrade_bar {
                 case AccountInfoType::MIN_AMOUNT: return static_cast<int64_t>(get_min_amount(request));
                 case AccountInfoType::MAX_AMOUNT: return static_cast<int64_t>(get_max_amount(request));
                 case AccountInfoType::MIN_DURATION:
-                    return (request.symbol == "BTCUSD" || request.symbol == "BTCUSDT") ? min_btc_duration : min_duration;
+                    return get_min_duration(request);
                 case AccountInfoType::MAX_DURATION:
-                    return std::min(time_shield::start_of_min(end_time - time_shield::sec_of_day(request.timestamp)), max_duration);
-                case AccountInfoType::START_TIME: return time_shield::start_of_day(request.timestamp) + start_time;
-                case AccountInfoType::END_TIME: return time_shield::start_of_day(request.timestamp) + end_time;
+                    return get_max_duration_sec(request);
+                case AccountInfoType::START_TIME:
+                    return time_shield::start_of_day(request.timestamp) + get_start_time_sec(request);
+                case AccountInfoType::END_TIME:
+                    return time_shield::start_of_day(request.timestamp) + get_end_time_sec(request);
                 case AccountInfoType::ORDER_QUEUE_TIMEOUT: return order_queue_timeout;
                 case AccountInfoType::RESPONSE_TIMEOUT: return responce_timeout;
                 case AccountInfoType::ORDER_INTERVAL_MS: return order_interval_ms;
@@ -241,6 +243,39 @@ namespace optionx::platforms::intrade_bar {
                     max_usd_amount : (currency == CurrencyType::RUB ? max_rub_amount : 0.0)));
         }
 
+        /// \brief Gets the minimum sprint duration for the requested symbol.
+        /// \param request The account information request.
+        /// \return Minimum duration in seconds.
+        int64_t get_min_duration(const AccountInfoRequest& request) const {
+            return is_btc_symbol(request.symbol) ? min_btc_duration : min_duration;
+        }
+
+        /// \brief Gets the maximum sprint duration for the requested symbol.
+        /// \param request The account information request.
+        /// \return Maximum duration in seconds.
+        int64_t get_max_duration_sec(const AccountInfoRequest& request) const {
+            if (is_btc_symbol(request.symbol)) {
+                return max_duration;
+            }
+            return std::min(
+                time_shield::start_of_min(end_time - time_shield::sec_of_day(request.timestamp)),
+                max_duration);
+        }
+
+        /// \brief Gets the trading session start time for the requested symbol.
+        /// \param request The account information request.
+        /// \return Session start offset from local day start in seconds.
+        int64_t get_start_time_sec(const AccountInfoRequest& request) const {
+            return is_btc_symbol(request.symbol) ? start_btc_time : start_time;
+        }
+
+        /// \brief Gets the trading session end time for the requested symbol.
+        /// \param request The account information request.
+        /// \return Session end offset from local day start in seconds.
+        int64_t get_end_time_sec(const AccountInfoRequest& request) const {
+            return is_btc_symbol(request.symbol) ? end_btc_time : end_time;
+        }
+
         /// \brief Checks if the amount limits apply based on the time of day.
         /// \param second_day The time in seconds since the start of the day.
         /// \return True if amount limits are in effect, false otherwise.
@@ -293,7 +328,7 @@ namespace optionx::platforms::intrade_bar {
             }
 
             const int64_t sec_of_day = time_shield::sec_of_day(request.timestamp);
-            if (request.symbol == "BTCUSDT" || request.symbol == "BTCUSD") {
+            if (is_btc_symbol(request.symbol)) {
                 if (request.option_type == OptionType::CLASSIC ||
                     request.duration < min_btc_duration ||
                     request.duration > max_duration) {

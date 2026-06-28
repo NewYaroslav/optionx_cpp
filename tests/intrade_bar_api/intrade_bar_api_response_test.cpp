@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <thread>
+
 #include <optionx_cpp/platforms/IntradeBarPlatform.hpp>
 
 using namespace optionx;
@@ -52,6 +55,108 @@ TEST(IntradeBarApiResponses, PriceDigitsMatchBrokerSymbols) {
     EXPECT_EQ(spread.digits, 2);
     EXPECT_DOUBLE_EQ(spread.open_spread(), 0.0);
     EXPECT_DOUBLE_EQ(spread.close_spread(), 0.0);
+}
+
+TEST(IntradeBarSymbols, NormalizesBtcAliases) {
+    EXPECT_EQ(normalize_symbol_name("BTCUSD"), "BTCUSDT");
+    EXPECT_EQ(normalize_symbol_name("btcusd"), "BTCUSDT");
+    EXPECT_EQ(normalize_symbol_name("BTC/USDT"), "BTCUSDT");
+    EXPECT_EQ(normalize_symbol_name("btc/usdt"), "BTCUSDT");
+    EXPECT_EQ(normalize_symbol_name("BTC/USD"), "BTCUSDT");
+    EXPECT_EQ(normalize_symbol_name("btc/usd"), "BTCUSDT");
+    EXPECT_EQ(normalize_symbol_name("EUR/USD"), "EURUSD");
+    EXPECT_EQ(normalize_symbol_name("eur/usd"), "EURUSD");
+
+    EXPECT_TRUE(is_btc_symbol("BTCUSD"));
+    EXPECT_TRUE(is_btc_symbol("btcusd"));
+    EXPECT_TRUE(is_btc_symbol("BTCUSDT"));
+    EXPECT_TRUE(is_btc_symbol("BTC/USD"));
+    EXPECT_TRUE(is_btc_symbol("btc/usd"));
+    EXPECT_FALSE(is_btc_symbol("EURUSD"));
+}
+
+TEST(IntradeBarAccountInfo, AcceptsBtcAliasAndUsesBtcDurationRules) {
+    AccountInfoData account;
+    const int64_t day_timestamp = 1712345600;
+    const int64_t day_start = time_shield::start_of_day(day_timestamp);
+
+    AccountInfoRequest request;
+    request.type = AccountInfoType::SYMBOL_AVAILABILITY;
+    request.symbol = "BTCUSD";
+    EXPECT_TRUE(account.get_info<bool>(request));
+
+    request.symbol = "btcusd";
+    EXPECT_TRUE(account.get_info<bool>(request));
+
+    request.symbol = "BTC/USD";
+    EXPECT_TRUE(account.get_info<bool>(request));
+
+    request.symbol = "BTCUSDT";
+    EXPECT_TRUE(account.get_info<bool>(request));
+
+    request.type = AccountInfoType::MIN_DURATION;
+    request.symbol = "BTCUSD";
+    EXPECT_EQ(account.get_info<int64_t>(request), account.min_btc_duration);
+
+    request.type = AccountInfoType::MAX_DURATION;
+    request.symbol = "BTCUSD";
+    request.timestamp = account.end_time - 30;
+    EXPECT_EQ(account.get_info<int64_t>(request), account.max_duration);
+
+    request.symbol = "EURUSD";
+    EXPECT_LT(account.get_info<int64_t>(request), account.max_duration);
+
+    request.timestamp = day_timestamp;
+    request.symbol = "btc/usd";
+    request.type = AccountInfoType::START_TIME;
+    EXPECT_EQ(account.get_info<int64_t>(request), day_start + account.start_btc_time);
+    request.type = AccountInfoType::END_TIME;
+    EXPECT_EQ(account.get_info<int64_t>(request), day_start + account.end_btc_time);
+
+    request.symbol = "EURUSD";
+    request.type = AccountInfoType::START_TIME;
+    EXPECT_EQ(account.get_info<int64_t>(request), day_start + account.start_time);
+    request.type = AccountInfoType::END_TIME;
+    EXPECT_EQ(account.get_info<int64_t>(request), day_start + account.end_time);
+}
+
+TEST(IntradeBarTradeExecution, NormalizesBtcAliasBeforeQueueProcessing) {
+    IntradeBarPlatform platform;
+
+    bool callback_called = false;
+    std::string callback_symbol;
+    TradeErrorCode callback_error = TradeErrorCode::INVALID_REQUEST;
+
+    platform.on_trade_result() = [&](
+            std::unique_ptr<TradeRequest> request,
+            std::unique_ptr<TradeResult> result) {
+        callback_called = true;
+        callback_symbol = request ? request->symbol : std::string();
+        callback_error = result ? result->error_code : TradeErrorCode::INVALID_REQUEST;
+    };
+
+    auto request = std::make_unique<TradeRequest>();
+    request->symbol = "btc/usd";
+    request->option_type = OptionType::SPRINT;
+    request->order_type = OrderType::BUY;
+    request->account_type = AccountType::DEMO;
+    request->currency = CurrencyType::USD;
+    request->amount = 1.0;
+    request->duration = 300;
+
+    platform.run(false);
+    ASSERT_TRUE(platform.place_trade(std::move(request)));
+
+    for (int i = 0; i < 200 && !callback_called; ++i) {
+        platform.process();
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+
+    platform.shutdown();
+
+    ASSERT_TRUE(callback_called);
+    EXPECT_EQ(callback_symbol, "BTCUSDT");
+    EXPECT_EQ(callback_error, TradeErrorCode::NO_CONNECTION);
 }
 
 TEST(IntradeBarAuthData, KeepsDisconnectedDomainRetryPeriodInConfig) {
