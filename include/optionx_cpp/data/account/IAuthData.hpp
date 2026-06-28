@@ -22,8 +22,7 @@ namespace optionx {
 
         /// \brief Assigns authorization data base state without copying callbacks.
         /// \details Existing callbacks registered on this object are kept.
-        IAuthData& operator=(const IAuthData& other) {
-            if (this == &other) return *this;
+        IAuthData& operator=(const IAuthData&) noexcept {
             return *this;
         }
 

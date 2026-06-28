@@ -143,6 +143,8 @@ namespace optionx {
         )
 
     private:
+        // Keep this list in sync with TradeRequest data fields; callbacks are
+        // intentionally excluded from copy snapshots and assignments.
         void copy_data_from(const TradeRequest& other) {
             symbol = other.symbol;
             signal_name = other.signal_name;

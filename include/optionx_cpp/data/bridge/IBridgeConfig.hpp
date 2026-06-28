@@ -18,8 +18,7 @@ namespace optionx {
 
         /// \brief Assigns configuration base state without copying callbacks.
         /// \details Existing callbacks registered on this object are kept.
-        IBridgeConfig& operator=(const IBridgeConfig& other) {
-            if (this == &other) return *this;
+        IBridgeConfig& operator=(const IBridgeConfig&) noexcept {
             return *this;
         }
 
