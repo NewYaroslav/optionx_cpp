@@ -162,8 +162,10 @@ namespace optionx::platforms::intrade_bar {
                     return get_min_duration(request);
                 case AccountInfoType::MAX_DURATION:
                     return get_max_duration_sec(request);
-                case AccountInfoType::START_TIME: return time_shield::start_of_day(request.timestamp) + start_time;
-                case AccountInfoType::END_TIME: return time_shield::start_of_day(request.timestamp) + end_time;
+                case AccountInfoType::START_TIME:
+                    return time_shield::start_of_day(request.timestamp) + get_start_time_sec(request);
+                case AccountInfoType::END_TIME:
+                    return time_shield::start_of_day(request.timestamp) + get_end_time_sec(request);
                 case AccountInfoType::ORDER_QUEUE_TIMEOUT: return order_queue_timeout;
                 case AccountInfoType::RESPONSE_TIMEOUT: return responce_timeout;
                 case AccountInfoType::ORDER_INTERVAL_MS: return order_interval_ms;
@@ -258,6 +260,20 @@ namespace optionx::platforms::intrade_bar {
             return std::min(
                 time_shield::start_of_min(end_time - time_shield::sec_of_day(request.timestamp)),
                 max_duration);
+        }
+
+        /// \brief Gets the trading session start time for the requested symbol.
+        /// \param request The account information request.
+        /// \return Session start offset from local day start in seconds.
+        int64_t get_start_time_sec(const AccountInfoRequest& request) const {
+            return is_btc_symbol(request.symbol) ? start_btc_time : start_time;
+        }
+
+        /// \brief Gets the trading session end time for the requested symbol.
+        /// \param request The account information request.
+        /// \return Session end offset from local day start in seconds.
+        int64_t get_end_time_sec(const AccountInfoRequest& request) const {
+            return is_btc_symbol(request.symbol) ? end_btc_time : end_time;
         }
 
         /// \brief Checks if the amount limits apply based on the time of day.

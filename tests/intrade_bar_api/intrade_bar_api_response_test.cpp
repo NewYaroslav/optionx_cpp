@@ -77,6 +77,8 @@ TEST(IntradeBarSymbols, NormalizesBtcAliases) {
 
 TEST(IntradeBarAccountInfo, AcceptsBtcAliasAndUsesBtcDurationRules) {
     AccountInfoData account;
+    const int64_t day_timestamp = 1712345600;
+    const int64_t day_start = time_shield::start_of_day(day_timestamp);
 
     AccountInfoRequest request;
     request.type = AccountInfoType::SYMBOL_AVAILABILITY;
@@ -103,6 +105,19 @@ TEST(IntradeBarAccountInfo, AcceptsBtcAliasAndUsesBtcDurationRules) {
 
     request.symbol = "EURUSD";
     EXPECT_LT(account.get_info<int64_t>(request), account.max_duration);
+
+    request.timestamp = day_timestamp;
+    request.symbol = "btc/usd";
+    request.type = AccountInfoType::START_TIME;
+    EXPECT_EQ(account.get_info<int64_t>(request), day_start + account.start_btc_time);
+    request.type = AccountInfoType::END_TIME;
+    EXPECT_EQ(account.get_info<int64_t>(request), day_start + account.end_btc_time);
+
+    request.symbol = "EURUSD";
+    request.type = AccountInfoType::START_TIME;
+    EXPECT_EQ(account.get_info<int64_t>(request), day_start + account.start_time);
+    request.type = AccountInfoType::END_TIME;
+    EXPECT_EQ(account.get_info<int64_t>(request), day_start + account.end_time);
 }
 
 TEST(IntradeBarTradeExecution, NormalizesBtcAliasBeforeQueueProcessing) {
