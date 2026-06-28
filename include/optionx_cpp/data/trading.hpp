@@ -32,6 +32,7 @@
 #include "utils/string_utils.hpp"
 
 #include "trading/enums.hpp"
+#include "trading/SpreadPack.hpp"
 #include "trading/TradeResult.hpp"
 #include "trading/TradeResultQuery.hpp"
 #include "trading/TradeRecordTimeRange.hpp"
