@@ -118,6 +118,24 @@ TEST(TaskTest, RescheduleUpdatesExecutionTimeBeforeProcessing) {
     EXPECT_LE(task.get_next_execution_time(), after_ms + 5000);
 }
 
+TEST(TaskTest, SetPeriodUpdatesExecutionTimeBeforeProcessing) {
+    auto callback = [](std::shared_ptr<optionx::utils::Task>) {};
+    const auto before_ms = optionx::utils::Task::get_current_time();
+
+    optionx::utils::Task task(
+        optionx::utils::TaskType::PERIODIC,
+        callback,
+        0,
+        5000);
+
+    ASSERT_TRUE(task.set_period(8000));
+
+    const auto after_ms = optionx::utils::Task::get_current_time();
+
+    EXPECT_GE(task.get_next_execution_time(), before_ms + 8000);
+    EXPECT_LE(task.get_next_execution_time(), after_ms + 8000);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

@@ -140,6 +140,9 @@ namespace optionx::utils {
             m_start_time -= m_period_ms;
             m_period_ms = new_period_ms;
             m_start_time += m_period_ms;
+            if (m_type == TaskType::PERIODIC) {
+                m_execution_time = m_start_time;
+            }
             return true;
         }
 
