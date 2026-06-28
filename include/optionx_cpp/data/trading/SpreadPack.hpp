@@ -16,18 +16,36 @@ namespace optionx {
 
     /// \struct SpreadPack
     /// \brief Packs open and close spread values into a single 64-bit word with shared decimal precision.
+    ///
+    /// Both packed values use the same `digits` precision. Prefer set_spreads()
+    /// when open and close spread are known together; individual setters are
+    /// intended for updates that keep the same precision.
     struct SpreadPack {
         std::uint64_t raw = 0;     ///< Lower 32 bits = open spread fixed-point, upper 32 bits = close spread fixed-point.
         std::uint8_t  digits = 0;  ///< Number of decimal places for both spreads.
 
         static constexpr std::uint8_t max_digits = 18;
 
+        /// \brief Sets both spreads using one shared decimal precision.
+        /// \param open_value Open spread.
+        /// \param close_value Close spread.
+        /// \param d Number of decimal places for both values.
+        void set_spreads(double open_value, double close_value, std::uint8_t d) {
+            const auto open_fixed = pack_fixed(open_value, d);
+            const auto close_fixed = pack_fixed(close_value, d);
+            digits = d;
+            raw = (static_cast<std::uint64_t>(close_fixed) << 32) |
+                  (static_cast<std::uint64_t>(open_fixed) & kLowerMask);
+        }
+
+        /// \brief Sets open spread and updates shared decimal precision.
         void set_open_spread(double value, std::uint8_t d) {
             const auto fixed = pack_fixed(value, d);
             digits = d;
             raw = (raw & kUpperMask) | (static_cast<std::uint64_t>(fixed) & kLowerMask);
         }
 
+        /// \brief Sets close spread and updates shared decimal precision.
         void set_close_spread(double value, std::uint8_t d) {
             const auto fixed = pack_fixed(value, d);
             digits = d;

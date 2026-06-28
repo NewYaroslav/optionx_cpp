@@ -63,8 +63,7 @@ namespace optionx::platforms::intrade_bar {
     /// \param symbol Symbol whose price precision should be stored.
     inline void set_zero_spread_for_symbol(SpreadPack& spread, const std::string& symbol) {
         const auto digits = price_digits_for_symbol(symbol);
-        spread.set_open_spread(0.0, digits);
-        spread.set_close_spread(0.0, digits);
+        spread.set_spreads(0.0, 0.0, digits);
     }
 
     using ::optionx::utils::validate_status;

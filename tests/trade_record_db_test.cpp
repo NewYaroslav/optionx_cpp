@@ -368,6 +368,18 @@ TEST(SpreadPackTest, PreservesCloseSpreadWhenOpenIsSetAfterwards) {
     EXPECT_DOUBLE_EQ(pack.spread_difference(), -0.00025);
 }
 
+TEST(SpreadPackTest, SetsBothSpreadsAtomicallyWithSharedPrecision) {
+    optionx::SpreadPack pack;
+    pack.set_spreads(0.00015, -0.00010, 5);
+
+    EXPECT_EQ(pack.digits, 5);
+    EXPECT_DOUBLE_EQ(pack.open_spread(), 0.00015);
+    EXPECT_DOUBLE_EQ(pack.close_spread(), -0.00010);
+    EXPECT_DOUBLE_EQ(pack.spread_difference(), -0.00025);
+    EXPECT_TRUE(pack.is_open_spread_positive());
+    EXPECT_FALSE(pack.is_close_spread_positive());
+}
+
 TEST(SpreadPackTest, HandlesZeroAndEdgeValues) {
     optionx::SpreadPack pack;
     pack.set_open_spread(0.0, 0);
@@ -391,6 +403,7 @@ TEST(SpreadPackTest, RejectsInvalidValuesAndPreservesPreviousState) {
     EXPECT_THROW(pack.set_open_spread(std::numeric_limits<double>::infinity(), 5), std::invalid_argument);
     EXPECT_THROW(pack.set_close_spread(0.000000003, 18), std::out_of_range);
     EXPECT_THROW(pack.set_open_spread(0.1, optionx::SpreadPack::max_digits + 1), std::invalid_argument);
+    EXPECT_THROW(pack.set_spreads(0.0, 0.000000003, 18), std::out_of_range);
 
     EXPECT_EQ(pack.raw, raw);
     EXPECT_EQ(pack.digits, digits);
