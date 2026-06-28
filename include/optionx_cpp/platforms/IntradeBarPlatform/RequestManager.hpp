@@ -1073,6 +1073,18 @@ namespace optionx::platforms::intrade_bar {
                 if (record.comment.empty()) record.comment = request.comment;
             }
         }
+
+        long select_combined_trade_history_status(
+                bool csv_success,
+                long csv_status_code,
+                bool html_success,
+                long html_status_code) {
+            if (!csv_success && csv_status_code >= 0) return csv_status_code;
+            if (!html_success && html_status_code >= 0) return html_status_code;
+            if (!csv_success) return csv_status_code;
+            if (!html_success) return html_status_code;
+            return csv_status_code >= 0 ? csv_status_code : html_status_code;
+        }
     }
 
     void RequestManager::request_trade_history(
@@ -1122,13 +1134,24 @@ namespace optionx::platforms::intrade_bar {
                         if (csv_success && html_success) {
                             callback(
                                 true,
-                                csv_status_code >= 0 ? csv_status_code : html_status_code,
+                                select_combined_trade_history_status(
+                                    csv_success,
+                                    csv_status_code,
+                                    html_success,
+                                    html_status_code),
                                 merge_trade_history_csv_with_html(
                                     std::move(csv_records),
                                     html_records));
                             return;
                         }
-                        callback(false, csv_status_code >= 0 ? csv_status_code : html_status_code, {});
+                        callback(
+                            false,
+                            select_combined_trade_history_status(
+                                csv_success,
+                                csv_status_code,
+                                html_success,
+                                html_status_code),
+                            {});
                     });
             });
     }
