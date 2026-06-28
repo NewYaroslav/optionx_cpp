@@ -81,7 +81,7 @@ struct LocalTradeHistoryServer {
         stop();
     }
 
-    void start() {
+    bool start() {
         server.config.address = "127.0.0.1";
         server.config.port = 0;
 
@@ -109,7 +109,11 @@ struct LocalTradeHistoryServer {
             server.start();
         });
 
-        ASSERT_TRUE(wait_until_ready());
+        if (!wait_until_ready()) {
+            stop();
+            return false;
+        }
+        return true;
     }
 
     void stop() {
@@ -154,6 +158,12 @@ struct LocalTradeHistoryServer {
     std::atomic<int> html_requests{0};
 };
 
+struct CombinedHistoryTestResult {
+    TradeHistoryApiResult result;
+    int callback_count = 0;
+    bool callback_received = false;
+};
+
 std::string valid_trade_history_csv() {
     return
         "id;Type;Asset;Direction;Open;Close;Open quote;Close quote;Amount;Result\n"
@@ -175,7 +185,7 @@ std::string empty_trade_history_html() {
     )HTML";
 }
 
-TradeHistoryApiResult request_combined_trade_history(LocalTradeHistoryServer& server) {
+CombinedHistoryTestResult request_combined_trade_history(LocalTradeHistoryServer& server) {
     TestPlatform platform;
     HttpClientModule http_client(platform);
     RequestManager request_manager(platform, http_client);
@@ -189,25 +199,34 @@ TradeHistoryApiResult request_combined_trade_history(LocalTradeHistoryServer& se
     http_client.get_http_client().set_retry_attempts(0, 0);
     request_manager.set_auth_credentials("866188", "test_hash");
 
-    TradeHistoryApiResult result;
+    CombinedHistoryTestResult call;
     std::atomic<int> callback_count{0};
 
     request_manager.request_trade_history_result(
         TradeHistoryRequest::all(),
         AccountType::DEMO,
-        [&result, &callback_count](TradeHistoryApiResult history_result) {
-            result = std::move(history_result);
+        [&call, &callback_count](TradeHistoryApiResult history_result) {
+            call.result = std::move(history_result);
             ++callback_count;
         });
 
-    for (int i = 0; i < 500 && callback_count.load() == 0; ++i) {
+    for (int i = 0; i < 500; ++i) {
+        http_client.process();
+        if (callback_count.load() != 0) {
+            call.callback_received = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    for (int i = 0; i < 20; ++i) {
         http_client.process();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    EXPECT_EQ(callback_count.load(), 1);
+    call.callback_count = callback_count.load();
     platform.shutdown();
-    return result;
+    return call;
 }
 
 } // namespace
@@ -601,12 +620,14 @@ TEST(IntradeBarApiResponses, CombinedTradeHistoryRequestReportsHtmlFailureStatus
         valid_trade_history_csv(),
         451,
         "blocked");
-    server.start();
+    ASSERT_TRUE(server.start());
 
-    auto result = request_combined_trade_history(server);
+    const auto call = request_combined_trade_history(server);
 
-    EXPECT_FALSE(result);
-    EXPECT_EQ(result.status_code, 451);
+    ASSERT_TRUE(call.callback_received);
+    ASSERT_EQ(call.callback_count, 1);
+    EXPECT_FALSE(call.result);
+    EXPECT_EQ(call.result.status_code, 451);
     EXPECT_EQ(server.csv_requests.load(), 1);
     EXPECT_EQ(server.html_requests.load(), 1);
 }
@@ -617,12 +638,14 @@ TEST(IntradeBarApiResponses, CombinedTradeHistoryRequestReportsCsvFailureStatus)
         "server error",
         200,
         empty_trade_history_html());
-    server.start();
+    ASSERT_TRUE(server.start());
 
-    auto result = request_combined_trade_history(server);
+    const auto call = request_combined_trade_history(server);
 
-    EXPECT_FALSE(result);
-    EXPECT_EQ(result.status_code, 500);
+    ASSERT_TRUE(call.callback_received);
+    ASSERT_EQ(call.callback_count, 1);
+    EXPECT_FALSE(call.result);
+    EXPECT_EQ(call.result.status_code, 500);
     EXPECT_EQ(server.csv_requests.load(), 1);
     EXPECT_EQ(server.html_requests.load(), 1);
 }
