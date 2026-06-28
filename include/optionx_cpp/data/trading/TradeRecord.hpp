@@ -14,7 +14,7 @@ namespace optionx {
     class TradeRecord {
     public:
         // Storage identity
-        std::uint64_t trade_id = 0;           ///< 32-bit linear persistent trade ID (low 32 bits of composite key).
+        std::uint64_t trade_id = 0;           ///< Linear persistent trade ID; TradeRecordDB currently accepts 1..UINT32_MAX.
         std::int64_t request_unique_id = 0;   ///< Unique ID from TradeRequest.
         std::string request_unique_hash;      ///< Unique hash from TradeRequest.
         std::int64_t account_id = 0;          ///< Trading account ID.
@@ -106,6 +106,9 @@ namespace optionx {
         }
 
         /// \brief Copies result-side fields into this record.
+        /// \details Request-derived identity and account context are preserved
+        /// when corresponding result fields are unspecified. Other result-state
+        /// fields are copied as-is, including default values.
         void assign_result(const TradeResult& result) {
             if (result.trade_id > 0) trade_id = result.trade_id;
             if (result.option_id != 0) option_id = result.option_id;
