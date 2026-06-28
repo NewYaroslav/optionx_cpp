@@ -25,6 +25,7 @@ namespace optionx::modules {
 
         /// \brief Default virtual destructor.
         virtual ~BaseHttpClientModule() noexcept override {
+            deinitialize_rate_limits();
             m_client.cancel_requests();
             m_http_tasks.clear();
         }
@@ -105,7 +106,9 @@ namespace optionx::modules {
         /// \param requests_per_minute Maximum number of requests allowed per minute.
         template<class T>
         void set_rate_limit_rpm(T rate_limit_id, uint32_t requests_per_minute) {
-            m_rate_limits[static_cast<uint32_t>(rate_limit_id)] = kurlyk::create_rate_limit_rpm(requests_per_minute);
+            const auto id = static_cast<uint32_t>(rate_limit_id);
+            auto handle = kurlyk::create_rate_limit_rpm(requests_per_minute);
+            replace_rate_limit(id, std::move(handle));
         }
 
         /// \brief Creates a rate limit based on Requests Per Second (RPS).
@@ -113,10 +116,23 @@ namespace optionx::modules {
         /// \param requests_per_second Maximum number of requests allowed per second.
         template<class T>
         void set_rate_limit_rps(T rate_limit_id, uint32_t requests_per_second) {
-            m_rate_limits[static_cast<uint32_t>(rate_limit_id)] = kurlyk::create_rate_limit_rps(requests_per_second);
+            const auto id = static_cast<uint32_t>(rate_limit_id);
+            auto handle = kurlyk::create_rate_limit_rps(requests_per_second);
+            replace_rate_limit(id, std::move(handle));
         }
 
     private:
+
+        void replace_rate_limit(uint32_t id, kurlyk::HttpRateLimitHandlePtr handle) {
+            auto it = m_rate_limits.find(id);
+            if (it != m_rate_limits.end()) {
+                if (it->second) kurlyk::remove_limit(it->second);
+                it->second = std::move(handle);
+                return;
+            }
+
+            m_rate_limits.emplace(id, std::move(handle));
+        }
 
         /// \brief Processes all pending HTTP responses.
         void process_http_responses() {
