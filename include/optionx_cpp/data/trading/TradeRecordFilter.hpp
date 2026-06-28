@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <string>
 
-#include "data/trading/enums.hpp"
+#include "enums.hpp"
 
 namespace optionx {
 
