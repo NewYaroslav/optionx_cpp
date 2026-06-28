@@ -45,11 +45,11 @@ namespace optionx {
             copy_data_from(other);
         }
 
-        /// \brief Assigns request data and clears runtime callbacks.
+        /// \brief Assigns request data without copying runtime callbacks.
+        /// \details Existing callbacks registered on this request are kept.
         TradeRequest& operator=(const TradeRequest& other) {
             if (this == &other) return *this;
             copy_data_from(other);
-            m_callbacks.clear();
             return *this;
         }
 

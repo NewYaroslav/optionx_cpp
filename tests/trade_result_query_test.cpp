@@ -203,6 +203,141 @@ TEST(DtoClone, BridgeConfigSnapshotsCanDropCallbacks) {
     EXPECT_EQ(callback_calls, 1);
 }
 
+TEST(DtoAssignment, TradeRequestDoesNotCopySourceCallbacks) {
+    auto source = std::make_shared<TradeRequest>();
+    source->symbol = "EURUSD";
+    source->amount = 2.0;
+
+    auto destination = std::make_shared<TradeRequest>();
+    destination->symbol = "BTCUSDT";
+    destination->amount = 1.0;
+
+    auto result = std::make_shared<TradeResult>();
+    int source_callback_calls = 0;
+    int destination_callback_calls = 0;
+
+    source->add_callback(
+        [&source_callback_calls](
+                std::unique_ptr<TradeRequest>,
+                std::unique_ptr<TradeResult>) {
+            ++source_callback_calls;
+        });
+
+    destination->add_callback(
+        [&destination_callback_calls](
+                std::unique_ptr<TradeRequest>,
+                std::unique_ptr<TradeResult>) {
+            ++destination_callback_calls;
+        });
+
+    *destination = *source;
+
+    EXPECT_EQ(destination->symbol, "EURUSD");
+    EXPECT_EQ(destination->amount, 2.0);
+
+    destination->dispatch_callbacks(destination, result);
+    EXPECT_EQ(source_callback_calls, 0);
+    EXPECT_EQ(destination_callback_calls, 1);
+
+    source->dispatch_callbacks(source, result);
+    EXPECT_EQ(source_callback_calls, 1);
+    EXPECT_EQ(destination_callback_calls, 1);
+}
+
+TEST(DtoAssignment, AuthDataDoesNotCopySourceCallbacks) {
+    platforms::intrade_bar::AuthData source;
+    source.email = "source@example.com";
+
+    platforms::intrade_bar::AuthData destination;
+    destination.email = "destination@example.com";
+
+    int source_callback_calls = 0;
+    int destination_callback_calls = 0;
+
+    source.add_callback(
+        [&source_callback_calls](bool, const std::string&) {
+            ++source_callback_calls;
+        });
+
+    destination.add_callback(
+        [&destination_callback_calls](bool, const std::string&) {
+            ++destination_callback_calls;
+        });
+
+    destination = source;
+
+    EXPECT_EQ(destination.email, "source@example.com");
+
+    destination.dispatch_callbacks(true, "destination");
+    EXPECT_EQ(source_callback_calls, 0);
+    EXPECT_EQ(destination_callback_calls, 1);
+
+    source.dispatch_callbacks(true, "source");
+    EXPECT_EQ(source_callback_calls, 1);
+    EXPECT_EQ(destination_callback_calls, 1);
+}
+
+TEST(DtoAssignment, TradeUpAuthDataDoesNotCopySourceCallbacks) {
+    platforms::tradeup::AuthData source;
+    source.email = "source@example.com";
+
+    platforms::tradeup::AuthData destination;
+    destination.email = "destination@example.com";
+
+    int source_callback_calls = 0;
+    int destination_callback_calls = 0;
+
+    source.add_callback(
+        [&source_callback_calls](bool, const std::string&) {
+            ++source_callback_calls;
+        });
+
+    destination.add_callback(
+        [&destination_callback_calls](bool, const std::string&) {
+            ++destination_callback_calls;
+        });
+
+    destination = source;
+
+    EXPECT_EQ(destination.email, "source@example.com");
+
+    destination.dispatch_callbacks(true, "destination");
+    EXPECT_EQ(source_callback_calls, 0);
+    EXPECT_EQ(destination_callback_calls, 1);
+
+    source.dispatch_callbacks(true, "source");
+    EXPECT_EQ(source_callback_calls, 1);
+    EXPECT_EQ(destination_callback_calls, 1);
+}
+
+TEST(DtoAssignment, BridgeConfigDoesNotCopySourceCallbacks) {
+    TestBridgeConfig source;
+    TestBridgeConfig destination;
+
+    int source_callback_calls = 0;
+    int destination_callback_calls = 0;
+
+    source.add_callback(
+        [&source_callback_calls](bool, const std::string&) {
+            ++source_callback_calls;
+        });
+
+    destination.add_callback(
+        [&destination_callback_calls](bool, const std::string&) {
+            ++destination_callback_calls;
+        });
+
+    destination = source;
+
+    destination.dispatch_callbacks(true, "destination");
+    EXPECT_EQ(source_callback_calls, 0);
+    EXPECT_EQ(destination_callback_calls, 1);
+
+    source.dispatch_callbacks(true, "source");
+    EXPECT_EQ(source_callback_calls, 1);
+    EXPECT_EQ(destination_callback_calls, 1);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

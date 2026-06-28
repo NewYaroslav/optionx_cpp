@@ -16,10 +16,10 @@ namespace optionx {
         /// \brief Copies configuration base state without runtime callbacks.
         IBridgeConfig(const IBridgeConfig&) {}
 
-        /// \brief Assigns configuration base state and clears callbacks.
+        /// \brief Assigns configuration base state without copying callbacks.
+        /// \details Existing callbacks registered on this object are kept.
         IBridgeConfig& operator=(const IBridgeConfig& other) {
             if (this == &other) return *this;
-            m_callbacks.clear();
             return *this;
         }
 
