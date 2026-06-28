@@ -206,7 +206,12 @@ namespace optionx::utils {
             }
         }
 
-        /// \brief Shuts down the task manager, preventing further additions.
+        /// \brief Cancels and drains currently queued tasks.
+        /// \details During the drain, new tasks are rejected and existing tasks
+        ///          receive the shutdown flag. After the drain completes, the
+        ///          manager becomes reusable and new tasks may be scheduled
+        ///          again. This method is also used by the destructor as a final
+        ///          drain step.
         void shutdown() {
             LOGIT_TRACE0();
             m_shutdown = true;

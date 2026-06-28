@@ -52,6 +52,72 @@ TEST(TaskTest, KeepsPreviousPeriodWhenSetPeriodIsInvalid) {
     EXPECT_TRUE(task->set_period(1));
 }
 
+TEST(TaskTest, InitializesExecutionTimeBeforeProcessing) {
+    auto callback = [](std::shared_ptr<optionx::utils::Task>) {};
+    const auto before_ms = optionx::utils::Task::get_current_time();
+
+    optionx::utils::Task single(
+        optionx::utils::TaskType::SINGLE,
+        callback);
+    optionx::utils::Task delayed(
+        optionx::utils::TaskType::DELAYED_SINGLE,
+        callback,
+        5000);
+    optionx::utils::Task periodic(
+        optionx::utils::TaskType::PERIODIC,
+        callback,
+        0,
+        7000);
+    optionx::utils::Task delayed_periodic(
+        optionx::utils::TaskType::DELAYED_PERIODIC,
+        callback,
+        3000,
+        7000);
+    optionx::utils::Task on_date(
+        optionx::utils::TaskType::ON_DATE,
+        callback,
+        0,
+        0,
+        123456789);
+    optionx::utils::Task periodic_on_date(
+        optionx::utils::TaskType::PERIODIC_ON_DATE,
+        callback,
+        0,
+        7000,
+        123456789);
+
+    const auto after_ms = optionx::utils::Task::get_current_time();
+
+    EXPECT_GE(single.get_next_execution_time(), before_ms);
+    EXPECT_LE(single.get_next_execution_time(), after_ms);
+    EXPECT_GE(delayed.get_next_execution_time(), before_ms + 5000);
+    EXPECT_LE(delayed.get_next_execution_time(), after_ms + 5000);
+    EXPECT_GE(periodic.get_next_execution_time(), before_ms + 7000);
+    EXPECT_LE(periodic.get_next_execution_time(), after_ms + 7000);
+    EXPECT_GE(delayed_periodic.get_next_execution_time(), before_ms + 3000);
+    EXPECT_LE(delayed_periodic.get_next_execution_time(), after_ms + 3000);
+    EXPECT_EQ(on_date.get_next_execution_time(), 123456789);
+    EXPECT_EQ(periodic_on_date.get_next_execution_time(), 123456789);
+}
+
+TEST(TaskTest, RescheduleUpdatesExecutionTimeBeforeProcessing) {
+    auto callback = [](std::shared_ptr<optionx::utils::Task>) {};
+    optionx::utils::Task task(
+        optionx::utils::TaskType::DELAYED_SINGLE,
+        callback,
+        5000);
+
+    task.reschedule_at(123456789);
+    EXPECT_EQ(task.get_next_execution_time(), 123456789);
+
+    const auto before_ms = optionx::utils::Task::get_current_time();
+    task.reschedule_in(5000);
+    const auto after_ms = optionx::utils::Task::get_current_time();
+
+    EXPECT_GE(task.get_next_execution_time(), before_ms + 5000);
+    EXPECT_LE(task.get_next_execution_time(), after_ms + 5000);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

@@ -52,6 +52,11 @@ namespace optionx::utils {
               m_start_time(get_current_time() + m_period_ms),
               m_next_execution_time(get_current_time() + delay_ms),
               m_reschedule_time(0),
+              m_execution_time(initial_execution_time(
+                  type,
+                  m_start_time,
+                  m_next_execution_time,
+                  m_timestamp_ms)),
               m_completed(false), m_force_execute(false), m_shutdown(false) {
         }
         
@@ -74,6 +79,11 @@ namespace optionx::utils {
               m_start_time(get_current_time() + m_period_ms),
               m_next_execution_time(get_current_time() + delay_ms),
               m_reschedule_time(0),
+              m_execution_time(initial_execution_time(
+                  type,
+                  m_start_time,
+                  m_next_execution_time,
+                  m_timestamp_ms)),
               m_completed(false), m_force_execute(false), m_shutdown(false),
               m_name(std::move(name)) {
         }
@@ -100,6 +110,7 @@ namespace optionx::utils {
             m_start_time = new_time_ms;
             m_timestamp_ms = new_time_ms;
             m_reschedule_time = new_time_ms;
+            m_execution_time = new_time_ms;
             m_completed = false;
         }
 
@@ -113,6 +124,7 @@ namespace optionx::utils {
             m_start_time = m_next_execution_time;
             m_timestamp_ms = m_next_execution_time;
             m_reschedule_time = m_next_execution_time;
+            m_execution_time = m_next_execution_time;
             m_completed = false;
         }
 
@@ -218,7 +230,9 @@ namespace optionx::utils {
 #           endif
         }
 
-        /// \brief Gets the task's next execution time.
+        /// \brief Gets the task's scheduled execution time.
+        /// \details The value is initialized at construction and then updated
+        ///          when the task is processed or explicitly rescheduled.
         int64_t get_next_execution_time() const {
             std::lock_guard<std::mutex> lock(m_mutex);
             return m_execution_time;
@@ -345,6 +359,26 @@ namespace optionx::utils {
         friend class TaskManager;
 
     private:
+        static int64_t initial_execution_time(
+                TaskType type,
+                int64_t start_time,
+                int64_t next_execution_time,
+                int64_t timestamp_ms) noexcept {
+            switch (type) {
+            case TaskType::SINGLE:
+            case TaskType::PERIODIC:
+                return start_time;
+            case TaskType::DELAYED_SINGLE:
+            case TaskType::DELAYED_PERIODIC:
+                return next_execution_time;
+            case TaskType::ON_DATE:
+            case TaskType::PERIODIC_ON_DATE:
+                return timestamp_ms;
+            default:
+                return start_time;
+            }
+        }
+
         mutable std::mutex m_mutex;
         TaskType m_type;
         Callback m_callback;
