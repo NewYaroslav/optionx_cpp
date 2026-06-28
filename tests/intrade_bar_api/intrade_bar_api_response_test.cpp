@@ -326,6 +326,15 @@ TEST(IntradeBarApiResponses, ParsesTradeHistorySourceConfigValues) {
         TradeHistorySource::HTML);
 }
 
+TEST(IntradeBarApiResponses, CombinedTradeHistoryStatusPrefersFailedSource) {
+    EXPECT_EQ(select_combined_trade_history_status(true, 200, false, 451), 451);
+    EXPECT_EQ(select_combined_trade_history_status(false, 500, true, 200), 500);
+    EXPECT_EQ(select_combined_trade_history_status(false, -1, false, 451), 451);
+    EXPECT_EQ(select_combined_trade_history_status(false, -1, false, -2), -1);
+    EXPECT_EQ(select_combined_trade_history_status(false, 500, false, 451), 500);
+    EXPECT_EQ(select_combined_trade_history_status(true, 200, true, 200), 200);
+}
+
 TEST(IntradeBarApiResponses, HistoryRangeFilterExcludesRecordsWithoutSelectedTimestamp) {
     TradeHistoryRequest request;
     request.start_ms = 1000;
