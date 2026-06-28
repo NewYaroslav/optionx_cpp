@@ -13,6 +13,7 @@
 #include "common/ApiResult.hpp"
 #include "common/BaseTradingPlatform.hpp"
 #include "IntradeBarPlatform/TradeHistorySource.hpp"
+#include "IntradeBarPlatform/SymbolUtils.hpp"
 #include "IntradeBarPlatform/AuthData.hpp"
 #include "IntradeBarPlatform/AccountInfoData.hpp"
 #include "IntradeBarPlatform/ApiResponses.hpp"
