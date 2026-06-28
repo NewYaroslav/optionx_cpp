@@ -2,6 +2,7 @@
 
 #include <optionx_cpp/data.hpp>
 #include <optionx_cpp/platforms.hpp>
+#include <optionx_cpp/platforms/TradeUpPlatform/AuthData.hpp>
 
 using namespace optionx;
 
@@ -18,15 +19,11 @@ public:
     }
 
     std::unique_ptr<IBridgeConfig> clone_unique() const override {
-        auto clone = std::make_unique<TestBridgeConfig>(*this);
-        clone->clear_callbacks();
-        return clone;
+        return std::make_unique<TestBridgeConfig>(*this);
     }
 
     std::shared_ptr<IBridgeConfig> clone_shared() const override {
-        auto clone = std::make_shared<TestBridgeConfig>(*this);
-        clone->clear_callbacks();
-        return clone;
+        return std::make_shared<TestBridgeConfig>(*this);
     }
 
     BridgeType bridge_type() const override {
@@ -123,6 +120,10 @@ TEST(DtoClone, TradeRequestSnapshotsDoNotCopyCallbacks) {
     shared_clone->dispatch_callbacks(shared_clone, result);
     EXPECT_EQ(callback_calls, 0);
 
+    auto copied = std::make_shared<TradeRequest>(*request);
+    copied->dispatch_callbacks(copied, result);
+    EXPECT_EQ(callback_calls, 0);
+
     request->dispatch_callbacks(request, result);
     EXPECT_EQ(callback_calls, 1);
 }
@@ -144,6 +145,35 @@ TEST(DtoClone, AuthDataSnapshotsDoNotCopyCallbacks) {
     shared_clone->dispatch_callbacks(true, "shared clone");
     EXPECT_EQ(callback_calls, 0);
 
+    platforms::intrade_bar::AuthData copied(auth);
+    copied.dispatch_callbacks(true, "copied");
+    EXPECT_EQ(callback_calls, 0);
+
+    auth.dispatch_callbacks(true, "original");
+    EXPECT_EQ(callback_calls, 1);
+}
+
+TEST(DtoClone, TradeUpAuthDataSnapshotsDoNotCopyCallbacks) {
+    platforms::tradeup::AuthData auth;
+    int callback_calls = 0;
+
+    auth.add_callback(
+        [&callback_calls](bool, const std::string&) {
+            ++callback_calls;
+        });
+
+    auto unique_clone = auth.clone_unique();
+    unique_clone->dispatch_callbacks(true, "unique clone");
+    EXPECT_EQ(callback_calls, 0);
+
+    auto shared_clone = auth.clone_shared();
+    shared_clone->dispatch_callbacks(true, "shared clone");
+    EXPECT_EQ(callback_calls, 0);
+
+    platforms::tradeup::AuthData copied(auth);
+    copied.dispatch_callbacks(true, "copied");
+    EXPECT_EQ(callback_calls, 0);
+
     auth.dispatch_callbacks(true, "original");
     EXPECT_EQ(callback_calls, 1);
 }
@@ -163,6 +193,10 @@ TEST(DtoClone, BridgeConfigSnapshotsCanDropCallbacks) {
 
     auto shared_clone = config.clone_shared();
     shared_clone->dispatch_callbacks(true, "shared clone");
+    EXPECT_EQ(callback_calls, 0);
+
+    TestBridgeConfig copied(config);
+    copied.dispatch_callbacks(true, "copied");
     EXPECT_EQ(callback_calls, 0);
 
     config.dispatch_callbacks(true, "original");

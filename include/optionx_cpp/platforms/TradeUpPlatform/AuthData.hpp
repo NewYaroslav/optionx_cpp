@@ -17,6 +17,8 @@ namespace optionx::platforms::tradeup {
         std::string user_agent;          ///< User agent string
         std::string accept_language;     ///< Accept-Language header
         std::string host;                ///< API host
+        std::string user_id;             ///< User ID for token authentication.
+        std::string token;               ///< Token for token authentication.
         std::string proxy_server;                  ///< Proxy address in <ip:port> format.
         std::string proxy_auth;                    ///< Proxy authentication in <username:password> format.
         kurlyk::ProxyType proxy_type;              ///< Proxy type (e.g., HTTP, SOCKS).
@@ -111,15 +113,11 @@ namespace optionx::platforms::tradeup {
         }
 
         std::unique_ptr<IAuthData> clone_unique() const override {
-            auto clone = std::make_unique<AuthData>(*this);
-            clone->clear_callbacks();
-            return clone;
+            return std::make_unique<AuthData>(*this);
         }
 
         std::shared_ptr<IAuthData> clone_shared() const override {
-            auto clone = std::make_shared<AuthData>(*this);
-            clone->clear_callbacks();
-            return clone;
+            return std::make_shared<AuthData>(*this);
         }
 
         /// \brief Returns the platform type.

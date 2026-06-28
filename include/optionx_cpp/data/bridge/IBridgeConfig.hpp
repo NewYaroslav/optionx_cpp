@@ -11,6 +11,18 @@ namespace optionx {
     /// \brief Interface for bridge configuration data management.
     class IBridgeConfig {
     public:
+        IBridgeConfig() = default;
+
+        /// \brief Copies configuration base state without runtime callbacks.
+        IBridgeConfig(const IBridgeConfig&) {}
+
+        /// \brief Assigns configuration base state and clears callbacks.
+        IBridgeConfig& operator=(const IBridgeConfig& other) {
+            if (this == &other) return *this;
+            m_callbacks.clear();
+            return *this;
+        }
+
         virtual ~IBridgeConfig() = default;
 
         /// \typedef callback_t
@@ -62,12 +74,6 @@ namespace optionx {
             for (const auto& callback : m_callbacks) {
                 callback(success, message);
             }
-        }
-
-    protected:
-        /// \brief Removes runtime callbacks from cloned configuration snapshots.
-        void clear_callbacks() {
-            m_callbacks.clear();
         }
 
     private:

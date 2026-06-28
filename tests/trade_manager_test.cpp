@@ -35,17 +35,13 @@ namespace optionx::modules {
         /// \brief Clones the authorization data instance to a unique pointer.
         /// \return Unique pointer to a cloned IAuthData instance.
         std::unique_ptr<IAuthData> clone_unique() const override {
-            auto clone = std::make_unique<AuthData>(*this);
-            clone->clear_callbacks();
-            return clone;
+            return std::make_unique<AuthData>(*this);
         }
 
         /// \brief Clones the authorization data instance to a shared pointer.
         /// \return Shared pointer to a cloned IAuthData instance.
         std::shared_ptr<IAuthData> clone_shared() const override {
-            auto clone = std::make_shared<AuthData>(*this);
-            clone->clear_callbacks();
-            return clone;
+            return std::make_shared<AuthData>(*this);
         }
 
         /// \brief Retrieves the API type associated with this authorization data.

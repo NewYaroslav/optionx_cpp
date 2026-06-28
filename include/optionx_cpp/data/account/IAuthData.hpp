@@ -15,6 +15,17 @@ namespace optionx {
     /// \brief Interface for handling authorization data used in API connections.
     class IAuthData {
     public:
+        IAuthData() = default;
+
+        /// \brief Copies authorization data base state without runtime callbacks.
+        IAuthData(const IAuthData&) {}
+
+        /// \brief Assigns authorization data base state and clears callbacks.
+        IAuthData& operator=(const IAuthData& other) {
+            if (this == &other) return *this;
+            m_callbacks.clear();
+            return *this;
+        }
 
         /// \typedef callback_t
         /// \brief Callback type for handling authorization success or failure.
@@ -69,12 +80,6 @@ namespace optionx {
 
         /// \brief Virtual destructor for `IAuthData`.
         virtual ~IAuthData() = default;
-
-    protected:
-        /// \brief Removes runtime callbacks from cloned authorization snapshots.
-        void clear_callbacks() {
-            m_callbacks.clear();
-        }
 
     private:
         std::list<callback_t> m_callbacks; ///< List of callbacks to notify about authentication results.
