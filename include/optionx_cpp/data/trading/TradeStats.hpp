@@ -15,6 +15,7 @@
 #include "enums.hpp"
 #include "TradeRecord.hpp"
 #include "TradeRecordFilter.hpp"
+#include "TradeTimeZone.hpp"
 #include "utils/trade_state_utils.hpp"
 
 namespace optionx {
@@ -168,7 +169,7 @@ namespace optionx {
     public:
         TradeStatsSelection selection = TradeStatsSelection::ALL_TRADES;
         double start_balance = 0.0;
-        std::int64_t time_zone_sec = 0;
+        TradeTimeZone time_zone;
         TradeRecordFilter filter;
         bool include_errors = false;
         bool include_non_terminal = false;

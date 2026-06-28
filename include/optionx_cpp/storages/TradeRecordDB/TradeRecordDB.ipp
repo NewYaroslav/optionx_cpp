@@ -188,10 +188,12 @@ namespace optionx::storage {
         return std::move(result.records);
     }
 
-    inline TradeRecordDBListResult TradeRecordDB::find_today(std::int64_t now_ms, std::int64_t time_zone_sec) const {
+    inline TradeRecordDBListResult TradeRecordDB::find_today(
+            std::int64_t now_ms,
+            const optionx::TradeTimeZone& time_zone) const {
         std::lock_guard<std::mutex> lock(m_db_mutex);
         try {
-            return find_today_no_lock(now_ms, time_zone_sec);
+            return find_today_no_lock(now_ms, time_zone);
         } catch (const mdbxc::MdbxException& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB find_today database error: ", ex);
             return detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
@@ -201,10 +203,18 @@ namespace optionx::storage {
         }
     }
 
-    inline TradeRecordDBListResult TradeRecordDB::find_day(std::int64_t day_start_ms, std::int64_t time_zone_sec) const {
+    inline TradeRecordDBListResult TradeRecordDB::find_today(
+            std::int64_t now_ms,
+            std::int64_t time_zone_sec) const {
+        return find_today(now_ms, optionx::TradeTimeZone::fixed_offset(time_zone_sec));
+    }
+
+    inline TradeRecordDBListResult TradeRecordDB::find_day(
+            std::int64_t day_start_ms,
+            const optionx::TradeTimeZone& time_zone) const {
         std::lock_guard<std::mutex> lock(m_db_mutex);
         try {
-            return find_day_no_lock(day_start_ms, time_zone_sec);
+            return find_day_no_lock(day_start_ms, time_zone);
         } catch (const mdbxc::MdbxException& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB find_day database error: ", ex);
             return detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
@@ -212,6 +222,12 @@ namespace optionx::storage {
             LOGIT_PRINT_ERROR("TradeRecordDB find_day error: ", ex);
             return detail::list_error(TradeRecordDBStatus::DB_ERROR, ex.what());
         }
+    }
+
+    inline TradeRecordDBListResult TradeRecordDB::find_day(
+            std::int64_t day_start_ms,
+            std::int64_t time_zone_sec) const {
+        return find_day(day_start_ms, optionx::TradeTimeZone::fixed_offset(time_zone_sec));
     }
 
     inline TradeRecordDBStatus TradeRecordDB::erase_by_trade_id(std::uint64_t trade_id) {
@@ -875,21 +891,22 @@ namespace optionx::storage {
         return result;
     }
 
-    inline TradeRecordDBListResult TradeRecordDB::find_today_no_lock(std::int64_t now_ms, std::int64_t time_zone_sec) const {
-        return find_day_no_lock(now_ms, time_zone_sec);
+    inline TradeRecordDBListResult TradeRecordDB::find_today_no_lock(
+            std::int64_t now_ms,
+            const optionx::TradeTimeZone& time_zone) const {
+        return find_day_no_lock(now_ms, time_zone);
     }
 
-    inline TradeRecordDBListResult TradeRecordDB::find_day_no_lock(std::int64_t day_start_ms, std::int64_t time_zone_sec) const {
+    inline TradeRecordDBListResult TradeRecordDB::find_day_no_lock(
+            std::int64_t day_start_ms,
+            const optionx::TradeTimeZone& time_zone) const {
         optionx::TradeRecordQuery query;
         query.time_field = optionx::TradeRecordTimeField::AUTO;
         query.range_mode = optionx::TimeRangeMode::HALF_OPEN;
+        query.time_zone = time_zone;
 
-        // Convert day_start_ms to local time, snap to local midnight, then back to UTC.
-        const auto local_ms = day_start_ms + time_zone_sec * 1000;
-        const auto day_start_local = time_shield::start_of_day_ms(local_ms);
-        const auto day_end_local = day_start_local + time_shield::MS_PER_DAY;
-        query.start_ms = day_start_local - time_zone_sec * 1000;
-        query.stop_ms = day_end_local - time_zone_sec * 1000;
+        query.start_ms = time_zone.start_of_local_day_utc_ms(day_start_ms);
+        query.stop_ms = time_zone.next_local_day_start_utc_ms(day_start_ms);
 
         return find_records_no_lock(query);
     }

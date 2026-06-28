@@ -196,11 +196,27 @@ namespace optionx::storage {
 
         /// \brief Finds all records for the current calendar day (local time).
         /// \param now_ms Current wall-clock time in milliseconds (UTC).
+        /// \param time_zone Local-time context used to resolve the day boundaries.
+        /// \return List result for the day containing now_ms in local time.
+        TradeRecordDBListResult find_today(
+            std::int64_t now_ms,
+            const optionx::TradeTimeZone& time_zone) const;
+
+        /// \brief Finds all records for the current calendar day using a fixed offset.
+        /// \param now_ms Current wall-clock time in milliseconds (UTC).
         /// \param time_zone_sec Time zone offset in seconds.
         /// \return List result for the day containing now_ms in local time.
         TradeRecordDBListResult find_today(std::int64_t now_ms, std::int64_t time_zone_sec = 0) const;
 
         /// \brief Finds all records for the calendar day containing day_start_ms.
+        /// \param day_start_ms Any timestamp within the target day (UTC).
+        /// \param time_zone Local-time context used to resolve the day boundaries.
+        /// \return List result for that calendar day.
+        TradeRecordDBListResult find_day(
+            std::int64_t day_start_ms,
+            const optionx::TradeTimeZone& time_zone) const;
+
+        /// \brief Finds all records for the calendar day using a fixed offset.
         /// \param day_start_ms Any timestamp within the target day (UTC).
         /// \param time_zone_sec Time zone offset in seconds.
         /// \return List result for that calendar day.
@@ -347,8 +363,12 @@ namespace optionx::storage {
         TradeRecordDBListResult find_by_timestamp_no_lock(std::int64_t timestamp_ms) const;
         TradeRecordDBListResult find_range_no_lock(std::int64_t start_ms, std::int64_t stop_ms) const;
         TradeRecordDBListResult find_records_no_lock(const optionx::TradeRecordQuery& query) const;
-        TradeRecordDBListResult find_today_no_lock(std::int64_t now_ms, std::int64_t time_zone_sec) const;
-        TradeRecordDBListResult find_day_no_lock(std::int64_t day_start_ms, std::int64_t time_zone_sec) const;
+        TradeRecordDBListResult find_today_no_lock(
+            std::int64_t now_ms,
+            const optionx::TradeTimeZone& time_zone) const;
+        TradeRecordDBListResult find_day_no_lock(
+            std::int64_t day_start_ms,
+            const optionx::TradeTimeZone& time_zone) const;
         TradeRecordDBStatus erase_by_trade_id_no_lock(std::uint64_t trade_id);
         TradeRecordDBStatus clear_no_lock();
 

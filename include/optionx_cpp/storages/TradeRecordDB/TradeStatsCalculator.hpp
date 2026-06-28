@@ -63,7 +63,7 @@ namespace optionx::storage {
 
             for (const auto& rec : records) {
                 // 1. Filter predicate (applies to both outcome and monetary)
-                if (!TradeRecordFilterMatcher::match_filter(rec, config.filter, config.time_zone_sec)) {
+                if (!TradeRecordFilterMatcher::match_filter(rec, config.filter, config.time_zone)) {
                     continue;
                 }
 
@@ -119,13 +119,12 @@ namespace optionx::storage {
                         stats.profit_curve.y_value.push_back(stats.total_profit);
 
                         // Daily / hourly profit buckets
-                        const auto local_ms = curve_ts + config.time_zone_sec * 1000;
-                        const auto day_start_local = time_shield::start_of_day_ms(local_ms);
-                        const auto day_utc = day_start_local - config.time_zone_sec * 1000;
+                        const auto day_utc =
+                            config.time_zone.start_of_local_day_utc_ms(curve_ts);
                         daily_profit_map[day_utc] += profit;
 
-                        const auto hour_start_local = time_shield::start_of_hour_ms(local_ms);
-                        const auto hour_utc = hour_start_local - config.time_zone_sec * 1000;
+                        const auto hour_utc =
+                            config.time_zone.start_of_local_hour_utc_ms(curve_ts);
                         hourly_profit_map[hour_utc] += profit;
                     }
 
@@ -171,8 +170,8 @@ namespace optionx::storage {
                     // Time-of-day buckets
                     const auto ts = optionx::select_timestamp_ms(rec, optionx::TradeRecordTimeField::AUTO);
                     if (ts > 0) {
-                        const auto local_ms = ts + config.time_zone_sec * 1000;
-                        const auto sec = static_cast<time_shield::ts_t>(local_ms / 1000);
+                        const auto local_ms = config.time_zone.to_local_ms(ts);
+                        const auto sec = time_shield::ms_to_sec<time_shield::ts_t>(local_ms);
                         const auto dt = time_shield::to_date_time<time_shield::DateTimeStruct>(sec);
                         const auto sec_of_day = dt.hour * 3600 + dt.min * 60 + dt.sec;
                         const auto min_of_day = dt.hour * 60 + dt.min;
@@ -338,7 +337,7 @@ namespace optionx::storage {
         static bool include_outcome(
                 const optionx::TradeRecord& rec,
                 const optionx::TradeStatsConfig& config) noexcept {
-            if (!TradeRecordFilterMatcher::match_filter(rec, config.filter, config.time_zone_sec)) {
+            if (!TradeRecordFilterMatcher::match_filter(rec, config.filter, config.time_zone)) {
                 return false;
             }
             if (config.selection == optionx::TradeStatsSelection::FIRST_MM_STEP && rec.mm_step != 0) {
