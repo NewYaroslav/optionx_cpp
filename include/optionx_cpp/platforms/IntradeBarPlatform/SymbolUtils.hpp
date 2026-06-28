@@ -1,10 +1,11 @@
 #pragma once
-#ifndef _OPTIONX_PLATFORMS_INTRADERBAR_SYMBOL_UTILS_HPP_INCLUDED
-#define _OPTIONX_PLATFORMS_INTRADERBAR_SYMBOL_UTILS_HPP_INCLUDED
+#ifndef _OPTIONX_PLATFORMS_INTRADEBAR_SYMBOL_UTILS_HPP_INCLUDED
+#define _OPTIONX_PLATFORMS_INTRADEBAR_SYMBOL_UTILS_HPP_INCLUDED
 
 /// \file SymbolUtils.hpp
 /// \brief Broker-specific symbol normalization helpers for Intrade Bar.
 
+#include <cctype>
 #include <string>
 
 namespace optionx::platforms::intrade_bar {
@@ -17,6 +18,9 @@ namespace optionx::platforms::intrade_bar {
             auto it_str = symbol.find('/');
             if (it_str != std::string::npos) symbol.erase(it_str, 1);
             else break;
+        }
+        for (auto& ch : symbol) {
+            ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
         }
         if (symbol == "BTCUSD") return "BTCUSDT";
         return symbol;
@@ -31,4 +35,4 @@ namespace optionx::platforms::intrade_bar {
 
 } // namespace optionx::platforms::intrade_bar
 
-#endif // _OPTIONX_PLATFORMS_INTRADERBAR_SYMBOL_UTILS_HPP_INCLUDED
+#endif // _OPTIONX_PLATFORMS_INTRADEBAR_SYMBOL_UTILS_HPP_INCLUDED

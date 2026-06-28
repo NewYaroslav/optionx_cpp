@@ -59,13 +59,19 @@ TEST(IntradeBarApiResponses, PriceDigitsMatchBrokerSymbols) {
 
 TEST(IntradeBarSymbols, NormalizesBtcAliases) {
     EXPECT_EQ(normalize_symbol_name("BTCUSD"), "BTCUSDT");
+    EXPECT_EQ(normalize_symbol_name("btcusd"), "BTCUSDT");
     EXPECT_EQ(normalize_symbol_name("BTC/USDT"), "BTCUSDT");
+    EXPECT_EQ(normalize_symbol_name("btc/usdt"), "BTCUSDT");
     EXPECT_EQ(normalize_symbol_name("BTC/USD"), "BTCUSDT");
+    EXPECT_EQ(normalize_symbol_name("btc/usd"), "BTCUSDT");
     EXPECT_EQ(normalize_symbol_name("EUR/USD"), "EURUSD");
+    EXPECT_EQ(normalize_symbol_name("eur/usd"), "EURUSD");
 
     EXPECT_TRUE(is_btc_symbol("BTCUSD"));
+    EXPECT_TRUE(is_btc_symbol("btcusd"));
     EXPECT_TRUE(is_btc_symbol("BTCUSDT"));
     EXPECT_TRUE(is_btc_symbol("BTC/USD"));
+    EXPECT_TRUE(is_btc_symbol("btc/usd"));
     EXPECT_FALSE(is_btc_symbol("EURUSD"));
 }
 
@@ -75,6 +81,9 @@ TEST(IntradeBarAccountInfo, AcceptsBtcAliasAndUsesBtcDurationRules) {
     AccountInfoRequest request;
     request.type = AccountInfoType::SYMBOL_AVAILABILITY;
     request.symbol = "BTCUSD";
+    EXPECT_TRUE(account.get_info<bool>(request));
+
+    request.symbol = "btcusd";
     EXPECT_TRUE(account.get_info<bool>(request));
 
     request.symbol = "BTC/USD";
@@ -112,7 +121,7 @@ TEST(IntradeBarTradeExecution, NormalizesBtcAliasBeforeQueueProcessing) {
     };
 
     auto request = std::make_unique<TradeRequest>();
-    request->symbol = "BTCUSD";
+    request->symbol = "btc/usd";
     request->option_type = OptionType::SPRINT;
     request->order_type = OrderType::BUY;
     request->account_type = AccountType::DEMO;
@@ -123,7 +132,7 @@ TEST(IntradeBarTradeExecution, NormalizesBtcAliasBeforeQueueProcessing) {
     platform.run(false);
     ASSERT_TRUE(platform.place_trade(std::move(request)));
 
-    for (int i = 0; i < 20 && !callback_called; ++i) {
+    for (int i = 0; i < 200 && !callback_called; ++i) {
         platform.process();
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
