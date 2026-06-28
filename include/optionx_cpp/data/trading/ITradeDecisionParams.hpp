@@ -8,7 +8,7 @@
 namespace optionx {
 
     /// \class ITradeDecisionParams
-    /// \brief Interface for trade decision parameters used in TradeDecisionEngine.
+    /// \brief Interface for trade decision parameters stored with trade records.
     class ITradeDecisionParams {
     public:
         virtual ~ITradeDecisionParams() = default;
