@@ -33,6 +33,18 @@ TEST(HeaderOnlyOdrTest, Base36StringEncodingRoundTripsSingleDigitBytes) {
     EXPECT_EQ(optionx::utils::Base36::decode_string(encoded), input);
 }
 
+TEST(HeaderOnlyOdrTest, Base36StringDecodingRejectsInvalidChunks) {
+    EXPECT_THROW(
+        optionx::utils::Base36::decode_string("0"),
+        std::invalid_argument);
+    EXPECT_THROW(
+        optionx::utils::Base36::decode_string("??"),
+        std::invalid_argument);
+    EXPECT_THROW(
+        optionx::utils::Base36::decode_string("zz"),
+        std::invalid_argument);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

@@ -8,8 +8,6 @@
 ///          and trade request pre-processing. Used to query account capabilities, limits
 ///          and validate trading parameters.
 
-#include "utils/enum_utils.hpp"
-
 namespace optionx {
 
     /// \enum AccountInfoType

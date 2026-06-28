@@ -5,8 +5,6 @@
 /// \file enums.hpp
 /// \brief
 
-#include "utils/enum_utils.hpp"
-
 namespace optionx {
 
     /// \enum BridgeStatus

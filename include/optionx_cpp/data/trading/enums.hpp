@@ -9,7 +9,6 @@
 #include <vector>
 #include <unordered_map>
 #include <nlohmann/json.hpp>
-#include "utils/enum_utils.hpp"
 
 namespace optionx {
 
