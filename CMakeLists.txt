@@ -236,4 +236,10 @@ if(BUILD_TESTS)
     if(TARGET header_only_odr_test)
         target_sources(header_only_odr_test PRIVATE tests/header_only_odr_companion.cc)
     endif()
+
+    if(TARGET intrade_bar_api_response_test)
+        target_include_directories(intrade_bar_api_response_test PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/external/kurlyk/external/Simple-Web-Server
+        )
+    endif()
 endif()
