@@ -9,6 +9,89 @@ using namespace optionx;
 using namespace optionx::platforms;
 using namespace optionx::platforms::intrade_bar;
 
+namespace {
+
+enum class TestRateLimitType : std::uint32_t {
+    GENERAL
+};
+
+class TestHttpClientModule : public optionx::modules::BaseHttpClientModule {
+public:
+    explicit TestHttpClientModule(optionx::utils::EventBus& bus)
+        : optionx::modules::BaseHttpClientModule(bus) {}
+
+    void add_general_limit() {
+        set_rate_limit_rps(TestRateLimitType::GENERAL, 1);
+    }
+
+    std::size_t rate_limit_count() const {
+        return m_rate_limits.size();
+    }
+
+    std::uint32_t general_limit_id() const {
+        return get_rate_limit(TestRateLimitType::GENERAL);
+    }
+};
+
+} // namespace
+
+TEST(BaseHttpClientModule, ShutdownClearsRateLimitsAndIsRepeatable) {
+    optionx::utils::EventBus bus;
+    TestHttpClientModule module(bus);
+
+    module.add_general_limit();
+    EXPECT_EQ(module.rate_limit_count(), 1u);
+    EXPECT_NE(module.general_limit_id(), 0u);
+    const auto limit_id = module.general_limit_id();
+    EXPECT_TRUE(static_cast<bool>(kurlyk::get_rate_limit(limit_id)));
+
+    module.shutdown();
+    EXPECT_EQ(module.rate_limit_count(), 0u);
+    EXPECT_EQ(module.general_limit_id(), 0u);
+    EXPECT_FALSE(static_cast<bool>(kurlyk::get_rate_limit(limit_id)));
+
+    module.shutdown();
+    EXPECT_EQ(module.rate_limit_count(), 0u);
+    EXPECT_EQ(module.general_limit_id(), 0u);
+    EXPECT_FALSE(static_cast<bool>(kurlyk::get_rate_limit(limit_id)));
+}
+
+TEST(BaseHttpClientModule, DestructorClearsRateLimits) {
+    optionx::utils::EventBus bus;
+    std::uint32_t limit_id = 0;
+
+    {
+        TestHttpClientModule module(bus);
+        module.add_general_limit();
+        limit_id = module.general_limit_id();
+        ASSERT_NE(limit_id, 0u);
+        EXPECT_TRUE(static_cast<bool>(kurlyk::get_rate_limit(limit_id)));
+    }
+
+    EXPECT_FALSE(static_cast<bool>(kurlyk::get_rate_limit(limit_id)));
+}
+
+TEST(BaseHttpClientModule, ReplacingRateLimitClearsPreviousHandle) {
+    optionx::utils::EventBus bus;
+    TestHttpClientModule module(bus);
+
+    module.add_general_limit();
+    const auto first_limit_id = module.general_limit_id();
+    ASSERT_NE(first_limit_id, 0u);
+    EXPECT_TRUE(static_cast<bool>(kurlyk::get_rate_limit(first_limit_id)));
+
+    module.add_general_limit();
+    const auto second_limit_id = module.general_limit_id();
+    ASSERT_NE(second_limit_id, 0u);
+    EXPECT_NE(first_limit_id, second_limit_id);
+
+    EXPECT_FALSE(static_cast<bool>(kurlyk::get_rate_limit(first_limit_id)));
+    EXPECT_TRUE(static_cast<bool>(kurlyk::get_rate_limit(second_limit_id)));
+
+    module.shutdown();
+    EXPECT_FALSE(static_cast<bool>(kurlyk::get_rate_limit(second_limit_id)));
+}
+
 TEST(IntradeBarApiResponses, ApiResultCarriesTypedSuccessPayload) {
     auto result = BalanceInfoResult::ok(BalanceInfo{42.5, CurrencyType::USD}, 200);
 
