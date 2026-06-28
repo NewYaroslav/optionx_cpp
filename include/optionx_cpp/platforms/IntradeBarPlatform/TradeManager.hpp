@@ -279,6 +279,7 @@ namespace optionx::platforms::intrade_bar {
                     const std::string& error_desc) {
             const int64_t timestamp = OPTIONX_TIMESTAMP_MS;
             auto account_info  = get_account_info();
+            set_zero_spread_for_symbol(result->spread, request->symbol);
             if (!success) {
                 LOGIT_WARN(
                     "Intrade Bar trade: open failed. status=",
@@ -461,6 +462,7 @@ namespace optionx::platforms::intrade_bar {
             std::shared_ptr<TradeResult> result) {
         if (!request ||!result) return;
         auto account_info = get_account_info();
+        set_zero_spread_for_symbol(result->spread, request->symbol);
         if (!success) {
             result->balance = account_info->balance;
         } else {
