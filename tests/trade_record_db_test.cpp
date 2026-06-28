@@ -195,6 +195,47 @@ TEST(TradeRecordDBTest, DefaultQueryReturnsAllModernRecords) {
     EXPECT_EQ(result.records[0].request_unique_id, 1);
 }
 
+TEST(TradeRecordDBTest, AllQueryReturnsAllStoredRecords) {
+    const auto config = make_config("trade_record_db_all_query");
+    TradeRecordDB db(config);
+    ASSERT_TRUE(db.is_open());
+
+    ASSERT_TRUE(db.upsert(make_record(1, 1712345600100, 1701, "all-a")).ok());
+    ASSERT_TRUE(db.upsert(make_record(2, 1712345660100, 1702, "all-b")).ok());
+
+    const auto result = db.find_records(optionx::TradeRecordQuery::all());
+    ASSERT_TRUE(result.ok()) << result.message;
+    ASSERT_EQ(result.records.size(), 2u);
+    EXPECT_TRUE(contains_uid(result.records, 1));
+    EXPECT_TRUE(contains_uid(result.records, 2));
+}
+
+TEST(TradeRecordDBTest, WideClosedRangeDoesNotOverflowCompositeScan) {
+    const auto config = make_config("trade_record_db_wide_range");
+    TradeRecordDB db(config);
+    ASSERT_TRUE(db.is_open());
+
+    ASSERT_TRUE(db.upsert(make_record(1, 1712345600100, 1801, "wide-a")).ok());
+    ASSERT_TRUE(db.upsert(make_record(2, 1712345660100, 1802, "wide-b")).ok());
+
+    optionx::TradeRecordQuery query;
+    query.range_mode = optionx::TimeRangeMode::CLOSED;
+    query.start_ms = 0;
+    query.stop_ms = std::numeric_limits<std::int64_t>::max();
+
+    const auto queried = db.find_records(query);
+    ASSERT_TRUE(queried.ok()) << queried.message;
+    ASSERT_EQ(queried.records.size(), 2u);
+    EXPECT_TRUE(contains_uid(queried.records, 1));
+    EXPECT_TRUE(contains_uid(queried.records, 2));
+
+    const auto ranged = db.find_range(0, std::numeric_limits<std::int64_t>::max());
+    ASSERT_TRUE(ranged.ok()) << ranged.message;
+    ASSERT_EQ(ranged.records.size(), 2u);
+    EXPECT_TRUE(contains_uid(ranged.records, 1));
+    EXPECT_TRUE(contains_uid(ranged.records, 2));
+}
+
 TEST(TradeRecordDBTest, WriteRemovesStaleUidIndexWhenUidChanges) {
     const auto config = make_config("trade_record_db_stale_uid");
     TradeRecordDB db(config);

@@ -107,10 +107,10 @@ namespace optionx {
 
         /// \brief Copies result-side fields into this record.
         void assign_result(const TradeResult& result) {
-            trade_id = result.trade_id;
-            option_id = result.option_id;
-            option_hash = result.option_hash;
-            amount = result.amount;
+            if (result.trade_id > 0) trade_id = result.trade_id;
+            if (result.option_id != 0) option_id = result.option_id;
+            if (!result.option_hash.empty()) option_hash = result.option_hash;
+            if (result.amount > 0.0) amount = result.amount;
             payout = result.payout;
             profit = result.profit;
             balance = result.balance;
@@ -128,10 +128,10 @@ namespace optionx {
             live_state = result.live_state;
             error_code = result.error_code;
             error_desc = result.error_desc;
-            account_type = result.account_type;
-            currency = result.currency;
-            platform_type = result.platform_type;
-            spread = result.spread;
+            if (result.account_type != AccountType::UNKNOWN) account_type = result.account_type;
+            if (result.currency != CurrencyType::UNKNOWN) currency = result.currency;
+            if (result.platform_type != PlatformType::UNKNOWN) platform_type = result.platform_type;
+            if (result.spread.raw != 0 || result.spread.digits != 0) spread = result.spread;
         }
 
         /// \brief Copies request and money-management fields from a signal.
@@ -198,6 +198,10 @@ namespace optionx {
 
         /// \brief Serializes the record using the current binary storage format.
         std::vector<std::uint8_t> to_bytes() const {
+            if (trade_id > std::numeric_limits<std::uint32_t>::max()) {
+                throw std::overflow_error("TradeRecord trade_id exceeds 32-bit storage format limit");
+            }
+
             std::vector<std::uint8_t> bytes;
             bytes.reserve(512 + request_unique_hash.size() + option_hash.size() +
                           symbol.size() + signal_name.size() + user_data.size() +
