@@ -1,8 +1,37 @@
 #include <gtest/gtest.h>
 
 #include <optionx_cpp/data.hpp>
+#include <optionx_cpp/platforms.hpp>
+#include <optionx_cpp/platforms/TradeUpPlatform/AuthData.hpp>
 
 using namespace optionx;
+
+namespace {
+
+class TestBridgeConfig final : public IBridgeConfig {
+public:
+    void to_json(nlohmann::json&) const override {}
+
+    void from_json(const nlohmann::json&) override {}
+
+    std::pair<bool, std::string> validate() const override {
+        return {true, std::string()};
+    }
+
+    std::unique_ptr<IBridgeConfig> clone_unique() const override {
+        return std::make_unique<TestBridgeConfig>(*this);
+    }
+
+    std::shared_ptr<IBridgeConfig> clone_shared() const override {
+        return std::make_shared<TestBridgeConfig>(*this);
+    }
+
+    BridgeType bridge_type() const override {
+        return BridgeType::UNKNOWN;
+    }
+};
+
+} // namespace
 
 TEST(TradeResultQuery, DetectsLocalAndBrokerIdentities) {
     TradeResultQuery query;
@@ -67,6 +96,246 @@ TEST(TradeHistoryRequest, RoundTripsCommentJson) {
     EXPECT_EQ(restored.start_ms, request.start_ms);
     EXPECT_EQ(restored.stop_ms, request.stop_ms);
     EXPECT_EQ(restored.comment, request.comment);
+}
+
+TEST(DtoClone, TradeRequestSnapshotsDoNotCopyCallbacks) {
+    auto request = std::make_shared<TradeRequest>();
+    auto result = std::make_shared<TradeResult>();
+    int callback_calls = 0;
+
+    request->add_callback(
+        [&callback_calls](
+                std::unique_ptr<TradeRequest>,
+                std::unique_ptr<TradeResult>) {
+            ++callback_calls;
+        });
+
+    auto unique_clone = request->clone_unique();
+    std::shared_ptr<TradeRequest> unique_clone_shared(
+        std::move(unique_clone));
+    unique_clone_shared->dispatch_callbacks(unique_clone_shared, result);
+    EXPECT_EQ(callback_calls, 0);
+
+    auto shared_clone = request->clone_shared();
+    shared_clone->dispatch_callbacks(shared_clone, result);
+    EXPECT_EQ(callback_calls, 0);
+
+    auto copied = std::make_shared<TradeRequest>(*request);
+    copied->dispatch_callbacks(copied, result);
+    EXPECT_EQ(callback_calls, 0);
+
+    request->dispatch_callbacks(request, result);
+    EXPECT_EQ(callback_calls, 1);
+}
+
+TEST(DtoClone, AuthDataSnapshotsDoNotCopyCallbacks) {
+    platforms::intrade_bar::AuthData auth;
+    int callback_calls = 0;
+
+    auth.add_callback(
+        [&callback_calls](bool, const std::string&) {
+            ++callback_calls;
+        });
+
+    auto unique_clone = auth.clone_unique();
+    unique_clone->dispatch_callbacks(true, "unique clone");
+    EXPECT_EQ(callback_calls, 0);
+
+    auto shared_clone = auth.clone_shared();
+    shared_clone->dispatch_callbacks(true, "shared clone");
+    EXPECT_EQ(callback_calls, 0);
+
+    platforms::intrade_bar::AuthData copied(auth);
+    copied.dispatch_callbacks(true, "copied");
+    EXPECT_EQ(callback_calls, 0);
+
+    auth.dispatch_callbacks(true, "original");
+    EXPECT_EQ(callback_calls, 1);
+}
+
+TEST(DtoClone, TradeUpAuthDataSnapshotsDoNotCopyCallbacks) {
+    platforms::tradeup::AuthData auth;
+    int callback_calls = 0;
+
+    auth.add_callback(
+        [&callback_calls](bool, const std::string&) {
+            ++callback_calls;
+        });
+
+    auto unique_clone = auth.clone_unique();
+    unique_clone->dispatch_callbacks(true, "unique clone");
+    EXPECT_EQ(callback_calls, 0);
+
+    auto shared_clone = auth.clone_shared();
+    shared_clone->dispatch_callbacks(true, "shared clone");
+    EXPECT_EQ(callback_calls, 0);
+
+    platforms::tradeup::AuthData copied(auth);
+    copied.dispatch_callbacks(true, "copied");
+    EXPECT_EQ(callback_calls, 0);
+
+    auth.dispatch_callbacks(true, "original");
+    EXPECT_EQ(callback_calls, 1);
+}
+
+TEST(DtoClone, BridgeConfigSnapshotsCanDropCallbacks) {
+    TestBridgeConfig config;
+    int callback_calls = 0;
+
+    config.add_callback(
+        [&callback_calls](bool, const std::string&) {
+            ++callback_calls;
+        });
+
+    auto unique_clone = config.clone_unique();
+    unique_clone->dispatch_callbacks(true, "unique clone");
+    EXPECT_EQ(callback_calls, 0);
+
+    auto shared_clone = config.clone_shared();
+    shared_clone->dispatch_callbacks(true, "shared clone");
+    EXPECT_EQ(callback_calls, 0);
+
+    TestBridgeConfig copied(config);
+    copied.dispatch_callbacks(true, "copied");
+    EXPECT_EQ(callback_calls, 0);
+
+    config.dispatch_callbacks(true, "original");
+    EXPECT_EQ(callback_calls, 1);
+}
+
+TEST(DtoAssignment, TradeRequestDoesNotCopySourceCallbacks) {
+    auto source = std::make_shared<TradeRequest>();
+    source->symbol = "EURUSD";
+    source->amount = 2.0;
+
+    auto destination = std::make_shared<TradeRequest>();
+    destination->symbol = "BTCUSDT";
+    destination->amount = 1.0;
+
+    auto result = std::make_shared<TradeResult>();
+    int source_callback_calls = 0;
+    int destination_callback_calls = 0;
+
+    source->add_callback(
+        [&source_callback_calls](
+                std::unique_ptr<TradeRequest>,
+                std::unique_ptr<TradeResult>) {
+            ++source_callback_calls;
+        });
+
+    destination->add_callback(
+        [&destination_callback_calls](
+                std::unique_ptr<TradeRequest>,
+                std::unique_ptr<TradeResult>) {
+            ++destination_callback_calls;
+        });
+
+    *destination = *source;
+
+    EXPECT_EQ(destination->symbol, "EURUSD");
+    EXPECT_EQ(destination->amount, 2.0);
+
+    destination->dispatch_callbacks(destination, result);
+    EXPECT_EQ(source_callback_calls, 0);
+    EXPECT_EQ(destination_callback_calls, 1);
+
+    source->dispatch_callbacks(source, result);
+    EXPECT_EQ(source_callback_calls, 1);
+    EXPECT_EQ(destination_callback_calls, 1);
+}
+
+TEST(DtoAssignment, AuthDataDoesNotCopySourceCallbacks) {
+    platforms::intrade_bar::AuthData source;
+    source.email = "source@example.com";
+
+    platforms::intrade_bar::AuthData destination;
+    destination.email = "destination@example.com";
+
+    int source_callback_calls = 0;
+    int destination_callback_calls = 0;
+
+    source.add_callback(
+        [&source_callback_calls](bool, const std::string&) {
+            ++source_callback_calls;
+        });
+
+    destination.add_callback(
+        [&destination_callback_calls](bool, const std::string&) {
+            ++destination_callback_calls;
+        });
+
+    destination = source;
+
+    EXPECT_EQ(destination.email, "source@example.com");
+
+    destination.dispatch_callbacks(true, "destination");
+    EXPECT_EQ(source_callback_calls, 0);
+    EXPECT_EQ(destination_callback_calls, 1);
+
+    source.dispatch_callbacks(true, "source");
+    EXPECT_EQ(source_callback_calls, 1);
+    EXPECT_EQ(destination_callback_calls, 1);
+}
+
+TEST(DtoAssignment, TradeUpAuthDataDoesNotCopySourceCallbacks) {
+    platforms::tradeup::AuthData source;
+    source.email = "source@example.com";
+
+    platforms::tradeup::AuthData destination;
+    destination.email = "destination@example.com";
+
+    int source_callback_calls = 0;
+    int destination_callback_calls = 0;
+
+    source.add_callback(
+        [&source_callback_calls](bool, const std::string&) {
+            ++source_callback_calls;
+        });
+
+    destination.add_callback(
+        [&destination_callback_calls](bool, const std::string&) {
+            ++destination_callback_calls;
+        });
+
+    destination = source;
+
+    EXPECT_EQ(destination.email, "source@example.com");
+
+    destination.dispatch_callbacks(true, "destination");
+    EXPECT_EQ(source_callback_calls, 0);
+    EXPECT_EQ(destination_callback_calls, 1);
+
+    source.dispatch_callbacks(true, "source");
+    EXPECT_EQ(source_callback_calls, 1);
+    EXPECT_EQ(destination_callback_calls, 1);
+}
+
+TEST(DtoAssignment, BridgeConfigDoesNotCopySourceCallbacks) {
+    TestBridgeConfig source;
+    TestBridgeConfig destination;
+
+    int source_callback_calls = 0;
+    int destination_callback_calls = 0;
+
+    source.add_callback(
+        [&source_callback_calls](bool, const std::string&) {
+            ++source_callback_calls;
+        });
+
+    destination.add_callback(
+        [&destination_callback_calls](bool, const std::string&) {
+            ++destination_callback_calls;
+        });
+
+    destination = source;
+
+    destination.dispatch_callbacks(true, "destination");
+    EXPECT_EQ(source_callback_calls, 0);
+    EXPECT_EQ(destination_callback_calls, 1);
+
+    source.dispatch_callbacks(true, "source");
+    EXPECT_EQ(source_callback_calls, 1);
+    EXPECT_EQ(destination_callback_calls, 1);
 }
 
 int main(int argc, char** argv) {

@@ -38,6 +38,21 @@ namespace optionx {
         int64_t duration = 0;        ///< Trade duration in seconds.
         int64_t expiry_time = 0;     ///< Expiration time as a Unix timestamp.
 
+        TradeRequest() = default;
+
+        /// \brief Copies request data without runtime callbacks.
+        TradeRequest(const TradeRequest& other) {
+            copy_data_from(other);
+        }
+
+        /// \brief Assigns request data without copying runtime callbacks.
+        /// \details Existing callbacks registered on this request are kept.
+        TradeRequest& operator=(const TradeRequest& other) {
+            if (this == &other) return *this;
+            copy_data_from(other);
+            return *this;
+        }
+
         /// \brief Callback type for handling trade execution results.
         using callback_t = std::function<void(std::unique_ptr<TradeRequest>,
                                               std::unique_ptr<TradeResult>)>;
@@ -87,12 +102,16 @@ namespace optionx {
         }
 
         /// \brief Clones the trade request into a unique pointer.
+        /// \details Clone results are data snapshots and do not retain
+        /// registered runtime callbacks.
         /// \return A unique pointer to a cloned `TradeRequest` instance.
         virtual std::unique_ptr<TradeRequest> clone_unique() const {
             return std::make_unique<TradeRequest>(*this);
         }
 
         /// \brief Clones the trade request into a shared pointer.
+        /// \details Clone results are data snapshots and do not retain
+        /// registered runtime callbacks.
         /// \return A shared pointer to a cloned `TradeRequest` instance.
         virtual std::shared_ptr<TradeRequest> clone_shared() const {
             return std::make_shared<TradeRequest>(*this);
@@ -124,6 +143,28 @@ namespace optionx {
         )
 
     private:
+        // Keep this list in sync with TradeRequest data fields; callbacks are
+        // intentionally excluded from copy snapshots and assignments.
+        void copy_data_from(const TradeRequest& other) {
+            symbol = other.symbol;
+            signal_name = other.signal_name;
+            user_data = other.user_data;
+            comment = other.comment;
+            unique_hash = other.unique_hash;
+            trade_id = other.trade_id;
+            unique_id = other.unique_id;
+            account_id = other.account_id;
+            option_type = other.option_type;
+            order_type = other.order_type;
+            account_type = other.account_type;
+            currency = other.currency;
+            amount = other.amount;
+            refund = other.refund;
+            min_payout = other.min_payout;
+            duration = other.duration;
+            expiry_time = other.expiry_time;
+        }
+
         std::list<callback_t> m_callbacks; ///< List of registered trade result callbacks.
     };
 

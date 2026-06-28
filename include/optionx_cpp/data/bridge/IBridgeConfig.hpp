@@ -11,6 +11,17 @@ namespace optionx {
     /// \brief Interface for bridge configuration data management.
     class IBridgeConfig {
     public:
+        IBridgeConfig() = default;
+
+        /// \brief Copies configuration base state without runtime callbacks.
+        IBridgeConfig(const IBridgeConfig&) {}
+
+        /// \brief Assigns configuration base state without copying callbacks.
+        /// \details Existing callbacks registered on this object are kept.
+        IBridgeConfig& operator=(const IBridgeConfig&) noexcept {
+            return *this;
+        }
+
         virtual ~IBridgeConfig() = default;
 
         /// \typedef callback_t
@@ -34,10 +45,14 @@ namespace optionx {
         virtual std::pair<bool, std::string> validate() const = 0;
 
         /// \brief Clones the configuration data instance as a unique pointer.
+        /// \details Implementations should return a data snapshot without
+        /// registered runtime callbacks.
         /// \return A `std::unique_ptr<IBridgeConfig>` pointing to the cloned instance.
         virtual std::unique_ptr<IBridgeConfig> clone_unique() const = 0;
 
         /// \brief Clones the configuration data instance as a shared pointer.
+        /// \details Implementations should return a data snapshot without
+        /// registered runtime callbacks.
         /// \return A `std::shared_ptr<IBridgeConfig>` pointing to the cloned instance.
         virtual std::shared_ptr<IBridgeConfig> clone_shared() const = 0;
 

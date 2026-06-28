@@ -17,6 +17,8 @@ namespace optionx::platforms::tradeup {
         std::string user_agent;          ///< User agent string
         std::string accept_language;     ///< Accept-Language header
         std::string host;                ///< API host
+        std::string user_id;             ///< User ID for token authentication.
+        std::string token;               ///< Token for token authentication.
         std::string proxy_server;                  ///< Proxy address in <ip:port> format.
         std::string proxy_auth;                    ///< Proxy authentication in <username:password> format.
         kurlyk::ProxyType proxy_type;              ///< Proxy type (e.g., HTTP, SOCKS).

@@ -15,6 +15,16 @@ namespace optionx {
     /// \brief Interface for handling authorization data used in API connections.
     class IAuthData {
     public:
+        IAuthData() = default;
+
+        /// \brief Copies authorization data base state without runtime callbacks.
+        IAuthData(const IAuthData&) {}
+
+        /// \brief Assigns authorization data base state without copying callbacks.
+        /// \details Existing callbacks registered on this object are kept.
+        IAuthData& operator=(const IAuthData&) noexcept {
+            return *this;
+        }
 
         /// \typedef callback_t
         /// \brief Callback type for handling authorization success or failure.
@@ -37,10 +47,14 @@ namespace optionx {
         virtual std::pair<bool, std::string> validate() const = 0;
 
         /// \brief Clones the authorization data instance as a unique pointer.
+        /// \details Implementations should return a data snapshot without
+        /// registered runtime callbacks.
         /// \return A `std::unique_ptr<IAuthData>` pointing to the cloned instance.
         virtual std::unique_ptr<IAuthData> clone_unique() const = 0;
 
         /// \brief Clones the authorization data instance as a shared pointer.
+        /// \details Implementations should return a data snapshot without
+        /// registered runtime callbacks.
         /// \return A `std::shared_ptr<IAuthData>` pointing to the cloned instance.
         virtual std::shared_ptr<IAuthData> clone_shared() const = 0;
 
