@@ -30,10 +30,6 @@ namespace optionx {
     /// DST transitions supported by `time_shield::TimeZone`.
     class TradeTimeZone {
     public:
-        TradeTimeZoneMode mode = TradeTimeZoneMode::FIXED_OFFSET;
-        std::int64_t offset_sec = 0;
-        time_shield::TimeZone zone = time_shield::UTC;
-
         /// \brief Creates UTC fixed-offset context.
         static TradeTimeZone utc() noexcept {
             return fixed_offset(0);
@@ -43,9 +39,9 @@ namespace optionx {
         /// \param offset_seconds UTC offset in seconds.
         static TradeTimeZone fixed_offset(std::int64_t offset_seconds) noexcept {
             TradeTimeZone result;
-            result.mode = TradeTimeZoneMode::FIXED_OFFSET;
-            result.offset_sec = offset_seconds;
-            result.zone = time_shield::UTC;
+            result.m_mode = TradeTimeZoneMode::FIXED_OFFSET;
+            result.m_offset_sec = offset_seconds;
+            result.m_zone = time_shield::UTC;
             return result;
         }
 
@@ -57,16 +53,31 @@ namespace optionx {
             }
 
             TradeTimeZone result;
-            result.mode = TradeTimeZoneMode::NAMED_ZONE;
-            result.offset_sec = 0;
-            result.zone = value;
+            result.m_mode = TradeTimeZoneMode::NAMED_ZONE;
+            result.m_offset_sec = 0;
+            result.m_zone = value;
             return result;
+        }
+
+        /// \brief Returns the stored timezone mode.
+        TradeTimeZoneMode mode() const noexcept {
+            return m_mode;
+        }
+
+        /// \brief Returns the fixed UTC offset in seconds, or 0 for named zones.
+        std::int64_t offset_sec() const noexcept {
+            return m_offset_sec;
+        }
+
+        /// \brief Returns the named zone, or UTC for fixed-offset mode.
+        time_shield::TimeZone zone() const noexcept {
+            return m_zone;
         }
 
         /// \brief Returns true when this context uses time-shield named-zone rules.
         bool is_named_zone() const noexcept {
-            return mode == TradeTimeZoneMode::NAMED_ZONE &&
-                   zone != time_shield::UNKNOWN;
+            return m_mode == TradeTimeZoneMode::NAMED_ZONE &&
+                   m_zone != time_shield::UNKNOWN;
         }
 
         /// \brief Resolves UTC offset for the provided UTC timestamp.
@@ -74,13 +85,13 @@ namespace optionx {
         /// \return Offset in seconds. Unsupported named zones fall back to UTC.
         std::int64_t offset_at_utc_ms(std::int64_t utc_ms) const noexcept {
             if (!is_named_zone()) {
-                return offset_sec;
+                return m_offset_sec;
             }
 
             time_shield::tz_t resolved = 0;
             return time_shield::zone_offset_at_utc_ms(
                 static_cast<time_shield::ts_ms_t>(utc_ms),
-                zone,
+                m_zone,
                 resolved)
                     ? static_cast<std::int64_t>(resolved)
                     : 0;
@@ -94,12 +105,12 @@ namespace optionx {
         /// \brief Converts local civil milliseconds in this context back to UTC.
         std::int64_t to_utc_ms(std::int64_t local_ms) const noexcept {
             if (!is_named_zone()) {
-                return local_ms - offset_sec * time_shield::MS_PER_SEC;
+                return local_ms - m_offset_sec * time_shield::MS_PER_SEC;
             }
 
             const auto utc_ms = time_shield::zone_to_gmt_ms(
                 static_cast<time_shield::ts_ms_t>(local_ms),
-                zone,
+                m_zone,
                 time_shield::AmbiguousTimePolicy::first_occurrence,
                 time_shield::NonexistentTimePolicy::shift_forward);
             if (utc_ms == time_shield::ERROR_TIMESTAMP) {
@@ -123,9 +134,15 @@ namespace optionx {
 
         /// \brief Returns UTC timestamp for local hour start containing utc_ms.
         std::int64_t start_of_local_hour_utc_ms(std::int64_t utc_ms) const noexcept {
-            const auto local_ms = to_local_ms(utc_ms);
-            return to_utc_ms(time_shield::start_of_hour_ms(local_ms));
+            const auto offset_ms = offset_at_utc_ms(utc_ms) * time_shield::MS_PER_SEC;
+            const auto local_ms = utc_ms + offset_ms;
+            return time_shield::start_of_hour_ms(local_ms) - offset_ms;
         }
+
+    private:
+        TradeTimeZoneMode m_mode = TradeTimeZoneMode::FIXED_OFFSET;
+        std::int64_t m_offset_sec = 0;
+        time_shield::TimeZone m_zone = time_shield::UTC;
     };
 
 } // namespace optionx
