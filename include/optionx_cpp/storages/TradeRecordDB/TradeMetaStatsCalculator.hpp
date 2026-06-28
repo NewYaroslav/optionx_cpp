@@ -36,7 +36,7 @@ namespace optionx::storage {
             std::set<std::int64_t> durations_set;
 
             for (const auto& rec : records) {
-                if (!TradeRecordFilterMatcher::match_filter(rec, config.filter, config.time_zone_sec)) continue;
+                if (!TradeRecordFilterMatcher::match_filter(rec, config.filter, config.time_zone)) continue;
                 if (!config.include_errors && optionx::is_error_trade_state(rec.trade_state)) continue;
                 if (!config.include_non_terminal && !optionx::is_terminal_trade_state(rec.trade_state)) continue;
 

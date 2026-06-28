@@ -35,6 +35,7 @@
 #include "trading/TradeResult.hpp"
 #include "trading/TradeResultQuery.hpp"
 #include "trading/TradeRecordTimeRange.hpp"
+#include "trading/TradeTimeZone.hpp"
 #include "trading/TradeHistoryRequest.hpp"
 #include "trading/TradeRequest.hpp"
 #include "trading/IMoneyManagementParams.hpp"

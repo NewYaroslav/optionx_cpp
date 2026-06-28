@@ -10,6 +10,7 @@
 #include <string>
 
 #include "TradeRecordTimeRange.hpp"
+#include "TradeTimeZone.hpp"
 #include "TradeRecordFilter.hpp"
 #include "TradeRecord.hpp"
 
@@ -47,7 +48,7 @@ namespace optionx {
     public:
         std::int64_t start_ms = 0;       ///< Range start in milliseconds (UTC).
         std::int64_t stop_ms = 0;        ///< Range end in milliseconds (UTC).
-        std::int64_t time_zone_sec = 0;  ///< Time zone offset in seconds for local-time filtering.
+        TradeTimeZone time_zone;         ///< Local-time context for component filters.
 
         TradeRecordTimeField time_field = TradeRecordTimeField::AUTO; ///< Which timestamp to query on.
         TimeRangeMode range_mode = TimeRangeMode::NONE;               ///< Range inclusion mode.

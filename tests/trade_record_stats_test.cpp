@@ -23,6 +23,12 @@ using optionx::storage::TradeStatsCalculator;
 using optionx::storage::TradeMetaStatsCalculator;
 using optionx::storage::detail::selected_timestamp_ms;
 
+bool contains_uid(const std::vector<TradeRecord>& records, std::int64_t uid) {
+    return std::any_of(records.begin(), records.end(), [uid](const TradeRecord& record) {
+        return record.request_unique_id == uid;
+    });
+}
+
 std::string unique_db_path(const std::string& name) {
     static std::atomic<std::uint64_t> counter{0};
     const auto stamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -141,6 +147,37 @@ TEST(TradeRecordFilterMatcherTest, TimeRangeClosedAndHalfOpen) {
     EXPECT_FALSE(TradeRecordFilterMatcher::match(rec, query)); // 100000 >= 100000
 }
 
+TEST(TradeRecordFilterMatcherTest, NamedZoneUsesDstForHourFilter) {
+    TradeRecord rec = make_win_record(
+        1,
+        time_shield::to_timestamp_ms(2026, 7, 1, 12, 0, 0));
+
+    TradeRecordQuery query;
+    query.time_zone = optionx::TradeTimeZone::named(time_shield::CET);
+    query.filter.hours.add_include(14);
+    EXPECT_TRUE(TradeRecordFilterMatcher::match(rec, query));
+
+    query.time_zone = optionx::TradeTimeZone::fixed_offset(time_shield::SEC_PER_HOUR);
+    EXPECT_FALSE(TradeRecordFilterMatcher::match(rec, query));
+}
+
+TEST(TradeTimeZoneTest, RepeatedDstHourHasDistinctUtcBuckets) {
+    const auto tz = optionx::TradeTimeZone::named(time_shield::CET);
+
+    const auto first = time_shield::to_timestamp_ms(2026, 10, 25, 0, 30, 0);
+    const auto second = time_shield::to_timestamp_ms(2026, 10, 25, 1, 30, 0);
+
+    EXPECT_EQ(
+        tz.start_of_local_hour_utc_ms(first),
+        time_shield::to_timestamp_ms(2026, 10, 25, 0, 0, 0));
+    EXPECT_EQ(
+        tz.start_of_local_hour_utc_ms(second),
+        time_shield::to_timestamp_ms(2026, 10, 25, 1, 0, 0));
+    EXPECT_NE(
+        tz.start_of_local_hour_utc_ms(first),
+        tz.start_of_local_hour_utc_ms(second));
+}
+
 TEST(TradeRecordStatusFixerTest, MarksStaleAsCheckError) {
     std::vector<TradeRecord> records;
     // Terminal trade at 1000000
@@ -244,6 +281,63 @@ TEST(TradeRecordDBTest, FindTodayReturnsEmptyWhenNoTrades) {
     EXPECT_TRUE(result.records.empty());
 }
 
+TEST(TradeRecordDBTest, FindDayUsesNamedZoneDstBoundaries) {
+    const auto config = make_config("find_day_named_zone_dst");
+    TradeRecordDB db(config);
+    ASSERT_TRUE(db.is_open());
+
+    const auto before_day = time_shield::to_timestamp_ms(2026, 3, 28, 22, 30, 0);
+    const auto start_day = time_shield::to_timestamp_ms(2026, 3, 28, 23, 30, 0);
+    const auto end_day = time_shield::to_timestamp_ms(2026, 3, 29, 21, 30, 0);
+    const auto after_day = time_shield::to_timestamp_ms(2026, 3, 29, 22, 30, 0);
+
+    ASSERT_TRUE(db.upsert(make_win_record(1, before_day)).ok());
+    ASSERT_TRUE(db.upsert(make_win_record(2, start_day)).ok());
+    ASSERT_TRUE(db.upsert(make_win_record(3, end_day)).ok());
+    ASSERT_TRUE(db.upsert(make_win_record(4, after_day)).ok());
+
+    const auto result = db.find_day(
+        time_shield::to_timestamp_ms(2026, 3, 29, 12, 0, 0),
+        optionx::TradeTimeZone::named(time_shield::CET));
+
+    ASSERT_TRUE(result.ok()) << result.message;
+    EXPECT_EQ(result.records.size(), 2u);
+    EXPECT_FALSE(contains_uid(result.records, 1));
+    EXPECT_TRUE(contains_uid(result.records, 2));
+    EXPECT_TRUE(contains_uid(result.records, 3));
+    EXPECT_FALSE(contains_uid(result.records, 4));
+}
+
+TEST(TradeRecordDBTest, FindDayUsesNamedZoneDstEndBoundaries) {
+    const auto config = make_config("find_day_named_zone_dst_end");
+    TradeRecordDB db(config);
+    ASSERT_TRUE(db.is_open());
+
+    const auto before_day = time_shield::to_timestamp_ms(2026, 10, 24, 21, 30, 0);
+    const auto first_repeated_hour = time_shield::to_timestamp_ms(2026, 10, 25, 0, 30, 0);
+    const auto second_repeated_hour = time_shield::to_timestamp_ms(2026, 10, 25, 1, 30, 0);
+    const auto late_day = time_shield::to_timestamp_ms(2026, 10, 25, 22, 30, 0);
+    const auto after_day = time_shield::to_timestamp_ms(2026, 10, 25, 23, 30, 0);
+
+    ASSERT_TRUE(db.upsert(make_win_record(1, before_day)).ok());
+    ASSERT_TRUE(db.upsert(make_win_record(2, first_repeated_hour)).ok());
+    ASSERT_TRUE(db.upsert(make_win_record(3, second_repeated_hour)).ok());
+    ASSERT_TRUE(db.upsert(make_win_record(4, late_day)).ok());
+    ASSERT_TRUE(db.upsert(make_win_record(5, after_day)).ok());
+
+    const auto result = db.find_day(
+        time_shield::to_timestamp_ms(2026, 10, 25, 12, 0, 0),
+        optionx::TradeTimeZone::named(time_shield::CET));
+
+    ASSERT_TRUE(result.ok()) << result.message;
+    EXPECT_EQ(result.records.size(), 3u);
+    EXPECT_FALSE(contains_uid(result.records, 1));
+    EXPECT_TRUE(contains_uid(result.records, 2));
+    EXPECT_TRUE(contains_uid(result.records, 3));
+    EXPECT_TRUE(contains_uid(result.records, 4));
+    EXPECT_FALSE(contains_uid(result.records, 5));
+}
+
 TEST(TradeStatsCalculatorTest, ComputesBasicWinrate) {
     std::vector<TradeRecord> records;
     records.push_back(make_win_record(1, 1000, 10.0, 8.2, "EURUSD", optionx::TradeState::WIN));
@@ -269,7 +363,7 @@ TEST(TradeStatsCalculatorTest, ComputesBySymbolAndHour) {
     records.push_back(make_win_record(2, 7200000, 10.0, -10.0, "GBPUSD", optionx::TradeState::LOSS));
 
     optionx::TradeStatsConfig cfg;
-    cfg.time_zone_sec = 0;
+    cfg.time_zone = optionx::TradeTimeZone::utc();
     cfg.include_non_terminal = false;
     auto stats_ptr = TradeStatsCalculator::calc(records, cfg);
     auto& stats = *stats_ptr;
@@ -278,6 +372,65 @@ TEST(TradeStatsCalculatorTest, ComputesBySymbolAndHour) {
     EXPECT_EQ(stats.by_symbol.at("EURUSD").wins, 1u);
     EXPECT_EQ(stats.by_hour[1].wins, 1u);  // 3600000 ms = 1 hour
     EXPECT_EQ(stats.by_hour[2].losses, 1u);
+}
+
+TEST(TradeStatsCalculatorTest, NamedZoneUsesDstForLocalHourBuckets) {
+    std::vector<TradeRecord> records;
+    records.push_back(make_win_record(
+        1,
+        time_shield::to_timestamp_ms(2026, 7, 1, 12, 0, 0),
+        10.0,
+        8.2,
+        "EURUSD",
+        optionx::TradeState::WIN));
+
+    optionx::TradeStatsConfig named_cfg;
+    named_cfg.time_zone = optionx::TradeTimeZone::named(time_shield::CET);
+    named_cfg.include_non_terminal = false;
+    const auto named_stats = TradeStatsCalculator::calc(records, named_cfg);
+
+    optionx::TradeStatsConfig fixed_cfg;
+    fixed_cfg.time_zone = optionx::TradeTimeZone::fixed_offset(time_shield::SEC_PER_HOUR);
+    fixed_cfg.include_non_terminal = false;
+    const auto fixed_stats = TradeStatsCalculator::calc(records, fixed_cfg);
+
+    EXPECT_EQ(named_stats->by_hour[14].wins, 1u);
+    EXPECT_EQ(named_stats->by_hour[13].wins, 0u);
+    EXPECT_EQ(fixed_stats->by_hour[13].wins, 1u);
+    EXPECT_EQ(fixed_stats->by_hour[14].wins, 0u);
+}
+
+TEST(TradeStatsCalculatorTest, RepeatedDstHourUsesDistinctHourlyProfitBuckets) {
+    std::vector<TradeRecord> records;
+    records.push_back(make_win_record(
+        1,
+        time_shield::to_timestamp_ms(2026, 10, 25, 0, 30, 0),
+        10.0,
+        8.0,
+        "EURUSD",
+        optionx::TradeState::WIN));
+    records.push_back(make_win_record(
+        2,
+        time_shield::to_timestamp_ms(2026, 10, 25, 1, 30, 0),
+        10.0,
+        9.0,
+        "EURUSD",
+        optionx::TradeState::WIN));
+
+    optionx::TradeStatsConfig cfg;
+    cfg.time_zone = optionx::TradeTimeZone::named(time_shield::CET);
+    cfg.include_non_terminal = false;
+    const auto stats = TradeStatsCalculator::calc(records, cfg);
+
+    ASSERT_EQ(stats->hourly_profit.x_time.size(), 2u);
+    EXPECT_EQ(
+        stats->hourly_profit.x_time[0],
+        time_shield::to_timestamp_ms(2026, 10, 25, 0, 0, 0));
+    EXPECT_EQ(
+        stats->hourly_profit.x_time[1],
+        time_shield::to_timestamp_ms(2026, 10, 25, 1, 0, 0));
+    EXPECT_DOUBLE_EQ(stats->hourly_profit.y_value[0], 8.0);
+    EXPECT_DOUBLE_EQ(stats->hourly_profit.y_value[1], 9.0);
 }
 
 TEST(TradeStatsCalculatorTest, DrawdownAndEquityCurve) {

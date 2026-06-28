@@ -40,19 +40,19 @@ namespace optionx::storage {
                 }
             }
 
-            return match_filter(record, query.filter, query.time_zone_sec, ts);
+            return match_filter(record, query.filter, query.time_zone, ts);
         }
 
         /// \brief Matches a record against a TradeRecordFilter with optional timezone.
         /// \param record Trade record to test.
         /// \param filter Filter predicates.
-        /// \param time_zone_sec Time zone offset in seconds for local-time filters (0 = UTC).
+        /// \param time_zone Local-time context for component filters.
         /// \param selected_ms Pre-computed selected timestamp (0 = derive from record).
         /// \return True if the record passes all active filter predicates.
         static bool match_filter(
                 const TradeRecord& record,
                 const TradeRecordFilter& filter,
-                std::int64_t time_zone_sec = 0,
+                const optionx::TradeTimeZone& time_zone = optionx::TradeTimeZone::utc(),
                 std::int64_t selected_ms = 0) noexcept {
 
             if (!filter.platforms.match(record.platform_type)) return false;
@@ -101,8 +101,8 @@ namespace optionx::storage {
                 selected_ms = optionx::select_timestamp_ms(record, optionx::TradeRecordTimeField::AUTO);
             }
             if (selected_ms > 0) {
-                const auto local_ms = selected_ms + time_zone_sec * 1000;
-                const auto sec = static_cast<time_shield::ts_t>(local_ms / 1000);
+                const auto local_ms = time_zone.to_local_ms(selected_ms);
+                const auto sec = time_shield::ms_to_sec<time_shield::ts_t>(local_ms);
                 const auto dt = time_shield::to_date_time<time_shield::DateTimeStruct>(sec);
 
                 const auto hour = static_cast<std::uint32_t>(dt.hour);
