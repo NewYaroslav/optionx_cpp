@@ -91,9 +91,13 @@ namespace optionx::modules {
 
         /// \brief Deinitializes all rate limits by resetting them.
         void deinitialize_rate_limits() {
-            for (auto item : m_rate_limits) {
-                kurlyk::remove_limit(item.second);
+            for (auto& item : m_rate_limits) {
+                if (item.second) {
+                    kurlyk::remove_limit(item.second);
+                    item.second.reset();
+                }
             }
+            m_rate_limits.clear();
         }
 
         /// \brief Creates a rate limit based on Requests Per Minute (RPM).

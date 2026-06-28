@@ -9,6 +9,49 @@ using namespace optionx;
 using namespace optionx::platforms;
 using namespace optionx::platforms::intrade_bar;
 
+namespace {
+
+enum class TestRateLimitType : std::uint32_t {
+    GENERAL
+};
+
+class TestHttpClientModule : public optionx::modules::BaseHttpClientModule {
+public:
+    explicit TestHttpClientModule(optionx::utils::EventBus& bus)
+        : optionx::modules::BaseHttpClientModule(bus) {}
+
+    void add_general_limit() {
+        set_rate_limit_rps(TestRateLimitType::GENERAL, 1);
+    }
+
+    std::size_t rate_limit_count() const {
+        return m_rate_limits.size();
+    }
+
+    std::uint32_t general_limit_id() const {
+        return get_rate_limit(TestRateLimitType::GENERAL);
+    }
+};
+
+} // namespace
+
+TEST(BaseHttpClientModule, ShutdownClearsRateLimitsAndIsRepeatable) {
+    optionx::utils::EventBus bus;
+    TestHttpClientModule module(bus);
+
+    module.add_general_limit();
+    EXPECT_EQ(module.rate_limit_count(), 1u);
+    EXPECT_NE(module.general_limit_id(), 0u);
+
+    module.shutdown();
+    EXPECT_EQ(module.rate_limit_count(), 0u);
+    EXPECT_EQ(module.general_limit_id(), 0u);
+
+    module.shutdown();
+    EXPECT_EQ(module.rate_limit_count(), 0u);
+    EXPECT_EQ(module.general_limit_id(), 0u);
+}
+
 TEST(IntradeBarApiResponses, ApiResultCarriesTypedSuccessPayload) {
     auto result = BalanceInfoResult::ok(BalanceInfo{42.5, CurrencyType::USD}, 200);
 
