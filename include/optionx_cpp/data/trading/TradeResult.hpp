@@ -6,6 +6,7 @@
 /// \brief Contains the TradeResult class representing the result of a trade request.
 
 #include <nlohmann/json.hpp>
+#include <cstdint>
 #include <string>
 #include <memory>
 
@@ -35,6 +36,10 @@ namespace optionx {
         double balance = 0.0;       ///< Latest known account balance snapshot.
         double open_balance = 0.0;  ///< Account balance before opening the trade.
         double close_balance = 0.0; ///< Known or estimated close-equivalent balance.
+        std::uint8_t balance_flags = 0; ///< Presence flags for balance snapshots.
+        static constexpr std::uint8_t BALANCE_FLAG_HAS_BALANCE = 0x01;
+        static constexpr std::uint8_t BALANCE_FLAG_HAS_OPEN_BALANCE = 0x02;
+        static constexpr std::uint8_t BALANCE_FLAG_HAS_CLOSE_BALANCE = 0x04;
 
         // Price information
         double open_price = 0.0;    ///< Entry price at position opening
@@ -59,6 +64,39 @@ namespace optionx {
 
         // Spread
         SpreadPack spread;                                     ///< Packed open/close spread data
+
+        /// \brief Returns true when balance contains an explicit latest snapshot.
+        bool has_balance() const noexcept {
+            return (balance_flags & BALANCE_FLAG_HAS_BALANCE) != 0;
+        }
+
+        /// \brief Returns true when open_balance contains an explicit snapshot.
+        bool has_open_balance() const noexcept {
+            return (balance_flags & BALANCE_FLAG_HAS_OPEN_BALANCE) != 0;
+        }
+
+        /// \brief Returns true when close_balance contains an explicit close-equivalent value.
+        bool has_close_balance() const noexcept {
+            return (balance_flags & BALANCE_FLAG_HAS_CLOSE_BALANCE) != 0;
+        }
+
+        /// \brief Stores the latest known account balance snapshot.
+        void set_balance(double value) noexcept {
+            balance = value;
+            balance_flags |= BALANCE_FLAG_HAS_BALANCE;
+        }
+
+        /// \brief Stores the account balance before opening the trade.
+        void set_open_balance(double value) noexcept {
+            open_balance = value;
+            balance_flags |= BALANCE_FLAG_HAS_OPEN_BALANCE;
+        }
+
+        /// \brief Stores the known or estimated close-equivalent balance.
+        void set_close_balance(double value) noexcept {
+            close_balance = value;
+            balance_flags |= BALANCE_FLAG_HAS_CLOSE_BALANCE;
+        }
 
         /// \brief Creates a unique pointer to a copy of this TradeResult
         virtual std::unique_ptr<TradeResult> clone_unique() const {
@@ -86,6 +124,7 @@ namespace optionx {
             balance,
             open_balance,
             close_balance,
+            balance_flags,
             open_price,
             close_price,
             delay,

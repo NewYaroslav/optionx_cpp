@@ -136,22 +136,18 @@ namespace optionx::storage {
                 record.profit = result.profit;
                 updated = true;
             }
-            if (result.balance != 0.0) {
-                if (record.close_balance == 0.0) {
-                    record.close_balance = result.balance;
-                }
+            if (result.has_open_balance()) {
+                record.set_open_balance(result.open_balance);
                 updated = true;
             }
-            if (result.open_balance != 0.0) {
-                record.open_balance = result.open_balance;
+            if (result.has_close_balance()) {
+                record.set_close_balance(result.close_balance);
                 updated = true;
             }
-            if (result.close_balance != 0.0) {
-                record.close_balance = result.close_balance;
-                updated = true;
-            }
-            if (record.close_balance == 0.0 && record.open_balance != 0.0) {
-                record.close_balance = record.open_balance + result.profit;
+            if (!record.has_close_balance() &&
+                    record.has_open_balance() &&
+                    optionx::is_result_state(result.trade_state)) {
+                record.set_close_balance(record.open_balance + result.profit);
                 updated = true;
             }
             if (result.open_price != 0.0) {

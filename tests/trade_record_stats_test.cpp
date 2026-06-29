@@ -66,8 +66,8 @@ TradeRecord make_win_record(
     record.amount = amount;
     record.payout = 0.82;
     record.profit = profit;
-    record.open_balance = 1000.0;
-    record.close_balance = 1000.0 + profit;
+    record.set_open_balance(1000.0);
+    record.set_close_balance(1000.0 + profit);
     record.trade_state = state;
     record.open_price = 1.12345;
     record.close_price = 1.12400;
@@ -574,11 +574,11 @@ TEST(TradeStatsCalculatorTest, RealizedCurveFallsBackToOpenDateWhenCloseDateMiss
 TEST(TradeStatsCalculatorTest, RecordBalanceModeUsesSnapshotsWithoutStartBalance) {
     std::vector<TradeRecord> records;
     records.push_back(make_win_record(1, 1000, 10.0, -5.0, "EURUSD", optionx::TradeState::LOSS));
-    records.back().open_balance = 1000.0;
-    records.back().close_balance = 995.0;
+    records.back().set_open_balance(1000.0);
+    records.back().set_close_balance(995.0);
     records.push_back(make_win_record(2, 2000, 10.0, 15.0, "EURUSD", optionx::TradeState::WIN));
-    records.back().open_balance = 995.0;
-    records.back().close_balance = 1010.0;
+    records.back().set_open_balance(995.0);
+    records.back().set_close_balance(1010.0);
 
     optionx::TradeStatsConfig cfg;
     cfg.equity_mode = optionx::TradeStatsEquityMode::RECORD_BALANCE;
@@ -603,14 +603,14 @@ TEST(TradeStatsCalculatorTest, PortfolioBalanceModeCombinesAccountsInBaseCurrenc
     records.push_back(make_win_record(2, 2000, 1000.0, -900.0, "EURUSD", optionx::TradeState::LOSS));
     records.back().account_id = 2;
     records.back().currency = optionx::CurrencyType::RUB;
-    records.back().open_balance = 90000.0;
-    records.back().close_balance = 89100.0;
+    records.back().set_open_balance(90000.0);
+    records.back().set_close_balance(89100.0);
 
     records.push_back(make_win_record(1, 1000, 10.0, 10.0, "EURUSD", optionx::TradeState::WIN));
     records.back().account_id = 1;
     records.back().currency = optionx::CurrencyType::USD;
-    records.back().open_balance = 1000.0;
-    records.back().close_balance = 1010.0;
+    records.back().set_open_balance(1000.0);
+    records.back().set_close_balance(1010.0);
 
     optionx::TradeStatsConfig cfg;
     cfg.equity_mode = optionx::TradeStatsEquityMode::PORTFOLIO_BALANCE;
@@ -632,6 +632,54 @@ TEST(TradeStatsCalculatorTest, PortfolioBalanceModeCombinesAccountsInBaseCurrenc
     ASSERT_EQ(stats.profit_percent_curve.y_value.size(), 2u);
     EXPECT_DOUBLE_EQ(stats.profit_percent_curve.y_value[1], (1.0 / 1900.0) * 100.0);
     EXPECT_DOUBLE_EQ(stats.total_profit, 1.0);
+}
+
+TEST(TradeStatsCalculatorTest, RecordBalanceModePreservesZeroCloseBalanceSnapshot) {
+    std::vector<TradeRecord> records;
+    records.push_back(make_win_record(1, 1000, 100.0, -100.0, "EURUSD", optionx::TradeState::LOSS));
+    records.back().set_open_balance(100.0);
+    records.back().set_close_balance(0.0);
+
+    optionx::TradeStatsConfig cfg;
+    cfg.equity_mode = optionx::TradeStatsEquityMode::RECORD_BALANCE;
+    cfg.include_non_terminal = false;
+    auto stats_ptr = TradeStatsCalculator::calc(records, cfg);
+    auto& stats = *stats_ptr;
+
+    ASSERT_EQ(stats.equity_curve.y_value.size(), 1u);
+    EXPECT_DOUBLE_EQ(stats.equity_curve.y_value[0], 0.0);
+    ASSERT_EQ(stats.profit_curve.y_value.size(), 1u);
+    EXPECT_DOUBLE_EQ(stats.profit_curve.y_value[0], -100.0);
+    ASSERT_EQ(stats.profit_percent_curve.y_value.size(), 1u);
+    EXPECT_DOUBLE_EQ(stats.profit_percent_curve.y_value[0], -100.0);
+    EXPECT_DOUBLE_EQ(stats.max_absolute_drawdown, 100.0);
+    EXPECT_DOUBLE_EQ(stats.max_relative_drawdown, 1.0);
+}
+
+TEST(TradeStatsCalculatorTest, PortfolioBalanceModePreservesZeroAccountSnapshot) {
+    std::vector<TradeRecord> records;
+    records.push_back(make_win_record(1, 1000, 100.0, -100.0, "EURUSD", optionx::TradeState::LOSS));
+    records.back().account_id = 1;
+    records.back().set_open_balance(100.0);
+    records.back().set_close_balance(0.0);
+
+    records.push_back(make_win_record(2, 2000, 10.0, 10.0, "EURUSD", optionx::TradeState::WIN));
+    records.back().account_id = 2;
+    records.back().set_open_balance(1000.0);
+    records.back().set_close_balance(1010.0);
+
+    optionx::TradeStatsConfig cfg;
+    cfg.equity_mode = optionx::TradeStatsEquityMode::PORTFOLIO_BALANCE;
+    cfg.include_non_terminal = false;
+    auto stats_ptr = TradeStatsCalculator::calc(records, cfg);
+    auto& stats = *stats_ptr;
+
+    ASSERT_EQ(stats.equity_curve.y_value.size(), 2u);
+    EXPECT_DOUBLE_EQ(stats.equity_curve.y_value[0], 0.0);
+    EXPECT_DOUBLE_EQ(stats.equity_curve.y_value[1], 1010.0);
+    ASSERT_EQ(stats.profit_curve.y_value.size(), 2u);
+    EXPECT_DOUBLE_EQ(stats.profit_curve.y_value[0], -100.0);
+    EXPECT_DOUBLE_EQ(stats.profit_curve.y_value[1], -90.0);
 }
 
 TEST(TradeStatsCalculatorTest, SelectionAppliesToMonetaryStats) {

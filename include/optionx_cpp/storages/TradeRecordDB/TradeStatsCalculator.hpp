@@ -105,8 +105,7 @@ namespace optionx::storage {
                     // timestamp, so same-moment closes do not invent an order.
                     if (curve_ts > 0) {
                         realized_profit_by_ts[curve_ts] += profit;
-                        const double close_balance = close_balance_snapshot(rec);
-                        if (close_balance != 0.0) {
+                        if (rec.has_close_balance()) {
                             balance_events.push_back({
                                 curve_ts,
                                 rec.open_date > 0 ? rec.open_date : curve_ts,
@@ -114,10 +113,11 @@ namespace optionx::storage {
                                     rec.platform_type,
                                     rec.account_type,
                                     rec.account_id,
-                                    rec.currency},
+                                rec.currency},
                                 rec.currency,
                                 rec.open_balance,
-                                close_balance,
+                                rec.has_open_balance(),
+                                close_balance_snapshot(rec),
                                 rec.profit});
                         }
 
@@ -352,6 +352,7 @@ namespace optionx::storage {
             AccountKey account;
             optionx::CurrencyType currency = optionx::CurrencyType::UNKNOWN;
             double open_balance = 0.0;
+            bool has_open_balance = false;
             double close_balance = 0.0;
             double profit = 0.0;
         };
@@ -389,7 +390,7 @@ namespace optionx::storage {
         static double initial_balance_for_event(
                 const BalanceSnapshotEvent& event,
                 const optionx::TradeStatsConfig& config) {
-            if (event.open_balance != 0.0) {
+            if (event.has_open_balance) {
                 return convert_money(
                     event.open_balance,
                     event.currency,
