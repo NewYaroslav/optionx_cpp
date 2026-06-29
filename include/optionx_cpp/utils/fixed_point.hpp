@@ -117,12 +117,13 @@ namespace optionx::utils {
         if (digits > 18) {
             throw std::invalid_argument("Digits exceed maximum precision (18).");
         }
-        double tolerance = precision_tolerance(digits);
+        const double tolerance = precision_tolerance(digits);
+        const double delta = std::fabs(value1 - value2);
         const double epsilon =
             std::numeric_limits<double>::epsilon() *
-            (std::fabs(value1) + std::fabs(value2) + 1.0) *
+            (delta > tolerance ? delta : tolerance) *
             8.0;
-        return std::fabs(value1 - value2) <= tolerance + epsilon;
+        return delta <= tolerance + epsilon;
     }
 
 } // namespace optionx::utils
