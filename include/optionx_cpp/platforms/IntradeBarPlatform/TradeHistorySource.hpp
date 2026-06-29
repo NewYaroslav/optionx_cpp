@@ -9,9 +9,9 @@ namespace optionx::platforms::intrade_bar {
 
     /// \brief Source used to load closed trade history.
     enum class TradeHistorySource {
-        HTML,    ///< Parse the authenticated HTML page history.
-        CSV,     ///< Use /stat_trade_export.php CSV export.
-        HTML_CSV ///< Return CSV/HTML intersection with CSV financial fields and HTML broker IDs.
+        HTML, ///< Parse the authenticated HTML page history.
+        CSV,  ///< Use /stat_trade_export.php CSV export.
+        HTML_CSV ///< Strict CSV+HTML intersection; both sources must succeed and unmatched rows are omitted.
     };
 
     /// \brief Converts trade history source to a stable config string.
