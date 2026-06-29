@@ -524,6 +524,26 @@ TEST(TradeStatsCalculatorTest, SameCloseDateAggregatesRealizedProfitBeforeDrawdo
     EXPECT_DOUBLE_EQ(stats.max_absolute_drawdown, 0.0);
 }
 
+TEST(TradeStatsCalculatorTest, SweepLineAggregatesSameTimestampEventsBeforeDrawdown) {
+    std::vector<TradeRecord> records;
+    records.push_back(make_win_record(1, 1000, 100.0, 10.0, "EURUSD", optionx::TradeState::WIN));
+    records.back().open_date = 5000;
+    records.back().close_date = 5000;
+
+    optionx::TradeStatsConfig cfg;
+    cfg.start_balance = 1000.0;
+    cfg.balance_mode = optionx::TradeStatsBalanceMode::SWEEP_LINE;
+    cfg.include_non_terminal = false;
+    auto stats_ptr = TradeStatsCalculator::calc(records, cfg);
+    auto& stats = *stats_ptr;
+
+    ASSERT_EQ(stats.free_funds_curve.x_time.size(), 1u);
+    EXPECT_EQ(stats.free_funds_curve.x_time[0], 5000);
+    EXPECT_DOUBLE_EQ(stats.free_funds_curve.y_value[0], 1010.0);
+    EXPECT_DOUBLE_EQ(stats.max_absolute_drawdown_free, 0.0);
+    EXPECT_DOUBLE_EQ(stats.max_relative_drawdown_free, 0.0);
+}
+
 TEST(TradeStatsCalculatorTest, ProfitPercentCurveUsesStartBalance) {
     std::vector<TradeRecord> records;
     records.push_back(make_win_record(1, 1000, 10.0, 10.0, "EURUSD", optionx::TradeState::WIN));

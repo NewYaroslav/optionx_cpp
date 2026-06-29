@@ -302,30 +302,32 @@ namespace optionx::storage {
 
                 double free_funds = config.start_balance;
                 double peak_free = config.start_balance;
-                std::int64_t last_ts = events.front().ts;
 
-                for (const auto& ev : events) {
-                    if (ev.ts != last_ts) {
-                        stats.free_funds_curve.x_time.push_back(last_ts);
-                        stats.free_funds_curve.y_value.push_back(free_funds);
-                        last_ts = ev.ts;
-                    }
-                    free_funds += ev.delta;
+                for (std::size_t i = 0; i < events.size();) {
+                    const auto ts = events[i].ts;
+                    double delta = 0.0;
+
+                    do {
+                        delta += events[i].delta;
+                        ++i;
+                    } while (i < events.size() && events[i].ts == ts);
+
+                    free_funds += delta;
                     peak_free = std::max(peak_free, free_funds);
 
                     const auto dd = peak_free - free_funds;
                     if (dd > stats.max_absolute_drawdown_free) {
                         stats.max_absolute_drawdown_free = dd;
-                        stats.max_drawdown_date_free = ev.ts;
+                        stats.max_drawdown_date_free = ts;
                     }
                     if (peak_free > 0.0) {
                         stats.max_relative_drawdown_free = std::max(
                             stats.max_relative_drawdown_free, dd / peak_free);
                     }
+
+                    stats.free_funds_curve.x_time.push_back(ts);
+                    stats.free_funds_curve.y_value.push_back(free_funds);
                 }
-                // Push final point
-                stats.free_funds_curve.x_time.push_back(last_ts);
-                stats.free_funds_curve.y_value.push_back(free_funds);
             }
 
             return stats_ptr;
