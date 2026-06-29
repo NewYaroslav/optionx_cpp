@@ -17,6 +17,27 @@ set(DEPS_BUILD_DIR "" CACHE PATH "Path to directory where dependencies were buil
 set(LOGIT_BASE_PATH "${CMAKE_SOURCE_DIR}" CACHE PATH "Base path for LOGIT logs")
 file(TO_CMAKE_PATH "${LOGIT_BASE_PATH}" LOGIT_BASE_PATH_FWD)
 
+function(optionx_get_network_link_libraries out_var)
+    if(WIN32)
+        set(network_libs
+            ssl
+            crypto
+            curl
+        )
+    else()
+        find_package(OpenSSL REQUIRED)
+        find_package(CURL REQUIRED)
+
+        set(network_libs
+            OpenSSL::SSL
+            OpenSSL::Crypto
+            CURL::libcurl
+        )
+    endif()
+
+    set(${out_var} ${network_libs} PARENT_SCOPE)
+endfunction()
+
 if(BUILD_DEPS)
     add_subdirectory(external)
 endif()
@@ -52,10 +73,10 @@ if(BUILD_EXAMPLES)
         KURLYK_OAUTH_SUPPORT=0
     )
 
+    optionx_get_network_link_libraries(EXAMPLE_NETWORK_LIBS)
+
     set(EXAMPLE_LIBS
-        ssl
-        crypto
-        curl
+        ${EXAMPLE_NETWORK_LIBS}
         mdbx
         AES
     )
@@ -129,10 +150,10 @@ if(BUILD_TESTS)
         KURLYK_OAUTH_SUPPORT=0
     )
 
+    optionx_get_network_link_libraries(PROJECT_NETWORK_LIBS)
+
     set(PROJECT_LIBS
-        ssl
-        crypto
-        curl
+        ${PROJECT_NETWORK_LIBS}
         mdbx
         AES
         gtest
