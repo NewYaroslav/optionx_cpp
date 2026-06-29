@@ -51,15 +51,34 @@ namespace optionx::platforms::intrade_bar {
         std::unique_ptr<AuthData> m_temp_auth_data;        ///< Temporary authentication data storage.
         std::shared_ptr<AuthData> m_auth_data; ///< Currently active authentication data.
         std::uint64_t m_auth_generation = 0; ///< Monotonic auth flow generation for stale callback filtering.
+        std::uint64_t m_pending_connect_generation = 0; ///< Generation of the active public connect callback.
+        connection_callback_t m_pending_connect_callback; ///< Active public connect callback, if any.
 
         /// \brief Starts a new authentication generation and invalidates older callbacks.
         /// \param reason Human-readable trigger for diagnostics.
+        /// \param callback Public connect callback to complete or cancel.
         /// \return Generation token to capture in async callbacks.
-        std::uint64_t begin_auth_generation(const char* reason);
+        std::uint64_t begin_auth_generation(
+            const char* reason,
+            connection_callback_t callback = nullptr);
 
         /// \brief Invalidates active authentication callbacks.
         /// \param reason Human-readable trigger for diagnostics.
         void invalidate_auth_generation(const char* reason);
+
+        /// \brief Completes the active public connect callback if it belongs to a generation.
+        /// \param generation Generation token captured for the auth flow.
+        /// \param result Terminal connection result.
+        /// \param reason Human-readable completion context for diagnostics.
+        /// \return True if the auth flow is still current and terminal handling may continue.
+        bool complete_auth_generation(
+            std::uint64_t generation,
+            ConnectionResult result,
+            const char* reason);
+
+        /// \brief Cancels the active public connect callback, if any.
+        /// \param reason Human-readable cancellation reason.
+        void cancel_pending_connect_callback(const char* reason);
 
         /// \brief Checks whether a callback still belongs to the active auth flow.
         /// \param generation Generation token captured when the request was sent.
@@ -250,8 +269,15 @@ namespace optionx::platforms::intrade_bar {
         m_task_manager.shutdown();
     }
 
-    inline std::uint64_t AuthManager::begin_auth_generation(const char* reason) {
+    inline std::uint64_t AuthManager::begin_auth_generation(
+            const char* reason,
+            connection_callback_t callback) {
+        cancel_pending_connect_callback(reason);
         const std::uint64_t generation = ++m_auth_generation;
+        if (callback) {
+            m_pending_connect_generation = generation;
+            m_pending_connect_callback = std::move(callback);
+        }
         LOGIT_DEBUG(
             "Intrade Bar auth: generation started. reason=",
             reason,
@@ -262,11 +288,58 @@ namespace optionx::platforms::intrade_bar {
 
     inline void AuthManager::invalidate_auth_generation(const char* reason) {
         const std::uint64_t generation = ++m_auth_generation;
+        cancel_pending_connect_callback(reason);
         LOGIT_DEBUG(
             "Intrade Bar auth: generation invalidated. reason=",
             reason,
             ", generation=",
             generation);
+    }
+
+    inline bool AuthManager::complete_auth_generation(
+            std::uint64_t generation,
+            ConnectionResult result,
+            const char* reason) {
+        if (!is_auth_generation_current(generation, reason)) {
+            return false;
+        }
+
+        connection_callback_t callback;
+        if (m_pending_connect_generation == generation) {
+            callback = std::move(m_pending_connect_callback);
+            m_pending_connect_generation = 0;
+        }
+
+        ++m_auth_generation;
+        LOGIT_DEBUG(
+            "Intrade Bar auth: generation completed. reason=",
+            reason,
+            ", completed_generation=",
+            generation,
+            ", current_generation=",
+            m_auth_generation);
+
+        if (callback) {
+            callback(std::move(result));
+        }
+        return true;
+    }
+
+    inline void AuthManager::cancel_pending_connect_callback(const char* reason) {
+        if (!m_pending_connect_callback) {
+            m_pending_connect_generation = 0;
+            return;
+        }
+
+        auto callback = std::move(m_pending_connect_callback);
+        m_pending_connect_generation = 0;
+        const std::string message =
+            std::string("Authentication cancelled: ") + reason;
+        LOGIT_DEBUG("Intrade Bar auth: cancelling pending connect. reason=", reason);
+        callback(ConnectionResult(
+            false,
+            message,
+            m_auth_data ? m_auth_data->clone_unique() : nullptr));
     }
 
     inline bool AuthManager::is_auth_generation_current(
@@ -323,7 +396,8 @@ namespace optionx::platforms::intrade_bar {
     inline void AuthManager::handle_event(const events::ConnectRequestEvent& event) {
         LOGIT_TRACE0();
         auto callback = event.callback;
-        const std::uint64_t generation = begin_auth_generation("connect-request");
+        const std::uint64_t generation =
+            begin_auth_generation("connect-request", callback);
         m_task_manager.add_single_task(
                 "event(ConnectRequestEvent)-single-1",
                 [this, callback, generation](
@@ -410,11 +484,18 @@ namespace optionx::platforms::intrade_bar {
                 case AuthMethod::NONE: {
                         const std::string error_text("Authentication method is not specified.");
                         LOGIT_ERROR(error_text);
-                        callback({false, error_text, m_auth_data->clone_unique()});
-                        notify(events::AccountInfoUpdateEvent(
-                            account_info,
-                            Status::FAILED_TO_CONNECT,
-                            error_text));
+                        if (complete_auth_generation(
+                                generation,
+                                ConnectionResult(
+                                    false,
+                                    error_text,
+                                    m_auth_data->clone_unique()),
+                                "auth-method-none")) {
+                            notify(events::AccountInfoUpdateEvent(
+                                account_info,
+                                Status::FAILED_TO_CONNECT,
+                                error_text));
+                        }
                     } break;
                 case AuthMethod::EMAIL_PASSWORD:
                     handle_auto_domain_and_auth(generation, callback, [this](auto gen, auto cb) {
@@ -531,11 +612,18 @@ namespace optionx::platforms::intrade_bar {
                     using Status = events::AccountInfoUpdateEvent::Status;
                     if (!success) {
                         const std::string error_text = "No working domain found.";
-                        notify(events::AccountInfoUpdateEvent(
-                            get_account_info(),
-                            Status::FAILED_TO_CONNECT,
-                            error_text));
-                        callback({false, error_text, m_auth_data->clone_unique()});
+                        if (complete_auth_generation(
+                                generation,
+                                ConnectionResult(
+                                    false,
+                                    error_text,
+                                    m_auth_data->clone_unique()),
+                                "auto-domain-failed")) {
+                            notify(events::AccountInfoUpdateEvent(
+                                get_account_info(),
+                                Status::FAILED_TO_CONNECT,
+                                error_text));
+                        }
                         return;
                     }
 
@@ -659,11 +747,18 @@ namespace optionx::platforms::intrade_bar {
         }
         using Status = events::AccountInfoUpdateEvent::Status;
         LOGIT_PRINTF_ERROR("Authentication failed: ", reason);
-        callback({false, reason, m_auth_data ? m_auth_data->clone_unique() : nullptr});
-        notify(events::AccountInfoUpdateEvent(
-            get_account_info(),
-            Status::FAILED_TO_CONNECT,
-            reason));
+        if (complete_auth_generation(
+                generation,
+                ConnectionResult(
+                    false,
+                    reason,
+                    m_auth_data ? m_auth_data->clone_unique() : nullptr),
+                "auth-failure")) {
+            notify(events::AccountInfoUpdateEvent(
+                get_account_info(),
+                Status::FAILED_TO_CONNECT,
+                reason));
+        }
     }
 
     inline void AuthManager::execute_authentication_flow(
@@ -1094,7 +1189,15 @@ namespace optionx::platforms::intrade_bar {
             if (!success) {
                 const std::string error_text("Failed to retrieve balance.");
                 LOGIT_ERROR(error_text);
-                callback({false, error_text, m_auth_data->clone_unique()});
+                if (!complete_auth_generation(
+                        generation,
+                        ConnectionResult(
+                            false,
+                            error_text,
+                            m_auth_data->clone_unique()),
+                        "final-balance-failed")) {
+                    return;
+                }
 
                 auto account_info = get_account_info();
                 if (account_info->connect) {
@@ -1107,7 +1210,15 @@ namespace optionx::platforms::intrade_bar {
             }
 
             LOGIT_TRACE("Authentication successful. Connection established.");
-            callback({true, std::string(), m_auth_data->clone_unique()});
+            if (!complete_auth_generation(
+                    generation,
+                    ConnectionResult(
+                        true,
+                        std::string(),
+                        m_auth_data->clone_unique()),
+                    "final-balance-success")) {
+                return;
+            }
 
             auto account_info = get_account_info();
             account_info->account_type = m_auth_data->account_type;
