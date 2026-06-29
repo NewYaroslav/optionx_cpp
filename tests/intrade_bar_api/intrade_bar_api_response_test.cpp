@@ -628,6 +628,12 @@ TEST(IntradeBarApiResponses, CombinedTradeHistoryRequestReportsHtmlFailureStatus
     ASSERT_EQ(call.callback_count, 1);
     EXPECT_FALSE(call.result);
     EXPECT_EQ(call.result.status_code, 451);
+    EXPECT_NE(
+        call.result.error_message.find("HTML trade history"),
+        std::string::npos);
+    EXPECT_NE(
+        call.result.error_message.find("failed validation"),
+        std::string::npos);
     EXPECT_EQ(server.csv_requests.load(), 1);
     EXPECT_EQ(server.html_requests.load(), 1);
 }
@@ -646,6 +652,12 @@ TEST(IntradeBarApiResponses, CombinedTradeHistoryRequestReportsCsvFailureStatus)
     ASSERT_EQ(call.callback_count, 1);
     EXPECT_FALSE(call.result);
     EXPECT_EQ(call.result.status_code, 500);
+    EXPECT_NE(
+        call.result.error_message.find("CSV trade history"),
+        std::string::npos);
+    EXPECT_NE(
+        call.result.error_message.find("failed validation"),
+        std::string::npos);
     EXPECT_EQ(server.csv_requests.load(), 1);
     EXPECT_EQ(server.html_requests.load(), 1);
 }
