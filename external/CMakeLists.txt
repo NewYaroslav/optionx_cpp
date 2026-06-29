@@ -11,8 +11,13 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_link_options(
         -static-libgcc
         -static-libstdc++
-        -static-libwinpthread
     )
+
+    if(MINGW)
+        add_link_options(
+            -static-libwinpthread
+        )
+    endif()
 
 elseif (MSVC)
     add_compile_options(
@@ -32,6 +37,7 @@ include(${EXTERNAL_CMAKE_DIR}/install-runtime-dlls.cmake)
 # mdbx
 include(${EXTERNAL_CMAKE_DIR}/libmdbx-wrapper.cmake)
 
+if(WIN32)
 # openssl
 install_headers_to_include(openssl ${CMAKE_CURRENT_LIST_DIR}/openssl-win64-v3.4.0/include/openssl)
 install_static_libs_to_lib(${CMAKE_CURRENT_LIST_DIR}/openssl-win64-v3.4.0/lib/VC/x64/MT)
@@ -51,6 +57,10 @@ file(COPY
     ${CMAKE_CURRENT_LIST_DIR}/curl-8.11.0_1-win64-mingw/bin/curl-ca-bundle.crt
     DESTINATION ${CMAKE_BINARY_DIR}/bin
 )
+else()
+    # Non-Windows builds use system OpenSSL/CURL targets from the root
+    # tests/examples link configuration.
+endif()
 
 # AES
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/AES)
