@@ -9,7 +9,6 @@
 #include <cmath>
 #include <array>
 #include <stdexcept>
-#include <limits>
 
 namespace optionx::utils {
 
@@ -49,8 +48,8 @@ namespace optionx::utils {
     }
 
     /// \brief Computes comparison tolerance for specified decimal precision.
-    /// \details Returns 10^(-digits), a full decimal step at the selected
-    /// precision, to account for floating-point and broker tick rounding noise.
+    /// \details Returns 0.5 * 10^(-digits), the half-step boundary used when
+    /// rounding values to the selected decimal precision.
     /// \param digits Number of significant decimal places (0-18)
     /// \return Tolerance value for floating-point comparisons
     /// \throw std::invalid_argument If digits exceed maximum supported precision
@@ -59,25 +58,25 @@ namespace optionx::utils {
             throw std::invalid_argument("Digits exceed maximum precision (18).");
         }
         static const std::array<double, 19> tolerance = {
-            1.0,                // 10^0
-            0.1,                // 10^1
-            0.01,               // 10^2
-            0.001,              // 10^3
-            0.0001,             // 10^4
-            0.00001,            // 10^5
-            0.000001,           // 10^6
-            0.0000001,          // 10^7
-            0.00000001,         // 10^8
-            0.000000001,        // 10^9
-            0.0000000001,       // 10^10
-            0.00000000001,      // 10^11
-            0.000000000001,     // 10^12
-            0.0000000000001,    // 10^13
-            0.00000000000001,   // 10^14
-            0.000000000000001,  // 10^15
-            0.0000000000000001, // 10^16
-            0.00000000000000001,// 10^17
-            0.000000000000000001// 10^18
+            0.5,                 // 0.5 * 10^0
+            0.05,                // 0.5 * 10^-1
+            0.005,               // 0.5 * 10^-2
+            0.0005,              // 0.5 * 10^-3
+            0.00005,             // 0.5 * 10^-4
+            0.000005,            // 0.5 * 10^-5
+            0.0000005,           // 0.5 * 10^-6
+            0.00000005,          // 0.5 * 10^-7
+            0.000000005,         // 0.5 * 10^-8
+            0.0000000005,        // 0.5 * 10^-9
+            0.00000000005,       // 0.5 * 10^-10
+            0.000000000005,      // 0.5 * 10^-11
+            0.0000000000005,     // 0.5 * 10^-12
+            0.00000000000005,    // 0.5 * 10^-13
+            0.000000000000005,   // 0.5 * 10^-14
+            0.0000000000000005,  // 0.5 * 10^-15
+            0.00000000000000005, // 0.5 * 10^-16
+            0.000000000000000005,// 0.5 * 10^-17
+            0.0000000000000000005// 0.5 * 10^-18
         };
         return tolerance[digits];
     }
@@ -117,13 +116,7 @@ namespace optionx::utils {
         if (digits > 18) {
             throw std::invalid_argument("Digits exceed maximum precision (18).");
         }
-        const double tolerance = precision_tolerance(digits);
-        const double delta = std::fabs(value1 - value2);
-        const double epsilon =
-            std::numeric_limits<double>::epsilon() *
-            (delta > tolerance ? delta : tolerance) *
-            8.0;
-        return delta <= tolerance + epsilon;
+        return normalize_double(value1, digits) == normalize_double(value2, digits);
     }
 
 } // namespace optionx::utils

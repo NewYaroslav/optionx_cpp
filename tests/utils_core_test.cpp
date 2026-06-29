@@ -40,10 +40,11 @@ TEST(HttpUtilsTest, RemoveHttpPrefixOnlyRemovesLeadingScheme) {
         "prefixhttps://intrade.bar");
 }
 
-TEST(FixedPointUtilsTest, PrecisionToleranceUsesFullDecimalStep) {
-    EXPECT_DOUBLE_EQ(optionx::utils::precision_tolerance(0), 1.0);
-    EXPECT_DOUBLE_EQ(optionx::utils::precision_tolerance(2), 0.01);
-    EXPECT_TRUE(optionx::utils::compare_with_precision(1.00, 1.01, 2));
+TEST(FixedPointUtilsTest, PrecisionToleranceUsesHalfDecimalStep) {
+    EXPECT_DOUBLE_EQ(optionx::utils::precision_tolerance(0), 0.5);
+    EXPECT_DOUBLE_EQ(optionx::utils::precision_tolerance(2), 0.005);
+    EXPECT_TRUE(optionx::utils::compare_with_precision(1.00, 1.004, 2));
+    EXPECT_FALSE(optionx::utils::compare_with_precision(1.00, 1.01, 2));
     EXPECT_FALSE(optionx::utils::compare_with_precision(1.00, 1.02, 2));
     EXPECT_FALSE(optionx::utils::compare_with_precision(1e14, 1e14 + 0.25, 2));
     EXPECT_THROW(
