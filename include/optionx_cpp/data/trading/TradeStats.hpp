@@ -21,7 +21,7 @@
 namespace optionx {
 
     /// \enum TradeStatsSelection
-    /// \brief Controls which subset of trades contributes to outcome statistics.
+    /// \brief Controls which subset of trades contributes to selected result statistics.
     enum class TradeStatsSelection {
         ALL_TRADES,      ///< Include every trade.
         FIRST_MM_STEP,   ///< Include only trades with mm_step == 0.
@@ -124,9 +124,9 @@ namespace optionx {
         double gross_loss = 0.0;              ///< Sum of negative profits (absolute).
         double profit_factor = 0.0;           ///< gross_profit / gross_loss (0 when no loss).
 
-        double average_amount = 0.0;          ///< total_volume / total.trades.
-        double average_profit = 0.0;          ///< total_profit / result trades count.
-        double average_profit_per_trade = 0.0; ///< total_profit / total.trades.
+        double average_amount = 0.0;          ///< total_volume / selected monetary result trades count.
+        double average_profit = 0.0;          ///< total_profit / selected monetary result trades count.
+        double average_profit_per_trade = 0.0; ///< Alias-style per-trade average over selected monetary result trades.
 
         double max_profit_trade = 0.0;
         double max_loss_trade = 0.0;
@@ -159,8 +159,8 @@ namespace optionx {
     /// \enum TradeStatsInputOrder
     /// \brief Hint about the order of input records.
     enum class TradeStatsInputOrder {
-        AS_IS,           ///< Records may be in any order; sweep-line sorts internally.
-        PLACE_DATE_ASC   ///< Records are already sorted by place_date ascending.
+        AS_IS,           ///< Records may be in any order; realized curves and series are sorted internally.
+        PLACE_DATE_ASC   ///< Records are already in the caller's intended chronological order.
     };
 
     /// \class TradeStatsConfig

@@ -12,6 +12,7 @@
 #include <map>
 #include <memory>
 #include <queue>
+#include <vector>
 
 #include <time_shield.hpp>
 
@@ -57,25 +58,22 @@ namespace optionx::storage {
                     return ts > other.ts; // min-heap for std::priority_queue
                 }
             };
+
+            const auto ordered_records = make_ordered_records(records, config);
             std::vector<Event> events;
             events.reserve(records.size() * 2);
 
-            for (const auto& rec : records) {
+            for (const auto* rec_ptr : ordered_records) {
+                const auto& rec = *rec_ptr;
+
                 // 1. Filter predicate (applies to both outcome and monetary)
                 if (!TradeRecordFilterMatcher::match_filter(rec, config.filter, config.time_zone)) {
                     continue;
                 }
 
-                // 2. Determine if this record contributes to OUTCOME statistics
-                bool include_outcome = true;
-                if (config.selection == optionx::TradeStatsSelection::FIRST_MM_STEP && rec.mm_step != 0) {
-                    include_outcome = false;
-                }
-                if (config.selection == optionx::TradeStatsSelection::LAST_IN_GROUP) {
-                    if (!rec.last_in_group()) {
-                        include_outcome = false;
-                    }
-                }
+                // 2. Determine if this record contributes to selected statistics.
+                const bool include_selected = include_by_selection(rec, config);
+                bool include_outcome = include_selected;
 
                 // 3. Error / terminal inclusion for outcome stats
                 if (include_outcome) {
@@ -95,8 +93,8 @@ namespace optionx::storage {
                     profit = config.convert(profit, rec.currency);
                 }
 
-                // 5. Monetary aggregations (all result-state trades always contribute)
-                if (optionx::is_result_state(rec.trade_state)) {
+                // 5. Monetary aggregations (same selected result-state population)
+                if (include_selected && optionx::is_result_state(rec.trade_state)) {
                     ++volume_trade_count;
                     stats.total_volume += amount;
                     stats.total_profit += profit;
@@ -244,7 +242,7 @@ namespace optionx::storage {
             stats.series.current_is_win = current_is_win;
 
             // Recount series properly for averages
-            recount_series(records, config, stats.series);
+            recount_series(ordered_records, config, stats.series);
 
             // Finalize winrate stats
             stats.total.calc();
@@ -275,14 +273,11 @@ namespace optionx::storage {
             if (volume_trade_count > 0) {
                 stats.average_amount = stats.total_volume / static_cast<double>(volume_trade_count);
             }
-            if (stats.total.trades > 0) {
-                stats.average_profit_per_trade = stats.total_profit / static_cast<double>(stats.total.trades);
-            }
-
-            const auto result_count = stats.total.wins + stats.total.losses +
-                                      stats.total.standoffs + stats.total.refunds;
-            if (result_count > 0) {
-                stats.average_profit = stats.total_profit / static_cast<double>(result_count);
+            if (volume_trade_count > 0) {
+                stats.average_profit_per_trade =
+                    stats.total_profit / static_cast<double>(volume_trade_count);
+                stats.average_profit =
+                    stats.total_profit / static_cast<double>(volume_trade_count);
             }
 
             // Fill chart data
@@ -333,20 +328,58 @@ namespace optionx::storage {
         }
 
     private:
+        static std::int64_t stats_order_timestamp(
+                const optionx::TradeRecord& rec) noexcept {
+            if (rec.close_date > 0) return rec.close_date;
+            if (rec.open_date > 0) return rec.open_date;
+            return optionx::select_timestamp_ms(rec, optionx::TradeRecordTimeField::AUTO);
+        }
+
+        static std::vector<const optionx::TradeRecord*> make_ordered_records(
+                const std::vector<optionx::TradeRecord>& records,
+                const optionx::TradeStatsConfig& config) {
+            std::vector<const optionx::TradeRecord*> ordered;
+            ordered.reserve(records.size());
+            for (const auto& record : records) {
+                ordered.push_back(&record);
+            }
+
+            if (config.input_order == optionx::TradeStatsInputOrder::PLACE_DATE_ASC) {
+                return ordered;
+            }
+
+            std::stable_sort(
+                ordered.begin(),
+                ordered.end(),
+                [](const optionx::TradeRecord* lhs, const optionx::TradeRecord* rhs) {
+                    const auto lhs_ts = stats_order_timestamp(*lhs);
+                    const auto rhs_ts = stats_order_timestamp(*rhs);
+                    if (lhs_ts != rhs_ts) return lhs_ts < rhs_ts;
+                    if (lhs->trade_id != rhs->trade_id) return lhs->trade_id < rhs->trade_id;
+                    return lhs->request_unique_id < rhs->request_unique_id;
+                });
+            return ordered;
+        }
+
+        static bool include_by_selection(
+                const optionx::TradeRecord& rec,
+                const optionx::TradeStatsConfig& config) noexcept {
+            if (config.selection == optionx::TradeStatsSelection::FIRST_MM_STEP && rec.mm_step != 0) {
+                return false;
+            }
+            if (config.selection == optionx::TradeStatsSelection::LAST_IN_GROUP) {
+                return rec.last_in_group();
+            }
+            return true;
+        }
+
         static bool include_outcome(
                 const optionx::TradeRecord& rec,
                 const optionx::TradeStatsConfig& config) noexcept {
             if (!TradeRecordFilterMatcher::match_filter(rec, config.filter, config.time_zone)) {
                 return false;
             }
-            if (config.selection == optionx::TradeStatsSelection::FIRST_MM_STEP && rec.mm_step != 0) {
-                return false;
-            }
-            if (config.selection == optionx::TradeStatsSelection::LAST_IN_GROUP) {
-                if (!rec.last_in_group()) {
-                    return false;
-                }
-            }
+            if (!include_by_selection(rec, config)) return false;
             if (!config.include_errors && optionx::is_error_trade_state(rec.trade_state)) {
                 return false;
             }
@@ -357,7 +390,7 @@ namespace optionx::storage {
         }
 
         static void recount_series(
-                const std::vector<optionx::TradeRecord>& records,
+                const std::vector<const optionx::TradeRecord*>& records,
                 const optionx::TradeStatsConfig& config,
                 optionx::TradeSeriesStats& series) {
             std::uint64_t cur_win = 0, cur_loss = 0;
@@ -365,7 +398,8 @@ namespace optionx::storage {
             std::uint64_t count_w = 0, count_l = 0;
             std::uint64_t total_w_len = 0, total_l_len = 0;
 
-            for (const auto& rec : records) {
+            for (const auto* rec_ptr : records) {
+                const auto& rec = *rec_ptr;
                 if (!include_outcome(rec, config)) continue;
                 if (!optionx::is_terminal_trade_state(rec.trade_state)) continue;
 

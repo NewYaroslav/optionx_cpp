@@ -453,6 +453,55 @@ TEST(TradeStatsCalculatorTest, DrawdownAndEquityCurve) {
     EXPECT_NEAR(stats.max_relative_drawdown, 20.0 / 108.2, 0.001);
 }
 
+TEST(TradeStatsCalculatorTest, AsIsInputSortsRealizedCurvesAndSeries) {
+    std::vector<TradeRecord> records;
+    records.push_back(make_win_record(3, 3000, 10.0, -10.0, "EURUSD", optionx::TradeState::LOSS));
+    records.push_back(make_win_record(1, 1000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    records.push_back(make_win_record(2, 2000, 10.0, 7.0, "EURUSD", optionx::TradeState::WIN));
+
+    optionx::TradeStatsConfig cfg;
+    cfg.start_balance = 100.0;
+    cfg.include_non_terminal = false;
+    cfg.input_order = optionx::TradeStatsInputOrder::AS_IS;
+    auto stats_ptr = TradeStatsCalculator::calc(records, cfg);
+    auto& stats = *stats_ptr;
+
+    ASSERT_EQ(stats.equity_curve.x_time.size(), 3u);
+    EXPECT_EQ(stats.equity_curve.x_time[0], records[1].close_date);
+    EXPECT_EQ(stats.equity_curve.x_time[1], records[2].close_date);
+    EXPECT_EQ(stats.equity_curve.x_time[2], records[0].close_date);
+
+    EXPECT_DOUBLE_EQ(stats.equity_curve.y_value[0], 108.0);
+    EXPECT_DOUBLE_EQ(stats.equity_curve.y_value[1], 115.0);
+    EXPECT_DOUBLE_EQ(stats.equity_curve.y_value[2], 105.0);
+
+    EXPECT_EQ(stats.series.max_win_series, 2u);
+    EXPECT_EQ(stats.series.current_series, 1u);
+    EXPECT_FALSE(stats.series.current_is_win);
+}
+
+TEST(TradeStatsCalculatorTest, SelectionAppliesToMonetaryStats) {
+    std::vector<TradeRecord> records;
+    records.push_back(make_win_record(1, 1000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    records.push_back(make_win_record(2, 2000, 100.0, 80.0, "EURUSD", optionx::TradeState::WIN));
+
+    optionx::TradeStatsConfig cfg;
+    cfg.selection = optionx::TradeStatsSelection::FIRST_MM_STEP;
+    cfg.include_non_terminal = false;
+    auto stats_ptr = TradeStatsCalculator::calc(records, cfg);
+    auto& stats = *stats_ptr;
+
+    EXPECT_EQ(stats.total.trades, 1u);
+    EXPECT_EQ(stats.total.wins, 1u);
+    EXPECT_DOUBLE_EQ(stats.total_volume, 10.0);
+    EXPECT_DOUBLE_EQ(stats.total_profit, 8.0);
+    EXPECT_DOUBLE_EQ(stats.average_amount, 10.0);
+    EXPECT_DOUBLE_EQ(stats.average_profit, 8.0);
+    EXPECT_DOUBLE_EQ(stats.average_profit_per_trade, 8.0);
+    EXPECT_EQ(stats.by_mm_step.count(0), 1u);
+    EXPECT_EQ(stats.by_mm_step.count(1), 0u);
+}
+
 TEST(TradeMetaStatsCalculatorTest, CollectsUniqueSymbols) {
     std::vector<TradeRecord> records;
     records.push_back(make_win_record(1, 1000, 10.0, 8.2, "EURUSD", optionx::TradeState::WIN));
