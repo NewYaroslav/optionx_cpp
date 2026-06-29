@@ -60,6 +60,48 @@ namespace optionx::platforms::intrade_bar {
         int64_t m_disconnected_domain_retry_period_ms = time_shield::MS_PER_15_SEC; ///< Disconnected host/domain recovery period.
         bool m_has_balance_update = false;    ///< Flag indicating if a balance update is in progress.
         bool m_check_host_in_progress = false;
+        std::uint64_t m_balance_request_generation = 0; ///< Monotonic balance request generation.
+        std::uint64_t m_active_balance_request_generation = 0; ///< Currently active balance request generation.
+        std::uint64_t m_host_request_generation = 0; ///< Monotonic host/domain request generation.
+        std::uint64_t m_active_host_request_generation = 0; ///< Currently active host/domain request generation.
+
+        /// \brief Starts a balance request generation.
+        /// \param reason Human-readable trigger for diagnostics.
+        /// \return Generation token to capture in the request callback.
+        std::uint64_t begin_balance_request(const char* reason);
+
+        /// \brief Completes an active balance request if its generation is current.
+        /// \param generation Generation token captured when the request was sent.
+        /// \param reason Human-readable callback context for diagnostics.
+        /// \return True if the callback may apply its result.
+        bool finish_balance_request(
+            std::uint64_t generation,
+            const char* reason);
+
+        /// \brief Starts a host/domain request generation.
+        /// \param reason Human-readable trigger for diagnostics.
+        /// \return Generation token to capture in request callbacks.
+        std::uint64_t begin_host_request(const char* reason);
+
+        /// \brief Checks whether a host/domain callback belongs to the active chain.
+        /// \param generation Generation token captured when the request was sent.
+        /// \param reason Human-readable callback context for diagnostics.
+        /// \return True if the callback may continue the host/domain chain.
+        bool is_host_request_current(
+            std::uint64_t generation,
+            const char* reason) const;
+
+        /// \brief Completes an active host/domain request if its generation is current.
+        /// \param generation Generation token captured when the request was sent.
+        /// \param reason Human-readable callback context for diagnostics.
+        /// \return True if the callback may apply its result.
+        bool finish_host_request(
+            std::uint64_t generation,
+            const char* reason);
+
+        /// \brief Invalidates pending balance and host/domain callbacks.
+        /// \param reason Human-readable trigger for diagnostics.
+        void invalidate_async_requests(const char* reason);
 
          /// \brief Initiates a balance update request.
         void handle_balance_update();
@@ -139,20 +181,110 @@ namespace optionx::platforms::intrade_bar {
     }
 
     inline void BalanceManager::shutdown() {
+        invalidate_async_requests("shutdown");
         m_task_manager.shutdown();
+    }
+
+    inline std::uint64_t BalanceManager::begin_balance_request(const char* reason) {
+        m_has_balance_update = true;
+        const std::uint64_t generation = ++m_balance_request_generation;
+        m_active_balance_request_generation = generation;
+        LOGIT_DEBUG(
+            "Intrade Bar balance: balance request started. reason=",
+            reason,
+            ", generation=",
+            generation);
+        return generation;
+    }
+
+    inline bool BalanceManager::finish_balance_request(
+            std::uint64_t generation,
+            const char* reason) {
+        if (generation != m_active_balance_request_generation) {
+            LOGIT_DEBUG(
+                "Intrade Bar balance: stale balance callback ignored. reason=",
+                reason,
+                ", callback_generation=",
+                generation,
+                ", active_generation=",
+                m_active_balance_request_generation);
+            return false;
+        }
+
+        m_active_balance_request_generation = 0;
+        m_has_balance_update = false;
+        return true;
+    }
+
+    inline std::uint64_t BalanceManager::begin_host_request(const char* reason) {
+        m_check_host_in_progress = true;
+        const std::uint64_t generation = ++m_host_request_generation;
+        m_active_host_request_generation = generation;
+        LOGIT_DEBUG(
+            "Intrade Bar balance: host/domain request started. reason=",
+            reason,
+            ", generation=",
+            generation);
+        return generation;
+    }
+
+    inline bool BalanceManager::is_host_request_current(
+            std::uint64_t generation,
+            const char* reason) const {
+        const bool current = generation == m_active_host_request_generation;
+        if (!current) {
+            LOGIT_DEBUG(
+                "Intrade Bar balance: stale host/domain callback ignored. reason=",
+                reason,
+                ", callback_generation=",
+                generation,
+                ", active_generation=",
+                m_active_host_request_generation);
+        }
+        return current;
+    }
+
+    inline bool BalanceManager::finish_host_request(
+            std::uint64_t generation,
+            const char* reason) {
+        if (!is_host_request_current(generation, reason)) {
+            return false;
+        }
+
+        m_active_host_request_generation = 0;
+        m_check_host_in_progress = false;
+        return true;
+    }
+
+    inline void BalanceManager::invalidate_async_requests(const char* reason) {
+        ++m_balance_request_generation;
+        ++m_host_request_generation;
+        m_active_balance_request_generation = 0;
+        m_active_host_request_generation = 0;
+        m_has_balance_update = false;
+        m_check_host_in_progress = false;
+        LOGIT_DEBUG(
+            "Intrade Bar balance: async callbacks invalidated. reason=",
+            reason,
+            ", balance_generation=",
+            m_balance_request_generation,
+            ", host_generation=",
+            m_host_request_generation);
     }
 
     // Handles balance updates.
     inline void BalanceManager::handle_balance_update() {
         if (m_has_balance_update) return;
-        m_has_balance_update = true;
+        const std::uint64_t generation =
+            begin_balance_request("balance-update");
         LOGIT_INFO("Intrade Bar balance: requesting balance snapshot.");
-        m_request_manager.request_balance([this](
+        m_request_manager.request_balance([this, generation](
                 bool success,
                 double balance,
                 CurrencyType currency) {
-            m_has_balance_update = false;
-            m_check_host_in_progress = false;
+            if (!finish_balance_request(generation, "balance-update")) {
+                return;
+            }
             auto account_info = get_account_info();
             if (!account_info) {
                 LOGIT_ERROR("Failed to get account info.");
@@ -220,6 +352,7 @@ namespace optionx::platforms::intrade_bar {
 
     inline void BalanceManager::handle_event(const events::AuthDataEvent& event) {
         if (auto auth_data = std::dynamic_pointer_cast<AuthData>(event.auth_data)) {
+            invalidate_async_requests("auth-data");
             if (auth_data->balance_check_period_ms > 0) {
                 m_balance_check_period_ms = auth_data->balance_check_period_ms;
                 LOGIT_INFO(
@@ -255,11 +388,13 @@ namespace optionx::platforms::intrade_bar {
 
     inline void BalanceManager::handle_event(const events::ConnectRequestEvent& event) {
         LOGIT_TRACE0();
+        invalidate_async_requests("connect-request");
         m_task_manager.shutdown();
     }
 
     inline void BalanceManager::handle_event(const events::DisconnectRequestEvent& event) {
         LOGIT_TRACE0();
+        invalidate_async_requests("disconnect-request");
         m_task_manager.shutdown();
     }
 
@@ -278,6 +413,7 @@ namespace optionx::platforms::intrade_bar {
         LOGIT_TRACE0();
 
         m_task_manager.shutdown();
+        invalidate_async_requests("connected");
         
         LOGIT_INFO(
             "Intrade Bar balance: starting connected balance polling. period_ms=",
@@ -298,13 +434,16 @@ namespace optionx::platforms::intrade_bar {
                 [this](std::shared_ptr<utils::Task> task){
             if (task->is_shutdown()) return;
             if (m_check_host_in_progress) return;
-            m_check_host_in_progress = true;
+            const std::uint64_t generation =
+                begin_host_request("connected-host-check");
             
             LOGIT_TRACE0();
-            m_request_manager.request_check_current_host_available([this](
+            m_request_manager.request_check_current_host_available([this, generation](
                     bool success) {
                 LOGIT_TRACE0();
-                m_check_host_in_progress = false;
+                if (!finish_host_request(generation, "connected-host-check")) {
+                    return;
+                }
                 if (!success) {
                     auto account_info = get_account_info();
                     if (account_info->connect) {
@@ -324,6 +463,7 @@ namespace optionx::platforms::intrade_bar {
         LOGIT_TRACE0();
 
         m_task_manager.shutdown();
+        invalidate_async_requests("disconnected");
         LOGIT_INFO(
             "Intrade Bar balance: starting disconnected host recovery. period_ms=",
             m_disconnected_domain_retry_period_ms);
@@ -334,20 +474,29 @@ namespace optionx::platforms::intrade_bar {
             LOGIT_TRACE0();
             if (task->is_shutdown()) return;
             if (m_check_host_in_progress) return;
-            m_check_host_in_progress = true;
+            const std::uint64_t generation =
+                begin_host_request("disconnected-domain-retry");
             
             LOGIT_TRACE0();
-            m_request_manager.request_check_current_host_available([this](
+            m_request_manager.request_check_current_host_available([this, generation](
                     bool success) {
+                if (!is_host_request_current(generation, "disconnected-host-check")) {
+                    return;
+                }
                 if (success) {
+                    if (!finish_host_request(generation, "disconnected-host-check")) {
+                        return;
+                    }
                     handle_balance_update();
                     return;
                 }
                 
                 m_request_manager.request_find_working_domain(
-                        [this](bool success, std::string& host) {
+                        [this, generation](bool success, std::string& host) {
+                    if (!finish_host_request(generation, "disconnected-domain-find")) {
+                        return;
+                    }
                     if (!success) {
-                        m_check_host_in_progress = false;
                         return;
                     }
 
