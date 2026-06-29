@@ -105,12 +105,14 @@ namespace optionx::utils {
 		return static_cast<double>(value) / static_cast<double>(scale);
 	}
 
-	/// \brief Compares two floating-point values with specified precision.
-    /// \details Uses precomputed tolerance values to account for rounding errors.
+	/// \brief Compares two floating-point values after decimal rounding.
+    /// \details Each value is rounded with normalize_double(value, digits),
+    ///          then the rounded values are compared. A one-step price move at
+    ///          the selected precision is therefore treated as a real change.
     /// \param value1 First comparison operand
     /// \param value2 Second comparison operand
-    /// \param digits Number of decimal places to consider
-    /// \return true if |value1 - value2| <= tolerance, false otherwise
+    /// \param digits Number of decimal places to compare
+    /// \return true if both values round to the same value; false otherwise
     /// \throw std::invalid_argument If digits exceed maximum supported precision
     inline bool compare_with_precision(double value1, double value2, size_t digits) {
         if (digits > 18) {
