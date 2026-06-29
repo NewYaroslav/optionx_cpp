@@ -9,6 +9,7 @@
 #include <cmath>
 #include <array>
 #include <stdexcept>
+#include <limits>
 
 namespace optionx::utils {
 
@@ -48,7 +49,8 @@ namespace optionx::utils {
     }
 
     /// \brief Computes comparison tolerance for specified decimal precision.
-    /// \details Returns 0.5 * 10^(-digits) to account for rounding errors.
+    /// \details Returns 10^(-digits), a full decimal step at the selected
+    /// precision, to account for floating-point and broker tick rounding noise.
     /// \param digits Number of significant decimal places (0-18)
     /// \return Tolerance value for floating-point comparisons
     /// \throw std::invalid_argument If digits exceed maximum supported precision
@@ -116,9 +118,13 @@ namespace optionx::utils {
             throw std::invalid_argument("Digits exceed maximum precision (18).");
         }
         double tolerance = precision_tolerance(digits);
-        return std::fabs(value1 - value2) <= tolerance;
+        const double epsilon =
+            std::numeric_limits<double>::epsilon() *
+            (std::fabs(value1) + std::fabs(value2) + 1.0) *
+            8.0;
+        return std::fabs(value1 - value2) <= tolerance + epsilon;
     }
 
-} // namespace dfh::utils
+} // namespace optionx::utils
 
 #endif // _OPTIONX_FIXED_POINT_HPP_INCLUDED

@@ -30,31 +30,20 @@
 
 namespace optionx::utils {
 
-    /// \brief Removes the first occurrence of "https://" or "http://" from the given URL.
-    /// \param url The URL from which to remove the substring.
-    /// \return std::string The modified URL with the first occurrence of "https://" or "http://" removed.
+    /// \brief Removes an "https://" or "http://" prefix from the given URL.
+    /// \param url The URL from which to remove the scheme prefix.
+    /// \return The URL without a leading "https://" or "http://" scheme.
     inline std::string remove_http_prefix(const std::string& url) {
         const std::string https_prefix = "https://";
         const std::string http_prefix = "http://";
 
-        std::string modified_url = url;
-
-        // Find the position of "https://" or "http://"
-        std::size_t pos = modified_url.find(https_prefix);
-        if (pos == std::string::npos) {
-            pos = modified_url.find(http_prefix);
+        if (url.compare(0, https_prefix.length(), https_prefix) == 0) {
+            return url.substr(https_prefix.length());
         }
-
-        // If found, erase the substring
-        if (pos != std::string::npos) {
-            if (modified_url.compare(pos, https_prefix.length(), https_prefix) == 0) {
-                modified_url.erase(pos, https_prefix.length());
-            } else if (modified_url.compare(pos, http_prefix.length(), http_prefix) == 0) {
-                modified_url.erase(pos, http_prefix.length());
-            }
+        if (url.compare(0, http_prefix.length(), http_prefix) == 0) {
+            return url.substr(http_prefix.length());
         }
-
-        return modified_url;
+        return url;
     }
 
     /// \brief Builds a user-facing error string from an HTTP response.
