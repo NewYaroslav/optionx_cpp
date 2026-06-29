@@ -142,6 +142,7 @@ namespace optionx {
         TradeChartData equity_curve;
         TradeChartData free_funds_curve;
         TradeChartData profit_curve;
+        TradeChartData profit_percent_curve; ///< Cumulative net PnL as percent of start_balance when start_balance > 0.
         TradeChartData daily_profit;
         TradeChartData hourly_profit;
 
@@ -157,10 +158,10 @@ namespace optionx {
     };
 
     /// \enum TradeStatsInputOrder
-    /// \brief Hint about the order of input records.
+    /// \brief Legacy hint about the order of input records.
     enum class TradeStatsInputOrder {
         AS_IS,           ///< Records may be in any order; realized curves and series are sorted internally.
-        PLACE_DATE_ASC   ///< Records are already in the caller's intended chronological order.
+        PLACE_DATE_ASC   ///< Deprecated hint; realized statistics are still ordered by result timestamp.
     };
 
     /// \class TradeStatsConfig

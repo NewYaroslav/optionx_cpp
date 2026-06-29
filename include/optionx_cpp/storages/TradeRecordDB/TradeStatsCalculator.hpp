@@ -36,9 +36,7 @@ namespace optionx::storage {
             auto stats_ptr = std::make_unique<optionx::TradeStats>();
             auto& stats = *stats_ptr;
 
-            double running_balance = config.start_balance;
-            double peak_balance = config.start_balance;
-
+            std::map<std::int64_t, double> realized_profit_by_ts;
             std::map<std::int64_t, double> daily_profit_map;
             std::map<std::int64_t, double> hourly_profit_map;
 
@@ -59,7 +57,7 @@ namespace optionx::storage {
                 }
             };
 
-            const auto ordered_records = make_ordered_records(records, config);
+            const auto ordered_records = make_ordered_records(records);
             std::vector<Event> events;
             events.reserve(records.size() * 2);
 
@@ -104,16 +102,12 @@ namespace optionx::storage {
                     stats.max_profit_trade = std::max(stats.max_profit_trade, profit);
                     stats.max_loss_trade = std::min(stats.max_loss_trade, profit);
 
-                    // Equity / profit curves (classic realized-profit mode)
+                    // Realized-profit curves are built after aggregation by
+                    // timestamp, so same-moment closes do not invent an order.
                     const auto curve_ts = rec.close_date > 0 ? rec.close_date : rec.open_date;
-                    running_balance += profit;
-                    peak_balance = std::max(peak_balance, running_balance);
 
                     if (curve_ts > 0) {
-                        stats.equity_curve.x_time.push_back(curve_ts);
-                        stats.equity_curve.y_value.push_back(running_balance);
-                        stats.profit_curve.x_time.push_back(curve_ts);
-                        stats.profit_curve.y_value.push_back(stats.total_profit);
+                        realized_profit_by_ts[curve_ts] += profit;
 
                         // Daily / hourly profit buckets
                         const auto day_utc =
@@ -123,16 +117,6 @@ namespace optionx::storage {
                         const auto hour_utc =
                             config.time_zone.start_of_local_hour_utc_ms(curve_ts);
                         hourly_profit_map[hour_utc] += profit;
-                    }
-
-                    // Drawdown (classic)
-                    const auto dd = peak_balance - running_balance;
-                    if (dd > stats.max_absolute_drawdown) {
-                        stats.max_absolute_drawdown = dd;
-                        stats.max_drawdown_date = curve_ts;
-                    }
-                    if (peak_balance > 0.0) {
-                        stats.max_relative_drawdown = std::max(stats.max_relative_drawdown, dd / peak_balance);
                     }
 
                     // Ping stats
@@ -280,6 +264,39 @@ namespace optionx::storage {
                     stats.total_profit / static_cast<double>(volume_trade_count);
             }
 
+            // Realized synthetic equity/profit curves.
+            double running_balance = config.start_balance;
+            double peak_balance = config.start_balance;
+            double cumulative_profit = 0.0;
+            for (const auto& kv : realized_profit_by_ts) {
+                const auto ts = kv.first;
+                const auto delta = kv.second;
+                running_balance += delta;
+                cumulative_profit += delta;
+                peak_balance = std::max(peak_balance, running_balance);
+
+                stats.equity_curve.x_time.push_back(ts);
+                stats.equity_curve.y_value.push_back(running_balance);
+                stats.profit_curve.x_time.push_back(ts);
+                stats.profit_curve.y_value.push_back(cumulative_profit);
+                if (config.start_balance > 0.0) {
+                    stats.profit_percent_curve.x_time.push_back(ts);
+                    stats.profit_percent_curve.y_value.push_back(
+                        (cumulative_profit / config.start_balance) * 100.0);
+                }
+
+                const auto dd = peak_balance - running_balance;
+                if (dd > stats.max_absolute_drawdown) {
+                    stats.max_absolute_drawdown = dd;
+                    stats.max_drawdown_date = ts;
+                }
+                if (peak_balance > 0.0) {
+                    stats.max_relative_drawdown = std::max(
+                        stats.max_relative_drawdown,
+                        dd / peak_balance);
+                }
+            }
+
             // Fill chart data
             for (const auto& kv : daily_profit_map) {
                 stats.daily_profit.x_time.push_back(kv.first);
@@ -336,16 +353,11 @@ namespace optionx::storage {
         }
 
         static std::vector<const optionx::TradeRecord*> make_ordered_records(
-                const std::vector<optionx::TradeRecord>& records,
-                const optionx::TradeStatsConfig& config) {
+                const std::vector<optionx::TradeRecord>& records) {
             std::vector<const optionx::TradeRecord*> ordered;
             ordered.reserve(records.size());
             for (const auto& record : records) {
                 ordered.push_back(&record);
-            }
-
-            if (config.input_order == optionx::TradeStatsInputOrder::PLACE_DATE_ASC) {
-                return ordered;
             }
 
             std::stable_sort(
