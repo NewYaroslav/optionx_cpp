@@ -138,6 +138,18 @@ namespace optionx::storage {
             }
             if (result.balance != 0.0) {
                 record.balance = result.balance;
+                if (record.close_balance == 0.0) {
+                    record.close_balance = result.balance;
+                }
+                updated = true;
+            }
+            if (result.open_balance != 0.0) {
+                record.open_balance = result.open_balance;
+                updated = true;
+            }
+            if (result.close_balance != 0.0) {
+                record.close_balance = result.close_balance;
+                record.balance = result.close_balance;
                 updated = true;
             }
             if (result.open_price != 0.0) {

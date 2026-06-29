@@ -323,6 +323,7 @@ namespace optionx::modules {
                 result->trade_state = result->live_state = TradeState::WAITING_OPEN;
                 result->send_date   = OPTIONX_TIMESTAMP_MS;
                 result->balance     = m_account_info.get_for_trade<double>(AccountInfoType::BALANCE, request);
+                result->open_balance = result->balance;
                 result->payout      = m_account_info.get_for_trade<double>(AccountInfoType::PAYOUT, request, time_shield::ms_to_sec(result->send_date));
 
                 m_last_order_time = std::chrono::steady_clock::now();

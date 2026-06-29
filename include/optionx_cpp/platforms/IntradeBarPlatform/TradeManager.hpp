@@ -234,6 +234,7 @@ namespace optionx::platforms::intrade_bar {
                             using Status = events::AccountInfoUpdateEvent::Status;
                             const double previous_balance = account_info->balance;
                             shared_result->balance = balance;
+                            shared_result->close_balance = balance;
                             if (shared_result->currency == CurrencyType::UNKNOWN) {
                                 shared_result->currency = currency;
                             }
@@ -250,6 +251,7 @@ namespace optionx::platforms::intrade_bar {
                             }
                         } else if (shared_result->balance == 0.0) {
                             shared_result->balance = account_info->balance;
+                            shared_result->close_balance = account_info->balance;
                         }
 
                         if (*callback_ptr) {
@@ -336,6 +338,7 @@ namespace optionx::platforms::intrade_bar {
                 auto account_info = get_account_info();
                 if (success) {
                     result->balance = balance;
+                    result->open_balance = balance;
                     result->trade_state = TradeState::OPEN_SUCCESS;
 
                     using Status = events::AccountInfoUpdateEvent::Status;
@@ -353,6 +356,7 @@ namespace optionx::platforms::intrade_bar {
                     }
                 } else {
                     result->balance = account_info->balance;
+                    result->open_balance = account_info->balance;
                     result->trade_state = TradeState::OPEN_SUCCESS;
                 }
             });
@@ -465,8 +469,10 @@ namespace optionx::platforms::intrade_bar {
         set_zero_spread_for_symbol(result->spread, request->symbol);
         if (!success) {
             result->balance = account_info->balance;
+            result->close_balance = account_info->balance;
         } else {
             result->balance = balance;
+            result->close_balance = balance;
         }
         if (!apply_trade_check_info_to_result(TradeCheckInfo{price, profit}, *result)) {
             return;

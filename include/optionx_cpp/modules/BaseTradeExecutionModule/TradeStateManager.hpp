@@ -174,6 +174,8 @@ namespace optionx::modules {
         result->open_date = timestamp;
         result->close_date = timestamp;
         result->balance = m_account_info.get_for_trade<double>(AccountInfoType::BALANCE, request, timestamp);
+        result->open_balance = result->balance;
+        result->close_balance = result->balance;
         result->payout = m_account_info.get_for_trade<double>(AccountInfoType::PAYOUT, request, timestamp);
         result->trade_state = result->live_state = state;
     }

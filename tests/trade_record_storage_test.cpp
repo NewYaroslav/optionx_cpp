@@ -84,6 +84,8 @@ optionx::TradeResult make_result() {
     result.payout = 0.82;
     result.profit = 12.71;
     result.balance = 1012.71;
+    result.open_balance = 997.21;
+    result.close_balance = 1012.71;
     result.open_price = 1.12345;
     result.close_price = 1.12400;
     result.delay = 30;
@@ -161,6 +163,9 @@ TEST(TradeRecordFactoryTest, AssignsRequestResultAndSignalData) {
     EXPECT_EQ(record.request_unique_hash, "request-hash");
     EXPECT_EQ(record.option_id, 123456);
     EXPECT_EQ(record.option_hash, "broker-hash");
+    EXPECT_DOUBLE_EQ(record.balance, 1012.71);
+    EXPECT_DOUBLE_EQ(record.open_balance, 997.21);
+    EXPECT_DOUBLE_EQ(record.close_balance, 1012.71);
     EXPECT_EQ(record.close_date, 1712345700000);
     EXPECT_EQ(record.mm_type, optionx::MmSystemType::MARTINGALE_SIGNAL);
     EXPECT_EQ(nlohmann::json::parse(record.mm_params_json).at("step"), 3);
@@ -189,6 +194,19 @@ TEST(TradeRecordFactoryTest, PreservesRequestContextWhenResultIsPartial) {
     EXPECT_EQ(record.close_date, 1712345700000);
     EXPECT_EQ(record.error_code, optionx::TradeErrorCode::PARSING_ERROR);
     EXPECT_EQ(record.error_desc, "partial broker response");
+}
+
+TEST(TradeRecordFactoryTest, TreatsLegacyResultBalanceAsCloseBalance) {
+    auto result = make_result();
+    result.open_balance = 0.0;
+    result.close_balance = 0.0;
+    result.balance = 1007.5;
+
+    const auto record = optionx::TradeRecord::from_trade(make_request(), result);
+
+    EXPECT_DOUBLE_EQ(record.balance, 1007.5);
+    EXPECT_DOUBLE_EQ(record.open_balance, 0.0);
+    EXPECT_DOUBLE_EQ(record.close_balance, 1007.5);
 }
 
 TEST(TradeRecordFactoryTest, UsesCloseDateForPlannedAndKnownCloseTime) {
