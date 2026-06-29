@@ -185,14 +185,18 @@ std::string empty_trade_history_html() {
     )HTML";
 }
 
-CombinedHistoryTestResult request_combined_trade_history(LocalTradeHistoryServer& server) {
+CombinedHistoryTestResult request_trade_history(
+        LocalTradeHistoryServer& server,
+        TradeHistorySource source = TradeHistorySource::HTML_CSV,
+        TradeHistoryRequest request = TradeHistoryRequest::all(),
+        AccountType account_type = AccountType::DEMO) {
     TestPlatform platform;
     HttpClientModule http_client(platform);
     RequestManager request_manager(platform, http_client);
 
     auto auth_data = std::make_shared<AuthData>();
     auth_data->host = server.host();
-    auth_data->trade_history_source = TradeHistorySource::HTML_CSV;
+    auth_data->trade_history_source = source;
 
     events::AuthDataEvent auth_event(auth_data);
     request_manager.on_event(&auth_event);
@@ -203,8 +207,8 @@ CombinedHistoryTestResult request_combined_trade_history(LocalTradeHistoryServer
     std::atomic<int> callback_count{0};
 
     request_manager.request_trade_history_result(
-        TradeHistoryRequest::all(),
-        AccountType::DEMO,
+        request,
+        account_type,
         [&call, &callback_count](TradeHistoryApiResult history_result) {
             call.result = std::move(history_result);
             ++callback_count;
@@ -225,6 +229,30 @@ CombinedHistoryTestResult request_combined_trade_history(LocalTradeHistoryServer
     }
 
     call.callback_count = callback_count.load();
+    platform.shutdown();
+    return call;
+}
+
+CombinedHistoryTestResult request_trade_history_without_http(
+        TradeHistoryRequest request,
+        AccountType account_type) {
+    TestPlatform platform;
+    HttpClientModule http_client(platform);
+    RequestManager request_manager(platform, http_client);
+
+    CombinedHistoryTestResult call;
+    int callback_count = 0;
+
+    request_manager.request_trade_history_result(
+        request,
+        account_type,
+        [&call, &callback_count](TradeHistoryApiResult history_result) {
+            call.result = std::move(history_result);
+            ++callback_count;
+        });
+
+    call.callback_count = callback_count;
+    call.callback_received = callback_count != 0;
     platform.shutdown();
     return call;
 }
@@ -622,7 +650,7 @@ TEST(IntradeBarApiResponses, CombinedTradeHistoryRequestReportsHtmlFailureStatus
         "blocked");
     ASSERT_TRUE(server.start());
 
-    const auto call = request_combined_trade_history(server);
+    const auto call = request_trade_history(server);
 
     ASSERT_TRUE(call.callback_received);
     ASSERT_EQ(call.callback_count, 1);
@@ -646,7 +674,7 @@ TEST(IntradeBarApiResponses, CombinedTradeHistoryRequestReportsCsvFailureStatus)
         empty_trade_history_html());
     ASSERT_TRUE(server.start());
 
-    const auto call = request_combined_trade_history(server);
+    const auto call = request_trade_history(server);
 
     ASSERT_TRUE(call.callback_received);
     ASSERT_EQ(call.callback_count, 1);
@@ -660,6 +688,110 @@ TEST(IntradeBarApiResponses, CombinedTradeHistoryRequestReportsCsvFailureStatus)
         std::string::npos);
     EXPECT_EQ(server.csv_requests.load(), 1);
     EXPECT_EQ(server.html_requests.load(), 1);
+}
+
+TEST(IntradeBarApiResponses, CombinedTradeHistoryRequestReportsBothFailureMessages) {
+    LocalTradeHistoryServer server(
+        500,
+        "csv failed",
+        451,
+        "blocked");
+    ASSERT_TRUE(server.start());
+
+    const auto call = request_trade_history(server);
+
+    ASSERT_TRUE(call.callback_received);
+    ASSERT_EQ(call.callback_count, 1);
+    EXPECT_FALSE(call.result);
+    EXPECT_EQ(call.result.status_code, 500);
+    EXPECT_NE(
+        call.result.error_message.find("CSV trade history"),
+        std::string::npos);
+    EXPECT_NE(
+        call.result.error_message.find("HTML trade history"),
+        std::string::npos);
+    EXPECT_NE(
+        call.result.error_message.find("failed validation"),
+        std::string::npos);
+    EXPECT_EQ(server.csv_requests.load(), 1);
+    EXPECT_EQ(server.html_requests.load(), 1);
+}
+
+TEST(IntradeBarApiResponses, CsvTradeHistoryRequestReportsDirectFailure) {
+    LocalTradeHistoryServer server(
+        500,
+        "server error",
+        200,
+        empty_trade_history_html());
+    ASSERT_TRUE(server.start());
+
+    const auto call = request_trade_history(server, TradeHistorySource::CSV);
+
+    ASSERT_TRUE(call.callback_received);
+    ASSERT_EQ(call.callback_count, 1);
+    EXPECT_FALSE(call.result);
+    EXPECT_EQ(call.result.status_code, 500);
+    EXPECT_EQ(
+        call.result.error_message,
+        "CSV trade history HTTP response failed validation.");
+    EXPECT_EQ(server.csv_requests.load(), 1);
+    EXPECT_EQ(server.html_requests.load(), 0);
+}
+
+TEST(IntradeBarApiResponses, HtmlTradeHistoryRequestReportsDirectFailure) {
+    LocalTradeHistoryServer server(
+        200,
+        valid_trade_history_csv(),
+        451,
+        "blocked");
+    ASSERT_TRUE(server.start());
+
+    const auto call = request_trade_history(server, TradeHistorySource::HTML);
+
+    ASSERT_TRUE(call.callback_received);
+    ASSERT_EQ(call.callback_count, 1);
+    EXPECT_FALSE(call.result);
+    EXPECT_EQ(call.result.status_code, 451);
+    EXPECT_EQ(
+        call.result.error_message,
+        "HTML trade history HTTP response failed validation.");
+    EXPECT_EQ(server.csv_requests.load(), 0);
+    EXPECT_EQ(server.html_requests.load(), 1);
+}
+
+TEST(IntradeBarApiResponses, TradeHistoryRequestRejectsInvalidRangeOrAccount) {
+    TradeHistoryRequest invalid_range = TradeHistoryRequest::all();
+    invalid_range.range_mode = TimeRangeMode::CLOSED;
+    invalid_range.start_ms = 2000;
+    invalid_range.stop_ms = 1000;
+
+    const auto invalid_range_call = request_trade_history_without_http(
+        invalid_range,
+        AccountType::DEMO);
+
+    ASSERT_TRUE(invalid_range_call.callback_received);
+    ASSERT_EQ(invalid_range_call.callback_count, 1);
+    EXPECT_FALSE(invalid_range_call.result);
+    EXPECT_EQ(
+        invalid_range_call.result.status_code,
+        TradeHistoryApiResult::NO_RESPONSE_STATUS);
+    EXPECT_EQ(
+        invalid_range_call.result.error_message,
+        "Invalid trade history request range or account type.");
+
+    const auto unknown_account_call = request_trade_history_without_http(
+        TradeHistoryRequest::all(),
+        AccountType::UNKNOWN);
+
+    ASSERT_TRUE(unknown_account_call.callback_received);
+    ASSERT_EQ(unknown_account_call.callback_count, 1);
+    EXPECT_FALSE(unknown_account_call.result);
+    EXPECT_EQ(
+        unknown_account_call.result.status_code,
+        TradeHistoryApiResult::NO_RESPONSE_STATUS);
+    EXPECT_EQ(
+        unknown_account_call.result.error_message,
+        "Invalid trade history request range or account type.");
 }
 
 TEST(IntradeBarApiResponses, HistoryRangeFilterExcludesRecordsWithoutSelectedTimestamp) {
