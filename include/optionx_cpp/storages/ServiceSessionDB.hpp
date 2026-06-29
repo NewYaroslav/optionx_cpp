@@ -44,7 +44,7 @@
 namespace optionx::storage {
 
     /// \class ServiceSessionDB
-    /// \brief Manages session data storage and retrieval using an SQLite database.
+    /// \brief Manages encrypted broker session data using an MDBX key-value table.
     class ServiceSessionDB {
     public:
 
@@ -177,7 +177,7 @@ namespace optionx::storage {
     private:
         mutable std::mutex m_mutex; ///< Mutex for thread safety.
         crypto::AESCrypt m_aes;   ///< AES encryption and decryption instance.
-        std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>> m_db; ///< The SQLite KeyValueDB instance.
+        std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>> m_db; ///< MDBX-backed session key-value table.
 
         /// \brief Private constructor for singleton pattern.
         ServiceSessionDB() : m_aes(crypto::AesMode::CBC_256) {

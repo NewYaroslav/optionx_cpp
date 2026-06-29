@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <limits>
 #include <memory>
 #include <string>
 #include <thread>
@@ -425,6 +426,22 @@ TEST(IntradeBarAccountInfo, AcceptsBtcAliasAndUsesBtcDurationRules) {
     EXPECT_EQ(account.get_info<int64_t>(request), day_start + account.start_time);
     request.type = AccountInfoType::END_TIME;
     EXPECT_EQ(account.get_info<int64_t>(request), day_start + account.end_time);
+}
+
+TEST(IntradeBarAccountInfo, AccountInfoRequestKeepsTradeDurationWidth) {
+    TradeRequest trade_request;
+    trade_request.duration =
+        static_cast<int64_t>(std::numeric_limits<int>::max()) + 42;
+
+    const AccountInfoRequest by_reference(
+        trade_request,
+        AccountInfoType::DURATION_AVAILABLE);
+    EXPECT_EQ(by_reference.duration, trade_request.duration);
+
+    const AccountInfoRequest by_pointer(
+        &trade_request,
+        AccountInfoType::DURATION_AVAILABLE);
+    EXPECT_EQ(by_pointer.duration, trade_request.duration);
 }
 
 TEST(IntradeBarTradeExecution, NormalizesBtcAliasBeforeQueueProcessing) {
