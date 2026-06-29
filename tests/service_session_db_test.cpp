@@ -1,13 +1,37 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <string>
 
 #include <optionx_cpp/storages.hpp>
 
+namespace {
+
+std::string unique_db_path(const std::string& name) {
+    static std::atomic<std::uint64_t> counter{0};
+    const auto stamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    return "data/" + name + "_" + std::to_string(stamp) + "_" +
+           std::to_string(counter.fetch_add(1));
+}
+
+mdbxc::Config make_config(const std::string& name) {
+    mdbxc::Config config;
+    config.pathname = unique_db_path(name);
+    config.max_dbs = 1;
+    config.no_subdir = false;
+    config.relative_to_exe = true;
+    return config;
+}
+
+} // namespace
+
 TEST(ServiceSessionDBTest, StoresReadsRemovesAndClearsEncryptedSessionValues) {
-    auto& session_db = optionx::storage::ServiceSessionDB::get_instance();
+    optionx::storage::ServiceSessionDB session_db(
+        make_config("service_session_db_test"));
     ASSERT_TRUE(session_db.is_open());
 
     const std::array<std::uint8_t, 32> encryption_key = {
