@@ -169,35 +169,66 @@ namespace optionx::platforms {
         /// \details Adds initialization and periodic update tasks.
         ///          If start_worker_thread is true (default), TaskManager launches its own worker thread.
         ///          Otherwise, the caller must periodically call process() manually.
+        ///          Repeated calls before shutdown are ignored to avoid duplicate module initialization
+        ///          and duplicate processing loops.
         /// \param start_worker_thread  Whether to use an internal background thread for updates.
         void run(bool start_worker_thread  = true) {
+            std::lock_guard<std::mutex> lock(m_lifecycle_mutex);
+
             if (m_stopping.load(std::memory_order_acquire) ||
                 m_stopped .load(std::memory_order_acquire)) {
                 LOGIT_WARN("run() after shutdown()");
                 return;
             }
-            
-            m_task_manager.add_single_task("initialize", [this](
-                    std::shared_ptr<utils::Task> task){
-                if (task->is_shutdown()) return;
-                LOGIT_TRACE0();
-                for (auto* module : m_modules) module->initialize();
-                on_once();
-            });
-            
-            m_task_manager.add_periodic_task("loop", 1, [this](
-                    std::shared_ptr<utils::Task> task){
-                m_event_bus.process();
-                if (task->is_shutdown()) {
+
+            if (m_running.load(std::memory_order_acquire)) {
+                LOGIT_WARN("run() called while platform is already running.");
+                return;
+            }
+
+            bool initialize_scheduled = false;
+            bool loop_scheduled = false;
+
+            try {
+                initialize_scheduled = m_task_manager.add_single_task("initialize", [this](
+                        std::shared_ptr<utils::Task> task){
+                    if (task->is_shutdown()) return;
                     LOGIT_TRACE0();
+                    for (auto* module : m_modules) module->initialize();
+                    on_once();
+                });
+
+                loop_scheduled = m_task_manager.add_periodic_task("loop", 1, [this](
+                        std::shared_ptr<utils::Task> task){
+                    m_event_bus.process();
+                    if (task->is_shutdown()) {
+                        LOGIT_TRACE0();
+                        return;
+                    }
+                    for (auto* module : m_modules) module->process();
+                    on_loop();
+                });
+
+                if (!initialize_scheduled || !loop_scheduled) {
+                    LOGIT_WARN("run() failed to schedule lifecycle tasks.");
+                    if (initialize_scheduled || loop_scheduled) {
+                        m_task_manager.shutdown();
+                    }
+                    m_running.store(false, std::memory_order_release);
                     return;
                 }
-                for (auto* module : m_modules) module->process();
-                on_loop();
-            });
             
-            if (start_worker_thread) {
-                m_task_manager.run();
+                if (start_worker_thread) {
+                    m_task_manager.run();
+                }
+
+                m_running.store(true, std::memory_order_release);
+            } catch (...) {
+                if (initialize_scheduled || loop_scheduled) {
+                    m_task_manager.shutdown();
+                }
+                m_running.store(false, std::memory_order_release);
+                throw;
             }
         };
         
@@ -210,9 +241,13 @@ namespace optionx::platforms {
         /// \brief Shuts down the platform, stopping the event loop and tasks.
         /// \details Always calls shutdown() on TaskManager, regardless of internal thread usage.
         void shutdown() noexcept {
-            if (m_stopped.load(std::memory_order_acquire)) return;
-            
-            if (m_stopping.exchange(true, std::memory_order_acq_rel)) return;
+            {
+                std::lock_guard<std::mutex> lock(m_lifecycle_mutex);
+
+                if (m_stopped.load(std::memory_order_acquire)) return;
+
+                if (m_stopping.exchange(true, std::memory_order_acq_rel)) return;
+            }
             
             m_task_manager.shutdown();
             
@@ -224,6 +259,9 @@ namespace optionx::platforms {
             on_shutdown();
 
             m_event_bus.drain();
+
+            std::lock_guard<std::mutex> lock(m_lifecycle_mutex);
+            m_running.store(false, std::memory_order_release);
             m_stopped.store(true, std::memory_order_release);
         };
 
@@ -247,6 +285,8 @@ namespace optionx::platforms {
         utils::TaskManager                   m_task_manager;
         modules::BaseAccountInfoHandler      m_account_info_handler;
         std::vector<modules::BaseModule*>    m_modules;
+        std::mutex                           m_lifecycle_mutex;
+        std::atomic<bool>                    m_running{false};
         std::atomic<bool>                    m_stopping{false};
         std::atomic<bool>                    m_stopped{false};
 
