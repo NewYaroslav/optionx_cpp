@@ -58,8 +58,8 @@ file(COPY
     DESTINATION ${CMAKE_BINARY_DIR}/bin
 )
 else()
-    find_package(OpenSSL REQUIRED)
-    find_package(CURL REQUIRED)
+    # Non-Windows builds use system OpenSSL/CURL targets from the root
+    # tests/examples link configuration.
 endif()
 
 # AES
