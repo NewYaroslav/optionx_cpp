@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <memory>
 #include <thread>
@@ -74,6 +75,76 @@ TEST(BaseTradingPlatformLifecycle, RepeatedRunDoesNotDuplicateLifecycleTasks) {
     EXPECT_EQ(platform.loop_count(), 1);
 
     platform.shutdown();
+}
+
+TEST(BaseTradingPlatformLifecycle, ConcurrentRunDoesNotDuplicateLifecycleTasks) {
+    for (int attempt = 0; attempt < 64; ++attempt) {
+        TestPlatform platform;
+        std::atomic<bool> start{false};
+
+        auto run_platform = [&]() {
+            while (!start.load(std::memory_order_acquire)) {
+                std::this_thread::yield();
+            }
+            platform.run(false);
+        };
+
+        std::thread first(run_platform);
+        std::thread second(run_platform);
+
+        start.store(true, std::memory_order_release);
+        first.join();
+        second.join();
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        platform.process();
+
+        EXPECT_EQ(platform.initialize_count(), 1);
+        EXPECT_EQ(platform.loop_count(), 1);
+
+        platform.shutdown();
+    }
+}
+
+TEST(BaseTradingPlatformLifecycle, ShutdownBeforeProcessSkipsLifecycleCallbacks) {
+    TestPlatform platform;
+
+    platform.run(false);
+    platform.shutdown();
+    platform.process();
+
+    EXPECT_EQ(platform.initialize_count(), 0);
+    EXPECT_EQ(platform.loop_count(), 0);
+}
+
+TEST(BaseTradingPlatformLifecycle, ConcurrentRunAndShutdownDoNotRunAfterStop) {
+    for (int attempt = 0; attempt < 64; ++attempt) {
+        TestPlatform platform;
+        std::atomic<bool> start{false};
+
+        std::thread run_thread([&]() {
+            while (!start.load(std::memory_order_acquire)) {
+                std::this_thread::yield();
+            }
+            platform.run(false);
+        });
+
+        std::thread shutdown_thread([&]() {
+            while (!start.load(std::memory_order_acquire)) {
+                std::this_thread::yield();
+            }
+            platform.shutdown();
+        });
+
+        start.store(true, std::memory_order_release);
+        run_thread.join();
+        shutdown_thread.join();
+
+        platform.process();
+
+        EXPECT_EQ(platform.initialize_count(), 0);
+        EXPECT_EQ(platform.loop_count(), 0);
+    }
 }
 
 TEST(EventBusSafety, NullEventsAreIgnored) {
