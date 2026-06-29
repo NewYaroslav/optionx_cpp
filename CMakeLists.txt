@@ -53,17 +53,22 @@ if(BUILD_EXAMPLES)
     )
 
     set(EXAMPLE_LIBS
-        ws2_32
-        wsock32
-        crypt32
         ssl
         crypto
         curl
         mdbx
-        ntdll
-        bcrypt
         AES
     )
+
+    if(WIN32)
+        list(APPEND EXAMPLE_LIBS
+            ws2_32
+            wsock32
+            crypt32
+            ntdll
+            bcrypt
+        )
+    endif()
 
     add_executable(trade_record_db_example examples/trade_record_db_example.cpp)
 
@@ -125,18 +130,23 @@ if(BUILD_TESTS)
     )
 
     set(PROJECT_LIBS
-        ws2_32
-        wsock32
-        crypt32
         ssl
         crypto
         curl
         mdbx
-        ntdll
-        bcrypt
         AES
         gtest
     )
+
+    if(WIN32)
+        list(APPEND PROJECT_LIBS
+            ws2_32
+            wsock32
+            crypt32
+            ntdll
+            bcrypt
+        )
+    endif()
 
     file(GLOB_RECURSE PROJECT_HEADERS
         RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
