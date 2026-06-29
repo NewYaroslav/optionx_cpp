@@ -13,11 +13,18 @@
 #include <functional>
 #include <typeindex>
 #include <algorithm>
+#include <logit_cpp/logit.hpp>
 
 namespace optionx::utils {
 
     /// \class EventBus
     /// \brief Manages subscriptions and notifications for event-based communication.
+    ///
+    /// \details Event dispatch copies current subscribers under an internal lock
+    /// and invokes user callbacks after releasing it. Listener objects must stay
+    /// alive while they are subscribed; platform/modules code normally enforces
+    /// this by owning subscription and destruction on the same event-loop
+    /// lifecycle. Null events are ignored defensively.
     class EventBus {
     public:
         using callback_t = std::function<void(const Event* const)>;
@@ -63,6 +70,7 @@ namespace optionx::utils {
 
         /// \brief Notifies all subscribers of an event by raw pointer.
         /// \param event Raw pointer to the event to notify subscribers of.
+        ///              If null, the call is ignored.
         void notify(const Event* const event) const;
 
         /// \brief Notifies subscribers of an event by reference.
@@ -71,6 +79,7 @@ namespace optionx::utils {
 
         /// \brief Queues an event for asynchronous processing.
         /// \param event Unique pointer to the event.
+        ///              If null, the call is ignored.
         void notify_async(std::unique_ptr<Event> event);
 
         /// \brief Processes queued events.

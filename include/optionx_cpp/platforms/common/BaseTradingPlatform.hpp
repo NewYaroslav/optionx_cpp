@@ -169,11 +169,23 @@ namespace optionx::platforms {
         /// \details Adds initialization and periodic update tasks.
         ///          If start_worker_thread is true (default), TaskManager launches its own worker thread.
         ///          Otherwise, the caller must periodically call process() manually.
+        ///          Repeated calls before shutdown are ignored to avoid duplicate module initialization
+        ///          and duplicate processing loops.
         /// \param start_worker_thread  Whether to use an internal background thread for updates.
         void run(bool start_worker_thread  = true) {
             if (m_stopping.load(std::memory_order_acquire) ||
                 m_stopped .load(std::memory_order_acquire)) {
                 LOGIT_WARN("run() after shutdown()");
+                return;
+            }
+
+            bool expected = false;
+            if (!m_running.compare_exchange_strong(
+                    expected,
+                    true,
+                    std::memory_order_acq_rel,
+                    std::memory_order_acquire)) {
+                LOGIT_WARN("run() called while platform is already running.");
                 return;
             }
             
@@ -225,6 +237,7 @@ namespace optionx::platforms {
 
             m_event_bus.drain();
             m_stopped.store(true, std::memory_order_release);
+            m_running.store(false, std::memory_order_release);
         };
 
         /// \brief Returns a reference to the event bus.
@@ -247,6 +260,7 @@ namespace optionx::platforms {
         utils::TaskManager                   m_task_manager;
         modules::BaseAccountInfoHandler      m_account_info_handler;
         std::vector<modules::BaseModule*>    m_modules;
+        std::atomic<bool>                    m_running{false};
         std::atomic<bool>                    m_stopping{false};
         std::atomic<bool>                    m_stopped{false};
 

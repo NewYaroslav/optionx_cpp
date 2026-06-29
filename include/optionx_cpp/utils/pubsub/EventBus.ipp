@@ -78,6 +78,11 @@ namespace optionx::utils {
     }
 
     inline void EventBus::notify(const Event* const event) const {
+        if (!event) {
+            LOGIT_WARN("EventBus::notify ignored null event.");
+            return;
+        }
+
         auto type = std::type_index(typeid(*event));
         
         callback_list_t callbacks_copy;
@@ -100,6 +105,7 @@ namespace optionx::utils {
         }
 
         for (auto* listener : listeners_copy) {
+            if (!listener) continue;
             listener->on_event(event);
         }
     }
@@ -109,6 +115,11 @@ namespace optionx::utils {
     }
 
     inline void EventBus::notify_async(std::unique_ptr<Event> event) {
+        if (!event) {
+            LOGIT_WARN("EventBus::notify_async ignored null event.");
+            return;
+        }
+
         std::lock_guard<std::mutex> lock(m_queue_mutex);
         m_event_queue.push(std::move(event));
     }

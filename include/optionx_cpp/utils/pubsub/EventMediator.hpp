@@ -15,6 +15,8 @@ namespace optionx::utils {
     public:
         /// \brief Constructs EventMediator with a raw pointer to an EventBus instance.
         /// \param bus Pointer to the EventBus instance.
+        /// \details A null bus is accepted for defensive construction; public
+        /// methods become no-ops until a valid bus-backed mediator is used.
         explicit EventMediator(EventBus* bus) : m_event_bus(bus) {}
 
         /// \brief Constructs EventMediator with a reference to an EventBus instance.
@@ -23,6 +25,7 @@ namespace optionx::utils {
 
         /// \brief Constructs EventMediator with a unique pointer to an EventBus instance.
         /// \param bus Unique pointer to the EventBus instance.
+        /// \details If the unique pointer is empty, public methods become no-ops.
         explicit EventMediator(std::unique_ptr<EventBus>& bus) : m_event_bus(bus.get()) {}
 
         ~EventMediator() noexcept override {
@@ -35,6 +38,7 @@ namespace optionx::utils {
         /// \param callback Callback function accepting a const reference to the event.
         template <typename EventType>
         void subscribe(std::function<void(const EventType&)> callback) {
+            if (!ensure_event_bus("subscribe")) return;
             m_event_bus->subscribe<EventType>(this, std::move(callback));
         }
 
@@ -43,6 +47,7 @@ namespace optionx::utils {
         /// \param callback Callback function accepting a const pointer to the base event.
         template <typename EventType>
         void subscribe(std::function<void(const Event* const)> callback) {
+            if (!ensure_event_bus("subscribe")) return;
             m_event_bus->subscribe<EventType>(this, std::move(callback));
         }
 
@@ -50,6 +55,7 @@ namespace optionx::utils {
         /// \tparam EventType Type of the event to subscribe to.
         template <typename EventType>
         void subscribe() {
+            if (!ensure_event_bus("subscribe")) return;
             m_event_bus->subscribe<EventType>(this);
         }
         
@@ -57,41 +63,48 @@ namespace optionx::utils {
         /// \tparam EventType Type of the event to unsubscribe from.
         template <typename EventType>
         void unsubscribe() {
+            if (!ensure_event_bus("unsubscribe")) return;
             m_event_bus->unsubscribe<EventType>(this);
         }
         
         /// \brief Unsubscribes this mediator from all event types.
         void unsubscribe_all() {
+            if (!ensure_event_bus("unsubscribe_all")) return;
             m_event_bus->unsubscribe_all(this);
         }
 
         /// \brief Notifies all subscribers of an event (shared pointer dereferenced).
         /// \param event Shared pointer to the event.
         void notify(const std::shared_ptr<Event>& event) const {
+            if (!ensure_event_bus("notify")) return;
             m_event_bus->notify(event.get());
         }
         
         /// \brief Notifies all subscribers of an event (unique pointer dereferenced).
         /// \param event Unique pointer to the event.
         void notify(const std::unique_ptr<Event>& event) const {
+            if (!ensure_event_bus("notify")) return;
             m_event_bus->notify(event.get());
         }
 
         /// \brief Notifies all subscribers of an event (raw pointer).
         /// \param event Raw pointer to the event.
         void notify(const Event* const event) const {
+            if (!ensure_event_bus("notify")) return;
             m_event_bus->notify(event);
         }
 
         /// \brief Notifies all subscribers of an event (reference).
         /// \param event Reference to the event.
         void notify(const Event& event) const {
+            if (!ensure_event_bus("notify")) return;
             m_event_bus->notify(event);
         }
 
         /// \brief Queues an event for asynchronous processing.
         /// \param event Unique pointer to the event.
         void notify_async(std::unique_ptr<Event> event) {
+            if (!ensure_event_bus("notify_async")) return;
             m_event_bus->notify_async(std::move(event));
         }
 
@@ -103,6 +116,7 @@ namespace optionx::utils {
         /// \param cb   Callback executed once when predicate returns true.
         template <typename EventType, typename Pred, typename Cb>
         void await_once(Pred&& pred, Cb&& cb) {
+            if (!ensure_event_bus("await_once")) return;
             prune_dead_awaiters();
 
             using AW = EventAwaiter<EventType>;
@@ -134,6 +148,12 @@ namespace optionx::utils {
         EventBus* m_event_bus; ///< Associated EventBus instance.
         std::mutex m_mutex;
         std::vector<std::weak_ptr<IAwaiter>> m_awaiters; ///< Weak list of active awaiters.
+
+        bool ensure_event_bus(const char* operation) const noexcept {
+            (void)operation;
+            if (m_event_bus) return true;
+            return false;
+        }
     
          void prune_dead_awaiters() {
             std::lock_guard<std::mutex> lk(m_mutex);

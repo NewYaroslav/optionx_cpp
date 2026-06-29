@@ -54,9 +54,8 @@ namespace optionx::utils {
                 predicate_t predicate,
                 callback_t on_match,
                 bool single_shot = true) {
-            auto self = std::make_shared<EventAwaiter>(
-                bus, std::move(predicate), std::move(on_match), single_shot
-            );
+            auto self = std::shared_ptr<EventAwaiter>(new EventAwaiter(
+                bus, std::move(predicate), std::move(on_match), single_shot));
             self->subscribe_internal();
             return self;
         }
