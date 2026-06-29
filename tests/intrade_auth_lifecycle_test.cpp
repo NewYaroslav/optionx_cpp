@@ -87,6 +87,62 @@ TEST(IntradeBarAuthLifecycle, DisconnectCancelsPendingConnectCallbackOnce) {
     EXPECT_EQ(disconnect.reason, "Already disconnected.");
 }
 
+TEST(IntradeBarAuthLifecycle, TerminalFailureIsNotCancelledAgainOnShutdown) {
+    optionx::platforms::IntradeBarPlatform platform;
+    ConnectionCallbackState connect;
+
+    platform.run(false);
+    platform.connect([&connect](optionx::ConnectionResult result) {
+        ++connect.count;
+        connect.success = result.success;
+        connect.reason = std::move(result.reason);
+    });
+
+    pump_platform(platform);
+    ASSERT_EQ(connect.count, 1);
+    EXPECT_FALSE(connect.success);
+    EXPECT_EQ(connect.reason, "Authentication data is missing.");
+
+    platform.shutdown();
+
+    EXPECT_EQ(connect.count, 1);
+    EXPECT_EQ(connect.reason, "Authentication data is missing.");
+}
+
+TEST(IntradeBarAuthLifecycle, TerminalFailureIsNotCancelledAgainOnDisconnect) {
+    optionx::platforms::IntradeBarPlatform platform;
+    ConnectionCallbackState connect;
+    ConnectionCallbackState disconnect;
+
+    platform.run(false);
+    platform.connect([&connect](optionx::ConnectionResult result) {
+        ++connect.count;
+        connect.success = result.success;
+        connect.reason = std::move(result.reason);
+    });
+
+    pump_platform(platform);
+    ASSERT_EQ(connect.count, 1);
+    EXPECT_FALSE(connect.success);
+    EXPECT_EQ(connect.reason, "Authentication data is missing.");
+
+    platform.disconnect([&disconnect](optionx::ConnectionResult result) {
+        ++disconnect.count;
+        disconnect.success = result.success;
+        disconnect.reason = std::move(result.reason);
+    });
+
+    pump_platform(platform);
+    platform.shutdown();
+
+    EXPECT_EQ(connect.count, 1);
+    EXPECT_EQ(connect.reason, "Authentication data is missing.");
+
+    EXPECT_EQ(disconnect.count, 1);
+    EXPECT_FALSE(disconnect.success);
+    EXPECT_EQ(disconnect.reason, "Already disconnected.");
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

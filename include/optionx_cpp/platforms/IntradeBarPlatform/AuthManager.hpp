@@ -54,6 +54,12 @@ namespace optionx::platforms::intrade_bar {
         std::uint64_t m_pending_connect_generation = 0; ///< Generation of the active public connect callback.
         connection_callback_t m_pending_connect_callback; ///< Active public connect callback, if any.
 
+        /// \brief Internal continuation between auth stages.
+        /// \details Stage callbacks propagate profile/switch state inside one
+        /// auth flow. Terminal public connect completion must go through
+        /// complete_auth_generation().
+        using auth_stage_callback_t = connection_callback_t;
+
         /// \brief Starts a new authentication generation and invalidates older callbacks.
         /// \param reason Human-readable trigger for diagnostics.
         /// \param callback Public connect callback to complete or cancel.
@@ -130,10 +136,10 @@ namespace optionx::platforms::intrade_bar {
 
         /// \brief Starts the authentication process.
         /// \param generation Auth flow generation token.
-        /// \param callback The callback function to notify the result.
+        /// \param stage_callback Internal stage continuation callback.
         void start_authentication(
             std::uint64_t generation,
-            connection_callback_t callback);
+            auth_stage_callback_t stage_callback);
 
         /// \brief Handles authentication failure.
         /// \param generation Auth flow generation token.
@@ -155,43 +161,43 @@ namespace optionx::platforms::intrade_bar {
         /// \param generation Auth flow generation token.
         /// \param account_type The new account type.
         /// \param currency The currency type.
-        /// \param callback The callback function to notify the result.
+        /// \param stage_callback Internal stage continuation callback.
         void handle_account_type_switch(
             std::uint64_t generation,
             AccountType account_type,
             CurrencyType currency,
-            connection_callback_t callback);
+            auth_stage_callback_t stage_callback);
 
         /// \brief Attempts an account type switch and retries while broker reports active trades.
         /// \param generation Auth flow generation token.
         /// \param currency Current currency from the profile response.
-        /// \param callback The callback function to notify the result.
+        /// \param stage_callback Internal stage continuation callback.
         /// \param started_ms First attempt timestamp.
         /// \param attempt Attempt number.
         void handle_account_type_switch_attempt(
             std::uint64_t generation,
             CurrencyType currency,
-            connection_callback_t callback,
+            auth_stage_callback_t stage_callback,
             int64_t started_ms,
             int attempt);
 
         /// \brief Handles currency switch during authentication.
         /// \param generation Auth flow generation token.
         /// \param currency The new currency type.
-        /// \param callback The callback function to notify the result.
+        /// \param stage_callback Internal stage continuation callback.
         void handle_currency_switch(
             std::uint64_t generation,
             CurrencyType currency,
-            connection_callback_t callback);
+            auth_stage_callback_t stage_callback);
 
         /// \brief Attempts a currency switch and retries while broker reports active trades.
         /// \param generation Auth flow generation token.
-        /// \param callback The callback function to notify the result.
+        /// \param stage_callback Internal stage continuation callback.
         /// \param started_ms First attempt timestamp.
         /// \param attempt Attempt number.
         void handle_currency_switch_attempt(
             std::uint64_t generation,
-            connection_callback_t callback,
+            auth_stage_callback_t stage_callback,
             int64_t started_ms,
             int attempt);
 
@@ -200,14 +206,14 @@ namespace optionx::platforms::intrade_bar {
         /// \param operation_name Human-readable operation name.
         /// \param started_ms First attempt timestamp.
         /// \param attempt Failed attempt number.
-        /// \param callback The callback function to notify the result.
+        /// \param stage_callback Internal stage continuation callback.
         /// \param retry Retry function.
         void schedule_settings_switch_retry(
             std::uint64_t generation,
             std::string operation_name,
             int64_t started_ms,
             int attempt,
-            connection_callback_t callback,
+            auth_stage_callback_t stage_callback,
             std::function<void()> retry);
 
         /// \brief Performs a multi-step authentication flow, making HTTP requests in sequence.
@@ -882,10 +888,10 @@ namespace optionx::platforms::intrade_bar {
 
     inline void AuthManager::start_authentication(
             std::uint64_t generation,
-            connection_callback_t callback) {
+            auth_stage_callback_t stage_callback) {
         LOGIT_TRACE0();
         LOGIT_INFO("Intrade Bar auth: requesting profile.");
-        m_request_manager.request_profile([this, callback, generation](
+        m_request_manager.request_profile([this, stage_callback, generation](
                 bool success,
                 CurrencyType currency,
                 AccountType account_type) {
@@ -895,10 +901,10 @@ namespace optionx::platforms::intrade_bar {
             if (!success) {
                 const std::string error_text = "Failed to retrieve profile information.";
                 LOGIT_ERROR(error_text);
-                callback({false, error_text, m_auth_data->clone_unique()});
+                stage_callback({false, error_text, m_auth_data->clone_unique()});
                 return;
             }
-            handle_account_type_switch(generation, account_type, currency, std::move(callback));
+            handle_account_type_switch(generation, account_type, currency, std::move(stage_callback));
         });
     }
 
@@ -906,7 +912,7 @@ namespace optionx::platforms::intrade_bar {
             std::uint64_t generation,
             AccountType account_type,
             CurrencyType currency,
-            connection_callback_t callback) {
+            auth_stage_callback_t stage_callback) {
         LOGIT_TRACE0();
         if (!is_auth_generation_current(generation, "account-type-switch")) {
             return;
@@ -920,25 +926,25 @@ namespace optionx::platforms::intrade_bar {
             handle_account_type_switch_attempt(
                 generation,
                 currency,
-                std::move(callback),
+                std::move(stage_callback),
                 OPTIONX_TIMESTAMP_MS,
                 1);
         } else {
-            handle_currency_switch(generation, currency, std::move(callback));
+            handle_currency_switch(generation, currency, std::move(stage_callback));
         }
     }
 
     inline void AuthManager::handle_account_type_switch_attempt(
             std::uint64_t generation,
             CurrencyType currency,
-            connection_callback_t callback,
+            auth_stage_callback_t stage_callback,
             int64_t started_ms,
             int attempt) {
         LOGIT_INFO(
             "Intrade Bar auth: account type switch attempt=",
             attempt);
         m_request_manager.request_switch_account_type_result(
-            [this, currency, callback, started_ms, attempt, generation](SettingsSwitchResult result) {
+            [this, currency, stage_callback, started_ms, attempt, generation](SettingsSwitchResult result) {
                 if (!is_auth_generation_current(generation, "account-type-switch-result")) {
                     return;
                 }
@@ -954,7 +960,7 @@ namespace optionx::platforms::intrade_bar {
                             settings_switch_failure_reason_to_string(result.value.failure_reason),
                             ", status_code=",
                             result.status_code);
-                        callback({false, error_text, m_auth_data->clone_unique()});
+                        stage_callback({false, error_text, m_auth_data->clone_unique()});
                         return;
                     }
 
@@ -968,12 +974,12 @@ namespace optionx::platforms::intrade_bar {
                         "account type",
                         started_ms,
                         attempt,
-                        callback,
-                        [this, currency, callback, started_ms, attempt, generation]() {
+                        stage_callback,
+                        [this, currency, stage_callback, started_ms, attempt, generation]() {
                             handle_account_type_switch_attempt(
                                 generation,
                                 currency,
-                                callback,
+                                stage_callback,
                                 started_ms,
                                 attempt + 1);
                         });
@@ -989,14 +995,14 @@ namespace optionx::platforms::intrade_bar {
                 account_info->account_type = m_auth_data->account_type;
                 notify(events::AccountInfoUpdateEvent(account_info, Status::ACCOUNT_TYPE_CHANGED));
 
-                handle_currency_switch(generation, currency, std::move(callback));
+                handle_currency_switch(generation, currency, std::move(stage_callback));
             });
     }
 
     inline void AuthManager::handle_currency_switch(
             std::uint64_t generation,
             CurrencyType currency,
-            connection_callback_t callback) {
+            auth_stage_callback_t stage_callback) {
         LOGIT_TRACE0();
         if (!is_auth_generation_current(generation, "currency-switch")) {
             return;
@@ -1009,24 +1015,24 @@ namespace optionx::platforms::intrade_bar {
                 to_str(m_auth_data->currency));
             handle_currency_switch_attempt(
                 generation,
-                std::move(callback),
+                std::move(stage_callback),
                 OPTIONX_TIMESTAMP_MS,
                 1);
         } else {
-            callback({true, std::string(), m_auth_data->clone_unique()});
+            stage_callback({true, std::string(), m_auth_data->clone_unique()});
         }
     }
 
     inline void AuthManager::handle_currency_switch_attempt(
             std::uint64_t generation,
-            connection_callback_t callback,
+            auth_stage_callback_t stage_callback,
             int64_t started_ms,
             int attempt) {
         LOGIT_INFO(
             "Intrade Bar auth: currency switch attempt=",
             attempt);
         m_request_manager.request_switch_currency_result(
-            [this, callback, started_ms, attempt, generation](SettingsSwitchResult result) {
+            [this, stage_callback, started_ms, attempt, generation](SettingsSwitchResult result) {
                 if (!is_auth_generation_current(generation, "currency-switch-result")) {
                     return;
                 }
@@ -1042,7 +1048,7 @@ namespace optionx::platforms::intrade_bar {
                             settings_switch_failure_reason_to_string(result.value.failure_reason),
                             ", status_code=",
                             result.status_code);
-                        callback({false, error_text, m_auth_data->clone_unique()});
+                        stage_callback({false, error_text, m_auth_data->clone_unique()});
                         return;
                     }
 
@@ -1056,11 +1062,11 @@ namespace optionx::platforms::intrade_bar {
                         "currency",
                         started_ms,
                         attempt,
-                        callback,
-                        [this, callback, started_ms, attempt, generation]() {
+                        stage_callback,
+                        [this, stage_callback, started_ms, attempt, generation]() {
                             handle_currency_switch_attempt(
                                 generation,
-                                callback,
+                                stage_callback,
                                 started_ms,
                                 attempt + 1);
                         });
@@ -1076,7 +1082,7 @@ namespace optionx::platforms::intrade_bar {
                 account_info->currency = m_auth_data->currency;
                 notify(events::AccountInfoUpdateEvent(account_info, Status::CURRENCY_CHANGED));
 
-                callback({true, std::string(), m_auth_data->clone_unique()});
+                stage_callback({true, std::string(), m_auth_data->clone_unique()});
             });
     }
 
@@ -1085,7 +1091,7 @@ namespace optionx::platforms::intrade_bar {
             std::string operation_name,
             int64_t started_ms,
             int attempt,
-            connection_callback_t callback,
+            auth_stage_callback_t stage_callback,
             std::function<void()> retry) {
         if (!is_auth_generation_current(generation, "settings-switch-retry-schedule")) {
             return;
@@ -1096,12 +1102,12 @@ namespace optionx::platforms::intrade_bar {
             const std::string error_text =
                 "Failed to switch " + operation_name + " before retry timeout.";
             LOGIT_ERROR(error_text);
-            callback({false, error_text, m_auth_data->clone_unique()});
+            stage_callback({false, error_text, m_auth_data->clone_unique()});
             return;
         }
 
         m_request_manager.request_active_trades_snapshot_result(
-            [this, operation_name = std::move(operation_name), started_ms, attempt, callback, retry = std::move(retry), generation](
+            [this, operation_name = std::move(operation_name), started_ms, attempt, stage_callback, retry = std::move(retry), generation](
                     ActiveTradesSnapshotResult snapshot) mutable {
                 if (!is_auth_generation_current(generation, "settings-switch-active-trades")) {
                     return;
@@ -1153,7 +1159,7 @@ namespace optionx::platforms::intrade_bar {
                     const std::string error_text =
                         "Failed to switch " + operation_name + " before retry timeout.";
                     LOGIT_ERROR(error_text);
-                    callback({false, error_text, m_auth_data->clone_unique()});
+                    stage_callback({false, error_text, m_auth_data->clone_unique()});
                     return;
                 }
 
