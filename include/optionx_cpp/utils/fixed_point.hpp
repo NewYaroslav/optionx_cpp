@@ -48,7 +48,8 @@ namespace optionx::utils {
     }
 
     /// \brief Computes comparison tolerance for specified decimal precision.
-    /// \details Returns 0.5 * 10^(-digits) to account for rounding errors.
+    /// \details Returns 0.5 * 10^(-digits), the half-step boundary used when
+    /// rounding values to the selected decimal precision.
     /// \param digits Number of significant decimal places (0-18)
     /// \return Tolerance value for floating-point comparisons
     /// \throw std::invalid_argument If digits exceed maximum supported precision
@@ -57,25 +58,25 @@ namespace optionx::utils {
             throw std::invalid_argument("Digits exceed maximum precision (18).");
         }
         static const std::array<double, 19> tolerance = {
-            1.0,                // 10^0
-            0.1,                // 10^1
-            0.01,               // 10^2
-            0.001,              // 10^3
-            0.0001,             // 10^4
-            0.00001,            // 10^5
-            0.000001,           // 10^6
-            0.0000001,          // 10^7
-            0.00000001,         // 10^8
-            0.000000001,        // 10^9
-            0.0000000001,       // 10^10
-            0.00000000001,      // 10^11
-            0.000000000001,     // 10^12
-            0.0000000000001,    // 10^13
-            0.00000000000001,   // 10^14
-            0.000000000000001,  // 10^15
-            0.0000000000000001, // 10^16
-            0.00000000000000001,// 10^17
-            0.000000000000000001// 10^18
+            0.5,                 // 0.5 * 10^0
+            0.05,                // 0.5 * 10^-1
+            0.005,               // 0.5 * 10^-2
+            0.0005,              // 0.5 * 10^-3
+            0.00005,             // 0.5 * 10^-4
+            0.000005,            // 0.5 * 10^-5
+            0.0000005,           // 0.5 * 10^-6
+            0.00000005,          // 0.5 * 10^-7
+            0.000000005,         // 0.5 * 10^-8
+            0.0000000005,        // 0.5 * 10^-9
+            0.00000000005,       // 0.5 * 10^-10
+            0.000000000005,      // 0.5 * 10^-11
+            0.0000000000005,     // 0.5 * 10^-12
+            0.00000000000005,    // 0.5 * 10^-13
+            0.000000000000005,   // 0.5 * 10^-14
+            0.0000000000000005,  // 0.5 * 10^-15
+            0.00000000000000005, // 0.5 * 10^-16
+            0.000000000000000005,// 0.5 * 10^-17
+            0.0000000000000000005// 0.5 * 10^-18
         };
         return tolerance[digits];
     }
@@ -104,21 +105,22 @@ namespace optionx::utils {
 		return static_cast<double>(value) / static_cast<double>(scale);
 	}
 
-	/// \brief Compares two floating-point values with specified precision.
-    /// \details Uses precomputed tolerance values to account for rounding errors.
+	/// \brief Compares two floating-point values after decimal rounding.
+    /// \details Each value is rounded with normalize_double(value, digits),
+    ///          then the rounded values are compared. A one-step price move at
+    ///          the selected precision is therefore treated as a real change.
     /// \param value1 First comparison operand
     /// \param value2 Second comparison operand
-    /// \param digits Number of decimal places to consider
-    /// \return true if |value1 - value2| <= tolerance, false otherwise
+    /// \param digits Number of decimal places to compare
+    /// \return true if both values round to the same value; false otherwise
     /// \throw std::invalid_argument If digits exceed maximum supported precision
     inline bool compare_with_precision(double value1, double value2, size_t digits) {
         if (digits > 18) {
             throw std::invalid_argument("Digits exceed maximum precision (18).");
         }
-        double tolerance = precision_tolerance(digits);
-        return std::fabs(value1 - value2) <= tolerance;
+        return normalize_double(value1, digits) == normalize_double(value2, digits);
     }
 
-} // namespace dfh::utils
+} // namespace optionx::utils
 
 #endif // _OPTIONX_FIXED_POINT_HPP_INCLUDED

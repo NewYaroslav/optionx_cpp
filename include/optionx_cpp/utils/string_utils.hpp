@@ -160,6 +160,7 @@ namespace optionx::utils {
     /// \param value Comma-separated string.
     /// \param items Vector to store parsed items.
     inline void parse_list(std::string value, std::vector<std::string> &items) noexcept {
+        if (value.empty()) return;
         if (value.back() != ',') value += ",";
         std::size_t start_pos = 0;
         while (true) {
