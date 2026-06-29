@@ -60,6 +60,8 @@ namespace optionx::storage {
             const auto ordered_records = make_ordered_records(records);
             std::vector<Event> events;
             events.reserve(records.size() * 2);
+            std::vector<BalanceSnapshotEvent> balance_events;
+            balance_events.reserve(records.size());
 
             for (const auto* rec_ptr : ordered_records) {
                 const auto& rec = *rec_ptr;
@@ -83,16 +85,13 @@ namespace optionx::storage {
                     }
                 }
 
-                // 4. Currency conversion (for monetary stats)
-                double amount = rec.amount;
-                double profit = rec.profit;
-                if (config.convert) {
-                    amount = config.convert(amount, rec.currency);
-                    profit = config.convert(profit, rec.currency);
-                }
-
-                // 5. Monetary aggregations (same selected result-state population)
+                // 4. Monetary aggregations (same selected result-state population)
                 if (include_selected && optionx::is_result_state(rec.trade_state)) {
+                    const auto curve_ts = rec.close_date > 0 ? rec.close_date : rec.open_date;
+                    const auto amount_ts = rec.open_date > 0 ? rec.open_date : curve_ts;
+                    const double amount = convert_money(rec.amount, rec.currency, amount_ts, config);
+                    const double profit = convert_money(rec.profit, rec.currency, curve_ts, config);
+
                     ++volume_trade_count;
                     stats.total_volume += amount;
                     stats.total_profit += profit;
@@ -104,10 +103,23 @@ namespace optionx::storage {
 
                     // Realized-profit curves are built after aggregation by
                     // timestamp, so same-moment closes do not invent an order.
-                    const auto curve_ts = rec.close_date > 0 ? rec.close_date : rec.open_date;
-
                     if (curve_ts > 0) {
                         realized_profit_by_ts[curve_ts] += profit;
+                        const double close_balance = close_balance_snapshot(rec);
+                        if (close_balance != 0.0) {
+                            balance_events.push_back({
+                                curve_ts,
+                                rec.open_date > 0 ? rec.open_date : curve_ts,
+                                AccountKey{
+                                    rec.platform_type,
+                                    rec.account_type,
+                                    rec.account_id,
+                                    rec.currency},
+                                rec.currency,
+                                rec.open_balance,
+                                close_balance,
+                                rec.profit});
+                        }
 
                         // Daily / hourly profit buckets
                         const auto day_utc =
@@ -264,37 +276,12 @@ namespace optionx::storage {
                     stats.total_profit / static_cast<double>(volume_trade_count);
             }
 
-            // Realized synthetic equity/profit curves.
-            double running_balance = config.start_balance;
-            double peak_balance = config.start_balance;
-            double cumulative_profit = 0.0;
-            for (const auto& kv : realized_profit_by_ts) {
-                const auto ts = kv.first;
-                const auto delta = kv.second;
-                running_balance += delta;
-                cumulative_profit += delta;
-                peak_balance = std::max(peak_balance, running_balance);
-
-                stats.equity_curve.x_time.push_back(ts);
-                stats.equity_curve.y_value.push_back(running_balance);
-                stats.profit_curve.x_time.push_back(ts);
-                stats.profit_curve.y_value.push_back(cumulative_profit);
-                if (config.start_balance > 0.0) {
-                    stats.profit_percent_curve.x_time.push_back(ts);
-                    stats.profit_percent_curve.y_value.push_back(
-                        (cumulative_profit / config.start_balance) * 100.0);
-                }
-
-                const auto dd = peak_balance - running_balance;
-                if (dd > stats.max_absolute_drawdown) {
-                    stats.max_absolute_drawdown = dd;
-                    stats.max_drawdown_date = ts;
-                }
-                if (peak_balance > 0.0) {
-                    stats.max_relative_drawdown = std::max(
-                        stats.max_relative_drawdown,
-                        dd / peak_balance);
-                }
+            if (config.equity_mode == optionx::TradeStatsEquityMode::RECORD_BALANCE) {
+                build_record_balance_curves(stats, config, balance_events);
+            } else if (config.equity_mode == optionx::TradeStatsEquityMode::PORTFOLIO_BALANCE) {
+                build_portfolio_balance_curves(stats, config, balance_events);
+            } else {
+                build_synthetic_curves(stats, config, realized_profit_by_ts);
             }
 
             // Fill chart data
@@ -345,11 +332,223 @@ namespace optionx::storage {
         }
 
     private:
+        struct AccountKey {
+            optionx::PlatformType platform_type = optionx::PlatformType::UNKNOWN;
+            optionx::AccountType account_type = optionx::AccountType::UNKNOWN;
+            std::int64_t account_id = 0;
+            optionx::CurrencyType currency = optionx::CurrencyType::UNKNOWN;
+
+            bool operator<(const AccountKey& other) const noexcept {
+                if (platform_type != other.platform_type) return platform_type < other.platform_type;
+                if (account_type != other.account_type) return account_type < other.account_type;
+                if (account_id != other.account_id) return account_id < other.account_id;
+                return currency < other.currency;
+            }
+        };
+
+        struct BalanceSnapshotEvent {
+            std::int64_t ts = 0;
+            std::int64_t open_ts = 0;
+            AccountKey account;
+            optionx::CurrencyType currency = optionx::CurrencyType::UNKNOWN;
+            double open_balance = 0.0;
+            double close_balance = 0.0;
+            double profit = 0.0;
+        };
+
         static std::int64_t stats_order_timestamp(
                 const optionx::TradeRecord& rec) noexcept {
             if (rec.close_date > 0) return rec.close_date;
             if (rec.open_date > 0) return rec.open_date;
             return optionx::select_timestamp_ms(rec, optionx::TradeRecordTimeField::AUTO);
+        }
+
+        static double close_balance_snapshot(
+                const optionx::TradeRecord& rec) noexcept {
+            return rec.close_balance != 0.0 ? rec.close_balance : rec.balance;
+        }
+
+        static double convert_money(
+                double value,
+                optionx::CurrencyType from,
+                std::int64_t timestamp_ms,
+                const optionx::TradeStatsConfig& config) {
+            const auto to = config.currency_matrix.base_currency;
+            if (config.convert_currency) {
+                return config.convert_currency(value, from, to, timestamp_ms);
+            }
+            if (to != optionx::CurrencyType::UNKNOWN) {
+                return config.currency_matrix.convert_to_base(value, from);
+            }
+            if (config.convert) {
+                return config.convert(value, from);
+            }
+            return value;
+        }
+
+        static double initial_balance_for_event(
+                const BalanceSnapshotEvent& event,
+                const optionx::TradeStatsConfig& config) {
+            if (event.open_balance != 0.0) {
+                return convert_money(
+                    event.open_balance,
+                    event.currency,
+                    event.open_ts > 0 ? event.open_ts : event.ts,
+                    config);
+            }
+
+            const double close_balance = convert_money(
+                event.close_balance,
+                event.currency,
+                event.ts,
+                config);
+            const double profit = convert_money(
+                event.profit,
+                event.currency,
+                event.ts,
+                config);
+            return close_balance - profit;
+        }
+
+        static void append_equity_sample(
+                optionx::TradeStats& stats,
+                std::int64_t ts,
+                double equity,
+                double baseline) {
+            stats.equity_curve.x_time.push_back(ts);
+            stats.equity_curve.y_value.push_back(equity);
+            stats.profit_curve.x_time.push_back(ts);
+            stats.profit_curve.y_value.push_back(equity - baseline);
+            if (baseline > 0.0) {
+                stats.profit_percent_curve.x_time.push_back(ts);
+                stats.profit_percent_curve.y_value.push_back(
+                    ((equity - baseline) / baseline) * 100.0);
+            }
+        }
+
+        static void update_equity_drawdown(
+                optionx::TradeStats& stats,
+                std::int64_t ts,
+                double equity,
+                double& peak) {
+            peak = std::max(peak, equity);
+            const auto dd = peak - equity;
+            if (dd > stats.max_absolute_drawdown) {
+                stats.max_absolute_drawdown = dd;
+                stats.max_drawdown_date = ts;
+            }
+            if (peak > 0.0) {
+                stats.max_relative_drawdown = std::max(
+                    stats.max_relative_drawdown,
+                    dd / peak);
+            }
+        }
+
+        static void build_synthetic_curves(
+                optionx::TradeStats& stats,
+                const optionx::TradeStatsConfig& config,
+                const std::map<std::int64_t, double>& realized_profit_by_ts) {
+            double equity = config.start_balance;
+            double peak = config.start_balance;
+            for (const auto& kv : realized_profit_by_ts) {
+                const auto ts = kv.first;
+                equity += kv.second;
+                append_equity_sample(stats, ts, equity, config.start_balance);
+                update_equity_drawdown(stats, ts, equity, peak);
+            }
+        }
+
+        static void build_record_balance_curves(
+                optionx::TradeStats& stats,
+                const optionx::TradeStatsConfig& config,
+                std::vector<BalanceSnapshotEvent> events) {
+            if (events.empty()) return;
+
+            std::stable_sort(
+                events.begin(),
+                events.end(),
+                [](const BalanceSnapshotEvent& lhs, const BalanceSnapshotEvent& rhs) {
+                    if (lhs.ts != rhs.ts) return lhs.ts < rhs.ts;
+                    return lhs.account < rhs.account;
+                });
+
+            bool has_baseline = false;
+            double baseline = 0.0;
+            double peak = 0.0;
+
+            for (std::size_t i = 0; i < events.size();) {
+                const auto ts = events[i].ts;
+                double equity = 0.0;
+                do {
+                    const auto& event = events[i];
+                    if (!has_baseline) {
+                        baseline = initial_balance_for_event(event, config);
+                        peak = baseline;
+                        has_baseline = true;
+                    }
+                    equity = convert_money(
+                        event.close_balance,
+                        event.currency,
+                        event.ts,
+                        config);
+                    ++i;
+                } while (i < events.size() && events[i].ts == ts);
+
+                append_equity_sample(stats, ts, equity, baseline);
+                update_equity_drawdown(stats, ts, equity, peak);
+            }
+        }
+
+        static void build_portfolio_balance_curves(
+                optionx::TradeStats& stats,
+                const optionx::TradeStatsConfig& config,
+                std::vector<BalanceSnapshotEvent> events) {
+            if (events.empty()) return;
+
+            std::stable_sort(
+                events.begin(),
+                events.end(),
+                [](const BalanceSnapshotEvent& lhs, const BalanceSnapshotEvent& rhs) {
+                    if (lhs.ts != rhs.ts) return lhs.ts < rhs.ts;
+                    return lhs.account < rhs.account;
+                });
+
+            std::map<AccountKey, double> account_balances;
+            double baseline = 0.0;
+            double equity = 0.0;
+            double peak = 0.0;
+            bool has_sample = false;
+
+            for (std::size_t i = 0; i < events.size();) {
+                const auto ts = events[i].ts;
+                do {
+                    const auto& event = events[i];
+                    const double close_balance = convert_money(
+                        event.close_balance,
+                        event.currency,
+                        event.ts,
+                        config);
+
+                    auto account_it = account_balances.find(event.account);
+                    if (account_it == account_balances.end()) {
+                        const double initial_balance = initial_balance_for_event(event, config);
+                        baseline += initial_balance;
+                        equity += initial_balance;
+                        account_it = account_balances.emplace(event.account, initial_balance).first;
+                        if (!has_sample) {
+                            peak = baseline;
+                            has_sample = true;
+                        }
+                    }
+
+                    equity += close_balance - account_it->second;
+                    account_it->second = close_balance;
+                    ++i;
+                } while (i < events.size() && events[i].ts == ts);
+
+                append_equity_sample(stats, ts, equity, baseline);
+                update_equity_drawdown(stats, ts, equity, peak);
+            }
         }
 
         static std::vector<const optionx::TradeRecord*> make_ordered_records(

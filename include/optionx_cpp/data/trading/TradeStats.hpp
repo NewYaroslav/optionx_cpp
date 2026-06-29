@@ -10,6 +10,7 @@
 #include <functional>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "enums.hpp"
@@ -151,10 +152,55 @@ namespace optionx {
     };
 
     /// \enum TradeStatsBalanceMode
-    /// \brief Controls how equity / drawdown curves are computed.
+    /// \brief Controls optional free-funds curve computation.
     enum class TradeStatsBalanceMode {
-        SIMPLE,     ///< Classic realized-profit curve (balance += profit on close).
-        SWEEP_LINE  ///< Event-driven free-funds curve (locks amount on open, releases on close).
+        SIMPLE,     ///< Do not build an event-driven free-funds curve.
+        SWEEP_LINE  ///< Build free funds from open/close cash-lock events.
+    };
+
+    /// \enum TradeStatsEquityMode
+    /// \brief Selects the source used for equity/profit/drawdown curves.
+    enum class TradeStatsEquityMode {
+        SYNTHETIC_PROFIT, ///< start_balance plus cumulative realized profit.
+        RECORD_BALANCE,   ///< Single-account curve from TradeRecord close balance snapshots.
+        PORTFOLIO_BALANCE ///< Multi-account curve from per-account balance snapshots.
+    };
+
+    /// \class TradeCurrencyConversionMatrix
+    /// \brief Static currency conversion rates for portfolio statistics.
+    class TradeCurrencyConversionMatrix {
+    public:
+        CurrencyType base_currency = CurrencyType::UNKNOWN; ///< Reporting currency for converted values.
+        std::map<std::pair<CurrencyType, CurrencyType>, double> rates; ///< Pair(from, to) -> multiplier.
+
+        /// \brief Sets a direct conversion multiplier.
+        void set_rate(CurrencyType from, CurrencyType to, double rate) {
+            rates[{from, to}] = rate;
+        }
+
+        /// \brief Converts a value between currencies, using inverse rates when possible.
+        double convert(double value, CurrencyType from, CurrencyType to) const {
+            if (from == to || from == CurrencyType::UNKNOWN || to == CurrencyType::UNKNOWN) {
+                return value;
+            }
+
+            const auto direct = rates.find({from, to});
+            if (direct != rates.end()) {
+                return value * direct->second;
+            }
+
+            const auto inverse = rates.find({to, from});
+            if (inverse != rates.end() && inverse->second != 0.0) {
+                return value / inverse->second;
+            }
+
+            return value;
+        }
+
+        /// \brief Converts a value to base_currency when it is configured.
+        double convert_to_base(double value, CurrencyType from) const {
+            return convert(value, from, base_currency);
+        }
     };
 
     /// \enum TradeStatsInputOrder
@@ -175,6 +221,10 @@ namespace optionx {
         bool include_errors = false;
         bool include_non_terminal = false;
         std::function<double(double value, CurrencyType from)> convert; ///< Optional currency converter.
+        std::function<double(double value, CurrencyType from, CurrencyType to, std::int64_t timestamp_ms)>
+            convert_currency; ///< Optional timestamp-aware converter.
+        TradeCurrencyConversionMatrix currency_matrix; ///< Static rates for multi-currency statistics.
+        TradeStatsEquityMode equity_mode = TradeStatsEquityMode::SYNTHETIC_PROFIT;
         TradeStatsBalanceMode balance_mode = TradeStatsBalanceMode::SWEEP_LINE;
         TradeStatsInputOrder input_order = TradeStatsInputOrder::AS_IS;
     };
