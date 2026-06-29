@@ -38,7 +38,8 @@ namespace optionx {
         double min_payout = 0.0;                            ///< Minimum acceptable payout.
         double payout = 0.0;                                ///< Actual payout ratio.
         double profit = 0.0;                                ///< Final or current profit/loss.
-        double balance = 0.0;                               ///< Account balance snapshot.
+        double open_balance = 0.0;                          ///< Account balance before opening the trade.
+        double close_balance = 0.0;                         ///< Known or estimated close-equivalent balance.
 
         // State and error details
         TradeState trade_state = TradeState::UNKNOWN;       ///< Current trade lifecycle state.
@@ -68,15 +69,35 @@ namespace optionx {
         std::string metadata_json;                          ///< Future extension data.
 
         // Flags
-        std::uint8_t flags = 0;                             ///< Bit flags (bit 0 = last_in_group).
+        std::uint8_t flags = 0;                             ///< Bit flags for grouping and optional snapshots.
         static constexpr std::uint8_t FLAG_LAST_IN_GROUP = 0x01;
+        static constexpr std::uint8_t FLAG_HAS_OPEN_BALANCE = 0x02;
+        static constexpr std::uint8_t FLAG_HAS_CLOSE_BALANCE = 0x04;
 
         /// \brief Returns true if this record is the last in its money-management group.
         bool last_in_group() const noexcept { return (flags & FLAG_LAST_IN_GROUP) != 0; }
 
+        /// \brief Returns true when open_balance contains an explicit snapshot.
+        bool has_open_balance() const noexcept { return (flags & FLAG_HAS_OPEN_BALANCE) != 0; }
+
+        /// \brief Returns true when close_balance contains a close-equivalent value.
+        bool has_close_balance() const noexcept { return (flags & FLAG_HAS_CLOSE_BALANCE) != 0; }
+
         /// \brief Sets or clears the last-in-group flag.
         void set_last_in_group(bool v) noexcept {
             flags = v ? (flags | FLAG_LAST_IN_GROUP) : (flags & ~FLAG_LAST_IN_GROUP);
+        }
+
+        /// \brief Stores the account balance before opening the trade.
+        void set_open_balance(double value) noexcept {
+            open_balance = value;
+            flags |= FLAG_HAS_OPEN_BALANCE;
+        }
+
+        /// \brief Stores the known or estimated close-equivalent balance.
+        void set_close_balance(double value) noexcept {
+            close_balance = value;
+            flags |= FLAG_HAS_CLOSE_BALANCE;
         }
 
         // Spread
@@ -116,7 +137,14 @@ namespace optionx {
             if (result.amount > 0.0) amount = result.amount;
             payout = result.payout;
             profit = result.profit;
-            balance = result.balance;
+            if (result.has_open_balance()) {
+                set_open_balance(result.open_balance);
+            }
+            if (result.has_close_balance()) {
+                set_close_balance(result.close_balance);
+            } else if (has_open_balance() && result_has_balance_projection(result)) {
+                set_close_balance(open_balance + result.profit);
+            }
             open_price = result.open_price;
             close_price = result.close_price;
             delay = result.delay;
@@ -237,7 +265,8 @@ namespace optionx {
             append_value(bytes, min_payout);
             append_value(bytes, payout);
             append_value(bytes, profit);
-            append_value(bytes, balance);
+            append_value(bytes, open_balance);
+            append_value(bytes, close_balance);
 
             append_enum8(bytes, trade_state);
             append_enum8(bytes, live_state);
@@ -280,7 +309,7 @@ namespace optionx {
             }
 
             const auto version = reader.read<std::uint16_t>();
-            if (version != kBinaryVersion) {
+            if (version < 1 || version > kBinaryVersion) {
                 throw std::runtime_error("TradeRecord::from_bytes: unsupported version");
             }
 
@@ -307,7 +336,17 @@ namespace optionx {
             record.min_payout = reader.read<double>();
             record.payout = reader.read<double>();
             record.profit = reader.read<double>();
-            record.balance = reader.read<double>();
+            double legacy_balance = 0.0;
+            if (version == 1 || version == 2) {
+                legacy_balance = reader.read<double>();
+                if (version == 1) {
+                    record.set_close_balance(legacy_balance);
+                }
+            }
+            if (version >= 2) {
+                record.open_balance = reader.read<double>();
+                record.close_balance = reader.read<double>();
+            }
 
             record.trade_state = reader.read_enum8<TradeState>();
             record.live_state = reader.read_enum8<TradeState>();
@@ -334,6 +373,17 @@ namespace optionx {
             record.metadata_json = reader.read_string();
 
             record.flags = reader.read<std::uint8_t>();
+            if (version < 3) {
+                if (record.open_balance != 0.0) {
+                    record.flags |= FLAG_HAS_OPEN_BALANCE;
+                }
+                if (version == 1 || record.close_balance != 0.0 || legacy_balance != 0.0) {
+                    record.flags |= FLAG_HAS_CLOSE_BALANCE;
+                    if (version == 2 && record.close_balance == 0.0) {
+                        record.close_balance = legacy_balance;
+                    }
+                }
+            }
 
             record.spread.raw = reader.read<std::uint64_t>();
             record.spread.digits = reader.read<std::uint8_t>();
@@ -363,7 +413,8 @@ namespace optionx {
                    min_payout == other.min_payout &&
                    payout == other.payout &&
                    profit == other.profit &&
-                   balance == other.balance &&
+                   open_balance == other.open_balance &&
+                   close_balance == other.close_balance &&
                    trade_state == other.trade_state &&
                    live_state == other.live_state &&
                    error_code == other.error_code &&
@@ -396,7 +447,7 @@ namespace optionx {
 
     private:
         static constexpr std::uint32_t kBinaryMagic = 0x5254584fU; // "OXTR" on little-endian hosts.
-        static constexpr std::uint16_t kBinaryVersion = 1;
+        static constexpr std::uint16_t kBinaryVersion = 3;
 
         template<typename T>
         static bool same_known(T lhs, T rhs, T unknown) noexcept {
@@ -405,6 +456,13 @@ namespace optionx {
 
         static bool same_known(const std::string& lhs, const std::string& rhs) noexcept {
             return lhs.empty() || rhs.empty() || lhs == rhs;
+        }
+
+        static bool result_has_balance_projection(const TradeResult& result) noexcept {
+            return result.trade_state == TradeState::WIN ||
+                   result.trade_state == TradeState::LOSS ||
+                   result.trade_state == TradeState::STANDOFF ||
+                   result.trade_state == TradeState::REFUND;
         }
 
         template<typename T>

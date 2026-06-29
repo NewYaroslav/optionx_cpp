@@ -87,8 +87,8 @@ namespace optionx::storage {
             if (filter.max_payout > 0.0 && record.payout > filter.max_payout) return false;
             if (filter.min_profit > 0.0 && record.profit < filter.min_profit) return false;
             if (filter.max_profit > 0.0 && record.profit > filter.max_profit) return false;
-            if (filter.min_balance > 0.0 && record.balance < filter.min_balance) return false;
-            if (filter.max_balance > 0.0 && record.balance > filter.max_balance) return false;
+            if (filter.min_balance > 0.0 && record.close_balance < filter.min_balance) return false;
+            if (filter.max_balance > 0.0 && record.close_balance > filter.max_balance) return false;
 
             if (filter.min_ping > 0 && record.ping < filter.min_ping) return false;
             if (filter.max_ping > 0 && record.ping > filter.max_ping) return false;

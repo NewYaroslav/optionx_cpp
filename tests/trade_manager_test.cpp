@@ -409,6 +409,22 @@ namespace optionx::modules {
         std::vector<std::string> reasons;
     };
 
+    class TradeRequestCapture : public utils::EventMediator {
+    public:
+        explicit TradeRequestCapture(utils::EventBus& bus)
+            : utils::EventMediator(bus) {
+            subscribe<events::TradeRequestEvent>();
+        }
+
+        void on_event(const utils::Event* const event) override {
+            if (auto request_event = dynamic_cast<const events::TradeRequestEvent*>(event)) {
+                results.push_back(request_event->result);
+            }
+        }
+
+        std::vector<std::shared_ptr<TradeResult>> results;
+    };
+
     /// \brief Outputs the details of a TradeRequest.
     /// \param request The TradeRequest instance to output.
     void print_trade_request(const TradeRequest& request) {
@@ -576,6 +592,62 @@ TEST_F(TradeManagerTestFixture, OrderIntervalDelaysQueuedTrades) {
     std::this_thread::sleep_for(std::chrono::milliseconds(120));
     EXPECT_TRUE(wait_for_open_trades_count(trade_manager, bus, capture, 2, 1000));
 
+    trade_manager.shutdown();
+}
+
+TEST_F(TradeManagerTestFixture, OpenBalanceUsesTrustedIdleBalanceDuringTradeStorm) {
+    utils::EventBus bus;
+    auto account_info = std::make_shared<AccountInfoData>();
+    account_info->user_id = 12345;
+    account_info->balance = 1000.0;
+    account_info->currency = CurrencyType::USD;
+    account_info->account_type = AccountType::DEMO;
+    account_info->connect = true;
+    account_info->order_interval_ms = 0;
+
+    TradeManagerTest trade_manager(bus, account_info);
+    OpenTradesCapture open_trades_capture(bus, account_info);
+    TradeRequestCapture request_capture(bus);
+
+    ASSERT_TRUE(trade_manager.place_trade(make_valid_sprint_trade_request()));
+    trade_manager.process();
+    bus.process();
+
+    ASSERT_EQ(request_capture.results.size(), 1u);
+    ASSERT_TRUE(request_capture.results[0]->has_balance());
+    ASSERT_TRUE(request_capture.results[0]->has_open_balance());
+    EXPECT_DOUBLE_EQ(request_capture.results[0]->balance, 1000.0);
+    EXPECT_DOUBLE_EQ(request_capture.results[0]->open_balance, 1000.0);
+
+    account_info->balance = 900.0;
+    ASSERT_TRUE(trade_manager.place_trade(make_valid_sprint_trade_request()));
+    trade_manager.process();
+    bus.process();
+
+    ASSERT_EQ(request_capture.results.size(), 2u);
+    ASSERT_TRUE(request_capture.results[1]->has_balance());
+    ASSERT_TRUE(request_capture.results[1]->has_open_balance());
+    EXPECT_DOUBLE_EQ(request_capture.results[1]->balance, 900.0);
+    EXPECT_DOUBLE_EQ(request_capture.results[1]->open_balance, 1000.0);
+
+    request_capture.results[0]->profit = 8.0;
+    request_capture.results[0]->trade_state = TradeState::WIN;
+    request_capture.results[0]->live_state = TradeState::WIN;
+    trade_manager.process();
+    bus.process();
+
+    account_info->balance = 800.0;
+    ASSERT_TRUE(trade_manager.place_trade(make_valid_sprint_trade_request()));
+    trade_manager.process();
+    bus.process();
+
+    ASSERT_EQ(request_capture.results.size(), 3u);
+    ASSERT_TRUE(request_capture.results[2]->has_balance());
+    ASSERT_TRUE(request_capture.results[2]->has_open_balance());
+    EXPECT_DOUBLE_EQ(request_capture.results[2]->balance, 800.0);
+    EXPECT_DOUBLE_EQ(request_capture.results[2]->open_balance, 1008.0);
+
+    EXPECT_EQ(open_trades_capture.last_count(), 2);
     trade_manager.shutdown();
 }
 

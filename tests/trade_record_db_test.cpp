@@ -60,7 +60,8 @@ TradeRecord make_record(
     record.min_payout = 0.75;
     record.payout = 0.82;
     record.profit = 12.3;
-    record.balance = 1012.3;
+    record.set_open_balance(1000.0);
+    record.set_close_balance(1012.3);
     record.trade_state = optionx::TradeState::IN_PROGRESS;
     record.live_state = optionx::TradeState::IN_PROGRESS;
     record.open_price = 1.12345;

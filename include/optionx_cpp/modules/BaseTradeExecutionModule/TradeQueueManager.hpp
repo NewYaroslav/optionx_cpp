@@ -157,6 +157,11 @@ namespace optionx::modules {
         int64_t                  m_snapshot_unknown_close_trades = 0; ///< Snapshot trades without a known close time.
         bool                     m_snapshot_refresh_requested = false; ///< True after emitting a refresh request for current snapshot state.
         std::vector<int64_t>     m_snapshot_close_due_times_ms; ///< Close timestamps with the configured safety buffer.
+        bool                     m_has_trade_storm_balance = false; ///< True when a local trade burst baseline is active.
+        double                   m_trade_storm_base_balance = 0.0; ///< Trusted balance captured before a local trade burst.
+        double                   m_trade_storm_realized_profit = 0.0; ///< Realized profit within the active local trade burst.
+        int64_t                  m_last_trade_activity_ms = 0; ///< Last local trade open/finalize timestamp.
+        static constexpr int64_t kTradeStormIdleMs = time_shield::MS_PER_15_SEC; ///< Quiet period before trusting a fresh balance.
 
         /// \brief Dispatches a trade event notification.
         /// \param transaction The trade transaction event to be dispatched.
@@ -178,6 +183,17 @@ namespace optionx::modules {
         /// \brief Requests a broker snapshot refresh once for the current snapshot state.
         /// \param reason Human-readable refresh reason.
         void request_snapshot_refresh(const char* reason);
+
+        /// \brief Returns the projected equity-like balance before opening the next local trade.
+        double next_open_balance(
+                int64_t timestamp_ms,
+                double account_balance);
+
+        /// \brief Adds realized result profit to the current local trade burst.
+        void add_realized_profit_to_storm(const std::shared_ptr<TradeResult>& result);
+
+        /// \brief Returns true if a trade state has a monetary result.
+        static bool is_result_state_for_balance(TradeState state) noexcept;
 
         /// \brief Adds a close buffer to a close timestamp without overflowing.
         /// \param close_time_ms Close timestamp in milliseconds.
@@ -322,7 +338,10 @@ namespace optionx::modules {
                 LOGIT_0TRACE();
                 result->trade_state = result->live_state = TradeState::WAITING_OPEN;
                 result->send_date   = OPTIONX_TIMESTAMP_MS;
-                result->balance     = m_account_info.get_for_trade<double>(AccountInfoType::BALANCE, request);
+                const double account_balance =
+                    m_account_info.get_for_trade<double>(AccountInfoType::BALANCE, request);
+                result->set_balance(account_balance);
+                result->set_open_balance(next_open_balance(result->send_date, account_balance));
                 result->payout      = m_account_info.get_for_trade<double>(AccountInfoType::PAYOUT, request, time_shield::ms_to_sec(result->send_date));
 
                 m_last_order_time = std::chrono::steady_clock::now();
@@ -458,12 +477,17 @@ namespace optionx::modules {
         }
 
         m_has_sent_order = false;
+        m_has_trade_storm_balance = false;
+        m_trade_storm_base_balance = 0.0;
+        m_trade_storm_realized_profit = 0.0;
+        m_last_trade_activity_ms = timestamp;
     }
 
     inline void TradeQueueManager::increment_open_trades(
         const std::shared_ptr<TradeRequest>& request,
         const std::shared_ptr<TradeResult>& result) {
         m_local_open_trades++;
+        m_last_trade_activity_ms = OPTIONX_TIMESTAMP_MS;
         emit_open_trades(request, result);
     }
 
@@ -471,7 +495,9 @@ namespace optionx::modules {
         const std::shared_ptr<TradeRequest>& request,
         const std::shared_ptr<TradeResult>& result) {
         if (m_local_open_trades > 0) {
+            add_realized_profit_to_storm(result);
             m_local_open_trades--;
+            m_last_trade_activity_ms = OPTIONX_TIMESTAMP_MS;
             emit_open_trades(request, result);
         }
     }
@@ -543,6 +569,40 @@ namespace optionx::modules {
         if (m_snapshot_refresh_requested) return;
         m_snapshot_refresh_requested = true;
         notify(events::OpenTradesSnapshotRefreshRequestEvent(reason ? reason : ""));
+    }
+
+    inline double TradeQueueManager::next_open_balance(
+            int64_t timestamp_ms,
+            double account_balance) {
+        const bool local_queue_idle =
+            m_local_open_trades <= 0 && m_open_transactions.empty();
+        const bool idle_long_enough =
+            m_last_trade_activity_ms <= 0 ||
+            timestamp_ms - m_last_trade_activity_ms >= kTradeStormIdleMs;
+
+        if (!m_has_trade_storm_balance ||
+            (local_queue_idle && idle_long_enough)) {
+            m_has_trade_storm_balance = true;
+            m_trade_storm_base_balance = account_balance;
+            m_trade_storm_realized_profit = 0.0;
+        }
+
+        return m_trade_storm_base_balance + m_trade_storm_realized_profit;
+    }
+
+    inline void TradeQueueManager::add_realized_profit_to_storm(
+            const std::shared_ptr<TradeResult>& result) {
+        if (!result || !is_result_state_for_balance(result->trade_state)) {
+            return;
+        }
+        m_trade_storm_realized_profit += result->profit;
+    }
+
+    inline bool TradeQueueManager::is_result_state_for_balance(TradeState state) noexcept {
+        return state == TradeState::WIN ||
+               state == TradeState::LOSS ||
+               state == TradeState::STANDOFF ||
+               state == TradeState::REFUND;
     }
 
     inline int64_t TradeQueueManager::add_snapshot_close_buffer(

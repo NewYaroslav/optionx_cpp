@@ -83,7 +83,9 @@ optionx::TradeResult make_result() {
     result.amount = 15.5;
     result.payout = 0.82;
     result.profit = 12.71;
-    result.balance = 1012.71;
+    result.set_balance(1012.71);
+    result.set_open_balance(997.21);
+    result.set_close_balance(1012.71);
     result.open_price = 1.12345;
     result.close_price = 1.12400;
     result.delay = 30;
@@ -117,7 +119,7 @@ optionx::TradeRecord make_record() {
 
 } // namespace
 
-TEST(TradeRecordSerializationTest, RoundTripsBinaryV2) {
+TEST(TradeRecordSerializationTest, RoundTripsBinaryV3) {
     const auto record = make_record();
     const auto bytes = record.to_bytes();
     const auto restored = optionx::TradeRecord::from_bytes(bytes.data(), bytes.size());
@@ -161,6 +163,10 @@ TEST(TradeRecordFactoryTest, AssignsRequestResultAndSignalData) {
     EXPECT_EQ(record.request_unique_hash, "request-hash");
     EXPECT_EQ(record.option_id, 123456);
     EXPECT_EQ(record.option_hash, "broker-hash");
+    EXPECT_TRUE(record.has_open_balance());
+    EXPECT_TRUE(record.has_close_balance());
+    EXPECT_DOUBLE_EQ(record.open_balance, 997.21);
+    EXPECT_DOUBLE_EQ(record.close_balance, 1012.71);
     EXPECT_EQ(record.close_date, 1712345700000);
     EXPECT_EQ(record.mm_type, optionx::MmSystemType::MARTINGALE_SIGNAL);
     EXPECT_EQ(nlohmann::json::parse(record.mm_params_json).at("step"), 3);
@@ -189,6 +195,56 @@ TEST(TradeRecordFactoryTest, PreservesRequestContextWhenResultIsPartial) {
     EXPECT_EQ(record.close_date, 1712345700000);
     EXPECT_EQ(record.error_code, optionx::TradeErrorCode::PARSING_ERROR);
     EXPECT_EQ(record.error_desc, "partial broker response");
+}
+
+TEST(TradeRecordFactoryTest, DoesNotTreatLatestBalanceAsCloseBalance) {
+    auto result = make_result();
+    result.balance_flags = 0;
+    result.open_balance = 0.0;
+    result.close_balance = 0.0;
+    result.set_balance(1007.5);
+
+    const auto record = optionx::TradeRecord::from_trade(make_request(), result);
+
+    EXPECT_FALSE(record.has_open_balance());
+    EXPECT_FALSE(record.has_close_balance());
+    EXPECT_DOUBLE_EQ(record.open_balance, 0.0);
+    EXPECT_DOUBLE_EQ(record.close_balance, 0.0);
+}
+
+TEST(TradeRecordFactoryTest, EstimatesCloseBalanceFromOpenBalanceAndProfit) {
+    optionx::TradeResult result;
+    result.set_open_balance(1000.0);
+    result.profit = -15.5;
+    result.trade_state = optionx::TradeState::LOSS;
+
+    const auto record = optionx::TradeRecord::from_trade(make_request(), result);
+
+    EXPECT_TRUE(record.has_open_balance());
+    EXPECT_TRUE(record.has_close_balance());
+    EXPECT_DOUBLE_EQ(record.open_balance, 1000.0);
+    EXPECT_DOUBLE_EQ(record.close_balance, 984.5);
+}
+
+TEST(TradeRecordFactoryTest, PreservesExplicitZeroCloseBalance) {
+    optionx::TradeResult result;
+    result.set_open_balance(100.0);
+    result.set_close_balance(0.0);
+    result.profit = -100.0;
+    result.trade_state = optionx::TradeState::LOSS;
+
+    const auto record = optionx::TradeRecord::from_trade(make_request(), result);
+
+    EXPECT_TRUE(record.has_open_balance());
+    EXPECT_TRUE(record.has_close_balance());
+    EXPECT_DOUBLE_EQ(record.open_balance, 100.0);
+    EXPECT_DOUBLE_EQ(record.close_balance, 0.0);
+
+    const auto bytes = record.to_bytes();
+    const auto restored = optionx::TradeRecord::from_bytes(bytes.data(), bytes.size());
+    EXPECT_TRUE(restored.has_open_balance());
+    EXPECT_TRUE(restored.has_close_balance());
+    EXPECT_DOUBLE_EQ(restored.close_balance, 0.0);
 }
 
 TEST(TradeRecordFactoryTest, UsesCloseDateForPlannedAndKnownCloseTime) {

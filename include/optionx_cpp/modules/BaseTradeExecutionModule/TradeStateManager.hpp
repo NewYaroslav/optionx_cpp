@@ -173,7 +173,11 @@ namespace optionx::modules {
         result->send_date = timestamp;
         result->open_date = timestamp;
         result->close_date = timestamp;
-        result->balance = m_account_info.get_for_trade<double>(AccountInfoType::BALANCE, request, timestamp);
+        const double balance =
+            m_account_info.get_for_trade<double>(AccountInfoType::BALANCE, request, timestamp);
+        result->set_balance(balance);
+        result->set_open_balance(balance);
+        result->set_close_balance(balance);
         result->payout = m_account_info.get_for_trade<double>(AccountInfoType::PAYOUT, request, timestamp);
         result->trade_state = result->live_state = state;
     }

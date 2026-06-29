@@ -233,7 +233,7 @@ namespace optionx::platforms::intrade_bar {
                         if (success) {
                             using Status = events::AccountInfoUpdateEvent::Status;
                             const double previous_balance = account_info->balance;
-                            shared_result->balance = balance;
+                            shared_result->set_balance(balance);
                             if (shared_result->currency == CurrencyType::UNKNOWN) {
                                 shared_result->currency = currency;
                             }
@@ -248,8 +248,14 @@ namespace optionx::platforms::intrade_bar {
                                 account_info->balance = balance;
                                 notify(events::AccountInfoUpdateEvent(account_info, Status::BALANCE_UPDATED));
                             }
-                        } else if (shared_result->balance == 0.0) {
-                            shared_result->balance = account_info->balance;
+                        } else if (!shared_result->has_balance()) {
+                            shared_result->set_balance(account_info->balance);
+                        }
+                        if (!shared_result->has_close_balance() &&
+                            shared_result->has_open_balance() &&
+                            optionx::is_result_state(shared_result->trade_state)) {
+                            shared_result->set_close_balance(
+                                shared_result->open_balance + shared_result->profit);
                         }
 
                         if (*callback_ptr) {
@@ -335,11 +341,14 @@ namespace optionx::platforms::intrade_bar {
                     CurrencyType currency) {
                 auto account_info = get_account_info();
                 if (success) {
-                    result->balance = balance;
                     result->trade_state = TradeState::OPEN_SUCCESS;
 
                     using Status = events::AccountInfoUpdateEvent::Status;
                     const double previous_balance = account_info->balance;
+                    result->set_balance(balance);
+                    if (!result->has_open_balance()) {
+                        result->set_open_balance(previous_balance);
+                    }
 
                     if (!account_info->connect) {
                         account_info->connect = true;
@@ -352,7 +361,10 @@ namespace optionx::platforms::intrade_bar {
                         notify(events::AccountInfoUpdateEvent(account_info, Status::BALANCE_UPDATED));
                     }
                 } else {
-                    result->balance = account_info->balance;
+                    result->set_balance(account_info->balance);
+                    if (!result->has_open_balance()) {
+                        result->set_open_balance(account_info->balance);
+                    }
                     result->trade_state = TradeState::OPEN_SUCCESS;
                 }
             });
@@ -463,13 +475,12 @@ namespace optionx::platforms::intrade_bar {
         if (!request ||!result) return;
         auto account_info = get_account_info();
         set_zero_spread_for_symbol(result->spread, request->symbol);
-        if (!success) {
-            result->balance = account_info->balance;
-        } else {
-            result->balance = balance;
-        }
+        result->set_balance(success ? balance : account_info->balance);
         if (!apply_trade_check_info_to_result(TradeCheckInfo{price, profit}, *result)) {
             return;
+        }
+        if (result->has_open_balance()) {
+            result->set_close_balance(result->open_balance + result->profit);
         }
 
         if (result->trade_state == TradeState::STANDOFF ||
