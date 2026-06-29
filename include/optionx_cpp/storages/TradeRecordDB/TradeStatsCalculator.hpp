@@ -365,7 +365,7 @@ namespace optionx::storage {
 
         static double close_balance_snapshot(
                 const optionx::TradeRecord& rec) noexcept {
-            return rec.close_balance != 0.0 ? rec.close_balance : rec.balance;
+            return rec.close_balance;
         }
 
         static double convert_money(

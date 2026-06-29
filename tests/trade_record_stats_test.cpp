@@ -66,9 +66,8 @@ TradeRecord make_win_record(
     record.amount = amount;
     record.payout = 0.82;
     record.profit = profit;
-    record.balance = 1000.0 + profit;
     record.open_balance = 1000.0;
-    record.close_balance = record.balance;
+    record.close_balance = 1000.0 + profit;
     record.trade_state = state;
     record.open_price = 1.12345;
     record.close_price = 1.12400;
@@ -577,11 +576,9 @@ TEST(TradeStatsCalculatorTest, RecordBalanceModeUsesSnapshotsWithoutStartBalance
     records.push_back(make_win_record(1, 1000, 10.0, -5.0, "EURUSD", optionx::TradeState::LOSS));
     records.back().open_balance = 1000.0;
     records.back().close_balance = 995.0;
-    records.back().balance = 995.0;
     records.push_back(make_win_record(2, 2000, 10.0, 15.0, "EURUSD", optionx::TradeState::WIN));
     records.back().open_balance = 995.0;
     records.back().close_balance = 1010.0;
-    records.back().balance = 1010.0;
 
     optionx::TradeStatsConfig cfg;
     cfg.equity_mode = optionx::TradeStatsEquityMode::RECORD_BALANCE;
@@ -608,14 +605,12 @@ TEST(TradeStatsCalculatorTest, PortfolioBalanceModeCombinesAccountsInBaseCurrenc
     records.back().currency = optionx::CurrencyType::RUB;
     records.back().open_balance = 90000.0;
     records.back().close_balance = 89100.0;
-    records.back().balance = 89100.0;
 
     records.push_back(make_win_record(1, 1000, 10.0, 10.0, "EURUSD", optionx::TradeState::WIN));
     records.back().account_id = 1;
     records.back().currency = optionx::CurrencyType::USD;
     records.back().open_balance = 1000.0;
     records.back().close_balance = 1010.0;
-    records.back().balance = 1010.0;
 
     optionx::TradeStatsConfig cfg;
     cfg.equity_mode = optionx::TradeStatsEquityMode::PORTFOLIO_BALANCE;

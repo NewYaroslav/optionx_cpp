@@ -119,7 +119,7 @@ optionx::TradeRecord make_record() {
 
 } // namespace
 
-TEST(TradeRecordSerializationTest, RoundTripsBinaryV2) {
+TEST(TradeRecordSerializationTest, RoundTripsBinaryV3) {
     const auto record = make_record();
     const auto bytes = record.to_bytes();
     const auto restored = optionx::TradeRecord::from_bytes(bytes.data(), bytes.size());
@@ -163,7 +163,6 @@ TEST(TradeRecordFactoryTest, AssignsRequestResultAndSignalData) {
     EXPECT_EQ(record.request_unique_hash, "request-hash");
     EXPECT_EQ(record.option_id, 123456);
     EXPECT_EQ(record.option_hash, "broker-hash");
-    EXPECT_DOUBLE_EQ(record.balance, 1012.71);
     EXPECT_DOUBLE_EQ(record.open_balance, 997.21);
     EXPECT_DOUBLE_EQ(record.close_balance, 1012.71);
     EXPECT_EQ(record.close_date, 1712345700000);
@@ -204,9 +203,20 @@ TEST(TradeRecordFactoryTest, TreatsLegacyResultBalanceAsCloseBalance) {
 
     const auto record = optionx::TradeRecord::from_trade(make_request(), result);
 
-    EXPECT_DOUBLE_EQ(record.balance, 1007.5);
     EXPECT_DOUBLE_EQ(record.open_balance, 0.0);
     EXPECT_DOUBLE_EQ(record.close_balance, 1007.5);
+}
+
+TEST(TradeRecordFactoryTest, EstimatesCloseBalanceFromOpenBalanceAndProfit) {
+    optionx::TradeResult result;
+    result.open_balance = 1000.0;
+    result.profit = -15.5;
+    result.trade_state = optionx::TradeState::LOSS;
+
+    const auto record = optionx::TradeRecord::from_trade(make_request(), result);
+
+    EXPECT_DOUBLE_EQ(record.open_balance, 1000.0);
+    EXPECT_DOUBLE_EQ(record.close_balance, 984.5);
 }
 
 TEST(TradeRecordFactoryTest, UsesCloseDateForPlannedAndKnownCloseTime) {

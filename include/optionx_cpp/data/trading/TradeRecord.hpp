@@ -38,9 +38,8 @@ namespace optionx {
         double min_payout = 0.0;                            ///< Minimum acceptable payout.
         double payout = 0.0;                                ///< Actual payout ratio.
         double profit = 0.0;                                ///< Final or current profit/loss.
-        double balance = 0.0;                               ///< Legacy latest/final account balance snapshot.
-        double open_balance = 0.0;                          ///< Account balance snapshot near trade opening.
-        double close_balance = 0.0;                         ///< Account balance snapshot after trade close/result.
+        double open_balance = 0.0;                          ///< Account balance before opening the trade.
+        double close_balance = 0.0;                         ///< Known or estimated close-equivalent balance.
 
         // State and error details
         TradeState trade_state = TradeState::UNKNOWN;       ///< Current trade lifecycle state.
@@ -118,11 +117,16 @@ namespace optionx {
             if (result.amount > 0.0) amount = result.amount;
             payout = result.payout;
             profit = result.profit;
-            balance = result.balance != 0.0 ? result.balance : result.close_balance;
             open_balance = result.open_balance;
-            close_balance = result.close_balance != 0.0
-                ? result.close_balance
-                : balance;
+            if (result.close_balance != 0.0) {
+                close_balance = result.close_balance;
+            } else if (result.balance != 0.0) {
+                close_balance = result.balance;
+            } else if (result.open_balance != 0.0) {
+                close_balance = result.open_balance + result.profit;
+            } else {
+                close_balance = 0.0;
+            }
             open_price = result.open_price;
             close_price = result.close_price;
             delay = result.delay;
@@ -243,7 +247,6 @@ namespace optionx {
             append_value(bytes, min_payout);
             append_value(bytes, payout);
             append_value(bytes, profit);
-            append_value(bytes, balance);
             append_value(bytes, open_balance);
             append_value(bytes, close_balance);
 
@@ -288,7 +291,7 @@ namespace optionx {
             }
 
             const auto version = reader.read<std::uint16_t>();
-            if (version != 1 && version != kBinaryVersion) {
+            if (version < 1 || version > kBinaryVersion) {
                 throw std::runtime_error("TradeRecord::from_bytes: unsupported version");
             }
 
@@ -315,12 +318,19 @@ namespace optionx {
             record.min_payout = reader.read<double>();
             record.payout = reader.read<double>();
             record.profit = reader.read<double>();
-            record.balance = reader.read<double>();
+            double legacy_balance = 0.0;
+            if (version == 1 || version == 2) {
+                legacy_balance = reader.read<double>();
+                if (version == 1) {
+                    record.close_balance = legacy_balance;
+                }
+            }
             if (version >= 2) {
                 record.open_balance = reader.read<double>();
                 record.close_balance = reader.read<double>();
-            } else {
-                record.close_balance = record.balance;
+                if (record.close_balance == 0.0) {
+                    record.close_balance = legacy_balance;
+                }
             }
 
             record.trade_state = reader.read_enum8<TradeState>();
@@ -377,7 +387,6 @@ namespace optionx {
                    min_payout == other.min_payout &&
                    payout == other.payout &&
                    profit == other.profit &&
-                   balance == other.balance &&
                    open_balance == other.open_balance &&
                    close_balance == other.close_balance &&
                    trade_state == other.trade_state &&
@@ -412,7 +421,7 @@ namespace optionx {
 
     private:
         static constexpr std::uint32_t kBinaryMagic = 0x5254584fU; // "OXTR" on little-endian hosts.
-        static constexpr std::uint16_t kBinaryVersion = 2;
+        static constexpr std::uint16_t kBinaryVersion = 3;
 
         template<typename T>
         static bool same_known(T lhs, T rhs, T unknown) noexcept {

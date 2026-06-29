@@ -726,7 +726,7 @@ void print_trade_record_line(
         << " close_price=" << std::setprecision(12) << record.close_price
         << " profit=" << std::setprecision(12) << record.profit
         << " payout=" << std::setprecision(12) << record.payout
-        << " balance=" << std::setprecision(12) << record.balance
+        << " close_balance=" << std::setprecision(12) << record.close_balance
         << " open_date=" << record.open_date
         << " close_date=" << record.close_date
         << " comment=" << record.comment

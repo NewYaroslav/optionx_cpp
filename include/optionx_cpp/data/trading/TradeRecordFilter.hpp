@@ -96,8 +96,8 @@ namespace optionx {
         double max_payout = 0.0;
         double min_profit = 0.0;
         double max_profit = 0.0;
-        double min_balance = 0.0;
-        double max_balance = 0.0;
+        double min_balance = 0.0; ///< Minimum close-equivalent balance.
+        double max_balance = 0.0; ///< Maximum close-equivalent balance.
 
         std::int64_t min_ping = 0;
         std::int64_t max_ping = 0;

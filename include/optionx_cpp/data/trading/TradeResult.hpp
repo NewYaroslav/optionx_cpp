@@ -32,9 +32,9 @@ namespace optionx {
         double amount = 0.0;        ///< Total investment amount
         double payout = 0.0;        ///< Payout ratio (0.0-1.0)
         double profit = 0.0;        ///< Calculated profit/loss
-        double balance = 0.0;       ///< Legacy latest account balance snapshot.
-        double open_balance = 0.0;  ///< Account balance snapshot near trade opening.
-        double close_balance = 0.0; ///< Account balance snapshot after trade close/result.
+        double balance = 0.0;       ///< Latest known account balance snapshot.
+        double open_balance = 0.0;  ///< Account balance before opening the trade.
+        double close_balance = 0.0; ///< Known or estimated close-equivalent balance.
 
         // Price information
         double open_price = 0.0;    ///< Entry price at position opening
