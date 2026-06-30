@@ -5,7 +5,6 @@
 /// \file TradeResult.hpp
 /// \brief Contains the TradeResult class representing the result of a trade request.
 
-#include <nlohmann/json.hpp>
 #include <cstdint>
 #include <string>
 #include <memory>

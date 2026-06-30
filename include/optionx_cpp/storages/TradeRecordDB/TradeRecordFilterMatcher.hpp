@@ -12,7 +12,6 @@
 #include <time_shield.hpp>
 
 #include "data/trading.hpp"
-#include "utils/trade_state_utils.hpp"
 
 namespace optionx::storage {
 
