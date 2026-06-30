@@ -17,7 +17,7 @@
 #include "TradeRecord.hpp"
 #include "TradeRecordFilter.hpp"
 #include "TradeTimeZone.hpp"
-#include "utils/trade_state_utils.hpp"
+#include "trade_state_traits.hpp"
 
 namespace optionx {
 

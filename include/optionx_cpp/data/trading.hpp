@@ -46,6 +46,7 @@
 #include "trading/TradeRecordFilter.hpp"
 #include "trading/TradeRecordQuery.hpp"
 #include "trading/TradeHistoryResult.hpp"
+#include "trading/trade_state_traits.hpp"
 #include "trading/TradeStats.hpp"
 
 #endif // _OPTIONX_TRADING_HPP_INCLUDED
