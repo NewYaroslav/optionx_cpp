@@ -1,10 +1,26 @@
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include <optionx_cpp/utils.hpp>
+
+namespace {
+
+std::string unique_path_component(const std::string& prefix) {
+    static std::atomic<std::uint64_t> counter{0};
+    const auto stamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    return prefix + "_" + std::to_string(stamp) + "_" +
+           std::to_string(counter.fetch_add(1));
+}
+
+} // namespace
 
 TEST(StringUtilsTest, ParseListIgnoresEmptyInput) {
     std::vector<std::string> items{"existing"};
@@ -38,6 +54,32 @@ TEST(HttpUtilsTest, RemoveHttpPrefixOnlyRemovesLeadingScheme) {
     EXPECT_EQ(
         optionx::utils::remove_http_prefix("prefixhttps://intrade.bar"),
         "prefixhttps://intrade.bar");
+}
+
+TEST(PathUtilsTest, CreatesUtf8DirectoriesFromUtf8Strings) {
+    const std::string unicode_name =
+        "\xD1\x82\xD0\xB5\xD1\x81\xD1\x82_\xE8\xB7\xAF\xE5\xBE\x84";
+    const auto root = std::filesystem::temp_directory_path() /
+        unique_path_component("optionx_path_utils");
+    const auto target = root / unicode_name / "nested";
+    const auto target_utf8 = target.u8string();
+
+    std::filesystem::remove_all(root);
+    ASSERT_NO_THROW(optionx::utils::create_directories(target_utf8));
+    EXPECT_TRUE(std::filesystem::is_directory(target));
+
+    const auto relative = optionx::utils::make_relative(
+        target_utf8,
+        root.u8string());
+    EXPECT_EQ(
+        std::filesystem::u8path(relative).filename().u8string(),
+        "nested");
+
+    const auto resolved = optionx::utils::resolve_exec_path(unicode_name);
+    EXPECT_TRUE(std::filesystem::u8path(resolved).is_absolute());
+    EXPECT_EQ(optionx::utils::get_file_name(resolved), unicode_name);
+
+    std::filesystem::remove_all(root);
 }
 
 TEST(FixedPointUtilsTest, PrecisionToleranceUsesHalfDecimalStep) {
