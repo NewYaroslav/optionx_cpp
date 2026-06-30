@@ -96,7 +96,7 @@ namespace optionx::storage {
             std::lock_guard<std::mutex> lock(m_mutex);
             const bool success = m_aes.set_key(key);
             if (success) {
-                m_uses_default_key = is_default_key(key);
+                m_key_source = is_default_key(key) ? KeySource::DEFAULT : KeySource::CUSTOM;
                 m_default_key_warning_logged = false;
             }
             return success;
@@ -107,12 +107,13 @@ namespace optionx::storage {
         /// should be treated as obfuscation rather than strong secret protection.
         bool uses_default_key() const {
             std::lock_guard<std::mutex> lock(m_mutex);
-            return m_uses_default_key;
+            return m_key_source == KeySource::DEFAULT;
         }
 
         /// \brief Returns true after a caller-provided non-default key is installed.
         bool has_custom_key() const {
-            return !uses_default_key();
+            std::lock_guard<std::mutex> lock(m_mutex);
+            return m_key_source == KeySource::CUSTOM;
         }
 
         /// \brief Checks whether the session database was opened successfully.
@@ -224,15 +225,21 @@ namespace optionx::storage {
                 m_db.reset();
             }
             m_aes.clear_key();
-            m_uses_default_key = true;
+            m_key_source = KeySource::NONE;
             m_default_key_warning_logged = false;
         }
 
     private:
+        enum class KeySource {
+            NONE,
+            DEFAULT,
+            CUSTOM
+        };
+
         mutable std::mutex m_mutex; ///< Mutex for thread safety.
         crypto::AESCrypt m_aes;   ///< AES encryption and decryption instance.
         std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>> m_db; ///< MDBX-backed session key-value table.
-        bool m_uses_default_key = true; ///< True while the built-in fallback key is active.
+        KeySource m_key_source = KeySource::NONE; ///< Source of the currently active AES key, if any.
         bool m_default_key_warning_logged = false; ///< Suppresses repeated default-key warnings.
 
         /// \brief Private constructor for singleton pattern.
@@ -247,7 +254,7 @@ namespace optionx::storage {
 
         void initialize_default_key() {
             m_aes.set_key(kDefaultKey);
-            m_uses_default_key = true;
+            m_key_source = KeySource::DEFAULT;
             m_default_key_warning_logged = false;
         }
 
@@ -260,7 +267,7 @@ namespace optionx::storage {
         }
 
         void warn_default_key_once() {
-            if (!m_uses_default_key || m_default_key_warning_logged) {
+            if (m_key_source != KeySource::DEFAULT || m_default_key_warning_logged) {
                 return;
             }
             LOGIT_WARN(

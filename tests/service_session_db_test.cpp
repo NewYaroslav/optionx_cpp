@@ -89,6 +89,10 @@ TEST(ServiceSessionDBTest, ReportsDefaultAndCustomKeyState) {
     ASSERT_TRUE(session_db.set_key(custom_key));
     EXPECT_FALSE(session_db.uses_default_key());
     EXPECT_TRUE(session_db.has_custom_key());
+
+    session_db.shutdown();
+    EXPECT_FALSE(session_db.uses_default_key());
+    EXPECT_FALSE(session_db.has_custom_key());
 }
 
 int main(int argc, char** argv) {
