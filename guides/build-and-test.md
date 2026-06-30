@@ -9,20 +9,26 @@
 
 | Option / cache var | Default | Назначение |
 |---|---:|---|
-| `BUILD_DEPS` | `OFF` | Собрать зависимости из `external/` |
-| `BUILD_EXAMPLES` | `OFF` | Включить examples, если они поддержаны CMake |
-| `BUILD_TESTS` | `OFF` | Собрать tests из `tests/*.cpp` |
-| `DEPS_BUILD_DIR` | empty | Путь к уже собранным зависимостям, когда `BUILD_DEPS=OFF` |
+| `OPTIONX_BUILD_DEPS` | `OFF` | Собрать зависимости из `external/` |
+| `OPTIONX_BUILD_EXAMPLES` | `OFF` | Включить examples, если они поддержаны CMake |
+| `OPTIONX_BUILD_TESTS` | `OFF` | Собрать tests из `tests/*.cpp` |
+| `OPTIONX_DEPS_BUILD_DIR` | empty | Путь к уже собранным зависимостям, когда `OPTIONX_BUILD_DEPS=OFF` |
 | `LOGIT_BASE_PATH` | source dir | Base path для LOGIT logs |
 
-Если `BUILD_TESTS=ON` и `BUILD_DEPS=OFF`, `DEPS_BUILD_DIR` обязателен.
+Если `OPTIONX_BUILD_TESTS=ON` и `OPTIONX_BUILD_DEPS=OFF`, `OPTIONX_DEPS_BUILD_DIR` обязателен.
+
+Legacy top-level aliases `BUILD_DEPS`, `BUILD_EXAMPLES`, `BUILD_TESTS` and
+`DEPS_BUILD_DIR` are still accepted when `optionx_cpp` is configured as the
+top-level project. When used via `add_subdirectory()`, prefer the prefixed
+`OPTIONX_*` names so parent-project cache variables do not accidentally affect
+this library.
 
 ## Baseline Commands
 
 Полная локальная сборка с зависимостями:
 
 ```bash
-cmake -S . -B build -DBUILD_DEPS=ON -DBUILD_TESTS=ON
+cmake -S . -B build -DOPTIONX_BUILD_DEPS=ON -DOPTIONX_BUILD_TESTS=ON
 cmake --build build
 ctest --test-dir build
 ```
@@ -30,7 +36,7 @@ ctest --test-dir build
 С уже готовыми зависимостями:
 
 ```bash
-cmake -S . -B build -DBUILD_TESTS=ON -DDEPS_BUILD_DIR=/path/to/deps-build
+cmake -S . -B build -DOPTIONX_BUILD_TESTS=ON -DOPTIONX_DEPS_BUILD_DIR=/path/to/deps-build
 cmake --build build
 ctest --test-dir build
 ```
