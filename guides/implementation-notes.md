@@ -259,8 +259,11 @@ facade lifecycle или остаться probe/internal component.
 - `uses_default_key()` / `has_custom_key()` позволяют проверить, что session
   storage работает с caller-provided key; сохранение session с default key
   логирует warning.
-- IV and generated AES keys come from the operating-system random source
-  (`BCryptGenRandom` on Windows, `/dev/urandom` on Unix-like systems).
+- IV, generated AES keys and in-memory `SecureKey` masks come from the
+  operating-system random source (`BCryptGenRandom` on Windows, `/dev/urandom`
+  on Unix-like systems). The implementation deliberately avoids
+  `std::random_device` because older MinGW/libstdc++ builds could return
+  deterministic `random_device` output.
 - Не обходи сервис прямым доступом к mdbx table.
 - `shutdown()` disconnects DB и clears AES key.
 - Path управляется macros: `OPTIONX_DATA_PATH`, `OPTIONX_DB_PATH`,

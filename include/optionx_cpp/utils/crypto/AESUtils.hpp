@@ -108,6 +108,9 @@ namespace crypto {
     }
 
     /// \brief Fills a memory region with operating-system random bytes.
+    /// \details Intentionally avoids std::random_device: older MinGW/libstdc++
+    /// builds could return deterministic random_device output. Windows uses
+    /// BCryptGenRandom directly; Unix-like systems read /dev/urandom.
     /// \throws std::runtime_error If the system random source fails.
     inline void fill_secure_random(void* ptr, size_t size) {
         if (size == 0) {
