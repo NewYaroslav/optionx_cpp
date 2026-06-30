@@ -29,6 +29,26 @@ bool contains_uid(const std::vector<TradeRecord>& records, std::int64_t uid) {
     });
 }
 
+void expect_series(
+        const optionx::TradeSeriesStats& series,
+        std::uint64_t max_win,
+        std::uint64_t max_loss,
+        std::uint64_t total_win,
+        std::uint64_t total_loss,
+        std::uint64_t avg_win,
+        std::uint64_t avg_loss,
+        std::uint64_t current,
+        bool current_is_win) {
+    EXPECT_EQ(series.max_win_series, max_win);
+    EXPECT_EQ(series.max_loss_series, max_loss);
+    EXPECT_EQ(series.total_win_series, total_win);
+    EXPECT_EQ(series.total_loss_series, total_loss);
+    EXPECT_EQ(series.avg_win_series, avg_win);
+    EXPECT_EQ(series.avg_loss_series, avg_loss);
+    EXPECT_EQ(series.current_series, current);
+    EXPECT_EQ(series.current_is_win, current_is_win);
+}
+
 std::string unique_db_path(const std::string& name) {
     static std::atomic<std::uint64_t> counter{0};
     const auto stamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -571,6 +591,100 @@ TEST(TradeStatsCalculatorTest, SameCloseDateAggregatesRealizedProfitBeforeDrawdo
     EXPECT_DOUBLE_EQ(stats.max_absolute_drawdown, 0.0);
 }
 
+TEST(TradeStatsCalculatorTest, OutcomeSeriesCountsMultipleRunsInResultTimeOrder) {
+    std::vector<TradeRecord> records;
+    records.push_back(make_win_record(8, 8000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    records.push_back(make_win_record(3, 3000, 10.0, -10.0, "EURUSD", optionx::TradeState::LOSS));
+    records.push_back(make_win_record(1, 1000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    records.push_back(make_win_record(10, 10000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    records.push_back(make_win_record(4, 4000, 10.0, -10.0, "EURUSD", optionx::TradeState::LOSS));
+    records.push_back(make_win_record(9, 9000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    records.push_back(make_win_record(2, 2000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    records.push_back(make_win_record(7, 7000, 10.0, -10.0, "EURUSD", optionx::TradeState::LOSS));
+    records.push_back(make_win_record(6, 6000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    records.push_back(make_win_record(5, 5000, 10.0, -10.0, "EURUSD", optionx::TradeState::LOSS));
+
+    optionx::TradeStatsConfig cfg;
+    cfg.include_non_terminal = false;
+    auto stats_ptr = TradeStatsCalculator::calc(records, cfg);
+    auto& stats = *stats_ptr;
+
+    EXPECT_EQ(stats.total.wins, 6u);
+    EXPECT_EQ(stats.total.losses, 4u);
+    expect_series(stats.series, 3u, 3u, 3u, 2u, 2u, 2u, 3u, true);
+}
+
+TEST(TradeStatsCalculatorTest, OutcomeSeriesNeutralResultsBreakRuns) {
+    std::vector<TradeRecord> records;
+    records.push_back(make_win_record(1, 1000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    records.push_back(make_win_record(2, 2000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    records.push_back(make_win_record(3, 3000, 10.0, 0.0, "EURUSD", optionx::TradeState::STANDOFF));
+    records.push_back(make_win_record(4, 4000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    records.push_back(make_win_record(5, 5000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    records.push_back(make_win_record(6, 6000, 10.0, 0.0, "EURUSD", optionx::TradeState::REFUND));
+    records.push_back(make_win_record(7, 7000, 10.0, -10.0, "EURUSD", optionx::TradeState::LOSS));
+    records.push_back(make_win_record(8, 8000, 10.0, -10.0, "EURUSD", optionx::TradeState::LOSS));
+
+    optionx::TradeStatsConfig cfg;
+    cfg.include_non_terminal = false;
+    auto stats_ptr = TradeStatsCalculator::calc(records, cfg);
+    auto& stats = *stats_ptr;
+
+    EXPECT_EQ(stats.total.standoffs, 1u);
+    EXPECT_EQ(stats.total.refunds, 1u);
+    expect_series(stats.series, 2u, 2u, 2u, 1u, 2u, 2u, 2u, false);
+}
+
+TEST(TradeStatsCalculatorTest, OutcomeSeriesErrorsBreakRunsOnlyWhenIncluded) {
+    std::vector<TradeRecord> records;
+    records.push_back(make_win_record(1, 1000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    records.push_back(make_win_record(2, 2000, 10.0, 0.0, "EURUSD", optionx::TradeState::OPEN_ERROR));
+    records.push_back(make_win_record(3, 3000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+
+    optionx::TradeStatsConfig cfg;
+    cfg.include_non_terminal = false;
+
+    auto excluded_stats = TradeStatsCalculator::calc(records, cfg);
+    expect_series(excluded_stats->series, 2u, 0u, 1u, 0u, 2u, 0u, 2u, true);
+
+    cfg.include_errors = true;
+    auto included_stats = TradeStatsCalculator::calc(records, cfg);
+    expect_series(included_stats->series, 1u, 0u, 2u, 0u, 1u, 0u, 1u, true);
+}
+
+TEST(TradeStatsCalculatorTest, OutcomeSeriesFallsBackToOpenDateWhenCloseDateMissing) {
+    std::vector<TradeRecord> records;
+    records.push_back(make_win_record(2, 2000, 10.0, -10.0, "EURUSD", optionx::TradeState::LOSS));
+    records.push_back(make_win_record(1, 1000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    records.push_back(make_win_record(3, 3000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    for (auto& record : records) {
+        record.close_date = 0;
+    }
+
+    optionx::TradeStatsConfig cfg;
+    cfg.include_non_terminal = false;
+    auto stats_ptr = TradeStatsCalculator::calc(records, cfg);
+
+    expect_series(stats_ptr->series, 1u, 1u, 2u, 1u, 1u, 1u, 1u, true);
+}
+
+TEST(TradeStatsCalculatorTest, OutcomeSeriesSelectionFiltersEventStream) {
+    std::vector<TradeRecord> records;
+    records.push_back(make_win_record(1, 1000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    records.push_back(make_win_record(2, 2000, 10.0, -10.0, "EURUSD", optionx::TradeState::LOSS));
+    records.push_back(make_win_record(3, 3000, 10.0, -10.0, "EURUSD", optionx::TradeState::LOSS));
+    records.push_back(make_win_record(4, 4000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    records[1].set_last_in_group(true);
+    records[3].set_last_in_group(true);
+
+    optionx::TradeStatsConfig cfg;
+    cfg.include_non_terminal = false;
+    cfg.selection = optionx::TradeStatsSelection::LAST_IN_GROUP;
+    auto stats_ptr = TradeStatsCalculator::calc(records, cfg);
+
+    expect_series(stats_ptr->series, 1u, 1u, 1u, 1u, 1u, 1u, 1u, true);
+}
+
 TEST(TradeStatsCalculatorTest, SameCloseDateSeriesUsesDecisionTimeOrder) {
     std::vector<TradeRecord> records;
     records.push_back(make_win_record(3, 2000, 10.0, -10.0, "EURUSD", optionx::TradeState::LOSS));
@@ -585,12 +699,7 @@ TEST(TradeStatsCalculatorTest, SameCloseDateSeriesUsesDecisionTimeOrder) {
     auto stats_ptr = TradeStatsCalculator::calc(records, cfg);
     auto& stats = *stats_ptr;
 
-    EXPECT_EQ(stats.series.max_win_series, 1u);
-    EXPECT_EQ(stats.series.max_loss_series, 1u);
-    EXPECT_EQ(stats.series.total_win_series, 2u);
-    EXPECT_EQ(stats.series.total_loss_series, 1u);
-    EXPECT_EQ(stats.series.current_series, 1u);
-    EXPECT_TRUE(stats.series.current_is_win);
+    expect_series(stats.series, 1u, 1u, 2u, 1u, 1u, 1u, 1u, true);
 }
 
 TEST(TradeStatsCalculatorTest, SweepLineAggregatesSameTimestampEventsBeforeDrawdown) {
