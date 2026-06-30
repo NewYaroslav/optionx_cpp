@@ -5,7 +5,9 @@
 /// \file ServiceSessionDB.hpp
 /// \brief Provides a singleton-based class for managing session data storage and retrieval.
 
+#include <algorithm>
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -91,7 +93,26 @@ namespace optionx::storage {
         /// \return True if key is set successfully.
         template<class T>
         bool set_key(const T& key) {
-            return m_aes.set_key(key);
+            std::lock_guard<std::mutex> lock(m_mutex);
+            const bool success = m_aes.set_key(key);
+            if (success) {
+                m_uses_default_key = is_default_key(key);
+                m_default_key_warning_logged = false;
+            }
+            return success;
+        }
+
+        /// \brief Returns true while the built-in fallback encryption key is active.
+        /// \details The default key is useful for tests and simple local apps, but
+        /// should be treated as obfuscation rather than strong secret protection.
+        bool uses_default_key() const {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            return m_uses_default_key;
+        }
+
+        /// \brief Returns true after a caller-provided non-default key is installed.
+        bool has_custom_key() const {
+            return !uses_default_key();
         }
 
         /// \brief Checks whether the session database was opened successfully.
@@ -142,6 +163,7 @@ namespace optionx::storage {
             }
             std::string key = platform + ":" + email;
             try {
+                warn_default_key_once();
                 m_db->insert_or_assign(utils::Base64::encode(key), utils::Base64::encode(m_aes.encrypt(value)));
                 return true;
             } catch(const mdbxc::MdbxException& ex){
@@ -202,24 +224,49 @@ namespace optionx::storage {
                 m_db.reset();
             }
             m_aes.clear_key();
+            m_uses_default_key = true;
+            m_default_key_warning_logged = false;
         }
 
     private:
         mutable std::mutex m_mutex; ///< Mutex for thread safety.
         crypto::AESCrypt m_aes;   ///< AES encryption and decryption instance.
         std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>> m_db; ///< MDBX-backed session key-value table.
+        bool m_uses_default_key = true; ///< True while the built-in fallback key is active.
+        bool m_default_key_warning_logged = false; ///< Suppresses repeated default-key warnings.
 
         /// \brief Private constructor for singleton pattern.
         ServiceSessionDB() : ServiceSessionDB(default_config()) {}
 
+        inline static constexpr std::array<std::uint8_t, 32> kDefaultKey = {{
+            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+            0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+            0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+            0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F
+        }};
+
         void initialize_default_key() {
-            std::array<uint8_t, 32> def_key = {
-                0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-                0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
-                0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
-                0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F
-            };
-            m_aes.set_key(def_key);
+            m_aes.set_key(kDefaultKey);
+            m_uses_default_key = true;
+            m_default_key_warning_logged = false;
+        }
+
+        template<class T>
+        static bool is_default_key(const T& key) {
+            if (key.size() != kDefaultKey.size()) {
+                return false;
+            }
+            return std::equal(kDefaultKey.begin(), kDefaultKey.end(), key.begin());
+        }
+
+        void warn_default_key_once() {
+            if (!m_uses_default_key || m_default_key_warning_logged) {
+                return;
+            }
+            LOGIT_WARN(
+                "ServiceSessionDB is storing a broker session with the built-in default encryption key. "
+                "Set a custom key before storing production sessions.");
+            m_default_key_warning_logged = true;
         }
 
         void open(mdbxc::Config config, const std::string& table_name) {

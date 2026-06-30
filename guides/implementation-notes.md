@@ -256,6 +256,9 @@ facade lifecycle или остаться probe/internal component.
 
 - Перед production use задай key через `set_key`; default key в constructor
   удобен для разработки, но не должен считаться безопасной политикой.
+- `uses_default_key()` / `has_custom_key()` позволяют проверить, что session
+  storage работает с caller-provided key; сохранение session с default key
+  логирует warning.
 - Не обходи сервис прямым доступом к mdbx table.
 - `shutdown()` disconnects DB и clears AES key.
 - Path управляется macros: `OPTIONX_DATA_PATH`, `OPTIONX_DB_PATH`,
