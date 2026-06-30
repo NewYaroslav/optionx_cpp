@@ -11,7 +11,7 @@ function(install_headers_to_include target_name include_dir)
     )
 
     if (headers)
-        set(output_dir "${CMAKE_BINARY_DIR}/include/${target_name}")
+        set(output_dir "${OPTIONX_DEPS_OUTPUT_DIR}/include/${target_name}")
         file(MAKE_DIRECTORY "${output_dir}")
         foreach(header_file IN LISTS headers)
             get_filename_component(rel_path "${header_file}" DIRECTORY)

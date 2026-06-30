@@ -41,6 +41,18 @@ Code::Blocks / MinGW пример указан в комментарии `CMakeL
 cmake -G "CodeBlocks - MinGW Makefiles" -S . -B build-cb
 ```
 
+Submodule/build-tree consumer check:
+
+```bash
+cmake -S tests/cmake/submodule_consumer -B build-submodule-consumer
+cmake --build build-submodule-consumer --target optionx_submodule_consumer
+./build-submodule-consumer/optionx_submodule_consumer
+```
+
+This check verifies the intended `add_subdirectory(optionx_cpp)` flow where a
+consumer links only `optionx_cpp::optionx_cpp`; dependency include and link
+settings should come from the interface target.
+
 ## Tests
 
 CMake берет `tests/**/*.cpp` через `GLOB_RECURSE CONFIGURE_DEPENDS` и создает

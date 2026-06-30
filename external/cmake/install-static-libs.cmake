@@ -1,5 +1,5 @@
 # install_static_libs.cmake
-# Копирует все .a, .lib и .def файлы из указанной папки в ${CMAKE_BINARY_DIR}/lib
+# Копирует все .a, .lib и .def файлы из указанной папки в ${OPTIONX_DEPS_OUTPUT_DIR}/lib
 
 function(install_static_libs_to_lib lib_dir)
     if (NOT IS_DIRECTORY "${lib_dir}")
@@ -18,7 +18,7 @@ function(install_static_libs_to_lib lib_dir)
         return()
     endif()
 
-    set(output_dir "${CMAKE_BINARY_DIR}/lib")
+    set(output_dir "${OPTIONX_DEPS_OUTPUT_DIR}/lib")
     file(MAKE_DIRECTORY "${output_dir}")
 
     foreach(lib_file IN LISTS libs)
@@ -29,7 +29,7 @@ function(install_static_libs_to_lib lib_dir)
 endfunction()
 
 function(install_lib_files_to_lib)
-    set(output_dir "${CMAKE_BINARY_DIR}/lib")
+    set(output_dir "${OPTIONX_DEPS_OUTPUT_DIR}/lib")
     file(MAKE_DIRECTORY "${output_dir}")
 
     foreach(lib_file IN LISTS ARGN)

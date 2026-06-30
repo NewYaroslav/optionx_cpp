@@ -4,21 +4,29 @@ cmake_minimum_required(VERSION 3.18)
 project(optionx_cpp LANGUAGES CXX)
 
 # Папка для статических библиотек (.a, .lib)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib CACHE PATH "")
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib CACHE PATH "")
 
 # Папка для динамических библиотек (.so, .dll)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib CACHE PATH "")
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib CACHE PATH "")
+endif()
 
 option(BUILD_DEPS "Build internal dependencies" OFF)
 option(BUILD_EXAMPLES "Build examples" OFF)
 option(BUILD_TESTS "Build tests" OFF)
 set(DEPS_BUILD_DIR "" CACHE PATH "Path to directory where dependencies were built")
 
-set(LOGIT_BASE_PATH "${CMAKE_SOURCE_DIR}" CACHE PATH "Base path for LOGIT logs")
+set(LOGIT_BASE_PATH "${CMAKE_CURRENT_SOURCE_DIR}" CACHE PATH "Base path for LOGIT logs")
 file(TO_CMAKE_PATH "${LOGIT_BASE_PATH}" LOGIT_BASE_PATH_FWD)
 
 function(optionx_get_network_link_libraries out_var)
-    if(WIN32)
+    if(TARGET OpenSSL::SSL AND TARGET OpenSSL::Crypto AND TARGET CURL::libcurl)
+        set(network_libs
+            OpenSSL::SSL
+            OpenSSL::Crypto
+            CURL::libcurl
+        )
+    elseif(WIN32)
         set(network_libs
             ssl
             crypto
@@ -36,6 +44,25 @@ function(optionx_get_network_link_libraries out_var)
     endif()
 
     set(${out_var} ${network_libs} PARENT_SCOPE)
+endfunction()
+
+function(optionx_link_preferred_dependency target raw_name)
+    foreach(candidate IN LISTS ARGN)
+        if(TARGET ${candidate})
+            target_link_libraries(${target} INTERFACE ${candidate})
+            return()
+        endif()
+    endforeach()
+
+    target_link_libraries(${target} INTERFACE ${raw_name})
+endfunction()
+
+function(optionx_link_existing_dependencies target)
+    foreach(candidate IN LISTS ARGN)
+        if(TARGET ${candidate})
+            target_link_libraries(${target} INTERFACE ${candidate})
+        endif()
+    endforeach()
 endfunction()
 
 set(OPTIONX_INCLUDE_DIRS
@@ -74,12 +101,44 @@ if(WIN32)
 endif()
 
 if(BUILD_DEPS)
+    set(OPTIONX_DEPS_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}")
     add_subdirectory(external)
+elseif(DEPS_BUILD_DIR)
+    set(OPTIONX_DEPS_OUTPUT_DIR "${DEPS_BUILD_DIR}")
 endif()
+
+if(OPTIONX_DEPS_OUTPUT_DIR)
+    target_include_directories(optionx_cpp INTERFACE
+        $<BUILD_INTERFACE:${OPTIONX_DEPS_OUTPUT_DIR}/include>
+    )
+    target_link_directories(optionx_cpp INTERFACE
+        $<BUILD_INTERFACE:${OPTIONX_DEPS_OUTPUT_DIR}/lib>
+        $<BUILD_INTERFACE:${OPTIONX_DEPS_OUTPUT_DIR}/bin>
+    )
+endif()
+
+optionx_get_network_link_libraries(OPTIONX_NETWORK_LIBS)
+target_link_libraries(optionx_cpp INTERFACE ${OPTIONX_NETWORK_LIBS})
+
+optionx_link_preferred_dependency(optionx_cpp mdbx
+    mdbx::mdbx-static
+    mdbx-static
+    mdbx::mdbx
+    mdbx
+)
+optionx_link_preferred_dependency(optionx_cpp AES AES)
+optionx_link_existing_dependencies(optionx_cpp
+    time_shield::time_shield
+    log-it-cpp::log-it-cpp
+    mdbx_containers::mdbx_containers
+    nlohmann_json::nlohmann_json
+    kurlyk
+    simple-websocket-server
+)
 
 if(BUILD_EXAMPLES)
     if(BUILD_DEPS)
-        set(EXAMPLE_BUILD_LIBS_DIR ${CMAKE_BINARY_DIR})
+        set(EXAMPLE_BUILD_LIBS_DIR ${OPTIONX_DEPS_OUTPUT_DIR})
     else()
         if(NOT DEPS_BUILD_DIR)
             message(FATAL_ERROR "BUILD_DEPS is OFF, but DEPS_BUILD_DIR is not set")
@@ -106,13 +165,7 @@ if(BUILD_EXAMPLES)
         ${OPTIONX_COMPILE_DEFINITIONS}
     )
 
-    optionx_get_network_link_libraries(EXAMPLE_NETWORK_LIBS)
-
-    set(EXAMPLE_LIBS
-        ${EXAMPLE_NETWORK_LIBS}
-        mdbx
-        AES
-    )
+    set(EXAMPLE_LIBS)
 
     add_executable(trade_record_db_example examples/trade_record_db_example.cpp)
 
@@ -152,7 +205,7 @@ endif()
 
 if(BUILD_TESTS)
     if(BUILD_DEPS)
-        set(BUILD_LIBS_DIR ${CMAKE_BINARY_DIR})
+        set(BUILD_LIBS_DIR ${OPTIONX_DEPS_OUTPUT_DIR})
     else()
         if(NOT DEPS_BUILD_DIR)
             message(FATAL_ERROR "BUILD_DEPS is OFF, but DEPS_BUILD_DIR is not set")
@@ -180,12 +233,7 @@ if(BUILD_TESTS)
         ${OPTIONX_COMPILE_DEFINITIONS}
     )
 
-    optionx_get_network_link_libraries(PROJECT_NETWORK_LIBS)
-
     set(PROJECT_LIBS
-        ${PROJECT_NETWORK_LIBS}
-        mdbx
-        AES
         gtest
     )
 
