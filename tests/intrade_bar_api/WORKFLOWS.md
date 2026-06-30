@@ -199,5 +199,9 @@ shape without changing Intrade Bar parser literals.
 4. Account type, currency, balance, and one live quote snapshot after auth.
 
 `intrade_bar_smoke_cli` exposes the same pieces manually through `auth`,
-`auth-cache`, `show-account`, `quotes`, `history`, guarded `open-trade`, and
-`open-check-result` commands.
+`auth-cache`, `show-account`, `quotes`, `history`, guarded `open-trade`,
+`open-trades-sync-check`, and `open-check-result` commands. Use
+`open-trades-sync-check` when validating broker active-trade snapshots,
+reconnect counter synchronization, and close-time countdown behavior. Use
+`--count=2` or more with `--interval-ms=...` when validating staggered
+close-time countdowns.
