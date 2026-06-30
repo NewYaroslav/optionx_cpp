@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <optionx_cpp/utils.hpp>
@@ -19,6 +20,18 @@ std::string unique_path_component(const std::string& prefix) {
     return prefix + "_" + std::to_string(stamp) + "_" +
            std::to_string(counter.fetch_add(1));
 }
+
+struct ScopedPathCleanup {
+    explicit ScopedPathCleanup(std::filesystem::path cleanup_path)
+        : path(std::move(cleanup_path)) {}
+
+    ~ScopedPathCleanup() {
+        std::error_code ec;
+        std::filesystem::remove_all(path, ec);
+    }
+
+    std::filesystem::path path;
+};
 
 } // namespace
 
@@ -61,10 +74,10 @@ TEST(PathUtilsTest, CreatesUtf8DirectoriesFromUtf8Strings) {
         "\xD1\x82\xD0\xB5\xD1\x81\xD1\x82_\xE8\xB7\xAF\xE5\xBE\x84";
     const auto root = std::filesystem::temp_directory_path() /
         unique_path_component("optionx_path_utils");
-    const auto target = root / unicode_name / "nested";
+    const ScopedPathCleanup root_cleanup(root);
+    const auto target = root / std::filesystem::u8path(unicode_name) / "nested";
     const auto target_utf8 = target.u8string();
 
-    std::filesystem::remove_all(root);
     ASSERT_NO_THROW(optionx::utils::create_directories(target_utf8));
     EXPECT_TRUE(std::filesystem::is_directory(target));
 
@@ -75,11 +88,16 @@ TEST(PathUtilsTest, CreatesUtf8DirectoriesFromUtf8Strings) {
         std::filesystem::u8path(relative).filename().u8string(),
         "nested");
 
-    const auto resolved = optionx::utils::resolve_exec_path(unicode_name);
-    EXPECT_TRUE(std::filesystem::u8path(resolved).is_absolute());
-    EXPECT_EQ(optionx::utils::get_file_name(resolved), unicode_name);
+    const auto exec_relative_root = unique_path_component("optionx_exec_path");
+    const auto exec_relative_path = exec_relative_root + "/" + unicode_name + "/nested";
+    const auto resolved = optionx::utils::resolve_exec_path(exec_relative_path);
+    const auto resolved_path = std::filesystem::u8path(resolved);
+    const ScopedPathCleanup exec_cleanup(resolved_path.parent_path().parent_path());
 
-    std::filesystem::remove_all(root);
+    EXPECT_TRUE(resolved_path.is_absolute());
+    EXPECT_EQ(resolved_path.parent_path().filename().u8string(), unicode_name);
+    ASSERT_NO_THROW(optionx::utils::create_directories(resolved));
+    EXPECT_TRUE(std::filesystem::is_directory(resolved_path));
 }
 
 TEST(FixedPointUtilsTest, PrecisionToleranceUsesHalfDecimalStep) {
