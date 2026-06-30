@@ -131,7 +131,7 @@ namespace optionx::platforms {
         intrade_bar::BalanceManager       m_balance_manager;  ///< Tracks account balance.
         intrade_bar::ActiveTradesSyncManager m_active_trades_sync_manager; ///< Syncs broker active trade snapshots.
         intrade_bar::PriceManager         m_price_manager;    ///< Retrieves and updates price data.
-        intrade_bar::BtcPriceManager      m_btc_price_manager;///<
+        intrade_bar::BtcPriceManager      m_btc_price_manager;///< Retrieves BTC/USDT quotes from the websocket stream.
         intrade_bar::TradeManager         m_trade_manager;    ///< Manages trades and status updates.
     }; // IntradeBarPlatform
 

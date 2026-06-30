@@ -18,16 +18,15 @@ namespace optionx::modules {
     /// It delegates state management to `TradeStateManager` and queue management to `TradeQueueManager`.
     ///
     /// ### Subscribed Events:
-    /// - `PriceUpdateEvent` – Updates trade states based on market prices.
-    /// - `DisconnectRequestEvent` – Handles connection loss and forces trade finalization.
-    ///
+    /// - `PriceUpdateEvent` - Updates trade states based on market prices.
+    /// - `DisconnectRequestEvent` - Handles connection loss and forces trade finalization.
     /// - `OpenTradesSnapshotEvent` - Synchronizes broker-side active trades when the local queue is idle.
     ///
     /// ### Emitted Events:
-    /// - `TradeTransactionEvent` – Notifies about trade request updates.
-    /// - `TradeRequestEvent` – Sent when a trade request is accepted for processing.
-    /// - `TradeStatusEvent` – Updates listeners on trade state changes.
-    /// - `OpenTradesEvent` – Notifies about changes in the number of open trades.
+    /// - `TradeTransactionEvent` - Notifies about trade request updates.
+    /// - `TradeRequestEvent` - Sent when a trade request is accepted for processing.
+    /// - `TradeStatusEvent` - Updates listeners on trade state changes.
+    /// - `OpenTradesEvent` - Notifies about changes in the number of open trades.
     /// - `OpenTradesSnapshotRefreshRequestEvent` - Requests a broker active-trades snapshot refresh.
     class BaseTradeExecutionModule : public BaseModule {
     public:

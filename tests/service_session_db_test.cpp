@@ -7,6 +7,7 @@
 #include <string>
 
 #include <optionx_cpp/storages.hpp>
+#include <optionx_cpp/utils.hpp>
 
 namespace {
 
@@ -28,6 +29,17 @@ mdbxc::Config make_config(const std::string& name) {
 }
 
 } // namespace
+
+TEST(CryptoRandomTest, GeneratesKeysWithExpectedModeLengths) {
+    optionx::crypto::AESCrypt aes_256(optionx::crypto::AesMode::CBC_256);
+    EXPECT_EQ(aes_256.generate_key().size(), 32u);
+
+    optionx::crypto::AESCrypt aes_192(optionx::crypto::AesMode::CBC_192);
+    EXPECT_EQ(aes_192.generate_key().size(), 24u);
+
+    optionx::crypto::AESCrypt aes_128(optionx::crypto::AesMode::CBC_128);
+    EXPECT_EQ(aes_128.generate_key().size(), 16u);
+}
 
 TEST(ServiceSessionDBTest, StoresReadsRemovesAndClearsEncryptedSessionValues) {
     optionx::storage::ServiceSessionDB session_db(

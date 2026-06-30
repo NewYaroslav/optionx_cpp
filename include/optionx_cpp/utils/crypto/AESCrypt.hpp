@@ -111,12 +111,7 @@ namespace crypto {
         std::vector<uint8_t> generate_key() const {
             size_t length = get_expected_key_length();
             std::vector<uint8_t> random_key(length);
-            auto seed = static_cast<uint32_t>(std::chrono::steady_clock::now().time_since_epoch().count());
-            std::mt19937 generator(seed);
-            std::uniform_int_distribution<uint8_t> distribution(0, 255);
-            for (size_t i = 0; i < length; ++i) {
-                random_key[i] = distribution(generator);
-            }
+            fill_secure_random(random_key);
             return random_key;
         }
 
