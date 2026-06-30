@@ -11,7 +11,6 @@
 #include <limits>
 #include <map>
 #include <memory>
-#include <queue>
 #include <vector>
 
 #include <time_shield.hpp>
@@ -39,32 +38,21 @@ namespace optionx::storage {
             std::map<std::int64_t, double> daily_profit_map;
             std::map<std::int64_t, double> hourly_profit_map;
 
-            std::uint64_t win_series_total_len = 0;
-            std::uint64_t loss_series_total_len = 0;
-            std::uint64_t win_series_count = 0;
-            std::uint64_t loss_series_count = 0;
-            std::uint64_t current_series = 0;
-            bool current_is_win = false;
-
             std::uint64_t volume_trade_count = 0;
 
             struct Event {
                 std::int64_t ts;
                 double delta;
-                bool operator<(const Event& other) const noexcept {
-                    return ts > other.ts; // min-heap for std::priority_queue
-                }
             };
 
-            const auto ordered_records = make_ordered_records(records);
             std::vector<Event> events;
             events.reserve(records.size() * 2);
             std::vector<BalanceSnapshotEvent> balance_events;
             balance_events.reserve(records.size());
+            std::vector<OutcomeEvent> outcome_events;
+            outcome_events.reserve(records.size());
 
-            for (const auto* rec_ptr : ordered_records) {
-                const auto& rec = *rec_ptr;
-
+            for (const auto& rec : records) {
                 // 1. Filter predicate (applies to both outcome and monetary)
                 if (!TradeRecordFilterMatcher::match_filter(rec, config.filter, config.time_zone)) {
                     continue;
@@ -192,52 +180,11 @@ namespace optionx::storage {
                         }
                     }
 
-                    // Series tracking
-                    if (rec.trade_state == optionx::TradeState::WIN) {
-                        if (!current_is_win && current_series > 0) {
-                            ++loss_series_count;
-                            stats.series.max_loss_series = std::max(stats.series.max_loss_series, current_series);
-                        }
-                        current_is_win = true;
-                        ++current_series;
-                        win_series_total_len += current_series;
-                    } else if (rec.trade_state == optionx::TradeState::LOSS) {
-                        if (current_is_win && current_series > 0) {
-                            ++win_series_count;
-                            stats.series.max_win_series = std::max(stats.series.max_win_series, current_series);
-                        }
-                        current_is_win = false;
-                        ++current_series;
-                        loss_series_total_len += current_series;
-                    } else {
-                        // Standoff / refund / error: close current series
-                        if (current_series > 0) {
-                            if (current_is_win) {
-                                ++win_series_count;
-                                stats.series.max_win_series = std::max(stats.series.max_win_series, current_series);
-                            } else {
-                                ++loss_series_count;
-                                stats.series.max_loss_series = std::max(stats.series.max_loss_series, current_series);
-                            }
-                        }
-                        current_series = 0;
-                    }
+                    outcome_events.push_back(make_outcome_event(rec));
                 }
             }
 
-            // Finalize open series
-            if (current_series > 0) {
-                if (current_is_win) {
-                    stats.series.max_win_series = std::max(stats.series.max_win_series, current_series);
-                } else {
-                    stats.series.max_loss_series = std::max(stats.series.max_loss_series, current_series);
-                }
-            }
-            stats.series.current_series = current_series;
-            stats.series.current_is_win = current_is_win;
-
-            // Recount series properly for averages
-            recount_series(ordered_records, config, stats.series);
+            recount_series(outcome_events, stats.series);
 
             // Finalize winrate stats
             stats.total.calc();
@@ -358,11 +305,40 @@ namespace optionx::storage {
             double profit = 0.0;
         };
 
-        static std::int64_t stats_order_timestamp(
+        struct OutcomeEvent {
+            std::int64_t result_ts = 0;
+            std::int64_t decision_ts = 0;
+            std::uint32_t trade_id = 0;
+            std::int64_t request_unique_id = 0;
+            optionx::TradeState trade_state = optionx::TradeState::UNKNOWN;
+        };
+
+        static std::int64_t outcome_result_timestamp(
                 const optionx::TradeRecord& rec) noexcept {
             if (rec.close_date > 0) return rec.close_date;
             if (rec.open_date > 0) return rec.open_date;
             return optionx::select_timestamp_ms(rec, optionx::TradeRecordTimeField::AUTO);
+        }
+
+        static std::int64_t outcome_decision_timestamp(
+                const optionx::TradeRecord& rec,
+                std::int64_t result_ts) noexcept {
+            if (rec.place_date > 0) return rec.place_date;
+            if (rec.send_date > 0) return rec.send_date;
+            if (rec.open_date > 0) return rec.open_date;
+            return result_ts;
+        }
+
+        static OutcomeEvent make_outcome_event(
+                const optionx::TradeRecord& rec) noexcept {
+            const auto result_ts = outcome_result_timestamp(rec);
+            return {
+                result_ts,
+                outcome_decision_timestamp(rec, result_ts),
+                rec.trade_id,
+                rec.request_unique_id,
+                rec.trade_state
+            };
         }
 
         static double close_balance_snapshot(
@@ -553,27 +529,6 @@ namespace optionx::storage {
             }
         }
 
-        static std::vector<const optionx::TradeRecord*> make_ordered_records(
-                const std::vector<optionx::TradeRecord>& records) {
-            std::vector<const optionx::TradeRecord*> ordered;
-            ordered.reserve(records.size());
-            for (const auto& record : records) {
-                ordered.push_back(&record);
-            }
-
-            std::stable_sort(
-                ordered.begin(),
-                ordered.end(),
-                [](const optionx::TradeRecord* lhs, const optionx::TradeRecord* rhs) {
-                    const auto lhs_ts = stats_order_timestamp(*lhs);
-                    const auto rhs_ts = stats_order_timestamp(*rhs);
-                    if (lhs_ts != rhs_ts) return lhs_ts < rhs_ts;
-                    if (lhs->trade_id != rhs->trade_id) return lhs->trade_id < rhs->trade_id;
-                    return lhs->request_unique_id < rhs->request_unique_id;
-                });
-            return ordered;
-        }
-
         static bool include_by_selection(
                 const optionx::TradeRecord& rec,
                 const optionx::TradeStatsConfig& config) noexcept {
@@ -586,37 +541,29 @@ namespace optionx::storage {
             return true;
         }
 
-        static bool include_outcome(
-                const optionx::TradeRecord& rec,
-                const optionx::TradeStatsConfig& config) noexcept {
-            if (!TradeRecordFilterMatcher::match_filter(rec, config.filter, config.time_zone)) {
-                return false;
-            }
-            if (!include_by_selection(rec, config)) return false;
-            if (!config.include_errors && optionx::is_error_trade_state(rec.trade_state)) {
-                return false;
-            }
-            if (!config.include_non_terminal && !optionx::is_terminal_trade_state(rec.trade_state)) {
-                return false;
-            }
-            return true;
-        }
-
         static void recount_series(
-                const std::vector<const optionx::TradeRecord*>& records,
-                const optionx::TradeStatsConfig& config,
+                std::vector<OutcomeEvent>& events,
                 optionx::TradeSeriesStats& series) {
+            // Series need a sequence. Result time is primary; when several
+            // trades resolve at the same moment, use the decision timeline
+            // instead of inventing a monetary intra-timestamp order.
+            std::stable_sort(
+                events.begin(),
+                events.end(),
+                [](const OutcomeEvent& lhs, const OutcomeEvent& rhs) {
+                    if (lhs.result_ts != rhs.result_ts) return lhs.result_ts < rhs.result_ts;
+                    if (lhs.decision_ts != rhs.decision_ts) return lhs.decision_ts < rhs.decision_ts;
+                    if (lhs.trade_id != rhs.trade_id) return lhs.trade_id < rhs.trade_id;
+                    return lhs.request_unique_id < rhs.request_unique_id;
+                });
+
             std::uint64_t cur_win = 0, cur_loss = 0;
             std::uint64_t max_w = 0, max_l = 0;
             std::uint64_t count_w = 0, count_l = 0;
             std::uint64_t total_w_len = 0, total_l_len = 0;
 
-            for (const auto* rec_ptr : records) {
-                const auto& rec = *rec_ptr;
-                if (!include_outcome(rec, config)) continue;
-                if (!optionx::is_terminal_trade_state(rec.trade_state)) continue;
-
-                if (rec.trade_state == optionx::TradeState::WIN) {
+            for (const auto& event : events) {
+                if (event.trade_state == optionx::TradeState::WIN) {
                     if (cur_loss > 0) {
                         ++count_l;
                         max_l = std::max(max_l, cur_loss);
@@ -624,7 +571,7 @@ namespace optionx::storage {
                         cur_loss = 0;
                     }
                     ++cur_win;
-                } else if (rec.trade_state == optionx::TradeState::LOSS) {
+                } else if (event.trade_state == optionx::TradeState::LOSS) {
                     if (cur_win > 0) {
                         ++count_w;
                         max_w = std::max(max_w, cur_win);
