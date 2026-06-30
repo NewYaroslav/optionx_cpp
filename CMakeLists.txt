@@ -116,6 +116,15 @@ if(BUILD_EXAMPLES)
             "${dll}" "$<TARGET_FILE_DIR:trade_record_db_example>"
         )
     endforeach()
+
+    if(WIN32)
+        add_custom_command(TARGET trade_record_db_example POST_BUILD
+            COMMAND ${CMAKE_COMMAND}
+                -DOPTIONX_RUNTIME_DLL_DIR="${EXAMPLE_BUILD_LIBS_DIR}/bin"
+                -DOPTIONX_RUNTIME_TARGET_DIR="$<TARGET_FILE_DIR:trade_record_db_example>"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy_runtime_dlls.cmake"
+        )
+    endif()
 endif()
 
 if(BUILD_TESTS)

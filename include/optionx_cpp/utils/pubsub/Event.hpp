@@ -13,7 +13,7 @@ namespace optionx::utils {
     /// \brief Base class for events in the publish-subscribe system.
     ///
     /// Derived classes represent concrete events that can be published and dispatched
-    /// using the EventHub. This abstract class provides a common base for all event types.
+    /// using EventBus. This abstract class provides a common base for all event types.
     class Event {
     public:
         /// \brief Default virtual destructor.

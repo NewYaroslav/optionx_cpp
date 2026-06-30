@@ -24,6 +24,7 @@ optionx::TradeRecord make_open_record(const optionx::TradeRequest& request, std:
     record.option_hash = "broker-order-123456";
     record.open_price = 1.12345;
     record.payout = 0.82;
+    record.set_open_balance(1000.00);
     record.mm_type = optionx::MmSystemType::MARTINGALE_SIGNAL;
     record.mm_step = 1;
     record.mm_group_id = 1001;
@@ -41,7 +42,7 @@ optionx::TradeRecord make_closed_record(optionx::TradeRecord record, std::int64_
     record.trade_state = optionx::TradeState::WIN;
     record.live_state = optionx::TradeState::WIN;
     record.profit = record.amount * record.payout;
-    record.balance = 1012.30;
+    record.set_close_balance(1012.30);
     return record;
 }
 

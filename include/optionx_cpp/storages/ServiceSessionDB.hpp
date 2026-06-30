@@ -5,11 +5,14 @@
 /// \file ServiceSessionDB.hpp
 /// \brief Provides a singleton-based class for managing session data storage and retrieval.
 
-#include <mdbx_containers/KeyValueTable.hpp>
-#include <optional>
+#include <array>
 #include <memory>
-#include <string>
 #include <mutex>
+#include <optional>
+#include <string>
+#include <utility>
+
+#include <mdbx_containers/KeyValueTable.hpp>
 
 #if defined(_WIN32) || defined(_WIN64)
 
@@ -53,6 +56,33 @@ namespace optionx::storage {
         static ServiceSessionDB& get_instance() {
             static ServiceSessionDB instance;
             return instance;
+        }
+
+        /// \brief Creates default MDBX configuration for broker sessions.
+        /// \return MDBX config using OPTIONX_SESSION_DB_FILE and the executable directory as the base path.
+        static mdbxc::Config default_config() {
+            mdbxc::Config config;
+            config.pathname = OPTIONX_SESSION_DB_FILE;
+            config.max_dbs = 1;
+            config.no_subdir = false;
+            config.relative_to_exe = true;
+            return config;
+        }
+
+        /// \brief Constructs session storage with a custom MDBX configuration.
+        /// \param config MDBX connection configuration.
+        /// \param table_name Key-value table name for encrypted sessions.
+        explicit ServiceSessionDB(
+            mdbxc::Config config,
+            std::string table_name = "sessions")
+            : m_aes(crypto::AesMode::CBC_256) {
+            initialize_default_key();
+            open(std::move(config), std::move(table_name));
+        }
+
+        /// \brief Shuts down session storage.
+        ~ServiceSessionDB() {
+            shutdown();
         }
 
         /// \brief Sets the encryption key.
@@ -180,7 +210,9 @@ namespace optionx::storage {
         std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>> m_db; ///< MDBX-backed session key-value table.
 
         /// \brief Private constructor for singleton pattern.
-        ServiceSessionDB() : m_aes(crypto::AesMode::CBC_256) {
+        ServiceSessionDB() : ServiceSessionDB(default_config()) {}
+
+        void initialize_default_key() {
             std::array<uint8_t, 32> def_key = {
                 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
                 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
@@ -188,22 +220,19 @@ namespace optionx::storage {
                 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F
             };
             m_aes.set_key(def_key);
+        }
+
+        void open(mdbxc::Config config, const std::string& table_name) {
             try {
-                mdbxc::Config config;
-                config.pathname = OPTIONX_SESSION_DB_FILE;
-                config.max_dbs = 1;
-                config.no_subdir = false;
-                config.relative_to_exe = true;
-                m_db = std::make_unique<mdbxc::KeyValueTable<std::string, std::string>>(config, "sessions");
+                if (config.max_dbs < 1) {
+                    config.max_dbs = 1;
+                }
+                m_db = std::make_unique<mdbxc::KeyValueTable<std::string, std::string>>(config, table_name);
             } catch(const mdbxc::MdbxException& ex){
                 LOGIT_PRINT_ERROR("Database connection error: ", ex);
             } catch(const std::exception& ex){
                 LOGIT_PRINT_ERROR("General error: ", ex);
             }
-        }
-
-        ~ServiceSessionDB() {
-            shutdown();
         }
 
         ServiceSessionDB(const ServiceSessionDB&) = delete;
