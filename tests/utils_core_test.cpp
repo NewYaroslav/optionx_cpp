@@ -1,10 +1,39 @@
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <filesystem>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <optionx_cpp/utils.hpp>
+
+namespace {
+
+std::string unique_path_component(const std::string& prefix) {
+    static std::atomic<std::uint64_t> counter{0};
+    const auto stamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    return prefix + "_" + std::to_string(stamp) + "_" +
+           std::to_string(counter.fetch_add(1));
+}
+
+struct ScopedPathCleanup {
+    explicit ScopedPathCleanup(std::filesystem::path cleanup_path)
+        : path(std::move(cleanup_path)) {}
+
+    ~ScopedPathCleanup() {
+        std::error_code ec;
+        std::filesystem::remove_all(path, ec);
+    }
+
+    std::filesystem::path path;
+};
+
+} // namespace
 
 TEST(StringUtilsTest, ParseListIgnoresEmptyInput) {
     std::vector<std::string> items{"existing"};
@@ -38,6 +67,37 @@ TEST(HttpUtilsTest, RemoveHttpPrefixOnlyRemovesLeadingScheme) {
     EXPECT_EQ(
         optionx::utils::remove_http_prefix("prefixhttps://intrade.bar"),
         "prefixhttps://intrade.bar");
+}
+
+TEST(PathUtilsTest, CreatesUtf8DirectoriesFromUtf8Strings) {
+    const std::string unicode_name =
+        "\xD1\x82\xD0\xB5\xD1\x81\xD1\x82_\xE8\xB7\xAF\xE5\xBE\x84";
+    const auto root = std::filesystem::temp_directory_path() /
+        unique_path_component("optionx_path_utils");
+    const ScopedPathCleanup root_cleanup(root);
+    const auto target = root / std::filesystem::u8path(unicode_name) / "nested";
+    const auto target_utf8 = target.u8string();
+
+    ASSERT_NO_THROW(optionx::utils::create_directories(target_utf8));
+    EXPECT_TRUE(std::filesystem::is_directory(target));
+
+    const auto relative = optionx::utils::make_relative(
+        target_utf8,
+        root.u8string());
+    EXPECT_EQ(
+        std::filesystem::u8path(relative).filename().u8string(),
+        "nested");
+
+    const auto exec_relative_root = unique_path_component("optionx_exec_path");
+    const auto exec_relative_path = exec_relative_root + "/" + unicode_name + "/nested";
+    const auto resolved = optionx::utils::resolve_exec_path(exec_relative_path);
+    const auto resolved_path = std::filesystem::u8path(resolved);
+    const ScopedPathCleanup exec_cleanup(resolved_path.parent_path().parent_path());
+
+    EXPECT_TRUE(resolved_path.is_absolute());
+    EXPECT_EQ(resolved_path.parent_path().filename().u8string(), unicode_name);
+    ASSERT_NO_THROW(optionx::utils::create_directories(resolved));
+    EXPECT_TRUE(std::filesystem::is_directory(resolved_path));
 }
 
 TEST(FixedPointUtilsTest, PrecisionToleranceUsesHalfDecimalStep) {

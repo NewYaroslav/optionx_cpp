@@ -25,6 +25,7 @@ $env:OPTIONX_INTRADE_BAR_CONFIG_FILE="tests\intrade_bar_api\intrade_bar_api.loca
 .\build-codex\intrade_bar_smoke_cli.exe history --source=HTML_CSV --all --account-type=DEMO --comment=account-history-export
 .\build-codex\intrade_bar_smoke_cli.exe switch-check --confirm --account-type=DEMO --currency=USD
 .\build-codex\intrade_bar_smoke_cli.exe open-trade --confirm --symbol=EURUSD --amount=1 --duration=60 --buy
+.\build-codex\intrade_bar_smoke_cli.exe open-trades-sync-check --confirm --symbol=BTCUSDT --amount=1 --duration=300 --count=1
 .\build-codex\intrade_bar_smoke_cli.exe open-check-result --confirm --symbol=BTCUSDT --amount=1 --duration=300 --buy
 ```
 
@@ -32,8 +33,8 @@ For RF/CIS domain blocking checks, keep `OPTIONX_INTRADE_BAR_AUTO_FIND_DOMAIN=1`
 and use a negative `OPTIONX_INTRADE_BAR_DOMAIN_MIN` to skip the primary
 `https://intrade.bar` host.
 
-`open-trade` and `open-check-result` require `--confirm` or
-`OPTIONX_INTRADE_BAR_ALLOW_TRADE=1`.
+`open-trade`, `open-trades-sync-check`, and `open-check-result` require
+`--confirm` or `OPTIONX_INTRADE_BAR_ALLOW_TRADE=1`.
 Real-account trades are refused unless both `--allow-real` and
 `OPTIONX_INTRADE_BAR_ALLOW_REAL_TRADE=1` are set.
 Set `OPTIONX_INTRADE_BAR_CLI_CONSOLE_LOG=1` when you want internal workflow
