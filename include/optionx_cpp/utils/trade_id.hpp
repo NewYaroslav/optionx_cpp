@@ -30,19 +30,18 @@ namespace optionx::utils {
     inline TradeId make_trade_id() noexcept {
         auto current = g_trade_id_counter.load(std::memory_order_relaxed);
         for (;;) {
-            if (current == kInvalidTradeId) {
-                current = 1;
-            }
+            const TradeId result =
+                current == kInvalidTradeId ? TradeId{1} : current;
             const auto next =
-                current == (std::numeric_limits<TradeId>::max)()
+                result == (std::numeric_limits<TradeId>::max)()
                     ? TradeId{1}
-                    : static_cast<TradeId>(current + 1);
+                    : static_cast<TradeId>(result + 1);
             if (g_trade_id_counter.compare_exchange_weak(
                     current,
                     next,
                     std::memory_order_relaxed,
                     std::memory_order_relaxed)) {
-                return current;
+                return result;
             }
         }
     }
