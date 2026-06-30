@@ -8,6 +8,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 #include "enums.hpp"
@@ -90,19 +91,19 @@ namespace optionx {
         std::int64_t stop_second_of_day = 0;    ///< Range end in seconds from midnight (0..86399).
         bool use_second_of_day = false;         ///< Enable time-of-day filtering.
 
-        double min_amount = 0.0;
-        double max_amount = 0.0;
-        double min_payout = 0.0;
-        double max_payout = 0.0;
-        double min_profit = 0.0;
-        double max_profit = 0.0;
-        double min_balance = 0.0; ///< Minimum close-equivalent balance.
-        double max_balance = 0.0; ///< Maximum close-equivalent balance.
+        std::optional<double> min_amount;  ///< Minimum trade amount, if set.
+        std::optional<double> max_amount;  ///< Maximum trade amount, if set.
+        std::optional<double> min_payout;  ///< Minimum payout ratio, if set.
+        std::optional<double> max_payout;  ///< Maximum payout ratio, if set.
+        std::optional<double> min_profit;  ///< Minimum trade profit, if set.
+        std::optional<double> max_profit;  ///< Maximum trade profit, if set.
+        std::optional<double> min_balance; ///< Minimum close-equivalent balance, if set.
+        std::optional<double> max_balance; ///< Maximum close-equivalent balance, if set.
 
-        std::int64_t min_ping = 0;
-        std::int64_t max_ping = 0;
-        std::int64_t min_delay = 0;
-        std::int64_t max_delay = 0;
+        std::optional<std::int64_t> min_ping;  ///< Minimum request ping in milliseconds, if set.
+        std::optional<std::int64_t> max_ping;  ///< Maximum request ping in milliseconds, if set.
+        std::optional<std::int64_t> min_delay; ///< Minimum request delay in milliseconds, if set.
+        std::optional<std::int64_t> max_delay; ///< Maximum request delay in milliseconds, if set.
 
         bool only_terminal = false;      ///< Match only terminal trade states.
         bool only_non_terminal = false;  ///< Match only non-terminal trade states.
