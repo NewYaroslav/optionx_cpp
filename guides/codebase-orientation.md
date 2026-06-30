@@ -9,7 +9,7 @@
 |---|---|---|
 | `include/optionx_cpp/*.hpp` | Публичные aggregate include-точки | Когда новый публичный header должен стать частью API |
 | `include/optionx_cpp/data` | DTO, enums, events, account/symbol/tick/bar/trading data | При изменении API сообщений или доменной модели |
-| `include/optionx_cpp/modules` | Base lifecycle modules и общие managers trade execution | При добавлении общего поведения для платформ |
+| `include/optionx_cpp/components` | Base lifecycle components и общие managers trade execution | При добавлении общего поведения для платформ |
 | `include/optionx_cpp/platforms/common` | Platform facade/base helpers | Только для общих правил всех платформ |
 | `include/optionx_cpp/platforms/IntradeBarPlatform` | Реализация Intrade Bar managers/http/parsers | При изменении Intrade Bar API flow |
 | `include/optionx_cpp/platforms/TradeUpPlatform` | Реализация TradeUp managers/http/ws | При изменении TradeUp flow |
@@ -18,17 +18,17 @@
 | `include/optionx_cpp/bridges` | Base bridge контракт | При интеграции внешних систем |
 | `examples` | Ручные usage samples | Когда меняется user-facing flow |
 | `tests` | GoogleTest/probes | Для регрессионных проверок |
-| `external` | Submodules/dependency CMake scripts | Только при изменении third-party build/deps |
+| `external` | Subcomponents/dependency CMake scripts | Только при изменении third-party build/deps |
 | `build`, `build-*` | Generated build output | Обычно не редактировать и не коммитить |
 
 ## Public Include Points
 
 Главная include-точка - `include/optionx_cpp/optionx.hpp`. Она включает
-`utils.hpp`, `data.hpp`, `storages.hpp`, `modules.hpp`, `platforms.hpp`,
+`utils.hpp`, `data.hpp`, `storages.hpp`, `components.hpp`, `platforms.hpp`,
 `bridges.hpp`.
 
 Aggregate headers в корне `include/optionx_cpp` - часть публичной поверхности.
-Если добавляешь новый публичный DTO/module/platform, проверь соответствующий
+Если добавляешь новый публичный DTO/component/platform, проверь соответствующий
 aggregate header. Если код нужен только внутреннему manager, не расширяй
 публичный include без необходимости.
 
@@ -38,18 +38,18 @@ aggregate header. Если код нужен только внутреннему
 |---|---|---|
 | `data` | в основном `optionx`, events в `optionx::events` | Не должен зависеть от platform managers |
 | `utils` | `optionx::utils`, crypto частично `optionx::crypto` | Reusable infrastructure, не зависит от платформ |
-| `modules` | `optionx::modules` | Может зависеть от `data`/`utils`, не должен знать детали конкретной платформы |
-| `platforms/common` | `optionx::platforms` | Собирает modules и platform lifecycle |
-| platform implementations | `optionx::platforms::intrade_bar`, `optionx::platforms::tradeup` | Может зависеть от modules/data/utils/storage |
+| `components` | `optionx::components` | Может зависеть от `data`/`utils`, не должен знать детали конкретной платформы |
+| `platforms/common` | `optionx::platforms` | Собирает components и platform lifecycle |
+| platform implementations | `optionx::platforms::intrade_bar`, `optionx::platforms::tradeup` | Может зависеть от components/data/utils/storage |
 | `storage` | `optionx::storage` | Может использовать utils/crypto и mdbx-containers |
 | `bridges` | `optionx::bridges` | Контракт для внешних adapters, работает через DTO/callbacks |
 
 Предпочтительное направление зависимостей:
 
-`utils` <- `data` <- `modules` <- `platforms` <- application/bridge.
+`utils` <- `data` <- `components` <- `platforms` <- application/bridge.
 
 Избегай обратных зависимостей: DTO не должны включать platform manager,
-`modules` не должны напрямую знать `intrade_bar::RequestManager`, а `utils`
+`components` не должны напрямую знать `intrade_bar::RequestManager`, а `utils`
 не должны зависеть от trading platform API.
 
 ## Где Искать Точки Входа
@@ -59,23 +59,23 @@ aggregate header. Если код нужен только внутреннему
 | User-facing platform API | `platforms/common/BaseTradingPlatform.hpp` |
 | Intrade Bar composition | `platforms/IntradeBarPlatform.hpp` |
 | TradeUp composition | `platforms/TradeUpPlatform.hpp` |
-| Base module lifecycle | `modules/BaseModule.hpp` |
-| HTTP async queue | `modules/BaseHttpClientModule.hpp` |
-| Trade request queue/state | `modules/BaseTradeExecutionModule.hpp`, `modules/BaseTradeExecutionModule/*` |
+| Base component lifecycle | `components/BaseComponent.hpp` |
+| HTTP async queue | `components/BaseHttpClientComponent.hpp` |
+| Trade request queue/state | `components/BaseTradeExecutionComponent.hpp`, `components/BaseTradeExecutionComponent/*` |
 | Pub-sub contracts | `utils/pubsub/*.hpp`, `data/events/*.hpp` |
 | Task scheduling | `utils/tasks/Task.hpp`, `utils/tasks/TaskManager.hpp` |
-| Account info access | `data/account/BaseAccountInfoData.hpp`, `modules/BaseTradeExecutionModule/AccountInfoProvider.hpp` |
+| Account info access | `data/account/BaseAccountInfoData.hpp`, `components/BaseTradeExecutionComponent/AccountInfoProvider.hpp` |
 | Session storage | `storages/ServiceSessionDB.hpp` |
 
 ## Используемые Паттерны
 
 | Паттерн | Где виден | Как переиспользовать |
 |---|---|---|
-| Facade | `BaseTradingPlatform`, concrete platforms | Новый user-facing API добавляй на facade и делегируй в module/manager |
-| Publish-subscribe | `EventBus`, `EventMediator`, `data/events` | Связывай modules событиями, а не прямыми вызовами между managers |
-| Module lifecycle | `BaseModule::initialize/process/shutdown` | Любой long-running manager должен вписаться в lifecycle |
+| Facade | `BaseTradingPlatform`, concrete platforms | Новый user-facing API добавляй на facade и делегируй в component/manager |
+| Publish-subscribe | `EventBus`, `EventMediator`, `data/events` | Связывай components событиями, а не прямыми вызовами между managers |
+| Component lifecycle | `BaseComponent::initialize/process/shutdown` | Любой long-running manager должен вписаться в lifecycle |
 | Manager composition | `IntradeBarPlatform` private manager fields | Platform собирает managers, но бизнес-логику держит внутри managers |
-| Strategy/override hook | `BaseTradeExecutionModule::preprocess_trade_request` | Platform-specific validation/preprocess делай override |
+| Strategy/override hook | `BaseTradeExecutionComponent::preprocess_trade_request` | Platform-specific validation/preprocess делай override |
 | Queue/state managers | `TradeQueueManager`, `TradeStateManager` | Trade lifecycle меняй через эти классы, не обходи queue |
 | Adapter/bridge | `BaseBridge` | Внешнюю интеграцию подключай через callbacks и DTO |
 | Singleton storage | `ServiceSessionDB::get_instance()` | Для sessions используй существующий сервис, не создавай вторую DB |
@@ -105,11 +105,11 @@ aggregate header. Если код нужен только внутреннему
 3. Реализуй `type()` через `typeid(<Name>Event)` и `name()` как строку класса.
 4. Подключи в `data/events.hpp`.
 5. Используй `notify_async(std::make_unique<...>)` для межмодульного async
-   сообщения и `subscribe<EventType>(...)` в manager/module.
+   сообщения и `subscribe<EventType>(...)` в manager/component.
 
-### Новый Module/Manager
+### Новый Component/Manager
 
-1. Наследуйся от `modules::BaseModule` или подходящего base class.
+1. Наследуйся от `components::BaseComponent` или подходящего base class.
 2. В конструктор принимай `utils::EventBus&` либо ссылку на platform facade,
    если так делают соседние managers.
 3. Подпишись на events в конструкторе или initialize, следуя ближайшему
@@ -134,7 +134,7 @@ aggregate header. Если код нужен только внутреннему
 Do:
 
 - Используй `BaseTradingPlatform::event_bus()` и `EventMediator` для
-  коммуникации между modules.
+  коммуникации между components.
 - Добавляй reusable helpers в `utils`, если они не знают про конкретный broker.
 - Расширяй platform-specific `http_parsers.hpp`/`http_utils.hpp`, если логика
   привязана к конкретному API.
@@ -155,8 +155,8 @@ Avoid:
 | `include/optionx_cpp/optionx.hpp` | Главный публичный include; изменение влияет на всех пользователей |
 | `include/optionx_cpp/data/trading/enums.hpp` | JSON/string compatibility и enum indexes |
 | `include/optionx_cpp/platforms/common/BaseTradingPlatform.hpp` | Общий lifecycle всех платформ |
-| `include/optionx_cpp/modules/BaseTradeExecutionModule/*` | Trade state/queue invariants |
+| `include/optionx_cpp/components/BaseTradeExecutionComponent/*` | Trade state/queue invariants |
 | `include/optionx_cpp/utils/pubsub/*` | Центральная доставка событий и awaiters |
 | `include/optionx_cpp/utils/tasks/*` | Threading/lifecycle всех платформ |
 | `include/optionx_cpp/storages/ServiceSessionDB.hpp` | Encryption key/session persistence |
-| `external/*` | Third-party build/submodules |
+| `external/*` | Third-party build/subcomponents |

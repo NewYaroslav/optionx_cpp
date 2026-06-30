@@ -33,7 +33,7 @@
 - Не используй `../` в `#include`.
 - Не используй `"optionx_cpp/..."` внутри `include/optionx_cpp`.
 - Public aggregate headers (`optionx.hpp`, `data.hpp`, `platforms.hpp`,
-  `storages.hpp`, `modules.hpp`, `utils.hpp`, `bridges.hpp`) задают публичные
+  `storages.hpp`, `components.hpp`, `utils.hpp`, `bridges.hpp`) задают публичные
   точки подключения.
 - Domain aggregates, например `data/trading.hpp`, задают include context для
   связанных leaf headers.

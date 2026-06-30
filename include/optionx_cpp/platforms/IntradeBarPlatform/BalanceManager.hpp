@@ -13,7 +13,7 @@ namespace optionx::platforms::intrade_bar {
     /// This class is responsible for retrieving balance information, monitoring account activity,
     /// and reacting to trade events to ensure account consistency. It subscribes to various events
     /// related to trading activity and account status changes.
-    class BalanceManager final : public modules::BaseModule {
+    class BalanceManager final : public components::BaseComponent {
     public:
 
         /// \brief Constructs the BalanceManager.
@@ -24,7 +24,7 @@ namespace optionx::platforms::intrade_bar {
             BaseTradingPlatform& platform,
             RequestManager& request_manager,
             std::shared_ptr<BaseAccountInfoData> account_info)
-            : BaseModule(platform.event_bus()), m_request_manager(request_manager),
+            : BaseComponent(platform.event_bus()), m_request_manager(request_manager),
               m_account_info(std::move(account_info))  {
             subscribe<events::ConnectRequestEvent>();
             subscribe<events::DisconnectRequestEvent>();
@@ -34,7 +34,7 @@ namespace optionx::platforms::intrade_bar {
             subscribe<events::AccountInfoUpdateEvent>();
             m_request_time = m_last_trades_time =
                 time_shield::ms_to_sec(OPTIONX_TIMESTAMP_MS);
-            platform.register_module(this);
+            platform.register_component(this);
         }
 
         /// \brief Default destructor.

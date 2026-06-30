@@ -5,7 +5,7 @@
 /// \file pubsub.hpp
 /// \brief Main header file for the publish-subscribe system.
 ///
-/// This file serves as an entry point for the publish-subscribe module,
+/// This file serves as an entry point for the publish-subscribe component,
 /// including all necessary components for event-driven communication.
 /// It provides a convenient way to include the entire system with a single import.
 

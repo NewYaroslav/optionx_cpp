@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_MODULES_EVENTS_AUTO_DOMAIN_SELECTED_EVENT_HPP_INCLUDED
-#define _OPTIONX_MODULES_EVENTS_AUTO_DOMAIN_SELECTED_EVENT_HPP_INCLUDED
+#ifndef _OPTIONX_EVENTS_AUTO_DOMAIN_SELECTED_EVENT_HPP_INCLUDED
+#define _OPTIONX_EVENTS_AUTO_DOMAIN_SELECTED_EVENT_HPP_INCLUDED
 
 /// \file AutoDomainSelectedEvent.hpp
 /// \brief Defines the AutoDomainSelectedEvent class for notifying about domain auto-selection results.
@@ -40,4 +40,4 @@ namespace optionx::events {
 
 } // namespace optionx::events
 
-#endif // _OPTIONX_MODULES_EVENTS_AUTO_DOMAIN_SELECTED_EVENT_HPP_INCLUDED
+#endif // _OPTIONX_EVENTS_AUTO_DOMAIN_SELECTED_EVENT_HPP_INCLUDED

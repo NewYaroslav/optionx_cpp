@@ -1,11 +1,11 @@
 #pragma once
-#ifndef _OPTIONX_MODULES_TRADE_QUEUE_MANAGER_HPP_INCLUDED
-#define _OPTIONX_MODULES_TRADE_QUEUE_MANAGER_HPP_INCLUDED
+#ifndef _OPTIONX_COMPONENTS_TRADE_QUEUE_MANAGER_HPP_INCLUDED
+#define _OPTIONX_COMPONENTS_TRADE_QUEUE_MANAGER_HPP_INCLUDED
 
 /// \file TradeQueueManager.hpp
 /// \brief Manages the trade request queue, processes transactions, and handles trade events.
 
-namespace optionx::modules {
+namespace optionx::components {
 
     /// \class TradeQueueManager
     /// \brief Manages the queue of trade transactions and processes them accordingly.
@@ -722,6 +722,6 @@ namespace optionx::modules {
         }
     }
 
-} // namespace optionx::modules
+} // namespace optionx::components
 
-#endif // _OPTIONX_TRADE_QUEUE_MANAGER_HPP_INCLUDED
+#endif // _OPTIONX_COMPONENTS_TRADE_QUEUE_MANAGER_HPP_INCLUDED

@@ -1,36 +1,36 @@
 #pragma once
-#ifndef _OPTIONX_PLATFORMS_INTRADERBAR_TRADE_EXECUTION_MODULE_HPP_INCLUDED
-#define _OPTIONX_PLATFORMS_INTRADERBAR_TRADE_EXECUTION_MODULE_HPP_INCLUDED
+#ifndef _OPTIONX_PLATFORMS_INTRADERBAR_TRADE_EXECUTION_COMPONENT_HPP_INCLUDED
+#define _OPTIONX_PLATFORMS_INTRADERBAR_TRADE_EXECUTION_COMPONENT_HPP_INCLUDED
 
-/// \file TradeExecutionModule.hpp
+/// \file TradeExecutionComponent.hpp
 /// \brief Implements trade execution functionality for the Intrade Bar platform.
 
 #include "SymbolUtils.hpp"
 
 namespace optionx::platforms::intrade_bar {
 
-    /// \class TradeExecutionModule
+    /// \class TradeExecutionComponent
     /// \brief Handles trade execution operations for the Intrade Bar platform.
     ///
-    /// This module is responsible for executing trade requests, interacting with
+    /// This component is responsible for executing trade requests, interacting with
     /// the HTTP client, and managing trade execution workflows.
-    class TradeExecutionModule final : public modules::BaseTradeExecutionModule {
+    class TradeExecutionComponent final : public components::BaseTradeExecutionComponent {
     public:
 
-        /// \brief Constructs the trade execution module.
+        /// \brief Constructs the trade execution component.
         /// \param platform Reference to the trading platform.
         /// \param account_info Shared pointer to account information data.
-        explicit TradeExecutionModule(
+        explicit TradeExecutionComponent(
                 BaseTradingPlatform& platform,
                 std::shared_ptr<BaseAccountInfoData> account_info)
-                : modules::BaseTradeExecutionModule(
+                : components::BaseTradeExecutionComponent(
                     platform.event_bus(),
                     std::move(account_info)) {
-            platform.register_module(this);
+            platform.register_component(this);
         }
 
         /// \brief Default destructor.
-        virtual ~TradeExecutionModule() = default;
+        virtual ~TradeExecutionComponent() = default;
 
         /// \brief Returns the platform type.
         /// \return Platform type identifier (`PlatformType::INTRADE_BAR`).
@@ -87,8 +87,8 @@ namespace optionx::platforms::intrade_bar {
             const int64_t timestamp_future = timestamp + (expiration + 3) * time_shield::SEC_PER_MIN;
             return (timestamp_future - timestamp_future % (5 * time_shield::SEC_PER_MIN));
         }
-    }; // class TradeExecutionModule
+    }; // class TradeExecutionComponent
 
 } // namespace optionx::platforms::intrade_bar
 
-#endif // _OPTIONX_PLATFORMS_INTRADERBAR_TRADE_EXECUTION_MODULE_HPP_INCLUDED
+#endif // _OPTIONX_PLATFORMS_INTRADERBAR_TRADE_EXECUTION_COMPONENT_HPP_INCLUDED

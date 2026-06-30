@@ -1,9 +1,9 @@
 #pragma once
-#ifndef _OPTIONX_PLATFORMS_INTRADERBAR_HTTP_CLIENT_MODULE_HPP_INCLUDED
-#define _OPTIONX_PLATFORMS_INTRADERBAR_HTTP_CLIENT_MODULE_HPP_INCLUDED
+#ifndef _OPTIONX_PLATFORMS_INTRADERBAR_HTTP_CLIENT_COMPONENT_HPP_INCLUDED
+#define _OPTIONX_PLATFORMS_INTRADERBAR_HTTP_CLIENT_COMPONENT_HPP_INCLUDED
 
-/// \file HttpClientModule.hpp
-/// \brief Defines the HTTP client module for the Intrade Bar platform.
+/// \file HttpClientComponent.hpp
+/// \brief Defines the HTTP client component for the Intrade Bar platform.
 
 namespace optionx::platforms::intrade_bar {
 
@@ -20,16 +20,16 @@ namespace optionx::platforms::intrade_bar {
         COUNT                   ///< The total number of rate limit types.
     };
 
-    /// \class HttpClientModule
+    /// \class HttpClientComponent
     /// \brief Handles HTTP requests and manages rate limits for the Intrade Bar platform.
-    class HttpClientModule final : public modules::BaseHttpClientModule {
+    class HttpClientComponent final : public components::BaseHttpClientComponent {
     public:
 
-        /// \brief Constructs the HTTP client module and initializes rate limits.
+        /// \brief Constructs the HTTP client component and initializes rate limits.
         /// \param platform Reference to the trading platform.
-        explicit HttpClientModule(
+        explicit HttpClientComponent(
                 BaseTradingPlatform& platform)
-                : modules::BaseHttpClientModule(platform.event_bus()) {
+                : components::BaseHttpClientComponent(platform.event_bus()) {
             set_rate_limit_rpm(RateLimitType::GENERAL, 60);
             set_rate_limit_rps(RateLimitType::TRADE_EXECUTION, 1);
             set_rate_limit_rps(RateLimitType::TRADE_RESULT, 1);
@@ -38,14 +38,14 @@ namespace optionx::platforms::intrade_bar {
             set_rate_limit_rpm(RateLimitType::ACCOUNT_SETTINGS, 12);
             set_rate_limit_rps(RateLimitType::TICK_DATA, 1);
 			get_http_client().assign_rate_limit_id(get_rate_limit(RateLimitType::GENERAL));
-            platform.register_module(this);
+            platform.register_component(this);
         }
 
         /// \brief Default destructor.
-        virtual ~HttpClientModule() = default;
+        virtual ~HttpClientComponent() = default;
 
-    }; // class HttpClientModule
+    }; // class HttpClientComponent
 
 } // namespace optionx::platforms::intrade_bar
 
-#endif // _OPTIONX_PLATFORMS_INTRADERBAR_HTTP_CLIENT_MODULE_HPP_INCLUDED
+#endif // _OPTIONX_PLATFORMS_INTRADERBAR_HTTP_CLIENT_COMPONENT_HPP_INCLUDED

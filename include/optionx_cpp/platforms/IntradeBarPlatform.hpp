@@ -8,7 +8,7 @@
 #include "utils.hpp"
 #include "data.hpp"
 #include "storages.hpp"
-#include "modules.hpp"
+#include "components.hpp"
 
 #include "common/ApiResult.hpp"
 #include "common/BaseTradingPlatform.hpp"
@@ -19,10 +19,10 @@
 #include "IntradeBarPlatform/ApiResponses.hpp"
 #include "IntradeBarPlatform/http_utils.hpp"
 #include "IntradeBarPlatform/http_parsers.hpp"
-#include "IntradeBarPlatform/HttpClientModule.hpp"
+#include "IntradeBarPlatform/HttpClientComponent.hpp"
 #include "IntradeBarPlatform/RequestManager.hpp"
 #include "IntradeBarPlatform/AuthManager.hpp"
-#include "IntradeBarPlatform/TradeExecutionModule.hpp"
+#include "IntradeBarPlatform/TradeExecutionComponent.hpp"
 #include "IntradeBarPlatform/BalanceManager.hpp"
 #include "IntradeBarPlatform/ActiveTradesSyncManager.hpp"
 #include "IntradeBarPlatform/PriceManager.hpp"
@@ -36,13 +36,13 @@ namespace optionx::platforms {
     ///
     /// This class is responsible for handling all trading operations, including authentication,
     /// balance management, price retrieval, trade execution, and account information updates.
-    /// It integrates various modules that manage these aspects of trading.
+    /// It integrates various components that manage these aspects of trading.
     class IntradeBarPlatform final : public BaseTradingPlatform {
     public:
 
         /// \brief Constructs the Intrade Bar trading platform.
         ///
-        /// Initializes all required modules, including HTTP communication, authentication,
+        /// Initializes all required components, including HTTP communication, authentication,
         /// balance tracking, trade execution, and price updates.
         IntradeBarPlatform()
             : BaseTradingPlatform(std::make_shared<intrade_bar::AccountInfoData>()),
@@ -57,14 +57,14 @@ namespace optionx::platforms {
               m_trade_manager(*this, m_request_manager, m_account_info) {
         }
 
-        /// \brief Shuts down modules while platform-owned module instances are still alive.
+        /// \brief Shuts down components while platform-owned component instances are still alive.
         ~IntradeBarPlatform() override {
             shutdown();
         }
 
         /// \brief Places a trade on the platform.
         ///
-        /// This method forwards the trade request to the trade execution module.
+        /// This method forwards the trade request to the trade execution component.
         /// \param trade_request The trade request details.
         /// \return True if the trade was placed successfully; false otherwise.
         bool place_trade(std::unique_ptr<TradeRequest> trade_request) override {
@@ -106,13 +106,13 @@ namespace optionx::platforms {
         }
 
         /// \brief Returns the platform-level trade result callback.
-        /// \return Mutable callback reference from the trade execution module.
+        /// \return Mutable callback reference from the trade execution component.
         trade_result_callback_t& on_trade_result() override {
             return m_trade_execution.on_trade_result();
         }
 
         /// \brief Returns provider used to reserve persistent trade IDs before broker execution.
-        /// \return Mutable provider callback from the trade execution module.
+        /// \return Mutable provider callback from the trade execution component.
         trade_id_provider_t& on_trade_id() override {
             return m_trade_execution.on_trade_id();
         }
@@ -124,9 +124,9 @@ namespace optionx::platforms {
         }
 
     private:
-        intrade_bar::HttpClientModule     m_http_client;      ///< Handles HTTP communication.
+        intrade_bar::HttpClientComponent     m_http_client;      ///< Handles HTTP communication.
         intrade_bar::RequestManager       m_request_manager;  ///< Manages API requests.
-        intrade_bar::TradeExecutionModule m_trade_execution;  ///< Manages trade execution.
+        intrade_bar::TradeExecutionComponent m_trade_execution;  ///< Manages trade execution.
         intrade_bar::AuthManager          m_auth_manager;     ///< Handles authentication processes.
         intrade_bar::BalanceManager       m_balance_manager;  ///< Tracks account balance.
         intrade_bar::ActiveTradesSyncManager m_active_trades_sync_manager; ///< Syncs broker active trade snapshots.

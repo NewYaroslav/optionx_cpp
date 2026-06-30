@@ -3,7 +3,7 @@
 #define _OPTIONX_UTILS_HPP_INCLUDED
 
 /// \file utils.hpp
-/// \brief Master utilities header aggregating all utility modules.
+/// \brief Master utilities header aggregating all utility components.
 /// \details This header provides access to cross-platform utilities for:
 ///          - Enum and string manipulation
 ///          - Filesystem operations

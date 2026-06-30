@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_MODULES_BALANCE_REQUEST_EVENT_HPP_INCLUDED
-#define _OPTIONX_MODULES_BALANCE_REQUEST_EVENT_HPP_INCLUDED
+#ifndef _OPTIONX_EVENTS_BALANCE_REQUEST_EVENT_HPP_INCLUDED
+#define _OPTIONX_EVENTS_BALANCE_REQUEST_EVENT_HPP_INCLUDED
 
 /// \file BalanceRequestEvent.hpp
 /// \brief Defines the BalanceRequestEvent class for handling account balance request events.
@@ -26,4 +26,4 @@ namespace optionx::events {
 
 } // namespace optionx::events
 
-#endif // _OPTIONX_MODULES_BALANCE_REQUEST_EVENT_HPP_INCLUDED
+#endif // _OPTIONX_EVENTS_BALANCE_REQUEST_EVENT_HPP_INCLUDED

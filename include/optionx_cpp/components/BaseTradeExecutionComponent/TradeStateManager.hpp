@@ -1,11 +1,11 @@
 #pragma once
-#ifndef _OPTIONX_TRADE_STATE_MANAGER_HPP_INCLUDED
-#define _OPTIONX_TRADE_STATE_MANAGER_HPP_INCLUDED
+#ifndef _OPTIONX_COMPONENTS_TRADE_STATE_MANAGER_HPP_INCLUDED
+#define _OPTIONX_COMPONENTS_TRADE_STATE_MANAGER_HPP_INCLUDED
 
 /// \file TradeStateManager.hpp
 /// \brief Manages trade state transitions and validations.
 
-namespace optionx::modules {
+namespace optionx::components {
 
     /// \class TradeStateManager
     /// \brief Handles validation, state transitions, and finalization of trades.
@@ -182,6 +182,6 @@ namespace optionx::modules {
         result->trade_state = result->live_state = state;
     }
 
-} // namespace optionx::modules
+} // namespace optionx::components
 
-#endif // _OPTIONX_TRADE_STATE_MANAGER_HPP_INCLUDED
+#endif // _OPTIONX_COMPONENTS_TRADE_STATE_MANAGER_HPP_INCLUDED

@@ -8,18 +8,18 @@
 namespace optionx::platforms::tradeup {
 
     /// \class AuthManager
-    class AuthManager final : public modules::BaseModule {
+    class AuthManager final : public components::BaseComponent {
     public:
         AuthManager(BaseTradingPlatform& platform,
                     RequestManager& request_manager,
                     std::shared_ptr<BaseAccountInfoData> account_info)
-            : BaseModule(platform.event_bus()),
+            : BaseComponent(platform.event_bus()),
               m_request_manager(request_manager),
               m_account_info(std::move(account_info)) {
             subscribe<events::AuthDataEvent>();
             subscribe<events::ConnectRequestEvent>();
             subscribe<events::DisconnectRequestEvent>();
-            platform.register_module(this);
+            platform.register_component(this);
         }
 
         void on_event(const utils::Event* const event) override;

@@ -1,11 +1,11 @@
 #pragma once
-#ifndef _OPTIONX_MODULES_BASE_ACCOUNT_INFO_HANDLER_HPP_INCLUDED
-#define _OPTIONX_MODULES_BASE_ACCOUNT_INFO_HANDLER_HPP_INCLUDED
+#ifndef _OPTIONX_COMPONENTS_BASE_ACCOUNT_INFO_HANDLER_HPP_INCLUDED
+#define _OPTIONX_COMPONENTS_BASE_ACCOUNT_INFO_HANDLER_HPP_INCLUDED
 
 /// \file BaseAccountInfoHandler.hpp
 /// \brief Base class for handling account information updates and events.
 
-namespace optionx::modules {
+namespace optionx::components {
 
     /// \class BaseAccountInfoHandler
     /// \brief Base class for handling account information updates and notifications.
@@ -13,13 +13,13 @@ namespace optionx::modules {
     /// This class subscribes to `AccountInfoUpdateEvent` and invokes a callback
     /// whenever an account update occurs. Derived classes can use this to track
     /// changes in account balance, connection status, and other account-related details.
-    class BaseAccountInfoHandler : public BaseModule {
+    class BaseAccountInfoHandler : public BaseComponent {
     public:
 
         /// \brief Constructs the `BaseAccountInfoHandler` and subscribes to account update events.
         /// \param bus Reference to the `EventBus` used for subscribing to events.
         explicit BaseAccountInfoHandler(utils::EventBus& bus)
-            : BaseModule(bus) {
+            : BaseComponent(bus) {
            subscribe<events::AccountInfoUpdateEvent>();
         }
 
@@ -55,6 +55,6 @@ namespace optionx::modules {
         }
     };
 
-} // namespace optionx::modules
+} // namespace optionx::components
 
-#endif // _OPTIONX_MODULES_BASE_ACCOUNT_INFO_HANDLER_HPP_INCLUDED
+#endif // _OPTIONX_COMPONENTS_BASE_ACCOUNT_INFO_HANDLER_HPP_INCLUDED

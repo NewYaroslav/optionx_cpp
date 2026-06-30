@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_MODULES_TRADE_TRANSACTION_EVENT_HPP_INCLUDED
-#define _OPTIONX_MODULES_TRADE_TRANSACTION_EVENT_HPP_INCLUDED
+#ifndef _OPTIONX_EVENTS_TRADE_TRANSACTION_EVENT_HPP_INCLUDED
+#define _OPTIONX_EVENTS_TRADE_TRANSACTION_EVENT_HPP_INCLUDED
 
 /// \file TradeTransactionEvent.hpp
 /// \brief Defines the TradeTransactionEvent class used for handling trade transaction events.
@@ -51,4 +51,4 @@ namespace optionx::events {
 
 } // namespace optionx::events
 
-#endif // _OPTIONX_MODULES_TRADE_TRANSACTION_EVENT_HPP_INCLUDED
+#endif // _OPTIONX_EVENTS_TRADE_TRANSACTION_EVENT_HPP_INCLUDED

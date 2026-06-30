@@ -1,11 +1,11 @@
 #pragma once
-#ifndef _OPTIONX_MODULES_EVENTS_WEBSOCKET_AUTH_APPLIED_EVENT_HPP_INCLUDED
-#define _OPTIONX_MODULES_EVENTS_WEBSOCKET_AUTH_APPLIED_EVENT_HPP_INCLUDED
+#ifndef _OPTIONX_EVENTS_WEBSOCKET_AUTH_APPLIED_EVENT_HPP_INCLUDED
+#define _OPTIONX_EVENTS_WEBSOCKET_AUTH_APPLIED_EVENT_HPP_INCLUDED
 
 namespace optionx::events {
 
     /// \class WebSocketAuthAppliedEvent
-    /// \brief Fired after WebSocketAuthDataEvent has been processed by WS module.
+    /// \brief Fired after WebSocketAuthDataEvent has been processed by WS component.
     class WebSocketAuthAppliedEvent : public utils::Event {
     public:
         bool success = false;      ///< True if auth data successfully applied and ready for WS connection.
@@ -30,4 +30,4 @@ namespace optionx::events {
 
 } // namespace optionx::events
 
-#endif // _OPTIONX_MODULES_EVENTS_WEBSOCKET_AUTH_APPLIED_EVENT_HPP_INCLUDED
+#endif // _OPTIONX_EVENTS_WEBSOCKET_AUTH_APPLIED_EVENT_HPP_INCLUDED
