@@ -123,6 +123,18 @@ TEST(TradeRecordFilterMatcherTest, MatchesByAmountRange) {
     EXPECT_FALSE(TradeRecordFilterMatcher::match(rec, query));
 }
 
+TEST(TradeRecordFilterMatcherTest, OptionalRangeBoundsDistinguishUnsetFromZero) {
+    TradeRecordFilter filter;
+    EXPECT_FALSE(filter.max_profit.has_value());
+
+    filter.max_profit = 0.0;
+    ASSERT_TRUE(filter.max_profit.has_value());
+    EXPECT_DOUBLE_EQ(*filter.max_profit, 0.0);
+
+    filter.max_profit.reset();
+    EXPECT_FALSE(filter.max_profit.has_value());
+}
+
 TEST(TradeRecordFilterMatcherTest, MatchesZeroAndNegativeProfitRange) {
     TradeRecord loss = make_win_record(1, 100000, 10.0, -5.0);
     TradeRecord standoff = make_win_record(2, 100000, 10.0, 0.0);
