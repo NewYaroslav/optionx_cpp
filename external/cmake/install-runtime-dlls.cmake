@@ -1,5 +1,5 @@
 # install_runtime_dlls.cmake
-# Копирует все .dll файлы из указанной директории в ${CMAKE_BINARY_DIR}/bin
+# Копирует все .dll файлы из указанной директории в ${OPTIONX_DEPS_OUTPUT_DIR}/bin
 
 function(install_runtime_dlls_to_bin dll_dir)
     if (NOT IS_DIRECTORY "${dll_dir}")
@@ -13,7 +13,7 @@ function(install_runtime_dlls_to_bin dll_dir)
         return()
     endif()
 
-    set(output_dir "${CMAKE_BINARY_DIR}/bin")
+    set(output_dir "${OPTIONX_DEPS_OUTPUT_DIR}/bin")
     file(MAKE_DIRECTORY "${output_dir}")
     foreach(dll_file IN LISTS dlls)
         file(COPY "${dll_file}" DESTINATION "${output_dir}")

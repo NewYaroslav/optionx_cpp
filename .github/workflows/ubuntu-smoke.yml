@@ -22,10 +22,19 @@ jobs:
           sudo apt-get install -y libssl-dev libcurl4-openssl-dev
 
       - name: Configure
-        run: cmake -S . -B build-linux -DBUILD_DEPS=ON -DBUILD_TESTS=ON
+        run: cmake -S . -B build-linux -DOPTIONX_BUILD_DEPS=ON -DOPTIONX_BUILD_TESTS=ON
 
       - name: Build trade_record_db_test
         run: cmake --build build-linux --target trade_record_db_test -j
 
       - name: Run trade_record_db_test
         run: ./build-linux/trade_record_db_test --gtest_brief=1
+
+      - name: Configure submodule consumer
+        run: cmake -S tests/cmake/submodule_consumer -B build-submodule-consumer
+
+      - name: Build submodule consumer
+        run: cmake --build build-submodule-consumer --target optionx_submodule_consumer -j
+
+      - name: Run submodule consumer
+        run: ./build-submodule-consumer/optionx_submodule_consumer

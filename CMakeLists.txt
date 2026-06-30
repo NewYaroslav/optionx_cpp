@@ -3,22 +3,68 @@
 cmake_minimum_required(VERSION 3.18)
 project(optionx_cpp LANGUAGES CXX)
 
+set(OPTIONX_TOP_LEVEL OFF)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(OPTIONX_TOP_LEVEL ON)
+endif()
+
 # Папка для статических библиотек (.a, .lib)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib CACHE PATH "")
+if(OPTIONX_TOP_LEVEL)
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib CACHE PATH "")
 
 # Папка для динамических библиотек (.so, .dll)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib CACHE PATH "")
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib CACHE PATH "")
+endif()
 
-option(BUILD_DEPS "Build internal dependencies" OFF)
-option(BUILD_EXAMPLES "Build examples" OFF)
-option(BUILD_TESTS "Build tests" OFF)
-set(DEPS_BUILD_DIR "" CACHE PATH "Path to directory where dependencies were built")
+if(OPTIONX_TOP_LEVEL)
+    get_property(OPTIONX_HAS_BUILD_DEPS CACHE OPTIONX_BUILD_DEPS PROPERTY TYPE SET)
+    get_property(OPTIONX_HAS_LEGACY_BUILD_DEPS CACHE BUILD_DEPS PROPERTY TYPE SET)
+    if(OPTIONX_HAS_LEGACY_BUILD_DEPS AND NOT OPTIONX_HAS_BUILD_DEPS)
+        set(OPTIONX_BUILD_DEPS "${BUILD_DEPS}" CACHE BOOL "Build bundled optionx dependencies" FORCE)
+    endif()
 
-set(LOGIT_BASE_PATH "${CMAKE_SOURCE_DIR}" CACHE PATH "Base path for LOGIT logs")
+    get_property(OPTIONX_HAS_BUILD_EXAMPLES CACHE OPTIONX_BUILD_EXAMPLES PROPERTY TYPE SET)
+    get_property(OPTIONX_HAS_LEGACY_BUILD_EXAMPLES CACHE BUILD_EXAMPLES PROPERTY TYPE SET)
+    if(OPTIONX_HAS_LEGACY_BUILD_EXAMPLES AND NOT OPTIONX_HAS_BUILD_EXAMPLES)
+        set(OPTIONX_BUILD_EXAMPLES "${BUILD_EXAMPLES}" CACHE BOOL "Build optionx examples" FORCE)
+    endif()
+
+    get_property(OPTIONX_HAS_BUILD_TESTS CACHE OPTIONX_BUILD_TESTS PROPERTY TYPE SET)
+    get_property(OPTIONX_HAS_LEGACY_BUILD_TESTS CACHE BUILD_TESTS PROPERTY TYPE SET)
+    if(OPTIONX_HAS_LEGACY_BUILD_TESTS AND NOT OPTIONX_HAS_BUILD_TESTS)
+        set(OPTIONX_BUILD_TESTS "${BUILD_TESTS}" CACHE BOOL "Build optionx tests" FORCE)
+    endif()
+
+    get_property(OPTIONX_HAS_DEPS_BUILD_DIR CACHE OPTIONX_DEPS_BUILD_DIR PROPERTY TYPE SET)
+    get_property(OPTIONX_HAS_LEGACY_DEPS_BUILD_DIR CACHE DEPS_BUILD_DIR PROPERTY TYPE SET)
+    if(OPTIONX_HAS_LEGACY_DEPS_BUILD_DIR AND NOT OPTIONX_HAS_DEPS_BUILD_DIR)
+        set(OPTIONX_DEPS_BUILD_DIR "${DEPS_BUILD_DIR}" CACHE PATH "Path to prebuilt optionx dependencies" FORCE)
+    endif()
+endif()
+
+option(OPTIONX_BUILD_DEPS "Build bundled optionx dependencies" OFF)
+option(OPTIONX_BUILD_EXAMPLES "Build optionx examples" OFF)
+option(OPTIONX_BUILD_TESTS "Build optionx tests" OFF)
+set(OPTIONX_DEPS_BUILD_DIR "" CACHE PATH "Path to prebuilt optionx dependencies")
+
+if(OPTIONX_TOP_LEVEL)
+    set(BUILD_DEPS "${OPTIONX_BUILD_DEPS}" CACHE BOOL "Legacy alias for OPTIONX_BUILD_DEPS" FORCE)
+    set(BUILD_EXAMPLES "${OPTIONX_BUILD_EXAMPLES}" CACHE BOOL "Legacy alias for OPTIONX_BUILD_EXAMPLES" FORCE)
+    set(BUILD_TESTS "${OPTIONX_BUILD_TESTS}" CACHE BOOL "Legacy alias for OPTIONX_BUILD_TESTS" FORCE)
+    set(DEPS_BUILD_DIR "${OPTIONX_DEPS_BUILD_DIR}" CACHE PATH "Legacy alias for OPTIONX_DEPS_BUILD_DIR" FORCE)
+endif()
+
+set(LOGIT_BASE_PATH "${CMAKE_CURRENT_SOURCE_DIR}" CACHE PATH "Base path for LOGIT logs")
 file(TO_CMAKE_PATH "${LOGIT_BASE_PATH}" LOGIT_BASE_PATH_FWD)
 
 function(optionx_get_network_link_libraries out_var)
-    if(WIN32)
+    if(TARGET OpenSSL::SSL AND TARGET OpenSSL::Crypto AND TARGET CURL::libcurl)
+        set(network_libs
+            OpenSSL::SSL
+            OpenSSL::Crypto
+            CURL::libcurl
+        )
+    elseif(WIN32)
         set(network_libs
             ssl
             crypto
@@ -36,6 +82,25 @@ function(optionx_get_network_link_libraries out_var)
     endif()
 
     set(${out_var} ${network_libs} PARENT_SCOPE)
+endfunction()
+
+function(optionx_link_preferred_dependency target raw_name)
+    foreach(candidate IN LISTS ARGN)
+        if(TARGET ${candidate})
+            target_link_libraries(${target} INTERFACE ${candidate})
+            return()
+        endif()
+    endforeach()
+
+    target_link_libraries(${target} INTERFACE ${raw_name})
+endfunction()
+
+function(optionx_link_existing_dependencies target)
+    foreach(candidate IN LISTS ARGN)
+        if(TARGET ${candidate})
+            target_link_libraries(${target} INTERFACE ${candidate})
+        endif()
+    endforeach()
 endfunction()
 
 set(OPTIONX_INCLUDE_DIRS
@@ -73,18 +138,50 @@ if(WIN32)
     target_link_libraries(optionx_cpp INTERFACE ${OPTIONX_WINDOWS_SYSTEM_LIBS})
 endif()
 
-if(BUILD_DEPS)
+if(OPTIONX_BUILD_DEPS)
+    set(OPTIONX_DEPS_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}")
     add_subdirectory(external)
+elseif(OPTIONX_DEPS_BUILD_DIR)
+    set(OPTIONX_DEPS_OUTPUT_DIR "${OPTIONX_DEPS_BUILD_DIR}")
 endif()
 
-if(BUILD_EXAMPLES)
-    if(BUILD_DEPS)
-        set(EXAMPLE_BUILD_LIBS_DIR ${CMAKE_BINARY_DIR})
+if(OPTIONX_DEPS_OUTPUT_DIR)
+    target_include_directories(optionx_cpp INTERFACE
+        $<BUILD_INTERFACE:${OPTIONX_DEPS_OUTPUT_DIR}/include>
+    )
+    target_link_directories(optionx_cpp INTERFACE
+        $<BUILD_INTERFACE:${OPTIONX_DEPS_OUTPUT_DIR}/lib>
+        $<BUILD_INTERFACE:${OPTIONX_DEPS_OUTPUT_DIR}/bin>
+    )
+endif()
+
+optionx_get_network_link_libraries(OPTIONX_NETWORK_LIBS)
+target_link_libraries(optionx_cpp INTERFACE ${OPTIONX_NETWORK_LIBS})
+
+optionx_link_preferred_dependency(optionx_cpp mdbx
+    mdbx::mdbx-static
+    mdbx-static
+    mdbx::mdbx
+    mdbx
+)
+optionx_link_preferred_dependency(optionx_cpp AES AES)
+optionx_link_existing_dependencies(optionx_cpp
+    time_shield::time_shield
+    log-it-cpp::log-it-cpp
+    mdbx_containers::mdbx_containers
+    nlohmann_json::nlohmann_json
+    kurlyk
+    simple-websocket-server
+)
+
+if(OPTIONX_BUILD_EXAMPLES)
+    if(OPTIONX_BUILD_DEPS)
+        set(EXAMPLE_BUILD_LIBS_DIR ${OPTIONX_DEPS_OUTPUT_DIR})
     else()
-        if(NOT DEPS_BUILD_DIR)
-            message(FATAL_ERROR "BUILD_DEPS is OFF, but DEPS_BUILD_DIR is not set")
+        if(NOT OPTIONX_DEPS_BUILD_DIR)
+            message(FATAL_ERROR "OPTIONX_BUILD_DEPS is OFF, but OPTIONX_DEPS_BUILD_DIR is not set")
         endif()
-        set(EXAMPLE_BUILD_LIBS_DIR ${DEPS_BUILD_DIR})
+        set(EXAMPLE_BUILD_LIBS_DIR ${OPTIONX_DEPS_BUILD_DIR})
     endif()
 
     set(EXAMPLE_INCLUDE_DIRS
@@ -106,13 +203,7 @@ if(BUILD_EXAMPLES)
         ${OPTIONX_COMPILE_DEFINITIONS}
     )
 
-    optionx_get_network_link_libraries(EXAMPLE_NETWORK_LIBS)
-
-    set(EXAMPLE_LIBS
-        ${EXAMPLE_NETWORK_LIBS}
-        mdbx
-        AES
-    )
+    set(EXAMPLE_LIBS)
 
     add_executable(trade_record_db_example examples/trade_record_db_example.cpp)
 
@@ -129,7 +220,7 @@ if(BUILD_EXAMPLES)
     )
     target_link_libraries(trade_record_db_example PRIVATE ${EXAMPLE_LIBS} optionx_cpp)
 
-    if(BUILD_DEPS)
+    if(OPTIONX_BUILD_DEPS)
         add_dependencies(trade_record_db_example mdbx-static AES)
     endif()
 
@@ -150,14 +241,14 @@ if(BUILD_EXAMPLES)
     endif()
 endif()
 
-if(BUILD_TESTS)
-    if(BUILD_DEPS)
-        set(BUILD_LIBS_DIR ${CMAKE_BINARY_DIR})
+if(OPTIONX_BUILD_TESTS)
+    if(OPTIONX_BUILD_DEPS)
+        set(BUILD_LIBS_DIR ${OPTIONX_DEPS_OUTPUT_DIR})
     else()
-        if(NOT DEPS_BUILD_DIR)
-            message(FATAL_ERROR "BUILD_DEPS is OFF, but DEPS_BUILD_DIR is not set")
+        if(NOT OPTIONX_DEPS_BUILD_DIR)
+            message(FATAL_ERROR "OPTIONX_BUILD_DEPS is OFF, but OPTIONX_DEPS_BUILD_DIR is not set")
         endif()
-        set(BUILD_LIBS_DIR ${DEPS_BUILD_DIR})
+        set(BUILD_LIBS_DIR ${OPTIONX_DEPS_BUILD_DIR})
     endif()
 
     set(PROJECT_INCLUDE_DIRS
@@ -180,12 +271,7 @@ if(BUILD_TESTS)
         ${OPTIONX_COMPILE_DEFINITIONS}
     )
 
-    optionx_get_network_link_libraries(PROJECT_NETWORK_LIBS)
-
     set(PROJECT_LIBS
-        ${PROJECT_NETWORK_LIBS}
-        mdbx
-        AES
         gtest
     )
 
@@ -256,7 +342,7 @@ if(BUILD_TESTS)
         )
         target_link_libraries(${test_name} PRIVATE ${PROJECT_LIBS} optionx_cpp)
 
-        if(BUILD_DEPS)
+        if(OPTIONX_BUILD_DEPS)
             foreach(test_dep mdbx-static AES gtest)
                 if(TARGET ${test_dep})
                     add_dependencies(${test_name} ${test_dep})

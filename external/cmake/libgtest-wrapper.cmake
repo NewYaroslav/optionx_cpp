@@ -1,7 +1,7 @@
 # libgtest-wrapper.cmake
 # Подключение и установка GoogleTest как библиотеки
 
-set(GTEST_DIR ${CMAKE_SOURCE_DIR}/external/googletest)
+set(GTEST_DIR ${CMAKE_CURRENT_LIST_DIR}/../googletest)
 
 # Опции для сборки
 option(INSTALL_GTEST OFF)

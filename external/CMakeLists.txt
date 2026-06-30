@@ -4,6 +4,10 @@ project(ExternalDependencies LANGUAGES C CXX)
 
 option(BUILD_SHARED_LIBS "Build shared libraries by default" OFF)
 
+if(NOT DEFINED OPTIONX_DEPS_OUTPUT_DIR)
+    set(OPTIONX_DEPS_OUTPUT_DIR "${CMAKE_BINARY_DIR}")
+endif()
+
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(
         -Wall -Wextra -Wpedantic
@@ -55,7 +59,7 @@ install_lib_files_to_lib(${CURL_STATIC_LIBS})
 install_runtime_dlls_to_bin(${CMAKE_CURRENT_LIST_DIR}/curl-8.11.0_1-win64-mingw/bin)
 file(COPY
     ${CMAKE_CURRENT_LIST_DIR}/curl-8.11.0_1-win64-mingw/bin/curl-ca-bundle.crt
-    DESTINATION ${CMAKE_BINARY_DIR}/bin
+    DESTINATION ${OPTIONX_DEPS_OUTPUT_DIR}/bin
 )
 else()
     # Non-Windows builds use system OpenSSL/CURL targets from the root
@@ -63,6 +67,7 @@ else()
 endif()
 
 # AES
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/AES)
 install_headers_to_include("." ${CMAKE_CURRENT_LIST_DIR}/AES/src)
 
