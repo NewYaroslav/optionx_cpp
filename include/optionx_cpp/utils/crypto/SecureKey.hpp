@@ -5,10 +5,10 @@
 /// \file SecureKey.hpp
 /// \brief Provides a class for secure storage and management of encryption keys.
 
+#include "AESUtils.hpp"
+
 #include <array>
-#include <random>
 #include <cstring>
-#include <chrono>
 
 namespace optionx {
 namespace crypto {
@@ -68,12 +68,7 @@ namespace crypto {
         /// \return A randomly generated XOR key as a std::array.
         std::array<uint8_t, 32> generate_xor_key() {
             std::array<uint8_t, 32> xor_key;
-            auto seed = static_cast<uint32_t>(std::chrono::steady_clock::now().time_since_epoch().count());
-            std::mt19937 generator(seed);
-            std::uniform_int_distribution<uint8_t> distribution(0, 255);
-            for (auto& byte : xor_key) {
-                byte = distribution(generator);
-            }
+            fill_secure_random(xor_key);
             return xor_key;
         }
 

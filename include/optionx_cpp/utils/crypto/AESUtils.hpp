@@ -6,14 +6,17 @@
 /// \brief Provides utility functions for AES encryption and decryption.
 
 #include <string>
+#include <algorithm>
 #include <array>
-#include <random>
-#include <chrono>
+#include <cstdint>
+#include <fstream>
+#include <limits>
 #include <stdexcept>
 #include <AES.h>
 
 #ifdef _WIN32
 #include <Windows.h>
+#include <bcrypt.h>
 #define optionx_secure_clear_impl SecureZeroMemory
 #else
 #include <cstring>
@@ -104,16 +107,63 @@ namespace crypto {
         optionx_secure_clear_impl(key.data(), key.size());
     }
 
+    /// \brief Fills a memory region with operating-system random bytes.
+    /// \details Intentionally avoids std::random_device: older MinGW/libstdc++
+    /// builds could return deterministic random_device output. Windows uses
+    /// BCryptGenRandom directly; Unix-like systems read /dev/urandom.
+    /// \throws std::runtime_error If the system random source fails.
+    inline void fill_secure_random(void* ptr, size_t size) {
+        if (size == 0) {
+            return;
+        }
+        if (ptr == nullptr) {
+            throw std::runtime_error("fill_secure_random: null output buffer");
+        }
+
+        auto* bytes = static_cast<std::uint8_t*>(ptr);
+
+#ifdef _WIN32
+        while (size > 0) {
+            const auto chunk = static_cast<ULONG>(
+                (std::min)(size, static_cast<size_t>((std::numeric_limits<ULONG>::max)())));
+            if (BCryptGenRandom(nullptr, bytes, chunk, BCRYPT_USE_SYSTEM_PREFERRED_RNG) < 0) {
+                throw std::runtime_error("BCryptGenRandom failed");
+            }
+            bytes += chunk;
+            size -= chunk;
+        }
+#else
+        std::ifstream random_source("/dev/urandom", std::ios::in | std::ios::binary);
+        if (!random_source) {
+            throw std::runtime_error("Failed to open /dev/urandom");
+        }
+        while (size > 0) {
+            const auto chunk = (std::min)(
+                size,
+                static_cast<size_t>((std::numeric_limits<std::streamsize>::max)()));
+            random_source.read(reinterpret_cast<char*>(bytes), static_cast<std::streamsize>(chunk));
+            if (random_source.gcount() != static_cast<std::streamsize>(chunk)) {
+                throw std::runtime_error("Failed to read enough random bytes from /dev/urandom");
+            }
+            bytes += chunk;
+            size -= chunk;
+        }
+#endif
+    }
+
+    /// \brief Fills a contiguous byte container with operating-system random bytes.
+    template<class T>
+    inline void fill_secure_random(T& container) {
+        fill_secure_random(
+            container.data(),
+            container.size() * sizeof(typename T::value_type));
+    }
+
     /// \brief Generates a random IV (initialization vector).
     /// \return A random IV as a std::array<uint8_t, 16>.
     inline std::array<uint8_t, BLOCK_SIZE> generate_iv() {
         std::array<uint8_t, BLOCK_SIZE> iv;
-        auto seed = static_cast<uint32_t>(std::chrono::steady_clock::now().time_since_epoch().count());
-        std::mt19937 generator(seed);
-        std::uniform_int_distribution<uint8_t> distribution(0, 255);
-        for (auto& byte : iv) {
-            byte = distribution(generator);
-        }
+        fill_secure_random(iv);
         return iv;
     }
 
