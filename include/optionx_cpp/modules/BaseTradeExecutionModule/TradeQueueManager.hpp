@@ -21,11 +21,14 @@ namespace optionx::modules {
     /// - `OpenTradesEvent`: Notifies about open trade count updates.
     ///
     /// ### Threading contract:
-    /// - `add_trade()` may be called from outside the platform event loop; it
-    ///   locks only pending queue intake.
-    /// - `process()` and event handlers are platform event-loop owned. Local
-    ///   open-trade counters, broker snapshot counters, and active transaction
-    ///   lists must not be driven concurrently from another thread.
+    /// - `add_trade()` is the only supported external enqueue entry point, but
+    ///   it synchronizes only final insertion into the pending queue. The caller
+    ///   must ensure the trade ID provider, account info access, and preprocess
+    ///   callback are safe from the calling thread.
+    /// - `process()`, `finalize_all_trades()`, and event handlers are platform
+    ///   event-loop owned. Local open-trade counters, broker snapshot counters,
+    ///   and active transaction lists must not be driven concurrently from
+    ///   another thread.
     class TradeQueueManager : public utils::EventMediator {
     public:
         using transaction_t = std::shared_ptr<events::TradeTransactionEvent>;
