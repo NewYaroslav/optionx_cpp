@@ -227,14 +227,14 @@ facade lifecycle или остаться probe/internal component.
 Опорные файлы:
 
 - `data/account/BaseAccountInfoData.hpp`
-- `components/BaseAccountInfoComponent.hpp`
+- `components/BaseAccountInfoHandler.hpp`
 - `components/BaseTradeExecutionComponent/AccountInfoProvider.hpp`
 
 Модель:
 
 - `BaseTradingPlatform` хранит shared `BaseAccountInfoData`.
 - `AccountInfoProvider` дает typed read API.
-- `BaseAccountInfoComponent` прокидывает account info callback.
+- `BaseAccountInfoHandler` прокидывает account info callback.
 - Updates идут через account/events/managers.
 
 Не меняй account info напрямую из application code. Для user-facing чтения

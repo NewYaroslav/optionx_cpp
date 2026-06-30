@@ -283,7 +283,7 @@ namespace optionx::platforms {
         components::AccountInfoProvider         m_account_provider;
         utils::EventBus                      m_event_bus;
         utils::TaskManager                   m_task_manager;
-        components::BaseAccountInfoComponent      m_account_info_handler;
+        components::BaseAccountInfoHandler        m_account_info_handler;
         std::vector<components::BaseComponent*>    m_components;
         std::mutex                           m_lifecycle_mutex;
         std::atomic<bool>                    m_running{false};

@@ -15,6 +15,6 @@
 #include "components/BaseComponent.hpp"
 #include "components/BaseTradeExecutionComponent.hpp"
 #include "components/BaseHttpClientComponent.hpp"
-#include "components/BaseAccountInfoComponent.hpp"
+#include "components/BaseAccountInfoHandler.hpp"
 
 #endif // _OPTIONX_COMPONENTS_HPP_INCLUDED

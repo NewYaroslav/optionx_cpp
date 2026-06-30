@@ -1,30 +1,30 @@
 #pragma once
-#ifndef _OPTIONX_COMPONENTS_BASE_ACCOUNT_INFO_COMPONENT_HPP_INCLUDED
-#define _OPTIONX_COMPONENTS_BASE_ACCOUNT_INFO_COMPONENT_HPP_INCLUDED
+#ifndef _OPTIONX_COMPONENTS_BASE_ACCOUNT_INFO_HANDLER_HPP_INCLUDED
+#define _OPTIONX_COMPONENTS_BASE_ACCOUNT_INFO_HANDLER_HPP_INCLUDED
 
-/// \file BaseAccountInfoComponent.hpp
+/// \file BaseAccountInfoHandler.hpp
 /// \brief Base class for handling account information updates and events.
 
 namespace optionx::components {
 
-    /// \class BaseAccountInfoComponent
+    /// \class BaseAccountInfoHandler
     /// \brief Base class for handling account information updates and notifications.
     ///
     /// This class subscribes to `AccountInfoUpdateEvent` and invokes a callback
     /// whenever an account update occurs. Derived classes can use this to track
     /// changes in account balance, connection status, and other account-related details.
-    class BaseAccountInfoComponent : public BaseComponent {
+    class BaseAccountInfoHandler : public BaseComponent {
     public:
 
-        /// \brief Constructs the `BaseAccountInfoComponent` and subscribes to account update events.
+        /// \brief Constructs the `BaseAccountInfoHandler` and subscribes to account update events.
         /// \param bus Reference to the `EventBus` used for subscribing to events.
-        explicit BaseAccountInfoComponent(utils::EventBus& bus)
+        explicit BaseAccountInfoHandler(utils::EventBus& bus)
             : BaseComponent(bus) {
            subscribe<events::AccountInfoUpdateEvent>();
         }
 
         /// \brief Virtual destructor.
-        virtual ~BaseAccountInfoComponent() = default;
+        virtual ~BaseAccountInfoHandler() = default;
 
         /// \brief Handles an incoming event notification.
         /// \param event Pointer to the received event.
@@ -57,4 +57,4 @@ namespace optionx::components {
 
 } // namespace optionx::components
 
-#endif // _OPTIONX_COMPONENTS_BASE_ACCOUNT_INFO_COMPONENT_HPP_INCLUDED
+#endif // _OPTIONX_COMPONENTS_BASE_ACCOUNT_INFO_HANDLER_HPP_INCLUDED

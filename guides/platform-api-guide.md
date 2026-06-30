@@ -21,7 +21,7 @@
 Файл: `include/optionx_cpp/platforms/common/BaseTradingPlatform.hpp`.
 
 Роль: публичный facade и владелец общего runtime stack: `BaseAccountInfoData`,
-`AccountInfoProvider`, `EventBus`, `TaskManager`, `BaseAccountInfoComponent`,
+`AccountInfoProvider`, `EventBus`, `TaskManager`, `BaseAccountInfoHandler`,
 список `BaseComponent*`.
 
 Основные методы:
