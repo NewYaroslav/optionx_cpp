@@ -38,6 +38,41 @@ function(optionx_get_network_link_libraries out_var)
     set(${out_var} ${network_libs} PARENT_SCOPE)
 endfunction()
 
+set(OPTIONX_INCLUDE_DIRS
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/optionx_cpp
+)
+
+set(OPTIONX_COMPILE_DEFINITIONS
+    ASIO_STANDALONE
+    KURLYK_OAUTH_SUPPORT=0
+)
+
+set(OPTIONX_WINDOWS_SYSTEM_LIBS
+    ws2_32
+    wsock32
+    crypt32
+    ntdll
+    bcrypt
+)
+
+add_library(optionx_cpp INTERFACE)
+add_library(optionx_cpp::optionx_cpp ALIAS optionx_cpp)
+
+target_include_directories(optionx_cpp INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/optionx_cpp>
+    $<INSTALL_INTERFACE:include>
+    $<INSTALL_INTERFACE:include/optionx_cpp>
+)
+
+target_compile_features(optionx_cpp INTERFACE cxx_std_17)
+target_compile_definitions(optionx_cpp INTERFACE ${OPTIONX_COMPILE_DEFINITIONS})
+
+if(WIN32)
+    target_link_libraries(optionx_cpp INTERFACE ${OPTIONX_WINDOWS_SYSTEM_LIBS})
+endif()
+
 if(BUILD_DEPS)
     add_subdirectory(external)
 endif()
@@ -53,8 +88,7 @@ if(BUILD_EXAMPLES)
     endif()
 
     set(EXAMPLE_INCLUDE_DIRS
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/optionx_cpp
+        ${OPTIONX_INCLUDE_DIRS}
     )
 
     set(EXAMPLE_DEPS_INCLUDE_DIRS
@@ -69,8 +103,7 @@ if(BUILD_EXAMPLES)
     file(GLOB EXAMPLE_DLL_FILES "${EXAMPLE_LIBRARY_DIRS}/*.dll")
 
     set(EXAMPLE_DEFINES
-        ASIO_STANDALONE
-        KURLYK_OAUTH_SUPPORT=0
+        ${OPTIONX_COMPILE_DEFINITIONS}
     )
 
     optionx_get_network_link_libraries(EXAMPLE_NETWORK_LIBS)
@@ -80,16 +113,6 @@ if(BUILD_EXAMPLES)
         mdbx
         AES
     )
-
-    if(WIN32)
-        list(APPEND EXAMPLE_LIBS
-            ws2_32
-            wsock32
-            crypt32
-            ntdll
-            bcrypt
-        )
-    endif()
 
     add_executable(trade_record_db_example examples/trade_record_db_example.cpp)
 
@@ -104,7 +127,7 @@ if(BUILD_EXAMPLES)
         ${EXAMPLE_DEFINES}
         LOGIT_BASE_PATH="${LOGIT_BASE_PATH_FWD}"
     )
-    target_link_libraries(trade_record_db_example PRIVATE ${EXAMPLE_LIBS})
+    target_link_libraries(trade_record_db_example PRIVATE ${EXAMPLE_LIBS} optionx_cpp)
 
     if(BUILD_DEPS)
         add_dependencies(trade_record_db_example mdbx-static AES)
@@ -138,8 +161,7 @@ if(BUILD_TESTS)
     endif()
 
     set(PROJECT_INCLUDE_DIRS
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/include/optionx_cpp
+        ${OPTIONX_INCLUDE_DIRS}
         ${CMAKE_CURRENT_SOURCE_DIR}/tests
     )
 
@@ -155,8 +177,7 @@ if(BUILD_TESTS)
     file(GLOB DLL_FILES "${PROJECT_LIBRARY_DIRS}/*.dll")
 
     set(PROJECT_DEFINES
-        ASIO_STANDALONE
-        KURLYK_OAUTH_SUPPORT=0
+        ${OPTIONX_COMPILE_DEFINITIONS}
     )
 
     optionx_get_network_link_libraries(PROJECT_NETWORK_LIBS)
@@ -167,16 +188,6 @@ if(BUILD_TESTS)
         AES
         gtest
     )
-
-    if(WIN32)
-        list(APPEND PROJECT_LIBS
-            ws2_32
-            wsock32
-            crypt32
-            ntdll
-            bcrypt
-        )
-    endif()
 
     file(GLOB_RECURSE PROJECT_HEADERS
         RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
@@ -243,7 +254,7 @@ if(BUILD_TESTS)
             ${PROJECT_DEFINES}
             LOGIT_BASE_PATH="${LOGIT_BASE_PATH_FWD}"
         )
-        target_link_libraries(${test_name} PRIVATE ${PROJECT_LIBS})
+        target_link_libraries(${test_name} PRIVATE ${PROJECT_LIBS} optionx_cpp)
 
         if(BUILD_DEPS)
             foreach(test_dep mdbx-static AES gtest)

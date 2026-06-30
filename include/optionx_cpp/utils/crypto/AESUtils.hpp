@@ -154,7 +154,9 @@ namespace crypto {
     /// \brief Fills a contiguous byte container with operating-system random bytes.
     template<class T>
     inline void fill_secure_random(T& container) {
-        fill_secure_random(container.data(), container.size());
+        fill_secure_random(
+            container.data(),
+            container.size() * sizeof(typename T::value_type));
     }
 
     /// \brief Generates a random IV (initialization vector).
