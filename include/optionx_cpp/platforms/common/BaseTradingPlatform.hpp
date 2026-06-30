@@ -14,7 +14,7 @@ namespace optionx::platforms {
         using trade_result_callback_t = std::function<void(std::unique_ptr<TradeRequest>, std::unique_ptr<TradeResult>)>;
         using trade_result_check_callback_t = std::function<void(std::unique_ptr<TradeResult>)>;
         using trade_history_callback_t = std::function<void(TradeHistoryResult)>;
-        using trade_id_provider_t = std::function<std::uint64_t()>;
+        using trade_id_provider_t = std::function<std::uint32_t()>;
         using bars_callback_t  = std::function<void(const std::vector<BarData>&)>;
         using ticks_callback_t = std::function<void(const std::vector<TickData>&)>;
 

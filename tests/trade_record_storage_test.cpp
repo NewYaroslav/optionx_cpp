@@ -1,8 +1,6 @@
 #include <gtest/gtest.h>
 #include <mdbx_containers/KeyValueTable.hpp>
 
-#include <limits>
-
 #include <optionx_cpp/data/trading.hpp>
 
 namespace {
@@ -140,13 +138,6 @@ TEST(TradeRecordSerializationTest, RejectsCorruptedPayloads) {
     EXPECT_THROW(optionx::TradeRecord::from_bytes(bytes.data(), bytes.size()), std::runtime_error);
 }
 
-TEST(TradeRecordSerializationTest, RejectsTradeIdOutsideStorageFormat) {
-    auto record = make_record();
-    record.trade_id = static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max()) + 1u;
-
-    EXPECT_THROW(record.to_bytes(), std::overflow_error);
-}
-
 TEST(TradeRecordFactoryTest, AssignsRequestResultAndSignalData) {
     optionx::TradeSignal signal;
     signal.request = make_request();
@@ -195,6 +186,51 @@ TEST(TradeRecordFactoryTest, PreservesRequestContextWhenResultIsPartial) {
     EXPECT_EQ(record.close_date, 1712345700000);
     EXPECT_EQ(record.error_code, optionx::TradeErrorCode::PARSING_ERROR);
     EXPECT_EQ(record.error_desc, "partial broker response");
+}
+
+TEST(TradeRecordFactoryTest, MergesResultPatchWithoutErasingKnownFields) {
+    auto record = make_record();
+    record.trade_id = 321;
+    record.amount = 25.0;
+    record.payout = 0.82;
+    record.profit = 10.5;
+    record.open_price = 1.2345;
+    record.close_price = 1.2355;
+    record.open_date = 1712345400000;
+    record.close_date = 1712345700000;
+    record.trade_state = optionx::TradeState::IN_PROGRESS;
+    record.account_type = optionx::AccountType::DEMO;
+    record.currency = optionx::CurrencyType::USD;
+
+    optionx::TradeResult patch;
+    patch.trade_state = optionx::TradeState::STANDOFF;
+    patch.profit = 0.0;
+    patch.error_desc = "resolved as standoff";
+
+    ASSERT_TRUE(record.merge_result_patch(patch));
+
+    EXPECT_EQ(record.trade_id, 321u);
+    EXPECT_EQ(record.amount, 25.0);
+    EXPECT_DOUBLE_EQ(record.payout, 0.82);
+    EXPECT_DOUBLE_EQ(record.profit, 0.0);
+    EXPECT_DOUBLE_EQ(record.open_price, 1.2345);
+    EXPECT_DOUBLE_EQ(record.close_price, 1.2355);
+    EXPECT_EQ(record.open_date, 1712345400000);
+    EXPECT_EQ(record.close_date, 1712345700000);
+    EXPECT_EQ(record.trade_state, optionx::TradeState::STANDOFF);
+    EXPECT_EQ(record.account_type, optionx::AccountType::DEMO);
+    EXPECT_EQ(record.currency, optionx::CurrencyType::USD);
+    EXPECT_EQ(record.error_desc, "resolved as standoff");
+}
+
+TEST(TradeRecordFactoryTest, EmptyResultPatchDoesNotUpdateRecord) {
+    auto record = make_record();
+    const auto before = record;
+
+    optionx::TradeResult patch;
+
+    EXPECT_FALSE(record.merge_result_patch(patch));
+    EXPECT_EQ(record, before);
 }
 
 TEST(TradeRecordFactoryTest, DoesNotTreatLatestBalanceAsCloseBalance) {

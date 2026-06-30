@@ -31,7 +31,7 @@ namespace optionx::modules {
     class BaseTradeExecutionModule : public BaseModule {
     public:
         using trade_result_callback_t = std::function<void(std::unique_ptr<TradeRequest>, std::unique_ptr<TradeResult>)>;
-        using trade_id_provider_t = std::function<std::uint64_t()>;
+        using trade_id_provider_t = std::function<std::uint32_t()>;
 
         /// \brief Constructs a `BaseTradeExecutionModule` instance.
         /// \param bus Reference to the `EventBus` for subscribing to and emitting events.

@@ -1318,10 +1318,10 @@ TEST_F(TradeManagerTestFixture, TradeIdProviderInitializesEmptyRequestId) {
     account_info->connect = true;
 
     TradeManagerTest trade_manager(bus, account_info);
-    trade_manager.on_trade_id() = [] { return std::uint64_t{777}; };
+    trade_manager.on_trade_id() = [] { return std::uint32_t{777}; };
 
-    std::uint64_t callback_request_id = 0;
-    std::uint64_t callback_result_id = 0;
+    std::uint32_t callback_request_id = 0;
+    std::uint32_t callback_result_id = 0;
     auto trade_request = std::make_unique<TradeRequest>();
     trade_request->symbol = "EURUSD";
     trade_request->amount = 100.0;
@@ -1349,8 +1349,8 @@ TEST_F(TradeManagerTestFixture, TradeIdFallbackInitializesEmptyRequestId) {
 
     TradeManagerTest trade_manager(bus, account_info);
 
-    std::uint64_t callback_request_id = 0;
-    std::uint64_t callback_result_id = 0;
+    std::uint32_t callback_request_id = 0;
+    std::uint32_t callback_result_id = 0;
     auto trade_request = std::make_unique<TradeRequest>();
     trade_request->symbol = "EURUSD";
     trade_request->amount = 100.0;

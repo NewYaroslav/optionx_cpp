@@ -66,8 +66,7 @@ namespace optionx::storage {
     /// TradeRequest::trade_id, TradeResult::trade_id and TradeRecord::trade_id.
     /// The trade_id itself is a 32-bit monotonic value (1..UINT32_MAX) stored
     /// in the low 32 bits of the composite uint64_t primary key (high 32 bits
-    /// store biased unix minutes). Public API uses uint64_t for type consistency,
-    /// but values above UINT32_MAX are rejected.
+    /// store biased unix minutes).
     /// Direct methods execute synchronously and return result/status immediately.
     /// Buffered methods enqueue work with enqueue_*(); process() executes queued work
     /// on the caller thread when no worker is running, run() starts a worker, flush()
@@ -125,7 +124,7 @@ namespace optionx::storage {
         /// The returned ID is consumed even if no TradeRecord is written later. Use
         /// it before sending a request to a broker when callbacks must carry the
         /// persistent database identity.
-        std::uint64_t get_trade_id();
+        std::uint32_t get_trade_id();
 
         /// \brief Assigns a persistent trade ID to a request when it does not have one.
         /// \param request Trade request to initialize.
@@ -163,7 +162,7 @@ namespace optionx::storage {
         /// \brief Finds a record by its trade_id.
         /// \param trade_id Persistent linear trade ID.
         /// \return Read result with found=true when the record exists.
-        TradeRecordDBReadResult find_by_trade_id(std::uint64_t trade_id) const;
+        TradeRecordDBReadResult find_by_trade_id(std::uint32_t trade_id) const;
 
         /// \brief Finds a record through the optional request_unique_id index.
         /// \param request_unique_id Legacy/request-side ID copied from TradeRequest::unique_id.
@@ -225,7 +224,7 @@ namespace optionx::storage {
         /// \brief Erases a record by trade_id and removes its UID index entry when present.
         /// \param trade_id Persistent linear trade ID.
         /// \return Operation status.
-        TradeRecordDBStatus erase_by_trade_id(std::uint64_t trade_id);
+        TradeRecordDBStatus erase_by_trade_id(std::uint32_t trade_id);
 
         /// \brief Clears records, indices and meta table, then re-initializes meta.
         /// \return Operation status; on success the next generated trade ID starts from 1 again.
@@ -251,7 +250,7 @@ namespace optionx::storage {
         /// \param trade_id Persistent linear trade ID.
         /// \param callback Optional callback delivered by process(), flush() or shutdown().
         /// \return SUCCESS when the command was accepted, QUEUE_CLOSED otherwise.
-        TradeRecordDBStatus enqueue_find_by_trade_id(std::uint64_t trade_id, read_callback_t callback = {});
+        TradeRecordDBStatus enqueue_find_by_trade_id(std::uint32_t trade_id, read_callback_t callback = {});
 
         /// \brief Enqueues a find-by-UID operation.
         /// \param request_unique_id Legacy/request-side ID copied from TradeRequest::unique_id.
@@ -282,7 +281,7 @@ namespace optionx::storage {
         /// \param trade_id Persistent linear trade ID.
         /// \param callback Optional callback delivered by process(), flush() or shutdown().
         /// \return SUCCESS when the command was accepted, QUEUE_CLOSED otherwise.
-        TradeRecordDBStatus enqueue_erase_by_trade_id(std::uint64_t trade_id, status_callback_t callback = {});
+        TradeRecordDBStatus enqueue_erase_by_trade_id(std::uint32_t trade_id, status_callback_t callback = {});
 
         /// \brief Enqueues a clear operation.
         /// \param callback Optional callback delivered by process(), flush() or shutdown().
@@ -353,12 +352,12 @@ namespace optionx::storage {
         bool is_open_no_lock() const noexcept;
         void init_meta_no_lock(MDBX_txn* txn);
         void update_last_update_no_lock(MDBX_txn* txn);
-        std::uint64_t reserve_trade_id_no_lock(MDBX_txn* txn);
-        void bump_next_trade_id_no_lock(std::uint64_t used_trade_id, MDBX_txn* txn);
+        std::uint32_t reserve_trade_id_no_lock(MDBX_txn* txn);
+        void bump_next_trade_id_no_lock(std::uint32_t used_trade_id, MDBX_txn* txn);
 
         TradeRecordDBWriteResult write_no_lock(TradeRecord record);
         TradeRecordDBWriteResult upsert_no_lock(TradeRecord record);
-        TradeRecordDBReadResult find_by_trade_id_no_lock(std::uint64_t trade_id) const;
+        TradeRecordDBReadResult find_by_trade_id_no_lock(std::uint32_t trade_id) const;
         TradeRecordDBReadResult find_by_uid_no_lock(std::int64_t request_unique_id) const;
         TradeRecordDBListResult find_by_timestamp_no_lock(std::int64_t timestamp_ms) const;
         TradeRecordDBListResult find_range_no_lock(std::int64_t start_ms, std::int64_t stop_ms) const;
@@ -369,10 +368,10 @@ namespace optionx::storage {
         TradeRecordDBListResult find_day_no_lock(
             std::int64_t day_start_ms,
             const optionx::TradeTimeZone& time_zone) const;
-        TradeRecordDBStatus erase_by_trade_id_no_lock(std::uint64_t trade_id);
+        TradeRecordDBStatus erase_by_trade_id_no_lock(std::uint32_t trade_id);
         TradeRecordDBStatus clear_no_lock();
 
-        std::uint64_t find_broker_identity_key_no_lock(
+        std::uint32_t find_broker_identity_key_no_lock(
             const TradeRecord& record,
             MDBX_txn* txn) const;
 
