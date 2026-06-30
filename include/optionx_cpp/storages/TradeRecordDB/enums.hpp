@@ -5,20 +5,12 @@
 /// \file enums.hpp
 /// \brief Defines TradeRecordDB status codes.
 
+#include "storages/common/StorageStatus.hpp"
+
 namespace optionx::storage {
 
-    /// \enum TradeRecordDBStatus
     /// \brief Status codes returned by TradeRecordDB operations.
-    enum class TradeRecordDBStatus {
-        SUCCESS,
-        NOT_FOUND,
-        INVALID_ARGUMENT,
-        NOT_OPEN,
-        READ_ONLY,
-        QUEUE_CLOSED,
-        DB_ERROR,
-        SEQUENCE_EXHAUSTED ///< Legacy timestamp-bucket status; linear TradeRecordDB does not return it.
-    };
+    using TradeRecordDBStatus = StorageStatus;
 
 } // namespace optionx::storage
 

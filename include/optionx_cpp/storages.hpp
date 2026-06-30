@@ -4,6 +4,7 @@
 
 #include "crypto.hpp"
 #include "utils.hpp"
+#include "storages/common.hpp"
 #include "storages/ServiceSessionDB.hpp"
 #include "storages/TradeRecordDB.hpp"
 

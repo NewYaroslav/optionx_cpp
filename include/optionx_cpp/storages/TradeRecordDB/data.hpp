@@ -5,11 +5,11 @@
 /// \file data.hpp
 /// \brief Defines TradeRecordDB operation result DTOs.
 
-#include <string>
-#include <vector>
+#include <type_traits>
 
 #include "data/trading.hpp"
 #include "enums.hpp"
+#include "storages/common/StorageResult.hpp"
 
 namespace optionx::storage {
 
@@ -23,45 +23,14 @@ namespace optionx::storage {
     static_assert(std::is_trivially_copyable_v<TradeRecordDBMeta>,
                   "TradeRecordDBMeta must be trivially copyable for ValueTable storage");
 
-    /// \struct TradeRecordDBWriteResult
     /// \brief Result of a TradeRecord write operation.
-    struct TradeRecordDBWriteResult {
-        TradeRecordDBStatus status = TradeRecordDBStatus::NOT_OPEN; ///< Operation status.
-        TradeRecord record;                                         ///< Written or attempted record.
-        std::string message;                                        ///< Diagnostic message.
+    using TradeRecordDBWriteResult = StorageWriteResult<TradeRecord>;
 
-        /// \brief Returns true if operation completed successfully.
-        bool ok() const noexcept {
-            return status == TradeRecordDBStatus::SUCCESS;
-        }
-    };
-
-    /// \struct TradeRecordDBReadResult
     /// \brief Result of a single-record TradeRecord read operation.
-    struct TradeRecordDBReadResult {
-        TradeRecordDBStatus status = TradeRecordDBStatus::NOT_OPEN; ///< Operation status.
-        TradeRecord record;                                         ///< Found record, when available.
-        bool found = false;                                         ///< True when record was found.
-        std::string message;                                        ///< Diagnostic message.
+    using TradeRecordDBReadResult = StorageReadResult<TradeRecord>;
 
-        /// \brief Returns true if the read operation succeeded and found a record.
-        bool ok() const noexcept {
-            return status == TradeRecordDBStatus::SUCCESS && found;
-        }
-    };
-
-    /// \struct TradeRecordDBListResult
     /// \brief Result of a multi-record TradeRecord read operation.
-    struct TradeRecordDBListResult {
-        TradeRecordDBStatus status = TradeRecordDBStatus::NOT_OPEN; ///< Operation status.
-        std::vector<TradeRecord> records;                           ///< Found records.
-        std::string message;                                        ///< Diagnostic message.
-
-        /// \brief Returns true if the list operation completed successfully.
-        bool ok() const noexcept {
-            return status == TradeRecordDBStatus::SUCCESS;
-        }
-    };
+    using TradeRecordDBListResult = StorageListResult<TradeRecord>;
 
 } // namespace optionx::storage
 
