@@ -9,10 +9,11 @@
 
 #include <atomic>
 #include <cstdint>
+#include <limits>
 
 namespace optionx::utils {
 
-    using TradeId = std::uint64_t;
+    using TradeId = std::uint32_t;
     static const TradeId kInvalidTradeId = 0;
 
     // Storage
@@ -27,7 +28,22 @@ namespace optionx::utils {
 #   endif
 
     inline TradeId make_trade_id() noexcept {
-        return g_trade_id_counter.fetch_add(1, std::memory_order_relaxed);
+        auto current = g_trade_id_counter.load(std::memory_order_relaxed);
+        for (;;) {
+            const TradeId result =
+                current == kInvalidTradeId ? TradeId{1} : current;
+            const auto next =
+                result == (std::numeric_limits<TradeId>::max)()
+                    ? TradeId{1}
+                    : static_cast<TradeId>(result + 1);
+            if (g_trade_id_counter.compare_exchange_weak(
+                    current,
+                    next,
+                    std::memory_order_relaxed,
+                    std::memory_order_relaxed)) {
+                return result;
+            }
+        }
     }
 
 } // namespace optionx::utils

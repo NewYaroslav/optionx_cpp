@@ -14,7 +14,7 @@ namespace optionx {
     class TradeRecord {
     public:
         // Storage identity
-        std::uint64_t trade_id = 0;           ///< Linear persistent trade ID; TradeRecordDB currently accepts 1..UINT32_MAX.
+        std::uint32_t trade_id = 0;           ///< Linear persistent trade ID; 0 means "not assigned".
         std::int64_t request_unique_id = 0;   ///< Unique ID from TradeRequest.
         std::string request_unique_hash;      ///< Unique hash from TradeRequest.
         std::int64_t account_id = 0;          ///< Trading account ID.
@@ -126,11 +126,13 @@ namespace optionx {
             }
         }
 
-        /// \brief Copies result-side fields into this record.
-        /// \details Request-derived identity and account context are preserved
-        /// when corresponding result fields are unspecified. Other result-state
-        /// fields are copied as-is, including default values.
-        void assign_result(const TradeResult& result) {
+        /// \brief Applies a result snapshot to this record.
+        /// \details Use this for a normal TradeResult that represents the
+        /// current complete result view. Request-derived identity and account
+        /// context are preserved when corresponding result fields are
+        /// unspecified. Result-state fields are otherwise copied as-is,
+        /// including default values.
+        void apply_result_snapshot(const TradeResult& result) {
             if (result.trade_id > 0) trade_id = result.trade_id;
             if (result.option_id != 0) option_id = result.option_id;
             if (!result.option_hash.empty()) option_hash = result.option_hash;
@@ -165,6 +167,132 @@ namespace optionx {
             if (result.spread.raw != 0 || result.spread.digits != 0) spread = result.spread;
         }
 
+        /// \brief Backward-compatible alias for apply_result_snapshot().
+        void assign_result(const TradeResult& result) {
+            apply_result_snapshot(result);
+        }
+
+        /// \brief Selectively merges known fields from a result patch.
+        /// \details TradeResult does not provide presence flags for every
+        /// scalar field. This method therefore updates only fields that can be
+        /// distinguished from their default sentinel values. It is intended for
+        /// recovery/status-fixer flows, not for applying a complete broker
+        /// result snapshot.
+        /// \return True if any field was updated.
+        bool merge_result_patch(const TradeResult& result) {
+            bool updated = false;
+
+            if (result.trade_id > 0 && trade_id != result.trade_id) {
+                trade_id = result.trade_id;
+                updated = true;
+            }
+            if (result.option_id != 0 && option_id != result.option_id) {
+                option_id = result.option_id;
+                updated = true;
+            }
+            if (!result.option_hash.empty() && option_hash != result.option_hash) {
+                option_hash = result.option_hash;
+                updated = true;
+            }
+            if (result.amount > 0.0 && amount != result.amount) {
+                amount = result.amount;
+                updated = true;
+            }
+            if (result.payout != 0.0 && payout != result.payout) {
+                payout = result.payout;
+                updated = true;
+            }
+            if (result.profit != 0.0 ||
+                    result.trade_state == TradeState::STANDOFF ||
+                    result.trade_state == TradeState::REFUND) {
+                if (profit != result.profit) {
+                    profit = result.profit;
+                    updated = true;
+                }
+            }
+            if (result.has_open_balance()) {
+                const bool changed = !has_open_balance() || open_balance != result.open_balance;
+                set_open_balance(result.open_balance);
+                updated = updated || changed;
+            }
+            if (result.has_close_balance()) {
+                const bool changed = !has_close_balance() || close_balance != result.close_balance;
+                set_close_balance(result.close_balance);
+                updated = updated || changed;
+            } else if (!has_close_balance() && has_open_balance() && result_has_balance_projection(result)) {
+                set_close_balance(open_balance + result.profit);
+                updated = true;
+            }
+            if (result.open_price != 0.0 && open_price != result.open_price) {
+                open_price = result.open_price;
+                updated = true;
+            }
+            if (result.close_price != 0.0 && close_price != result.close_price) {
+                close_price = result.close_price;
+                updated = true;
+            }
+            if (result.delay != 0 && delay != result.delay) {
+                delay = result.delay;
+                updated = true;
+            }
+            if (result.ping != 0 && ping != result.ping) {
+                ping = result.ping;
+                updated = true;
+            }
+            if (result.place_date > 0 && place_date != result.place_date) {
+                place_date = result.place_date;
+                updated = true;
+            }
+            if (result.send_date > 0 && send_date != result.send_date) {
+                send_date = result.send_date;
+                updated = true;
+            }
+            if (result.open_date > 0 && open_date != result.open_date) {
+                open_date = result.open_date;
+                updated = true;
+            }
+            if (result.close_date > 0 && close_date != result.close_date) {
+                close_date = result.close_date;
+                updated = true;
+            }
+            if (result.trade_state != TradeState::UNKNOWN && trade_state != result.trade_state) {
+                trade_state = result.trade_state;
+                updated = true;
+            }
+            if (result.live_state != TradeState::UNKNOWN && live_state != result.live_state) {
+                live_state = result.live_state;
+                updated = true;
+            }
+            if (result.error_code != TradeErrorCode::SUCCESS && error_code != result.error_code) {
+                error_code = result.error_code;
+                updated = true;
+            }
+            if (!result.error_desc.empty() && error_desc != result.error_desc) {
+                error_desc = result.error_desc;
+                updated = true;
+            }
+            if (result.account_type != AccountType::UNKNOWN && account_type != result.account_type) {
+                account_type = result.account_type;
+                updated = true;
+            }
+            if (result.currency != CurrencyType::UNKNOWN && currency != result.currency) {
+                currency = result.currency;
+                updated = true;
+            }
+            if (result.platform_type != PlatformType::UNKNOWN && platform_type != result.platform_type) {
+                platform_type = result.platform_type;
+                updated = true;
+            }
+            if (result.spread.raw != 0 || result.spread.digits != 0) {
+                if (spread.raw != result.spread.raw || spread.digits != result.spread.digits) {
+                    spread = result.spread;
+                    updated = true;
+                }
+            }
+
+            return updated;
+        }
+
         /// \brief Copies request and money-management fields from a signal.
         void assign_signal(const TradeSignal& signal) {
             assign_request(signal.request);
@@ -184,7 +312,7 @@ namespace optionx {
         static TradeRecord from_trade(const TradeRequest& request, const TradeResult& result) {
             TradeRecord record;
             record.assign_request(request);
-            record.assign_result(result);
+            record.apply_result_snapshot(result);
             return record;
         }
 
@@ -199,7 +327,7 @@ namespace optionx {
         static TradeRecord from_trade(const TradeSignal& signal, const TradeResult& result) {
             TradeRecord record;
             record.assign_signal(signal);
-            record.assign_result(result);
+            record.apply_result_snapshot(result);
             return record;
         }
 
@@ -229,10 +357,6 @@ namespace optionx {
 
         /// \brief Serializes the record using the current binary storage format.
         std::vector<std::uint8_t> to_bytes() const {
-            if (trade_id > std::numeric_limits<std::uint32_t>::max()) {
-                throw std::overflow_error("TradeRecord trade_id exceeds 32-bit storage format limit");
-            }
-
             std::vector<std::uint8_t> bytes;
             bytes.reserve(512 + request_unique_hash.size() + option_hash.size() +
                           symbol.size() + signal_name.size() + user_data.size() +
@@ -243,7 +367,7 @@ namespace optionx {
             append_value(bytes, kBinaryMagic);
             append_value(bytes, kBinaryVersion);
 
-            append_value(bytes, static_cast<std::uint32_t>(trade_id));
+            append_value(bytes, trade_id);
             append_value(bytes, request_unique_id);
             append_string(bytes, request_unique_hash);
             append_value(bytes, account_id);

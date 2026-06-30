@@ -18,7 +18,7 @@ namespace optionx {
     class TradeResult {
     public:
         // Unique identifier for the trade
-        uint64_t trade_id = 0;      ///< Persistent trade ID copied from TradeRequest and used by TradeRecordDB.
+        std::uint32_t trade_id = 0; ///< Persistent trade ID copied from TradeRequest and used by TradeRecordDB.
 
         // Trade execution metadata
         TradeErrorCode error_code = TradeErrorCode::SUCCESS;   ///< Error code for the trade result

@@ -76,7 +76,7 @@ namespace optionx {
 
         IncludeExcludeFilter<std::int64_t> account_ids;
         IncludeExcludeFilter<std::int64_t> option_ids;
-        IncludeExcludeFilter<std::uint64_t> trade_ids;
+        IncludeExcludeFilter<std::uint32_t> trade_ids;
         IncludeExcludeFilter<std::int64_t> request_unique_ids;
 
         IncludeExcludeFilter<std::int64_t> durations;

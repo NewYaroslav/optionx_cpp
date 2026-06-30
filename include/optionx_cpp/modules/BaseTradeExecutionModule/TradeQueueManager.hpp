@@ -33,7 +33,7 @@ namespace optionx::modules {
     public:
         using transaction_t = std::shared_ptr<events::TradeTransactionEvent>;
         using trade_result_callback_t = std::function<void(std::unique_ptr<TradeRequest>, std::unique_ptr<TradeResult>)>;
-        using trade_id_provider_t = std::function<std::uint64_t()>;
+        using trade_id_provider_t = std::function<std::uint32_t()>;
 
         /// \brief Constructs a TradeQueueManager instance.
         /// \param bus Event bus for event-based communication.

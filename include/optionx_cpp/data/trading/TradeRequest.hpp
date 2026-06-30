@@ -19,7 +19,7 @@ namespace optionx {
         std::string unique_hash;     ///< Unique hash to prevent duplicate trade execution.
 
         // Identifiers
-        std::uint64_t trade_id = 0; ///< Persistent trade record ID propagated into TradeResult::trade_id.
+        std::uint32_t trade_id = 0; ///< Persistent trade record ID propagated into TradeResult::trade_id.
         int64_t unique_id   = 0;    ///< Unique identifier of the trade request.
         int64_t account_id  = 0;    ///< Identifier of the associated trading account.
 
