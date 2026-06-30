@@ -81,19 +81,19 @@ namespace optionx::storage {
             if (filter.only_first_mm_step && record.mm_step != 0) return false;
 
             // Scalar range checks
-            if (filter.min_amount > 0.0 && record.amount < filter.min_amount) return false;
-            if (filter.max_amount > 0.0 && record.amount > filter.max_amount) return false;
-            if (filter.min_payout > 0.0 && record.payout < filter.min_payout) return false;
-            if (filter.max_payout > 0.0 && record.payout > filter.max_payout) return false;
-            if (filter.min_profit > 0.0 && record.profit < filter.min_profit) return false;
-            if (filter.max_profit > 0.0 && record.profit > filter.max_profit) return false;
-            if (filter.min_balance > 0.0 && record.close_balance < filter.min_balance) return false;
-            if (filter.max_balance > 0.0 && record.close_balance > filter.max_balance) return false;
+            if (filter.min_amount && record.amount < *filter.min_amount) return false;
+            if (filter.max_amount && record.amount > *filter.max_amount) return false;
+            if (filter.min_payout && record.payout < *filter.min_payout) return false;
+            if (filter.max_payout && record.payout > *filter.max_payout) return false;
+            if (filter.min_profit && record.profit < *filter.min_profit) return false;
+            if (filter.max_profit && record.profit > *filter.max_profit) return false;
+            if (filter.min_balance && record.close_balance < *filter.min_balance) return false;
+            if (filter.max_balance && record.close_balance > *filter.max_balance) return false;
 
-            if (filter.min_ping > 0 && record.ping < filter.min_ping) return false;
-            if (filter.max_ping > 0 && record.ping > filter.max_ping) return false;
-            if (filter.min_delay > 0 && record.delay < filter.min_delay) return false;
-            if (filter.max_delay > 0 && record.delay > filter.max_delay) return false;
+            if (filter.min_ping && record.ping < *filter.min_ping) return false;
+            if (filter.max_ping && record.ping > *filter.max_ping) return false;
+            if (filter.min_delay && record.delay < *filter.min_delay) return false;
+            if (filter.max_delay && record.delay > *filter.max_delay) return false;
 
             // Local-time component filters
             if (selected_ms == 0) {

@@ -123,6 +123,53 @@ TEST(TradeRecordFilterMatcherTest, MatchesByAmountRange) {
     EXPECT_FALSE(TradeRecordFilterMatcher::match(rec, query));
 }
 
+TEST(TradeRecordFilterMatcherTest, OptionalRangeBoundsDistinguishUnsetFromZero) {
+    TradeRecordFilter filter;
+    EXPECT_FALSE(filter.max_profit.has_value());
+
+    filter.max_profit = 0.0;
+    ASSERT_TRUE(filter.max_profit.has_value());
+    EXPECT_DOUBLE_EQ(*filter.max_profit, 0.0);
+
+    filter.max_profit.reset();
+    EXPECT_FALSE(filter.max_profit.has_value());
+}
+
+TEST(TradeRecordFilterMatcherTest, MatchesZeroAndNegativeProfitRange) {
+    TradeRecord loss = make_win_record(1, 100000, 10.0, -5.0);
+    TradeRecord standoff = make_win_record(2, 100000, 10.0, 0.0);
+    TradeRecord win = make_win_record(3, 100000, 10.0, 2.0);
+
+    TradeRecordQuery query;
+    query.filter.max_profit = 0.0;
+    EXPECT_TRUE(TradeRecordFilterMatcher::match(loss, query));
+    EXPECT_TRUE(TradeRecordFilterMatcher::match(standoff, query));
+    EXPECT_FALSE(TradeRecordFilterMatcher::match(win, query));
+
+    query.filter.min_profit = -10.0;
+    query.filter.max_profit = -1.0;
+    EXPECT_TRUE(TradeRecordFilterMatcher::match(loss, query));
+    EXPECT_FALSE(TradeRecordFilterMatcher::match(standoff, query));
+    EXPECT_FALSE(TradeRecordFilterMatcher::match(win, query));
+}
+
+TEST(TradeRecordFilterMatcherTest, MatchesZeroLatencyRange) {
+    TradeRecord immediate = make_win_record(1, 100000);
+    immediate.ping = 0;
+    immediate.delay = 0;
+
+    TradeRecord delayed = make_win_record(2, 100000);
+    delayed.ping = 1;
+    delayed.delay = 1;
+
+    TradeRecordQuery query;
+    query.filter.max_ping = 0;
+    query.filter.max_delay = 0;
+
+    EXPECT_TRUE(TradeRecordFilterMatcher::match(immediate, query));
+    EXPECT_FALSE(TradeRecordFilterMatcher::match(delayed, query));
+}
+
 TEST(TradeRecordFilterMatcherTest, OnlyTerminalFilter) {
     TradeRecord rec = make_win_record(1, 100000, 10.0, 8.2, "EURUSD", optionx::TradeState::IN_PROGRESS);
 
