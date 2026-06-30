@@ -205,8 +205,12 @@ namespace optionx {
 
     /// \enum TradeStatsInputOrder
     /// \brief Legacy hint about the order of input records.
+    /// \details Statistics calculators do not trust input order for realized
+    /// curves or win/loss series. Monetary curves aggregate timestamped
+    /// events; win/loss series are ordered by result timestamp with a
+    /// decision-time tie breaker.
     enum class TradeStatsInputOrder {
-        AS_IS,           ///< Records may be in any order; realized curves and series are sorted internally.
+        AS_IS,           ///< Records may be in any order; statistics order relevant streams internally.
         PLACE_DATE_ASC   ///< Deprecated hint; realized statistics are still ordered by result timestamp.
     };
 

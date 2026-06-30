@@ -571,6 +571,28 @@ TEST(TradeStatsCalculatorTest, SameCloseDateAggregatesRealizedProfitBeforeDrawdo
     EXPECT_DOUBLE_EQ(stats.max_absolute_drawdown, 0.0);
 }
 
+TEST(TradeStatsCalculatorTest, SameCloseDateSeriesUsesDecisionTimeOrder) {
+    std::vector<TradeRecord> records;
+    records.push_back(make_win_record(3, 2000, 10.0, -10.0, "EURUSD", optionx::TradeState::LOSS));
+    records.push_back(make_win_record(1, 1000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    records.push_back(make_win_record(2, 3000, 10.0, 8.0, "EURUSD", optionx::TradeState::WIN));
+    for (auto& record : records) {
+        record.close_date = 5000;
+    }
+
+    optionx::TradeStatsConfig cfg;
+    cfg.include_non_terminal = false;
+    auto stats_ptr = TradeStatsCalculator::calc(records, cfg);
+    auto& stats = *stats_ptr;
+
+    EXPECT_EQ(stats.series.max_win_series, 1u);
+    EXPECT_EQ(stats.series.max_loss_series, 1u);
+    EXPECT_EQ(stats.series.total_win_series, 2u);
+    EXPECT_EQ(stats.series.total_loss_series, 1u);
+    EXPECT_EQ(stats.series.current_series, 1u);
+    EXPECT_TRUE(stats.series.current_is_win);
+}
+
 TEST(TradeStatsCalculatorTest, SweepLineAggregatesSameTimestampEventsBeforeDrawdown) {
     std::vector<TradeRecord> records;
     records.push_back(make_win_record(1, 1000, 100.0, 10.0, "EURUSD", optionx::TradeState::WIN));
