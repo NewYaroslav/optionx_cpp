@@ -94,7 +94,9 @@ namespace optionx::utils {
     /// \return Absolute path constructed as: exec_dir/relative_path
     /// \see get_exec_dir()
     inline std::string resolve_exec_path(const std::string& relative_path) {
-        return std::filesystem::absolute(get_exec_dir() + "/" + relative_path).string();
+        const auto exec_path = std::filesystem::u8path(get_exec_dir());
+        const auto relative = std::filesystem::u8path(relative_path);
+        return std::filesystem::absolute(exec_path / relative).u8string();
     }
 
     /// \brief Creates directory structure recursively.
@@ -102,7 +104,7 @@ namespace optionx::utils {
     /// \throw std::runtime_error If directory creation fails
     /// \note No-op if directory already exists
     inline void create_directories(const std::string& path) {
-        std::filesystem::path dir(path);
+        std::filesystem::path dir = std::filesystem::u8path(path);
         if (!std::filesystem::exists(dir)) {
             std::error_code ec;
             if (!std::filesystem::create_directories(dir, ec)) {
