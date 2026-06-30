@@ -5,8 +5,6 @@
 /// \file enums.hpp
 /// \brief Defines TradeRecordDB status codes.
 
-#include "storages/common/StorageStatus.hpp"
-
 namespace optionx::storage {
 
     /// \brief Status codes returned by TradeRecordDB operations.
