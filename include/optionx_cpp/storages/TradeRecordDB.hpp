@@ -19,6 +19,7 @@
 #include <mdbx_containers/ValueTable.hpp>
 
 #include "data/trading.hpp"
+#include "common.hpp"
 #include "TradeRecordDB/enums.hpp"
 #include "TradeRecordDB/data.hpp"
 #include "TradeRecordDB/detail.hpp"

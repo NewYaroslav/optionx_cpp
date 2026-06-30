@@ -195,6 +195,22 @@ Trade ID and result merge contract:
   values. `TradeResult` still does not provide presence flags for every scalar,
   so patch semantics must stay conservative near valid zero values.
 
+## Storage Result Contract
+
+Storage services share common operation result DTOs:
+
+- `StorageStatus` - success/failure code for storage operations.
+- `StorageWriteResult<Record>` - write/upsert result with the written or
+  attempted record.
+- `StorageReadResult<Record>` - single-record lookup result with `found`.
+- `StorageListResult<Record>` - multi-record query result.
+
+Domain storage APIs keep readable aliases, for example
+`TradeRecordDBStatus`, `TradeRecordDBWriteResult`,
+`TradeRecordDBReadResult` and `TradeRecordDBListResult`. New storage services
+should reuse the common result templates and expose domain-specific aliases
+rather than duplicating equivalent result structs.
+
 ## Intrade Bar History Sources
 
 Source выбирается через `platforms::intrade_bar::TradeHistorySource` в
