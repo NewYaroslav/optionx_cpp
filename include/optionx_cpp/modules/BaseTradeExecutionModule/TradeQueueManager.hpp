@@ -19,6 +19,16 @@ namespace optionx::modules {
     /// - `TradeRequestEvent`: Notifies when a trade request is sent.
     /// - `TradeStatusEvent`: Reports trade state changes.
     /// - `OpenTradesEvent`: Notifies about open trade count updates.
+    ///
+    /// ### Threading contract:
+    /// - `add_trade()` is the only supported external enqueue entry point, but
+    ///   it synchronizes only final insertion into the pending queue. The caller
+    ///   must ensure the trade ID provider, account info access, and preprocess
+    ///   callback are safe from the calling thread.
+    /// - `process()`, `finalize_all_trades()`, and event handlers are platform
+    ///   event-loop owned. Local open-trade counters, broker snapshot counters,
+    ///   and active transaction lists must not be driven concurrently from
+    ///   another thread.
     class TradeQueueManager : public utils::EventMediator {
     public:
         using transaction_t = std::shared_ptr<events::TradeTransactionEvent>;

@@ -202,6 +202,10 @@ facade lifecycle или остаться probe/internal component.
 - State manager отвечает за допустимые переходы и проверки.
 - Trade result callbacks вызываются через queue/result flow.
 - Persistent trade storage uses TradeRequest::trade_id, not unique_id.
+- `TradeQueueManager::add_trade()` is the only queue entry point intended for
+  external callers. It synchronizes only final insertion into the pending
+  queue; the caller must ensure the trade ID provider, account info access, and
+  preprocess callback are safe from that calling thread.
 
 Инварианты:
 
@@ -211,6 +215,9 @@ facade lifecycle или остаться probe/internal component.
 - Не строй primary ID сделки из даты или timestamp bucket.
 - Сохраняй propagation TradeRequest::trade_id -> TradeResult::trade_id.
 - Не меняй active/pending trades напрямую из platform manager.
+- Do not call `TradeQueueManager::process()`, `finalize_all_trades()`, or event
+  handlers concurrently with the platform loop. Local open-trade counters,
+  broker snapshot counters, and active transaction lists are single-loop state.
 - Preprocess hook должен вернуть `false` и заполнить result error, если request
   невалиден.
 - On shutdown все pending/active trades должны финализироваться.
