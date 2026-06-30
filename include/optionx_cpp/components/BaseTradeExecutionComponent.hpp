@@ -1,18 +1,18 @@
 #pragma once
-#ifndef _OPTIONX_MODULES_TRADE_MANAGER_MODULE_HPP_INCLUDED
-#define _OPTIONX_MODULES_TRADE_MANAGER_MODULE_HPP_INCLUDED
+#ifndef _OPTIONX_COMPONENTS_BASE_TRADE_EXECUTION_COMPONENT_HPP_INCLUDED
+#define _OPTIONX_COMPONENTS_BASE_TRADE_EXECUTION_COMPONENT_HPP_INCLUDED
 
-/// \file BaseTradeExecutionModule.hpp
-/// \brief Defines the BaseTradeExecutionModule class for managing trade requests and processing transactions.
+/// \file BaseTradeExecutionComponent.hpp
+/// \brief Defines the BaseTradeExecutionComponent class for managing trade requests and processing transactions.
 
-#include "BaseTradeExecutionModule/AccountInfoProvider.hpp"
-#include "BaseTradeExecutionModule/TradeStateManager.hpp"
-#include "BaseTradeExecutionModule/TradeQueueManager.hpp"
+#include "BaseTradeExecutionComponent/AccountInfoProvider.hpp"
+#include "BaseTradeExecutionComponent/TradeStateManager.hpp"
+#include "BaseTradeExecutionComponent/TradeQueueManager.hpp"
 
-namespace optionx::modules {
+namespace optionx::components {
 
-    /// \class BaseTradeExecutionModule
-    /// \brief Central module responsible for managing trade requests and processing transactions.
+    /// \class BaseTradeExecutionComponent
+    /// \brief Central component responsible for managing trade requests and processing transactions.
     ///
     /// This class acts as a high-level manager that handles trade requests, validates them, and processes pending orders.
     /// It delegates state management to `TradeStateManager` and queue management to `TradeQueueManager`.
@@ -28,24 +28,24 @@ namespace optionx::modules {
     /// - `TradeStatusEvent` - Updates listeners on trade state changes.
     /// - `OpenTradesEvent` - Notifies about changes in the number of open trades.
     /// - `OpenTradesSnapshotRefreshRequestEvent` - Requests a broker active-trades snapshot refresh.
-    class BaseTradeExecutionModule : public BaseModule {
+    class BaseTradeExecutionComponent : public BaseComponent {
     public:
         using trade_result_callback_t = std::function<void(std::unique_ptr<TradeRequest>, std::unique_ptr<TradeResult>)>;
         using trade_id_provider_t = std::function<std::uint32_t()>;
 
-        /// \brief Constructs a `BaseTradeExecutionModule` instance.
+        /// \brief Constructs a `BaseTradeExecutionComponent` instance.
         /// \param bus Reference to the `EventBus` for subscribing to and emitting events.
         /// \param account_info Shared pointer to the `BaseAccountInfoData` interface for retrieving account-related information.
-        explicit BaseTradeExecutionModule(
+        explicit BaseTradeExecutionComponent(
                 utils::EventBus& bus,
                 std::shared_ptr<BaseAccountInfoData> account_info)
-            : BaseModule(bus), m_account_info(std::move(account_info)),
+            : BaseComponent(bus), m_account_info(std::move(account_info)),
               m_trade_state_manager(m_account_info),
               m_trade_queue(bus, m_account_info, m_trade_state_manager) {
         }
 
         /// \brief Default virtual destructor.
-        virtual ~BaseTradeExecutionModule() = default;
+        virtual ~BaseTradeExecutionComponent() = default;
 
         /// \brief Handles an event notification received as a raw pointer.
         /// \param event The received event.
@@ -83,7 +83,7 @@ namespace optionx::modules {
             });
         }
 
-        /// \brief Initializes the module.
+        /// \brief Initializes the component.
         void initialize() override {};
 
         /// \brief Processes all pending and active trades.
@@ -113,10 +113,10 @@ namespace optionx::modules {
         }
 
         /// \brief Returns the platform type associated with this trade manager.
-        /// \return The `PlatformType` of the trading module.
+        /// \return The `PlatformType` of the trading component.
         virtual PlatformType platform_type() const = 0;
     };
 
-} // namespace optionx::modules
+} // namespace optionx::components
 
-#endif // _OPTIONX_MODULES_TRADE_MANAGER_MODULE_HPP_INCLUDED
+#endif // _OPTIONX_COMPONENTS_BASE_TRADE_EXECUTION_COMPONENT_HPP_INCLUDED

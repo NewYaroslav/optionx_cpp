@@ -10,7 +10,7 @@ namespace optionx::utils {
     /// \class EventMediator
     /// \brief Facilitates event subscriptions and notifications through an associated EventBus.
     ///
-    /// Provides a unified interface for modules to subscribe to, notify, and asynchronously post events.
+    /// Provides a unified interface for components to subscribe to, notify, and asynchronously post events.
     class EventMediator : public EventListener {
     public:
         /// \brief Constructs EventMediator with a raw pointer to an EventBus instance.

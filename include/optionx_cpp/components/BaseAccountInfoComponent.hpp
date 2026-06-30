@@ -1,30 +1,30 @@
 #pragma once
-#ifndef _OPTIONX_MODULES_BASE_ACCOUNT_INFO_HANDLER_HPP_INCLUDED
-#define _OPTIONX_MODULES_BASE_ACCOUNT_INFO_HANDLER_HPP_INCLUDED
+#ifndef _OPTIONX_COMPONENTS_BASE_ACCOUNT_INFO_COMPONENT_HPP_INCLUDED
+#define _OPTIONX_COMPONENTS_BASE_ACCOUNT_INFO_COMPONENT_HPP_INCLUDED
 
-/// \file BaseAccountInfoHandler.hpp
+/// \file BaseAccountInfoComponent.hpp
 /// \brief Base class for handling account information updates and events.
 
-namespace optionx::modules {
+namespace optionx::components {
 
-    /// \class BaseAccountInfoHandler
+    /// \class BaseAccountInfoComponent
     /// \brief Base class for handling account information updates and notifications.
     ///
     /// This class subscribes to `AccountInfoUpdateEvent` and invokes a callback
     /// whenever an account update occurs. Derived classes can use this to track
     /// changes in account balance, connection status, and other account-related details.
-    class BaseAccountInfoHandler : public BaseModule {
+    class BaseAccountInfoComponent : public BaseComponent {
     public:
 
-        /// \brief Constructs the `BaseAccountInfoHandler` and subscribes to account update events.
+        /// \brief Constructs the `BaseAccountInfoComponent` and subscribes to account update events.
         /// \param bus Reference to the `EventBus` used for subscribing to events.
-        explicit BaseAccountInfoHandler(utils::EventBus& bus)
-            : BaseModule(bus) {
+        explicit BaseAccountInfoComponent(utils::EventBus& bus)
+            : BaseComponent(bus) {
            subscribe<events::AccountInfoUpdateEvent>();
         }
 
         /// \brief Virtual destructor.
-        virtual ~BaseAccountInfoHandler() = default;
+        virtual ~BaseAccountInfoComponent() = default;
 
         /// \brief Handles an incoming event notification.
         /// \param event Pointer to the received event.
@@ -55,6 +55,6 @@ namespace optionx::modules {
         }
     };
 
-} // namespace optionx::modules
+} // namespace optionx::components
 
-#endif // _OPTIONX_MODULES_BASE_ACCOUNT_INFO_HANDLER_HPP_INCLUDED
+#endif // _OPTIONX_COMPONENTS_BASE_ACCOUNT_INFO_COMPONENT_HPP_INCLUDED

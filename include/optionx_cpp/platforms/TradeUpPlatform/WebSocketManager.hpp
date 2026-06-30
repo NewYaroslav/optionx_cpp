@@ -8,16 +8,16 @@
 namespace optionx::platforms::tradeup {
 
     /// \class WebSocketManager
-    class WebSocketManager final : public modules::BaseModule {
+    class WebSocketManager final : public components::BaseComponent {
     public:
         explicit WebSocketManager(BaseTradingPlatform& platform)
-            : BaseModule(platform.event_bus()) 
+            : BaseComponent(platform.event_bus())
         {
             subscribe<events::WebSocketAuthDataEvent>();
             subscribe<events::WebSocketRequestEvent>();
             subscribe<events::ConnectRequestEvent>();
             subscribe<events::DisconnectRequestEvent>();
-            platform.register_module(this);
+            platform.register_component(this);
 
             // Real WS events
             m_real_ws.on_event([this](std::unique_ptr<kurlyk::WebSocketEventData> e) {

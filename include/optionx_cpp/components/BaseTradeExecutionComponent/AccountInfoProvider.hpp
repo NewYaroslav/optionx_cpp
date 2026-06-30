@@ -1,11 +1,11 @@
 #pragma once
-#ifndef _OPTIONX_MODULES_ACCOUNT_INFO_PROVIDER_HPP_INCLUDED
-#define _OPTIONX_MODULES_ACCOUNT_INFO_PROVIDER_HPP_INCLUDED
+#ifndef _OPTIONX_COMPONENTS_ACCOUNT_INFO_PROVIDER_HPP_INCLUDED
+#define _OPTIONX_COMPONENTS_ACCOUNT_INFO_PROVIDER_HPP_INCLUDED
 
 /// \file AccountInfoProvider.hpp
 /// \brief Defines the AccountInfoProvider class for retrieving account-related information.
 
-namespace optionx::modules {
+namespace optionx::components {
 
     /// \class AccountInfoProvider
     /// \brief Provides a unified interface for accessing various account-related information.
@@ -142,6 +142,6 @@ namespace optionx::modules {
         return m_account_info->get_for_trade<T>(info_type, trade_request, timestamp);
     }
 
-} // namespace optionx::modules
+} // namespace optionx::components
 
-#endif // _OPTIONX_MODULES_ACCOUNT_INFO_PROVIDER_HPP_INCLUDED
+#endif // _OPTIONX_COMPONENTS_ACCOUNT_INFO_PROVIDER_HPP_INCLUDED

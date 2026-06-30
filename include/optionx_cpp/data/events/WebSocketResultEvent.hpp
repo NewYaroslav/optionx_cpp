@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_MODULES_EVENTS_WEBSOCKET_RESULT_EVENT_HPP_INCLUDED
-#define _OPTIONX_MODULES_EVENTS_WEBSOCKET_RESULT_EVENT_HPP_INCLUDED
+#ifndef _OPTIONX_EVENTS_WEBSOCKET_RESULT_EVENT_HPP_INCLUDED
+#define _OPTIONX_EVENTS_WEBSOCKET_RESULT_EVENT_HPP_INCLUDED
 
 /// \file WebSocketResultEvent.hpp
 /// \brief Defines a unified result event reporting the outcome of a WebSocket request.
@@ -40,4 +40,4 @@ namespace optionx::events {
 
 } // namespace optionx::events
 
-#endif // _OPTIONX_MODULES_EVENTS_WEBSOCKET_RESULT_EVENT_HPP_INCLUDED
+#endif // _OPTIONX_EVENTS_WEBSOCKET_RESULT_EVENT_HPP_INCLUDED

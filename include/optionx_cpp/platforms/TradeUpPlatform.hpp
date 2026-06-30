@@ -8,14 +8,14 @@
 #include "utils.hpp"
 #include "data.hpp"
 #include "storages.hpp"
-#include "modules.hpp"
+#include "components.hpp"
 
 #include "common/BaseTradingPlatform.hpp"
 #include "TradeUpPlatform/AuthData.hpp"
 #include "TradeUpPlatform/AccountInfoData.hpp"
 #include "TradeUpPlatform/http_utils.hpp"
 #include "TradeUpPlatform/http_parsers.hpp"
-#include "TradeUpPlatform/HttpClientModule.hpp"
+#include "TradeUpPlatform/HttpClientComponent.hpp"
 #include "TradeUpPlatform/AuthManager.hpp"
 #include "TradeUpPlatform/BalanceManager.hpp"
 
@@ -46,7 +46,7 @@ namespace optionx::platforms {
         }
 
     private:
-        tradeup::HttpClientModule m_http_client;
+        tradeup::HttpClientComponent m_http_client;
         tradeup::AuthManager      m_auth_manager;
         tradeup::BalanceManager   m_balance_manager;
     };

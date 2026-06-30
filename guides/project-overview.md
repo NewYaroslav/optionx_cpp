@@ -18,7 +18,7 @@ broker API и bridges. Основной сценарий: пользовател
 - `include/optionx_cpp/optionx.hpp`
 - `include/optionx_cpp/platforms/common/BaseTradingPlatform.hpp`
 - `include/optionx_cpp/platforms/IntradeBarPlatform.hpp`
-- `include/optionx_cpp/modules/BaseTradeExecutionModule.hpp`
+- `include/optionx_cpp/components/BaseTradeExecutionComponent.hpp`
 - `include/optionx_cpp/utils/pubsub.hpp`
 - `include/optionx_cpp/utils/tasks.hpp`
 
@@ -27,9 +27,9 @@ broker API и bridges. Основной сценарий: пользовател
 | Include | Что открывает | Когда использовать |
 |---|---|---|
 | `optionx_cpp/optionx.hpp` | Все основные subsystems | В приложениях и examples, когда нужен полный API |
-| `optionx_cpp/utils.hpp` | Pub-sub, tasks, crypto, strings, time, ids | Для инфраструктурного кода и новых modules |
+| `optionx_cpp/utils.hpp` | Pub-sub, tasks, crypto, strings, time, ids | Для инфраструктурного кода и новых components |
 | `optionx_cpp/data.hpp` | DTO, events, enums, account/symbol/tick/bar/trading data | Для API boundary и сообщений |
-| `optionx_cpp/modules.hpp` | `BaseModule`, HTTP и trade execution base classes | Для нового manager/module |
+| `optionx_cpp/components.hpp` | `BaseComponent`, HTTP и trade execution base classes | Для нового manager/component |
 | `optionx_cpp/platforms.hpp` | Base platform и Intrade Bar platform | Для клиентского кода платформ |
 | `optionx_cpp/storages.hpp` | `ServiceSessionDB` | Для session storage |
 | `optionx_cpp/bridges.hpp` | `BaseBridge` | Для внешних bridge integrations |
@@ -42,10 +42,10 @@ broker API и bridges. Основной сценарий: пользовател
 | Домен | Namespace / пути | Роль |
 |---|---|---|
 | Platform facade | `optionx::platforms`, `include/optionx_cpp/platforms` | Публичный API платформы: connect, auth, trades, account info |
-| Modules/managers | `optionx::modules`, platform subnamespaces | Lifecycle-компоненты, которые получают events и выполняют работу |
+| Components/managers | `optionx::components`, platform subnamespaces | Lifecycle-компоненты, которые получают events и выполняют работу |
 | Trading data | `optionx`, `include/optionx_cpp/data/trading` | `TradeRequest`, `TradeResult`, enums, signals |
 | Market data | `include/optionx_cpp/data/bars`, `ticks`, `symbol` | Свечи, тики, symbols, history requests |
-| Events | `optionx::events`, `include/optionx_cpp/data/events` | Pub-sub контракты между modules |
+| Events | `optionx::events`, `include/optionx_cpp/data/events` | Pub-sub контракты между components |
 | Infrastructure | `optionx::utils` | EventBus, tasks, crypto, ids, HTTP helpers |
 | Storage | `optionx::storage` | AES + mdbx session storage |
 | Bridges | `optionx::bridges` | Интеграция внешних систем с platform/trading API |
@@ -56,18 +56,18 @@ broker API и bridges. Основной сценарий: пользовател
 
 1. Concrete platform (`IntradeBarPlatform`) создает общий `EventBus`,
    `TaskManager`, `BaseAccountInfoData` и platform managers.
-2. Managers регистрируются как `BaseModule`/`EventMediator` и общаются через
+2. Managers регистрируются как `BaseComponent`/`EventMediator` и общаются через
    events из `include/optionx_cpp/data/events`.
 3. `run(true)` добавляет single task `initialize` и periodic task `loop`;
-   worker thread вызывает `EventBus::process()` и `module->process()`.
+   worker thread вызывает `EventBus::process()` и `component->process()`.
 4. `configure_auth()` публикует `AuthDataEvent`; `connect()`/`disconnect()`
    публикуют request events.
 5. `place_trade()` у конкретной платформы делегирует в
-   `BaseTradeExecutionModule`, который использует `TradeQueueManager` и
+   `BaseTradeExecutionComponent`, который использует `TradeQueueManager` и
    `TradeStateManager`.
 6. `fetch_trade_result()` и `fetch_trade_history()` у конкретной платформы
    делегируются в platform managers и возвращают DTO через callbacks.
-7. `shutdown()` останавливает tasks, вызывает shutdown у modules, затем
+7. `shutdown()` останавливает tasks, вызывает shutdown у components, затем
    draining event bus.
 
 ## Реальные Платформы
@@ -105,7 +105,7 @@ Enums живут рядом с доменом и имеют `to_str`, `to_enum`,
   helpers из `utils/http_utils.hpp` и platform-specific `http_utils.hpp`.
 - Storage ловит `mdbxc::MdbxException` и `std::exception`, логирует и возвращает
   `false`/`std::nullopt`.
-- В callbacks и modules чаще используется "return false + event/result", а не
+- В callbacks и components чаще используется "return false + event/result", а не
   исключение наружу.
 
 ## Quick Start Для Агента
@@ -113,9 +113,9 @@ Enums живут рядом с доменом и имеют `to_str`, `to_enum`,
 | Задача | Сначала открыть |
 |---|---|
 | Добавить новую платформу | `BaseTradingPlatform.hpp`, `IntradeBarPlatform.hpp`, `guides/platform-api-guide.md` |
-| Добавить manager/module | `BaseModule.hpp`, ближайший manager в platform folder |
+| Добавить manager/component | `BaseComponent.hpp`, ближайший manager в platform folder |
 | Добавить событие | `data/events/*.hpp`, `utils/pubsub/Event.hpp` |
 | Добавить DTO/enum | `data/<domain>/*.hpp`, `data/trading/enums.hpp` |
-| Изменить HTTP flow | `BaseHttpClientModule.hpp`, platform `HttpClientModule.hpp`, `http_utils.hpp` |
-| Изменить trade lifecycle | `BaseTradeExecutionModule.hpp`, `TradeQueueManager.hpp`, `TradeStateManager.hpp` |
+| Изменить HTTP flow | `BaseHttpClientComponent.hpp`, platform `HttpClientComponent.hpp`, `http_utils.hpp` |
+| Изменить trade lifecycle | `BaseTradeExecutionComponent.hpp`, `TradeQueueManager.hpp`, `TradeStateManager.hpp` |
 | Изменить build/tests | `CMakeLists.txt`, `external/`, `tests/`, `guides/build-and-test.md` |

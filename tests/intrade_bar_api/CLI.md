@@ -1,7 +1,7 @@
 # Intrade Bar Smoke CLI
 
 `intrade_bar_smoke_cli` is a manual smoke tool for checking individual Intrade
-Bar HTTP workflows through the normal platform modules. It is not a parser
+Bar HTTP workflows through the normal platform components. It is not a parser
 fixture and it does not bypass proxy/auth guards.
 
 ## Build

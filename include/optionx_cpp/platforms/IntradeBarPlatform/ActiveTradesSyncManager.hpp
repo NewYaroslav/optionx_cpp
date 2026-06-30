@@ -9,7 +9,7 @@ namespace optionx::platforms::intrade_bar {
 
     /// \class ActiveTradesSyncManager
     /// \brief Requests broker active-trades snapshots and publishes them to the trade queue.
-    class ActiveTradesSyncManager final : public modules::BaseModule {
+    class ActiveTradesSyncManager final : public components::BaseComponent {
     public:
 
         /// \brief Constructs the active trades synchronization manager.
@@ -20,7 +20,7 @@ namespace optionx::platforms::intrade_bar {
             BaseTradingPlatform& platform,
             RequestManager& request_manager,
             std::shared_ptr<BaseAccountInfoData> account_info)
-            : BaseModule(platform.event_bus()),
+            : BaseComponent(platform.event_bus()),
               m_request_manager(request_manager),
               m_account_info(std::move(account_info)) {
             subscribe<events::AuthDataEvent>();
@@ -28,7 +28,7 @@ namespace optionx::platforms::intrade_bar {
             subscribe<events::DisconnectRequestEvent>();
             subscribe<events::AccountInfoUpdateEvent>();
             subscribe<events::OpenTradesSnapshotRefreshRequestEvent>();
-            platform.register_module(this);
+            platform.register_component(this);
         }
 
         /// \brief Default destructor.

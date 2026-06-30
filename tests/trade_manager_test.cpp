@@ -10,10 +10,10 @@
 #include <thread>
 #include <atomic>
 #include <chrono>
-#include "optionx_cpp/modules.hpp" // Main header including all modules
+#include "optionx_cpp/components.hpp" // Main header including all components
 #include "optionx_cpp/platforms.hpp"
 
-namespace optionx::modules {
+namespace optionx::components {
 
     /// \class AuthData
     /// \brief Represents authorization data for the Intrade Bar platform.
@@ -293,11 +293,11 @@ namespace optionx::modules {
     }; // AccountInfoData
 
     /// \class TradeManagerTest
-    /// \brief Test implementation of BaseTradeExecutionModule for unit testing.
-    class TradeManagerTest : public BaseTradeExecutionModule {
+    /// \brief Test implementation of BaseTradeExecutionComponent for unit testing.
+    class TradeManagerTest : public BaseTradeExecutionComponent {
     public:
         TradeManagerTest(utils::EventBus& bus, std::shared_ptr<BaseAccountInfoData> account_info)
-            : BaseTradeExecutionModule(bus, std::move(account_info)) {
+            : BaseTradeExecutionComponent(bus, std::move(account_info)) {
             subscribe<events::AuthDataEvent>();
         }
 
@@ -309,7 +309,7 @@ namespace optionx::modules {
     };
 
     /// \class TradeTestMediator
-    /// \brief Mediator module for handling test events.
+    /// \brief Mediator component for handling test events.
     class TradeTestMediator : public utils::EventMediator {
     public:
         explicit TradeTestMediator(utils::EventBus& bus) 
@@ -478,10 +478,10 @@ namespace optionx::modules {
             << "API Type: " << to_str(result.platform_type) << "\n";
     }
 
-} // namespace optionx::modules
+} // namespace optionx::components
 
 using namespace optionx;
-using namespace optionx::modules;
+using namespace optionx::components;
 
 /// \brief Test fixture for TradeManager tests.
 class TradeManagerTestFixture : public ::testing::Test {

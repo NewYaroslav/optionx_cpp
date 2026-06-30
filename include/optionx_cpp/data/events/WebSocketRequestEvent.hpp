@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_MODULES_EVENTS_WEBSOCKET_REQUEST_EVENT_HPP_INCLUDED
-#define _OPTIONX_MODULES_EVENTS_WEBSOCKET_REQUEST_EVENT_HPP_INCLUDED
+#ifndef _OPTIONX_EVENTS_WEBSOCKET_REQUEST_EVENT_HPP_INCLUDED
+#define _OPTIONX_EVENTS_WEBSOCKET_REQUEST_EVENT_HPP_INCLUDED
 
 /// \file WebSocketRequestEvent.hpp
 /// \brief Defines a unified request event to control WebSocket actions.
@@ -45,4 +45,4 @@ namespace optionx::events {
 
 } // namespace optionx::events
 
-#endif // _OPTIONX_MODULES_EVENTS_WEBSOCKET_REQUEST_EVENT_HPP_INCLUDED
+#endif // _OPTIONX_EVENTS_WEBSOCKET_REQUEST_EVENT_HPP_INCLUDED

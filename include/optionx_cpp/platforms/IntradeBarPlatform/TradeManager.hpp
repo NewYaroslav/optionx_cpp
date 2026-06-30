@@ -10,9 +10,9 @@ namespace optionx::platforms::intrade_bar {
     /// \class TradeManager
     /// \brief Manages trade execution, trade status updates, and account balance tracking.
     ///
-    /// This module is responsible for handling trade requests, monitoring trade status,
+    /// This component is responsible for handling trade requests, monitoring trade status,
     /// and ensuring the account balance is correctly updated after each trade.
-    class TradeManager final : public modules::BaseModule {
+    class TradeManager final : public components::BaseComponent {
     public:
         using trade_result_check_callback_t = BaseTradingPlatform::trade_result_check_callback_t;
         using trade_history_callback_t = BaseTradingPlatform::trade_history_callback_t;
@@ -25,13 +25,13 @@ namespace optionx::platforms::intrade_bar {
                 BaseTradingPlatform& platform,
                 RequestManager& request_manager,
                 std::shared_ptr<BaseAccountInfoData> account_info)
-                : BaseModule(platform.event_bus()),
+                : BaseComponent(platform.event_bus()),
                   m_request_manager(request_manager),
                   m_account_info(std::move(account_info))  {
             subscribe<events::TradeRequestEvent>();
             subscribe<events::TradeStatusEvent>();
             subscribe<events::OpenTradesEvent>();
-            platform.register_module(this);
+            platform.register_component(this);
         }
 
         /// \brief Default destructor.

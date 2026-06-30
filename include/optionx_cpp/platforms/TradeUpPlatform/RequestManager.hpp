@@ -13,17 +13,17 @@ namespace optionx::platforms::tradeup {
     /// The `RequestManager` class is responsible for handling HTTP-based communication
     /// with the trading platform, including authentication, balance retrieval, price updates,
     /// and trade execution.
-    class RequestManager final : public modules::BaseModule {
+    class RequestManager final : public components::BaseComponent {
     public:
 
         /// \brief Constructs the request manager.
         /// \param platform Reference to the trading platform.
-        /// \param client Reference to the HTTP client module.
+        /// \param client Reference to the HTTP client component.
         explicit RequestManager(
                 BaseTradingPlatform& platform,
-                HttpClientModule& client)
-                : BaseModule(platform.event_bus()), m_client(client) {
-            platform.register_module(this);
+                HttpClientComponent& client)
+                : BaseComponent(platform.event_bus()), m_client(client) {
+            platform.register_component(this);
         }
 
         /// \brief Default destructor.
@@ -74,7 +74,7 @@ namespace optionx::platforms::tradeup {
             )> result_callback);
 
     private:
-        HttpClientModule& m_client;      ///< Reference to the HTTP client module.
+        HttpClientComponent& m_client;      ///< Reference to the HTTP client component.
         kurlyk::Headers   m_api_headers; ///< Default API headers.
         std::string       m_host;        ///<
         std::string       m_token;       ///< 

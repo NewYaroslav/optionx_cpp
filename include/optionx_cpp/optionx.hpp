@@ -8,7 +8,7 @@
 #include "utils.hpp"
 #include "data.hpp"
 #include "storages.hpp"
-#include "modules.hpp"
+#include "components.hpp"
 #include "platforms.hpp"
 #include "bridges.hpp"
 

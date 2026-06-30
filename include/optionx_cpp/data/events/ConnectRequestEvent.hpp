@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_MODULES_CONNECT_REQUEST_EVENT_HPP_INCLUDED
-#define _OPTIONX_MODULES_CONNECT_REQUEST_EVENT_HPP_INCLUDED
+#ifndef _OPTIONX_EVENTS_CONNECT_REQUEST_EVENT_HPP_INCLUDED
+#define _OPTIONX_EVENTS_CONNECT_REQUEST_EVENT_HPP_INCLUDED
 
 /// \file ConnectRequestEvent.hpp
 /// \brief Defines the ConnectRequestEvent class for handling connection requests.
@@ -32,4 +32,4 @@ namespace optionx::events {
 
 } // namespace optionx::events
 
-#endif // _OPTIONX_MODULES_CONNECT_REQUEST_EVENT_HPP_INCLUDED
+#endif // _OPTIONX_EVENTS_CONNECT_REQUEST_EVENT_HPP_INCLUDED

@@ -14,19 +14,19 @@ namespace optionx::platforms::intrade_bar {
     /// to receive real-time BTCUSDT price updates. It processes incoming data and
     /// subscribes to events related to authentication, connection requests, disconnection
     /// requests, and account information updates to maintain up-to-date price information.
-    class BtcPriceManager final : public modules::BaseModule {
+    class BtcPriceManager final : public components::BaseComponent {
     public:
         /// \brief Constructs the BTCUSDT price manager.
         /// \param platform Reference to the trading platform.
         explicit BtcPriceManager(
                 BaseTradingPlatform& platform)
-                : BaseModule(platform.event_bus()), m_websocket_client() {
+                : BaseComponent(platform.event_bus()), m_websocket_client() {
             subscribe<events::AuthDataEvent>();
             subscribe<events::ConnectRequestEvent>();
             subscribe<events::DisconnectRequestEvent>();
             subscribe<events::AccountInfoUpdateEvent>();
             subscribe<events::AutoDomainSelectedEvent>();
-            platform.register_module(this);
+            platform.register_component(this);
 
             m_tick_data.resize(1);
             m_tick_data[0].price_digits  = 2;

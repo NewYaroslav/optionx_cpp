@@ -21,10 +21,10 @@ enum class TestRateLimitType : std::uint32_t {
     GENERAL
 };
 
-class TestHttpClientModule : public optionx::modules::BaseHttpClientModule {
+class TestHttpClientComponent : public optionx::components::BaseHttpClientComponent {
 public:
-    explicit TestHttpClientModule(optionx::utils::EventBus& bus)
-        : optionx::modules::BaseHttpClientModule(bus) {}
+    explicit TestHttpClientComponent(optionx::utils::EventBus& bus)
+        : optionx::components::BaseHttpClientComponent(bus) {}
 
     void add_general_limit() {
         set_rate_limit_rps(TestRateLimitType::GENERAL, 1);
@@ -192,7 +192,7 @@ CombinedHistoryTestResult request_trade_history(
         TradeHistoryRequest request = TradeHistoryRequest::all(),
         AccountType account_type = AccountType::DEMO) {
     TestPlatform platform;
-    HttpClientModule http_client(platform);
+    HttpClientComponent http_client(platform);
     RequestManager request_manager(platform, http_client);
 
     auto auth_data = std::make_shared<AuthData>();
@@ -238,7 +238,7 @@ CombinedHistoryTestResult request_trade_history_without_http(
         TradeHistoryRequest request,
         AccountType account_type) {
     TestPlatform platform;
-    HttpClientModule http_client(platform);
+    HttpClientComponent http_client(platform);
     RequestManager request_manager(platform, http_client);
 
     CombinedHistoryTestResult call;
@@ -260,35 +260,35 @@ CombinedHistoryTestResult request_trade_history_without_http(
 
 } // namespace
 
-TEST(BaseHttpClientModule, ShutdownClearsRateLimitsAndIsRepeatable) {
+TEST(BaseHttpClientComponent, ShutdownClearsRateLimitsAndIsRepeatable) {
     optionx::utils::EventBus bus;
-    TestHttpClientModule module(bus);
+    TestHttpClientComponent component(bus);
 
-    module.add_general_limit();
-    EXPECT_EQ(module.rate_limit_count(), 1u);
-    EXPECT_NE(module.general_limit_id(), 0u);
-    const auto limit_id = module.general_limit_id();
+    component.add_general_limit();
+    EXPECT_EQ(component.rate_limit_count(), 1u);
+    EXPECT_NE(component.general_limit_id(), 0u);
+    const auto limit_id = component.general_limit_id();
     EXPECT_TRUE(static_cast<bool>(kurlyk::get_rate_limit(limit_id)));
 
-    module.shutdown();
-    EXPECT_EQ(module.rate_limit_count(), 0u);
-    EXPECT_EQ(module.general_limit_id(), 0u);
+    component.shutdown();
+    EXPECT_EQ(component.rate_limit_count(), 0u);
+    EXPECT_EQ(component.general_limit_id(), 0u);
     EXPECT_FALSE(static_cast<bool>(kurlyk::get_rate_limit(limit_id)));
 
-    module.shutdown();
-    EXPECT_EQ(module.rate_limit_count(), 0u);
-    EXPECT_EQ(module.general_limit_id(), 0u);
+    component.shutdown();
+    EXPECT_EQ(component.rate_limit_count(), 0u);
+    EXPECT_EQ(component.general_limit_id(), 0u);
     EXPECT_FALSE(static_cast<bool>(kurlyk::get_rate_limit(limit_id)));
 }
 
-TEST(BaseHttpClientModule, DestructorClearsRateLimits) {
+TEST(BaseHttpClientComponent, DestructorClearsRateLimits) {
     optionx::utils::EventBus bus;
     std::uint32_t limit_id = 0;
 
     {
-        TestHttpClientModule module(bus);
-        module.add_general_limit();
-        limit_id = module.general_limit_id();
+        TestHttpClientComponent component(bus);
+        component.add_general_limit();
+        limit_id = component.general_limit_id();
         ASSERT_NE(limit_id, 0u);
         EXPECT_TRUE(static_cast<bool>(kurlyk::get_rate_limit(limit_id)));
     }
@@ -296,24 +296,24 @@ TEST(BaseHttpClientModule, DestructorClearsRateLimits) {
     EXPECT_FALSE(static_cast<bool>(kurlyk::get_rate_limit(limit_id)));
 }
 
-TEST(BaseHttpClientModule, ReplacingRateLimitClearsPreviousHandle) {
+TEST(BaseHttpClientComponent, ReplacingRateLimitClearsPreviousHandle) {
     optionx::utils::EventBus bus;
-    TestHttpClientModule module(bus);
+    TestHttpClientComponent component(bus);
 
-    module.add_general_limit();
-    const auto first_limit_id = module.general_limit_id();
+    component.add_general_limit();
+    const auto first_limit_id = component.general_limit_id();
     ASSERT_NE(first_limit_id, 0u);
     EXPECT_TRUE(static_cast<bool>(kurlyk::get_rate_limit(first_limit_id)));
 
-    module.add_general_limit();
-    const auto second_limit_id = module.general_limit_id();
+    component.add_general_limit();
+    const auto second_limit_id = component.general_limit_id();
     ASSERT_NE(second_limit_id, 0u);
     EXPECT_NE(first_limit_id, second_limit_id);
 
     EXPECT_FALSE(static_cast<bool>(kurlyk::get_rate_limit(first_limit_id)));
     EXPECT_TRUE(static_cast<bool>(kurlyk::get_rate_limit(second_limit_id)));
 
-    module.shutdown();
+    component.shutdown();
     EXPECT_FALSE(static_cast<bool>(kurlyk::get_rate_limit(second_limit_id)));
 }
 

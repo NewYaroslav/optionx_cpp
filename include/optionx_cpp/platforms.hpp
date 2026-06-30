@@ -10,7 +10,7 @@
 #include "utils.hpp"
 #include "data.hpp"
 #include "storages.hpp"
-#include "modules.hpp"
+#include "components.hpp"
 #include "platforms/common/ApiResult.hpp"
 #include "platforms/common/BaseTradingPlatform.hpp"
 #include "platforms/IntradeBarPlatform.hpp"

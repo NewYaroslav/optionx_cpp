@@ -13,7 +13,7 @@ namespace optionx::platforms::intrade_bar {
     /// The `PriceManager` class is responsible for fetching, updating, and processing tick data
     /// from the trading platform to keep price information up-to-date. It subscribes to events
     /// related to connection status and account information updates.
-    class PriceManager final : public modules::BaseModule {
+    class PriceManager final : public components::BaseComponent {
     public:
 
         /// \brief Constructs the price manager.
@@ -22,11 +22,11 @@ namespace optionx::platforms::intrade_bar {
         explicit PriceManager(
                 BaseTradingPlatform& platform,
                 RequestManager& request_manager)
-                : BaseModule(platform.event_bus()), m_request_manager(request_manager) {
+                : BaseComponent(platform.event_bus()), m_request_manager(request_manager) {
             subscribe<events::ConnectRequestEvent>();
             subscribe<events::DisconnectRequestEvent>();
             subscribe<events::AccountInfoUpdateEvent>();
-            platform.register_module(this);
+            platform.register_component(this);
         }
 
         /// \brief Default destructor.

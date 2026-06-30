@@ -10,7 +10,7 @@ namespace optionx::platforms::intrade_bar {
     /// \class AuthManager
     /// \brief Manages the authentication process for the Intrade Bar platform.
     /// \details Handles user authentication, session management, and account information updates.
-    class AuthManager final : public modules::BaseModule {
+    class AuthManager final : public components::BaseComponent {
     public:
 
         /// \brief Constructs the authentication manager.
@@ -21,14 +21,14 @@ namespace optionx::platforms::intrade_bar {
                 BaseTradingPlatform& platform,
                 RequestManager& request_manager,
                 std::shared_ptr<BaseAccountInfoData> account_info)
-                : BaseModule(platform.event_bus()), 
+                : BaseComponent(platform.event_bus()),
                   m_request_manager(request_manager),
                   m_account_info(std::move(account_info))  {
             subscribe<events::AuthDataEvent>();
             subscribe<events::ConnectRequestEvent>();
             subscribe<events::RestartAuthEvent>();
             subscribe<events::DisconnectRequestEvent>();
-            platform.register_module(this);
+            platform.register_component(this);
         }
 
         /// \brief Default destructor.

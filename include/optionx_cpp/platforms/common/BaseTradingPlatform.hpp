@@ -165,11 +165,11 @@ namespace optionx::platforms {
             return m_account_provider.get_info<T>(currency, timestamp);
         }
 
-        /// \brief Starts the platform's event loop and module lifecycle.
+        /// \brief Starts the platform's event loop and component lifecycle.
         /// \details Adds initialization and periodic update tasks.
         ///          If start_worker_thread is true (default), TaskManager launches its own worker thread.
         ///          Otherwise, the caller must periodically call process() manually.
-        ///          Repeated calls before shutdown are ignored to avoid duplicate module initialization
+        ///          Repeated calls before shutdown are ignored to avoid duplicate component initialization
         ///          and duplicate processing loops.
         /// \param start_worker_thread  Whether to use an internal background thread for updates.
         void run(bool start_worker_thread  = true) {
@@ -194,7 +194,7 @@ namespace optionx::platforms {
                         std::shared_ptr<utils::Task> task){
                     if (task->is_shutdown()) return;
                     LOGIT_TRACE0();
-                    for (auto* module : m_modules) module->initialize();
+                    for (auto* component : m_components) component->initialize();
                     on_once();
                 });
 
@@ -205,7 +205,7 @@ namespace optionx::platforms {
                         LOGIT_TRACE0();
                         return;
                     }
-                    for (auto* module : m_modules) module->process();
+                    for (auto* component : m_components) component->process();
                     on_loop();
                 });
 
@@ -251,9 +251,9 @@ namespace optionx::platforms {
             
             m_task_manager.shutdown();
             
-            for (auto* module : m_modules) {
-                if (module) {
-                    module->shutdown();
+            for (auto* component : m_components) {
+                if (component) {
+                    component->shutdown();
                 }
             }
             on_shutdown();
@@ -268,10 +268,10 @@ namespace optionx::platforms {
         /// \brief Returns a reference to the event bus.
         utils::EventBus& event_bus() { return m_event_bus; }
 
-        /// \brief Registers a module for processing.
-        /// \param module The module to be registered.
-        void register_module(modules::BaseModule* module) {
-            m_modules.push_back(module);
+        /// \brief Registers a component for platform lifecycle processing.
+        /// \param component The component to be registered.
+        void register_component(components::BaseComponent* component) {
+            m_components.push_back(component);
         }
 
         /// \brief Retrieves the API type associated with this authorization data.
@@ -280,11 +280,11 @@ namespace optionx::platforms {
 
     protected:
         std::shared_ptr<BaseAccountInfoData> m_account_info;
-        modules::AccountInfoProvider         m_account_provider;
+        components::AccountInfoProvider         m_account_provider;
         utils::EventBus                      m_event_bus;
         utils::TaskManager                   m_task_manager;
-        modules::BaseAccountInfoHandler      m_account_info_handler;
-        std::vector<modules::BaseModule*>    m_modules;
+        components::BaseAccountInfoComponent      m_account_info_handler;
+        std::vector<components::BaseComponent*>    m_components;
         std::mutex                           m_lifecycle_mutex;
         std::atomic<bool>                    m_running{false};
         std::atomic<bool>                    m_stopping{false};

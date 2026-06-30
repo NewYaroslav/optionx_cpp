@@ -143,12 +143,12 @@ Direct leaf includes допустимы для white-box tests, но они не
 
 | Путь | Роль |
 |---|---|
-| `external/` | Third-party submodules и CMake scripts |
+| `external/` | Third-party subcomponents и CMake scripts |
 | `external/cmake/*.cmake` | Сборка/подключение зависимостей |
 | `external/mdbx-containers` | Storage dependency для `ServiceSessionDB` |
 | `external/libmdbx` | MDBX dependency |
 
-Не меняй submodules или dependency scripts при обычных правках API/доков.
+Не меняй subcomponents или dependency scripts при обычных правках API/доков.
 
 ## Existing Clone Migration
 

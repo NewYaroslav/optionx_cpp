@@ -12,8 +12,8 @@
 | Отправить сделку | `BaseTradingPlatform::place_trade(std::unique_ptr<TradeRequest>)` | Прямое создание `TradeTransactionEvent` из application code |
 | Подписаться на результат сделки | `on_trade_result()` callback или event flow | Polling internal queue |
 | Передать auth/session | `configure_auth(std::unique_ptr<IAuthData>)` | Прямое изменение account info |
-| Добавить фоновые действия | `TaskManager` или `BaseModule::process()` | Новый ad hoc thread loop |
-| Связать modules | `EventBus`/`EventMediator` events | Жесткая ссылка module -> module |
+| Добавить фоновые действия | `TaskManager` или `BaseComponent::process()` | Новый ad hoc thread loop |
+| Связать components | `EventBus`/`EventMediator` events | Жесткая ссылка component -> component |
 | Сохранить session | `storage::ServiceSessionDB` | Новый local encrypted store |
 
 ## `platforms::BaseTradingPlatform`
@@ -21,8 +21,8 @@
 Файл: `include/optionx_cpp/platforms/common/BaseTradingPlatform.hpp`.
 
 Роль: публичный facade и владелец общего runtime stack: `BaseAccountInfoData`,
-`AccountInfoProvider`, `EventBus`, `TaskManager`, `BaseAccountInfoHandler`,
-список `BaseModule*`.
+`AccountInfoProvider`, `EventBus`, `TaskManager`, `BaseAccountInfoComponent`,
+список `BaseComponent*`.
 
 Основные методы:
 
@@ -41,20 +41,20 @@
 | `get_info<T>(...)` | Typed read из account info | Нужен корректный ожидаемый тип |
 | `run(bool start_worker_thread = true)` | Добавляет initialize и loop tasks | `run(false)` требует ручного `process()` |
 | `process()` | Один тик task manager | Используй при внешнем event loop |
-| `shutdown()` | Остановить tasks/modules и drain events | Idempotent; вызывается в destructor |
+| `shutdown()` | Остановить tasks/components и drain events | Idempotent; вызывается в destructor |
 | `event_bus()` | Доступ к внутренней шине | Не используй для обхода готовых facade методов без причины |
-| `register_module(BaseModule*)` | Включить module в lifecycle | Следи, чтобы lifetime module был дольше регистрации |
+| `register_component(BaseComponent*)` | Включить component в lifecycle | Следи, чтобы lifetime component был дольше регистрации |
 | `platform_type()` | Platform identity | Pure virtual |
 
 Особенности:
 
 - `run()` не делает blocking loop сам, если `start_worker_thread=false`.
 - Periodic task имеет период `1` ms и вызывает `m_event_bus.process()`, затем
-  `module->process()`, затем `on_loop()`.
+  `component->process()`, затем `on_loop()`.
 - `shutdown()` сначала останавливает `TaskManager`, потом вызывает
-  `module->shutdown()`, потом `m_event_bus.drain()`.
+  `component->shutdown()`, потом `m_event_bus.drain()`.
 - Callbacks `on_trade_result`, `on_candle_data`, `on_tick_data` в base
-  возвращают static null callback; concrete class/module должен дать рабочую
+  возвращают static null callback; concrete class/component должен дать рабочую
   callback-ссылку, если feature поддерживается.
 
 ## Concrete Platforms
@@ -65,9 +65,9 @@
 
 Собирает:
 
-- `intrade_bar::HttpClientModule`
+- `intrade_bar::HttpClientComponent`
 - `intrade_bar::RequestManager`
-- `intrade_bar::TradeExecutionModule`
+- `intrade_bar::TradeExecutionComponent`
 - `intrade_bar::AuthManager`
 - `intrade_bar::BalanceManager`
 - `intrade_bar::PriceManager`
@@ -89,7 +89,7 @@
 
 Собирает:
 
-- `tradeup::HttpClientModule`
+- `tradeup::HttpClientComponent`
 - `tradeup::AuthManager`
 - `tradeup::BalanceManager`
 
@@ -102,11 +102,11 @@
 
 Считай TradeUp частичной реализацией, пока задача явно не требует завершить ее.
 
-## Base Modules
+## Base Components
 
-### `modules::BaseModule`
+### `components::BaseComponent`
 
-Файл: `include/optionx_cpp/modules/BaseModule.hpp`.
+Файл: `include/optionx_cpp/components/BaseComponent.hpp`.
 
 База для manager-компонентов. Наследуется от `utils::EventMediator`.
 
@@ -117,13 +117,13 @@
 - `shutdown()` - cleanup.
 - `on_event(const utils::Event* const)` - raw listener hook, по умолчанию no-op.
 
-Для нового manager наследуйся от `BaseModule`, если нет более точного base
+Для нового manager наследуйся от `BaseComponent`, если нет более точного base
 class. Подписки на typed events обычно делай через `subscribe<EventType>(...)`,
 а не через ручной `dynamic_cast` в `on_event`.
 
-### `modules::BaseHttpClientModule`
+### `components::BaseHttpClientComponent`
 
-Файл: `include/optionx_cpp/modules/BaseHttpClientModule.hpp`.
+Файл: `include/optionx_cpp/components/BaseHttpClientComponent.hpp`.
 
 Роль: общий async HTTP executor поверх `kurlyk::HttpClient`.
 
@@ -146,9 +146,9 @@ class. Подписки на typed events обычно делай через `su
 - Исключения из future переводятся в `kurlyk::HttpResponse` с error state и
   логируются.
 
-### `modules::BaseTradeExecutionModule`
+### `components::BaseTradeExecutionComponent`
 
-Файл: `include/optionx_cpp/modules/BaseTradeExecutionModule.hpp`.
+Файл: `include/optionx_cpp/components/BaseTradeExecutionComponent.hpp`.
 
 Роль: вход для торговой очереди. Делегирует account read в
 `AccountInfoProvider`, state transitions в `TradeStateManager`, очередь и
@@ -453,12 +453,12 @@ public:
 } // namespace optionx::events
 ```
 
-### Новый Module
+### Новый Component
 
 ```cpp
-class MyManager final : public modules::BaseModule {
+class MyManager final : public components::BaseComponent {
 public:
-    explicit MyManager(utils::EventBus& bus) : BaseModule(bus) {
+    explicit MyManager(utils::EventBus& bus) : BaseComponent(bus) {
         subscribe<events::MyEvent>([this](const events::MyEvent& event) {
             m_last_value = event.value;
         });
@@ -476,11 +476,11 @@ private:
 ### Расширение Trade Execution
 
 ```cpp
-class MyTradeExecution final : public modules::BaseTradeExecutionModule {
+class MyTradeExecution final : public components::BaseTradeExecutionComponent {
 public:
     MyTradeExecution(utils::EventBus& bus,
                      std::shared_ptr<BaseAccountInfoData> account_info)
-        : BaseTradeExecutionModule(bus, std::move(account_info)) {}
+        : BaseTradeExecutionComponent(bus, std::move(account_info)) {}
 
 private:
     bool preprocess_trade_request(

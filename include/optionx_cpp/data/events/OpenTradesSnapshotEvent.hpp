@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_MODULES_OPEN_TRADES_SNAPSHOT_EVENT_HPP_INCLUDED
-#define _OPTIONX_MODULES_OPEN_TRADES_SNAPSHOT_EVENT_HPP_INCLUDED
+#ifndef _OPTIONX_EVENTS_OPEN_TRADES_SNAPSHOT_EVENT_HPP_INCLUDED
+#define _OPTIONX_EVENTS_OPEN_TRADES_SNAPSHOT_EVENT_HPP_INCLUDED
 
 /// \file OpenTradesSnapshotEvent.hpp
 /// \brief Defines the event used to synchronize the open trade counter with a broker snapshot.
@@ -41,4 +41,4 @@ namespace optionx::events {
 
 } // namespace optionx::events
 
-#endif // _OPTIONX_MODULES_OPEN_TRADES_SNAPSHOT_EVENT_HPP_INCLUDED
+#endif // _OPTIONX_EVENTS_OPEN_TRADES_SNAPSHOT_EVENT_HPP_INCLUDED

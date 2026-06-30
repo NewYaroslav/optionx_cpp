@@ -3,7 +3,7 @@
 #define _OPTIONX_UTILS_PUBSUB_EVENT_HUB_HPP_INCLUDED
 
 /// \file EventBus.hpp
-/// \brief Contains the EventBus class for event-based communication between modules.
+/// \brief Contains the EventBus class for event-based communication between components.
 
 #include <unordered_map>
 #include <vector>
@@ -22,7 +22,7 @@ namespace optionx::utils {
     ///
     /// \details Event dispatch copies current subscribers under an internal lock
     /// and invokes user callbacks after releasing it. Listener objects must stay
-    /// alive while they are subscribed; platform/modules code normally enforces
+    /// alive while they are subscribed; platform/components code normally enforces
     /// this by owning subscription and destruction on the same event-loop
     /// lifecycle. Null events are ignored defensively.
     class EventBus {

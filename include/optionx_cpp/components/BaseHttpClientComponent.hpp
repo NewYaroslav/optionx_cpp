@@ -1,30 +1,30 @@
 #pragma once
-#ifndef _OPTIONX_MODULES_BASE_HTTP_CLIENT_MODULE_HPP_INCLUDED
-#define _OPTIONX_MODULES_BASE_HTTP_CLIENT_MODULE_HPP_INCLUDED
+#ifndef _OPTIONX_COMPONENTS_BASE_HTTP_CLIENT_COMPONENT_HPP_INCLUDED
+#define _OPTIONX_COMPONENTS_BASE_HTTP_CLIENT_COMPONENT_HPP_INCLUDED
 
-/// \file BaseHttpClientModule.hpp
-/// \brief Provides the BaseHttpClientModule class for handling HTTP requests and processing trade events.
+/// \file BaseHttpClientComponent.hpp
+/// \brief Provides the BaseHttpClientComponent class for handling HTTP requests and processing trade events.
 
 #ifndef OPTIONX_TIMESTAMP_MS
 #define OPTIONX_TIMESTAMP_MS time_shield::timestamp_ms()
 #endif
 
-namespace optionx::modules {
+namespace optionx::components {
 
-    /// \class BaseHttpClientModule
+    /// \class BaseHttpClientComponent
     /// \brief Handles HTTP requests and processes trade request events.
-    class BaseHttpClientModule : public modules::BaseModule {
+    class BaseHttpClientComponent : public components::BaseComponent {
     public:
 
-        /// \brief Constructor initializing the HTTP client module with an event bus.
+        /// \brief Constructor initializing the HTTP client component with an event bus.
         /// \param bus Reference to the event bus for event handling.
         /// \param account_info Shared pointer to account information data.
-        explicit BaseHttpClientModule(utils::EventBus& bus)
-            : BaseModule(bus) {
+        explicit BaseHttpClientComponent(utils::EventBus& bus)
+            : BaseComponent(bus) {
         }
 
         /// \brief Default virtual destructor.
-        virtual ~BaseHttpClientModule() noexcept override {
+        virtual ~BaseHttpClientComponent() noexcept override {
             deinitialize_rate_limits();
             m_client.cancel_requests();
             m_http_tasks.clear();
@@ -163,8 +163,8 @@ namespace optionx::modules {
                 }
             }
         }
-    }; // BaseHttpClientModule
+    }; // BaseHttpClientComponent
 
 }
 
-#endif // _OPTIONX_MODULES_BASE_HTTP_CLIENT_MODULE_HPP_INCLUDED
+#endif // _OPTIONX_COMPONENTS_BASE_HTTP_CLIENT_COMPONENT_HPP_INCLUDED

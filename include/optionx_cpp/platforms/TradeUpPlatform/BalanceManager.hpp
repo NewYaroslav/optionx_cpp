@@ -8,16 +8,16 @@
 namespace optionx::platforms::tradeup {
 
     /// \class BalanceManager
-    class BalanceManager final : public modules::BaseModule {
+    class BalanceManager final : public components::BaseComponent {
     public:
         BalanceManager(BaseTradingPlatform& platform,
-                       HttpClientModule& http_client,
+                       HttpClientComponent& http_client,
                        std::shared_ptr<BaseAccountInfoData> account_info)
-            : BaseModule(platform.event_bus()),
+            : BaseComponent(platform.event_bus()),
               m_http_client(http_client),
               m_account_info(std::move(account_info)) {
             subscribe<events::BalanceRequestEvent>();
-            platform.register_module(this);
+            platform.register_component(this);
         }
 
         void on_event(const utils::Event* const event) override;
@@ -25,7 +25,7 @@ namespace optionx::platforms::tradeup {
         void shutdown() override {}
 
     private:
-        HttpClientModule& m_http_client;
+        HttpClientComponent& m_http_client;
         std::shared_ptr<BaseAccountInfoData> m_account_info;
 
         void handle_event(const events::BalanceRequestEvent& event);
