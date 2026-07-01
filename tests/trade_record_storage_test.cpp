@@ -118,7 +118,7 @@ optionx::TradeRecord make_record() {
 
 } // namespace
 
-TEST(TradeRecordSerializationTest, RoundTripsBinaryV3) {
+TEST(TradeRecordSerializationTest, RoundTripsCurrentBinaryFormat) {
     const auto record = make_record();
     const auto bytes = record.to_bytes();
     const auto restored = optionx::TradeRecord::from_bytes(bytes.data(), bytes.size());

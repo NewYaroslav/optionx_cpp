@@ -440,15 +440,13 @@ namespace optionx {
             }
 
             const auto version = reader.read<std::uint16_t>();
-            if (version < 1 || version > kBinaryVersion) {
+            if (version != kBinaryVersion) {
                 throw std::runtime_error("TradeRecord::from_bytes: unsupported version");
             }
 
             TradeRecord record;
             record.trade_id = reader.read<std::uint32_t>();
-            if (version >= 3) {
-                record.signal_id = reader.read<std::uint32_t>();
-            }
+            record.signal_id = reader.read<std::uint32_t>();
             record.request_unique_id = reader.read<std::int64_t>();
             record.request_unique_hash = reader.read_string();
             record.account_id = reader.read<std::int64_t>();
@@ -470,17 +468,8 @@ namespace optionx {
             record.min_payout = reader.read<double>();
             record.payout = reader.read<double>();
             record.profit = reader.read<double>();
-            double legacy_balance = 0.0;
-            if (version == 1 || version == 2) {
-                legacy_balance = reader.read<double>();
-                if (version == 1) {
-                    record.set_close_balance(legacy_balance);
-                }
-            }
-            if (version >= 2) {
-                record.open_balance = reader.read<double>();
-                record.close_balance = reader.read<double>();
-            }
+            record.open_balance = reader.read<double>();
+            record.close_balance = reader.read<double>();
 
             record.trade_state = reader.read_enum8<TradeState>();
             record.live_state = reader.read_enum8<TradeState>();
@@ -507,17 +496,6 @@ namespace optionx {
             record.metadata_json = reader.read_string();
 
             record.flags = reader.read<std::uint8_t>();
-            if (version < 3) {
-                if (record.open_balance != 0.0) {
-                    record.flags |= FLAG_HAS_OPEN_BALANCE;
-                }
-                if (version == 1 || record.close_balance != 0.0 || legacy_balance != 0.0) {
-                    record.flags |= FLAG_HAS_CLOSE_BALANCE;
-                    if (version == 2 && record.close_balance == 0.0) {
-                        record.close_balance = legacy_balance;
-                    }
-                }
-            }
 
             record.spread.raw = reader.read<std::uint64_t>();
             record.spread.digits = reader.read<std::uint8_t>();
@@ -582,7 +560,7 @@ namespace optionx {
 
     private:
         static constexpr std::uint32_t kBinaryMagic = 0x5254584fU; // "OXTR" on little-endian hosts.
-        static constexpr std::uint16_t kBinaryVersion = 3;
+        static constexpr std::uint16_t kBinaryVersion = 1;
 
         template<typename T>
         static bool same_known(T lhs, T rhs, T unknown) noexcept {
