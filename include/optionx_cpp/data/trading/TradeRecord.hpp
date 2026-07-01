@@ -15,7 +15,7 @@ namespace optionx {
     public:
         // Storage identity
         std::uint32_t trade_id = 0;           ///< Linear persistent trade ID; 0 means "not assigned".
-        std::uint64_t signal_id = 0;          ///< Persistent signal ID; 0 means "not attached to a signal".
+        std::uint32_t signal_id = 0;          ///< Persistent signal ID; 0 means "not attached to a signal".
         std::int64_t request_unique_id = 0;   ///< Unique ID from TradeRequest.
         std::string request_unique_hash;      ///< Unique hash from TradeRequest.
         std::int64_t account_id = 0;          ///< Trading account ID.
@@ -447,7 +447,7 @@ namespace optionx {
             TradeRecord record;
             record.trade_id = reader.read<std::uint32_t>();
             if (version >= 3) {
-                record.signal_id = reader.read<std::uint64_t>();
+                record.signal_id = reader.read<std::uint32_t>();
             }
             record.request_unique_id = reader.read<std::int64_t>();
             record.request_unique_hash = reader.read_string();

@@ -12,7 +12,7 @@ namespace optionx {
     class SignalRecord {
     public:
         // Storage identity
-        std::uint64_t signal_id = 0;          ///< Persistent signal ID; 0 means "not assigned".
+        std::uint32_t signal_id = 0;          ///< Persistent signal ID; 0 means "not assigned".
         std::int64_t request_unique_id = 0;   ///< Unique ID from the root TradeRequest.
         std::string request_unique_hash;      ///< Unique hash from the root TradeRequest.
         std::int64_t account_id = 0;          ///< Target account ID, if known.

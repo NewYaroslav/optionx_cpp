@@ -20,7 +20,7 @@ namespace optionx {
 
         // Identifiers
         std::uint32_t trade_id = 0; ///< Persistent trade record ID propagated into TradeResult::trade_id.
-        std::uint64_t signal_id = 0; ///< Persistent signal ID; 0 means the request is not attached to a signal.
+        std::uint32_t signal_id = 0; ///< Persistent signal ID; 0 means the request is not attached to a signal.
         int64_t unique_id   = 0;    ///< Unique identifier of the trade request.
         int64_t account_id  = 0;    ///< Identifier of the associated trading account.
 

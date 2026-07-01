@@ -11,19 +11,19 @@ namespace optionx {
     /// \brief Represents a trade signal with execution, decision, and money-management parameters.
     class TradeSignal {
     public:
-        std::uint64_t signal_id = 0;                         ///< Persistent signal ID; 0 means "not assigned".
+        std::uint32_t signal_id = 0;                         ///< Persistent signal ID; 0 means "not assigned".
         TradeRequest request;                                ///< Trade request parameters.
         MmSystemType mm_type = MmSystemType::NONE;           ///< Money management system type.
         std::unique_ptr<IMoneyManagementParams> mm_params;   ///< Money management parameters.
         std::unique_ptr<ITradeDecisionParams> decision_params; ///< Decision-making parameters.
 
         /// \brief Returns the effective signal ID shared with generated requests.
-        std::uint64_t resolved_signal_id() const noexcept {
+        std::uint32_t resolved_signal_id() const noexcept {
             return signal_id != 0 ? signal_id : request.signal_id;
         }
 
         /// \brief Assigns the signal ID to both the signal and its root request.
-        void set_signal_id(std::uint64_t value) noexcept {
+        void set_signal_id(std::uint32_t value) noexcept {
             signal_id = value;
             request.signal_id = value;
         }
@@ -93,7 +93,7 @@ namespace nlohmann {
         /// \param j The JSON object to read.
         /// \param signal The TradeSignal object to populate.
         static void from_json(const json& j, optionx::TradeSignal& signal) {
-            signal.signal_id = j.value("signal_id", std::uint64_t{0});
+            signal.signal_id = j.value("signal_id", std::uint32_t{0});
             signal.request = j.at("request").get<optionx::TradeRequest>();
             if (signal.signal_id == 0) {
                 signal.signal_id = signal.request.signal_id;
