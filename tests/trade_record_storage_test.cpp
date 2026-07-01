@@ -178,8 +178,8 @@ TEST(TradeRecordFactoryTest, AssignsRequestResultAndSignalData) {
     EXPECT_EQ(record.signal_id, 7007u);
     EXPECT_EQ(record.symbol, "EURUSD");
     EXPECT_EQ(record.signal_name, "mean-reversion");
-    EXPECT_EQ(record.request_unique_id, 42);
-    EXPECT_EQ(record.request_unique_hash, "signal-hash");
+    EXPECT_EQ(record.unique_id, 42);
+    EXPECT_EQ(record.unique_hash, "signal-hash");
     EXPECT_EQ(record.option_id, 123456);
     EXPECT_EQ(record.option_hash, "broker-hash");
     EXPECT_TRUE(record.has_open_balance());

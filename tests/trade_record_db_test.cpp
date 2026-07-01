@@ -42,8 +42,8 @@ TradeRecord make_record(
     const std::string& option_hash = "broker-a",
     const std::string& symbol = "EURUSD") {
     TradeRecord record;
-    record.request_unique_id = uid;
-    record.request_unique_hash = "request-" + std::to_string(uid);
+    record.unique_id = uid;
+    record.unique_hash = "request-" + std::to_string(uid);
     record.account_id = 7001;
     record.option_id = option_id;
     record.option_hash = option_hash;
@@ -86,7 +86,7 @@ TradeRecord make_record(
 
 bool contains_uid(const std::vector<TradeRecord>& records, std::int64_t uid) {
     return std::any_of(records.begin(), records.end(), [uid](const TradeRecord& record) {
-        return record.request_unique_id == uid;
+        return record.unique_id == uid;
     });
 }
 
@@ -134,7 +134,7 @@ TEST(TradeRecordDBTest, UpsertFindMigrateEraseClearAndCount) {
     const auto first_id = write.record.trade_id;
     auto by_id = db.find_by_trade_id(first_id);
     ASSERT_TRUE(by_id.ok()) << by_id.message;
-    EXPECT_EQ(by_id.record.request_unique_id, 42);
+    EXPECT_EQ(by_id.record.unique_id, 42);
 
     auto by_uid = db.find_by_uid(42);
     ASSERT_TRUE(by_uid.ok()) << by_uid.message;
@@ -193,7 +193,7 @@ TEST(TradeRecordDBTest, DefaultQueryReturnsAllModernRecords) {
     const auto result = db.find_records(optionx::TradeRecordQuery{});
     ASSERT_TRUE(result.ok()) << result.message;
     ASSERT_EQ(result.records.size(), 1u);
-    EXPECT_EQ(result.records[0].request_unique_id, 1);
+    EXPECT_EQ(result.records[0].unique_id, 1);
 }
 
 TEST(TradeRecordDBTest, AllQueryReturnsAllStoredRecords) {

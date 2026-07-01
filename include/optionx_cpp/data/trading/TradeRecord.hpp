@@ -16,8 +16,8 @@ namespace optionx {
         // Storage identity
         std::uint32_t trade_id = 0;           ///< Linear persistent trade ID; 0 means "not assigned".
         std::uint32_t signal_id = 0;          ///< Persistent signal ID; 0 means "not attached to a signal".
-        std::int64_t request_unique_id = 0;   ///< Unique ID from TradeRequest.
-        std::string request_unique_hash;      ///< Unique hash from TradeRequest.
+        std::int64_t unique_id = 0;          ///< User-defined request/signal correlation ID; 0 means "not assigned".
+        std::string unique_hash;             ///< User-defined request/signal correlation hash.
         std::int64_t account_id = 0;          ///< Trading account ID.
         std::int64_t option_id = 0;           ///< Numeric broker-side order ID.
         std::string option_hash;              ///< String broker-side order ID.
@@ -108,8 +108,8 @@ namespace optionx {
         void assign_request(const TradeRequest& request) {
             trade_id = request.trade_id;
             signal_id = request.signal_id;
-            request_unique_id = request.unique_id;
-            request_unique_hash = request.unique_hash;
+            unique_id = request.unique_id;
+            unique_hash = request.unique_hash;
             account_id = request.account_id;
             account_type = request.account_type;
             currency = request.currency;
@@ -364,7 +364,7 @@ namespace optionx {
         /// \brief Serializes the record using the current binary storage format.
         std::vector<std::uint8_t> to_bytes() const {
             std::vector<std::uint8_t> bytes;
-            bytes.reserve(512 + request_unique_hash.size() + option_hash.size() +
+            bytes.reserve(512 + unique_hash.size() + option_hash.size() +
                           symbol.size() + signal_name.size() + user_data.size() +
                           comment.size() + error_desc.size() + mm_group_hash.size() +
                           mm_group_name.size() + mm_params_json.size() +
@@ -375,8 +375,8 @@ namespace optionx {
 
             append_value(bytes, trade_id);
             append_value(bytes, signal_id);
-            append_value(bytes, request_unique_id);
-            append_string(bytes, request_unique_hash);
+            append_value(bytes, unique_id);
+            append_string(bytes, unique_hash);
             append_value(bytes, account_id);
             append_value(bytes, option_id);
             append_string(bytes, option_hash);
@@ -447,8 +447,8 @@ namespace optionx {
             TradeRecord record;
             record.trade_id = reader.read<std::uint32_t>();
             record.signal_id = reader.read<std::uint32_t>();
-            record.request_unique_id = reader.read<std::int64_t>();
-            record.request_unique_hash = reader.read_string();
+            record.unique_id = reader.read<std::int64_t>();
+            record.unique_hash = reader.read_string();
             record.account_id = reader.read<std::int64_t>();
             record.option_id = reader.read<std::int64_t>();
             record.option_hash = reader.read_string();
@@ -507,8 +507,8 @@ namespace optionx {
         bool operator==(const TradeRecord& other) const {
             return trade_id == other.trade_id &&
                    signal_id == other.signal_id &&
-                   request_unique_id == other.request_unique_id &&
-                   request_unique_hash == other.request_unique_hash &&
+                   unique_id == other.unique_id &&
+                   unique_hash == other.unique_hash &&
                    account_id == other.account_id &&
                    option_id == other.option_id &&
                    option_hash == other.option_hash &&

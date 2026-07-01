@@ -99,7 +99,7 @@ namespace optionx::storage {
         /// \brief Constructs storage with custom MDBX configuration and optional table names.
         /// \param config MDBX connection configuration.
         /// \param records_table Main table name for composite_key -> TradeRecord.
-        /// \param uid_index_table Optional request_unique_id -> composite_key index table.
+        /// \param uid_index_table Optional unique_id -> composite_key index table.
         /// \param trade_id_index_table Optional trade_id -> composite_key index table.
         /// \param meta_table Metadata table for version and next trade ID.
         explicit TradeRecordDB(
@@ -148,7 +148,7 @@ namespace optionx::storage {
         /// \param record Full trade snapshot to store.
         /// \return Write result with the normalized record.
         ///
-        /// Match order is: explicit trade_id, request_unique_id index, broker identity,
+        /// Match order is: explicit trade_id, unique_id index, broker identity,
         /// then a newly reserved linear trade_id. The stored snapshot is not field-merged;
         /// incoming data replaces the previous record.
         TradeRecordDBWriteResult upsert(TradeRecord record);
@@ -165,13 +165,13 @@ namespace optionx::storage {
         /// \return Read result with found=true when the record exists.
         TradeRecordDBReadResult find_by_trade_id(std::uint32_t trade_id) const;
 
-        /// \brief Finds a record through the optional request_unique_id index.
-        /// \param request_unique_id Legacy/request-side ID copied from TradeRequest::unique_id.
+        /// \brief Finds a record through the optional user unique_id index.
+        /// \param unique_id Positive user-defined correlation ID copied from TradeRequest::unique_id.
         /// \return Read result with found=true when an index entry and record exist.
         ///
-        /// TradeRequest::unique_id is not the database identity. Prefer find_by_trade_id(trade_id)
+        /// TradeRecord::unique_id is not the database identity. Prefer find_by_trade_id(trade_id)
         /// for persistent trade lookup.
-        TradeRecordDBReadResult find_by_uid(std::int64_t request_unique_id) const;
+        TradeRecordDBReadResult find_by_uid(std::int64_t unique_id) const;
 
         /// \brief Finds all records whose selected trade timestamp equals timestamp_ms.
         /// \param timestamp_ms Millisecond timestamp matched against open/place/send/close date.
@@ -254,10 +254,10 @@ namespace optionx::storage {
         TradeRecordDBStatus enqueue_find_by_trade_id(std::uint32_t trade_id, read_callback_t callback = {});
 
         /// \brief Enqueues a find-by-UID operation.
-        /// \param request_unique_id Legacy/request-side ID copied from TradeRequest::unique_id.
+        /// \param unique_id Positive user-defined correlation ID copied from TradeRequest::unique_id.
         /// \param callback Optional callback delivered by process(), flush() or shutdown().
         /// \return SUCCESS when the command was accepted, QUEUE_CLOSED otherwise.
-        TradeRecordDBStatus enqueue_find_by_uid(std::int64_t request_unique_id, read_callback_t callback = {});
+        TradeRecordDBStatus enqueue_find_by_uid(std::int64_t unique_id, read_callback_t callback = {});
 
         /// \brief Enqueues a find-by-timestamp operation.
         /// \param timestamp_ms Millisecond timestamp to match.
@@ -359,7 +359,7 @@ namespace optionx::storage {
         TradeRecordDBWriteResult write_no_lock(TradeRecord record);
         TradeRecordDBWriteResult upsert_no_lock(TradeRecord record);
         TradeRecordDBReadResult find_by_trade_id_no_lock(std::uint32_t trade_id) const;
-        TradeRecordDBReadResult find_by_uid_no_lock(std::int64_t request_unique_id) const;
+        TradeRecordDBReadResult find_by_uid_no_lock(std::int64_t unique_id) const;
         TradeRecordDBListResult find_by_timestamp_no_lock(std::int64_t timestamp_ms) const;
         TradeRecordDBListResult find_range_no_lock(std::int64_t start_ms, std::int64_t stop_ms) const;
         TradeRecordDBListResult find_records_no_lock(const optionx::TradeRecordQuery& query) const;

@@ -177,7 +177,7 @@ Trade statistics ordering:
   by result timestamp (`close_date`, then `open_date`, then automatic fallback).
   If several outcomes have the same result timestamp, their tie breaker is the
   decision timeline (`place_date`, then `send_date`, then `open_date`), followed
-  by `trade_id` and `request_unique_id`.
+  by `trade_id` and `unique_id`.
 - `TradeStatsInputOrder` is a legacy hint and must not be used to promise input
   order semantics for realized curves or win/loss series.
 
