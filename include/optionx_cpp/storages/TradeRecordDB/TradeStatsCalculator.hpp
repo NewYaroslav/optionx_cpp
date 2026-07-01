@@ -309,7 +309,7 @@ namespace optionx::storage {
             std::int64_t result_ts = 0;
             std::int64_t decision_ts = 0;
             std::uint32_t trade_id = 0;
-            std::int64_t request_unique_id = 0;
+            std::int64_t unique_id = 0;
             optionx::TradeState trade_state = optionx::TradeState::UNKNOWN;
         };
 
@@ -336,7 +336,7 @@ namespace optionx::storage {
                 result_ts,
                 outcome_decision_timestamp(rec, result_ts),
                 rec.trade_id,
-                rec.request_unique_id,
+                rec.unique_id,
                 rec.trade_state
             };
         }
@@ -554,7 +554,7 @@ namespace optionx::storage {
                     if (lhs.result_ts != rhs.result_ts) return lhs.result_ts < rhs.result_ts;
                     if (lhs.decision_ts != rhs.decision_ts) return lhs.decision_ts < rhs.decision_ts;
                     if (lhs.trade_id != rhs.trade_id) return lhs.trade_id < rhs.trade_id;
-                    return lhs.request_unique_id < rhs.request_unique_id;
+                    return lhs.unique_id < rhs.unique_id;
                 });
 
             std::uint64_t cur_win = 0, cur_loss = 0;

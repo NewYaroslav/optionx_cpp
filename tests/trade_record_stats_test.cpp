@@ -25,7 +25,7 @@ using optionx::storage::detail::selected_timestamp_ms;
 
 bool contains_uid(const std::vector<TradeRecord>& records, std::int64_t uid) {
     return std::any_of(records.begin(), records.end(), [uid](const TradeRecord& record) {
-        return record.request_unique_id == uid;
+        return record.unique_id == uid;
     });
 }
 
@@ -73,7 +73,7 @@ TradeRecord make_win_record(
     const std::string& symbol = "EURUSD",
     optionx::TradeState state = optionx::TradeState::WIN) {
     TradeRecord record;
-    record.request_unique_id = uid;
+    record.unique_id = uid;
     record.account_id = 7001;
     record.option_id = 1000 + uid;
     record.platform_type = optionx::PlatformType::INTRADE_BAR;

@@ -125,10 +125,10 @@ namespace optionx::storage {
         }
     }
 
-    inline TradeRecordDBReadResult TradeRecordDB::find_by_uid(std::int64_t request_unique_id) const {
+    inline TradeRecordDBReadResult TradeRecordDB::find_by_uid(std::int64_t unique_id) const {
         std::lock_guard<std::mutex> lock(m_db_mutex);
         try {
-            return find_by_uid_no_lock(request_unique_id);
+            return find_by_uid_no_lock(unique_id);
         } catch (const mdbxc::MdbxException& ex) {
             LOGIT_PRINT_ERROR("TradeRecordDB find_by_uid database error: ", ex);
             return detail::read_error(TradeRecordDBStatus::DB_ERROR, ex.what());
@@ -292,10 +292,10 @@ namespace optionx::storage {
     }
 
     inline TradeRecordDBStatus TradeRecordDB::enqueue_find_by_uid(
-        std::int64_t request_unique_id,
+        std::int64_t unique_id,
         read_callback_t callback) {
-        return enqueue_command([this, request_unique_id, callback = std::move(callback)]() mutable {
-            auto result = find_by_uid(request_unique_id);
+        return enqueue_command([this, unique_id, callback = std::move(callback)]() mutable {
+            auto result = find_by_uid(unique_id);
             enqueue_callback([callback = std::move(callback), result = std::move(result)]() mutable {
                 if (callback) callback(std::move(result));
             });
@@ -551,16 +551,16 @@ namespace optionx::storage {
 
         if (existing_composite_opt && *existing_composite_opt != new_composite_key) {
             const auto old_record = m_records->find(*existing_composite_opt, txn);
-            if (old_record && old_record->request_unique_id > 0 &&
-                old_record->request_unique_id != record.request_unique_id) {
-                m_uid_index->erase(old_record->request_unique_id, txn);
+            if (old_record && old_record->unique_id > 0 &&
+                old_record->unique_id != record.unique_id) {
+                m_uid_index->erase(old_record->unique_id, txn);
             }
             m_records->erase(*existing_composite_opt, txn);
         }
 
         m_records->insert_or_assign(new_composite_key, record, txn);
-        if (record.request_unique_id > 0) {
-            m_uid_index->insert_or_assign(record.request_unique_id, new_composite_key, txn);
+        if (record.unique_id > 0) {
+            m_uid_index->insert_or_assign(record.unique_id, new_composite_key, txn);
         }
         m_trade_id_index->insert_or_assign(record.trade_id, new_composite_key, txn);
         bump_next_trade_id_no_lock(record.trade_id, txn.handle());
@@ -588,14 +588,14 @@ namespace optionx::storage {
 
         std::uint32_t selected_trade_id = record.trade_id;
 
-        if (selected_trade_id == 0 && record.request_unique_id > 0) {
-            const auto existing_composite = m_uid_index->find(record.request_unique_id, txn);
+        if (selected_trade_id == 0 && record.unique_id > 0) {
+            const auto existing_composite = m_uid_index->find(record.unique_id, txn);
             if (existing_composite) {
                 const auto existing_record = m_records->find(*existing_composite, txn);
                 if (existing_record) {
                     selected_trade_id = existing_record->trade_id;
                 } else {
-                    m_uid_index->erase(record.request_unique_id, txn);
+                    m_uid_index->erase(record.unique_id, txn);
                 }
             }
         }
@@ -624,16 +624,16 @@ namespace optionx::storage {
 
         if (existing_composite_opt && *existing_composite_opt != new_composite_key) {
             const auto old_record = m_records->find(*existing_composite_opt, txn);
-            if (old_record && old_record->request_unique_id > 0 &&
-                old_record->request_unique_id != record.request_unique_id) {
-                m_uid_index->erase(old_record->request_unique_id, txn);
+            if (old_record && old_record->unique_id > 0 &&
+                old_record->unique_id != record.unique_id) {
+                m_uid_index->erase(old_record->unique_id, txn);
             }
             m_records->erase(*existing_composite_opt, txn);
         }
 
         m_records->insert_or_assign(new_composite_key, record, txn);
-        if (record.request_unique_id > 0) {
-            m_uid_index->insert_or_assign(record.request_unique_id, new_composite_key, txn);
+        if (record.unique_id > 0) {
+            m_uid_index->insert_or_assign(record.unique_id, new_composite_key, txn);
         }
         m_trade_id_index->insert_or_assign(selected_trade_id, new_composite_key, txn);
         bump_next_trade_id_no_lock(selected_trade_id, txn.handle());
@@ -670,18 +670,18 @@ namespace optionx::storage {
         return result;
     }
 
-    inline TradeRecordDBReadResult TradeRecordDB::find_by_uid_no_lock(std::int64_t request_unique_id) const {
+    inline TradeRecordDBReadResult TradeRecordDB::find_by_uid_no_lock(std::int64_t unique_id) const {
         if (!is_open_no_lock()) {
             return detail::read_error(TradeRecordDBStatus::NOT_OPEN, "TradeRecordDB is not open");
         }
-        if (request_unique_id <= 0) {
+        if (unique_id <= 0) {
             return detail::read_error(
                 TradeRecordDBStatus::INVALID_ARGUMENT,
-                "TradeRecord request_unique_id is required");
+                "TradeRecord unique_id is required");
         }
 
         auto txn = m_connection->transaction(mdbxc::TransactionMode::READ_ONLY);
-        const auto composite_opt = m_uid_index->find(request_unique_id, txn);
+        const auto composite_opt = m_uid_index->find(unique_id, txn);
         if (!composite_opt) {
             txn.commit();
             return detail::read_error(
@@ -696,10 +696,10 @@ namespace optionx::storage {
                 TradeRecordDBStatus::NOT_FOUND,
                 "TradeRecord UID index points to missing record");
         }
-        if (record->request_unique_id != request_unique_id) {
+        if (record->unique_id != unique_id) {
             return detail::read_error(
                 TradeRecordDBStatus::NOT_FOUND,
-                "TradeRecord UID index points to a different request_unique_id");
+                "TradeRecord UID index points to a different unique_id");
         }
 
         TradeRecordDBReadResult result;
@@ -902,8 +902,8 @@ namespace optionx::storage {
         }
 
         const auto record = m_records->find(*composite_opt, txn);
-        if (record && record->request_unique_id > 0) {
-            m_uid_index->erase(record->request_unique_id, txn);
+        if (record && record->unique_id > 0) {
+            m_uid_index->erase(record->unique_id, txn);
         }
         m_records->erase(*composite_opt, txn);
         m_trade_id_index->erase(trade_id, txn);
