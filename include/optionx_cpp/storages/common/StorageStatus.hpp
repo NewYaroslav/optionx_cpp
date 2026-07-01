@@ -16,6 +16,7 @@ namespace optionx::storage {
         NOT_OPEN,
         READ_ONLY,
         QUEUE_CLOSED,
+        CONFLICT,
         DB_ERROR,
         STORAGE_ERROR = DB_ERROR,
         SEQUENCE_EXHAUSTED

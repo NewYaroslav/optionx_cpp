@@ -4,6 +4,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstring>
+#include <limits>
 #include <string>
 #include <thread>
 #include <vector>
@@ -28,7 +30,7 @@ std::string unique_db_path(const std::string& name) {
 mdbxc::Config make_config(const std::string& name) {
     mdbxc::Config config;
     config.pathname = unique_db_path(name);
-    config.max_dbs = 5;
+    config.max_dbs = 4;
     config.no_subdir = false;
     config.relative_to_exe = true;
     return config;
@@ -116,6 +118,23 @@ TEST(SignalRecordSerializationTest, RejectsCorruptedPayloads) {
         std::runtime_error);
 }
 
+TEST(SignalRecordSerializationTest, RejectsCorruptedTradeIdVectorLengthBeforeReserve) {
+    auto record = make_record(42, 1712345600100);
+    record.signal_id = 77;
+
+    auto bytes = record.to_bytes();
+    ASSERT_GT(bytes.size(), sizeof(std::uint32_t) * (record.trade_ids.size() + 1));
+
+    const auto vector_length_offset =
+        bytes.size() - sizeof(std::uint32_t) * (record.trade_ids.size() + 1);
+    const auto bad_length = (std::numeric_limits<std::uint32_t>::max)();
+    std::memcpy(bytes.data() + vector_length_offset, &bad_length, sizeof(bad_length));
+
+    EXPECT_THROW(
+        static_cast<void>(SignalRecord::from_bytes(bytes.data(), bytes.size())),
+        std::runtime_error);
+}
+
 TEST(SignalRecordDBTest, ReservesPersistentSignalIdAndAssignsCarriers) {
     const auto config = make_config("signal_record_db_ids");
 
@@ -164,13 +183,15 @@ TEST(SignalRecordDBTest, UpsertFindMigrateEraseClearAndCount) {
 
     auto by_uid = db.find_by_uid(42);
     ASSERT_TRUE(by_uid.ok()) << by_uid.message;
-    EXPECT_EQ(by_uid.record.signal_id, first_id);
+    ASSERT_EQ(by_uid.records.size(), 1u);
+    EXPECT_EQ(by_uid.records[0].signal_id, first_id);
 
     auto by_trade = db.find_by_trade_id(1001);
     ASSERT_TRUE(by_trade.ok()) << by_trade.message;
     EXPECT_EQ(by_trade.record.signal_id, first_id);
 
     auto updated = make_record(42, ts + 1, 2001);
+    updated.signal_id = first_id;
     updated.total_profit = 20.5;
     auto update = db.upsert(updated);
     ASSERT_TRUE(update.ok()) << update.message;
@@ -197,7 +218,9 @@ TEST(SignalRecordDBTest, UpsertFindMigrateEraseClearAndCount) {
     EXPECT_TRUE(contains_uid(range.records, 43));
 
     EXPECT_EQ(db.erase_by_signal_id(first_id), SignalRecordDBStatus::SUCCESS);
-    EXPECT_EQ(db.find_by_uid(42).status, SignalRecordDBStatus::NOT_FOUND);
+    auto missing_uid = db.find_by_uid(42);
+    ASSERT_TRUE(missing_uid.ok()) << missing_uid.message;
+    EXPECT_TRUE(missing_uid.records.empty());
     EXPECT_EQ(db.find_by_trade_id(2001).status, SignalRecordDBStatus::NOT_FOUND);
     EXPECT_EQ(db.count(), 1u);
 
@@ -219,9 +242,13 @@ TEST(SignalRecordDBTest, WriteRemovesStaleIndexesWhenFieldsChange) {
     updated.signal_id = 10;
     ASSERT_TRUE(db.write(updated).ok());
 
-    EXPECT_EQ(db.find_by_uid(50).status, SignalRecordDBStatus::NOT_FOUND);
+    auto old_uid = db.find_by_uid(50);
+    ASSERT_TRUE(old_uid.ok()) << old_uid.message;
+    EXPECT_TRUE(old_uid.records.empty());
     EXPECT_EQ(db.find_by_trade_id(1501).status, SignalRecordDBStatus::NOT_FOUND);
-    ASSERT_TRUE(db.find_by_uid(51).ok());
+    auto new_uid = db.find_by_uid(51);
+    ASSERT_TRUE(new_uid.ok()) << new_uid.message;
+    ASSERT_EQ(new_uid.records.size(), 1u);
     ASSERT_TRUE(db.find_by_trade_id(2501).ok());
 }
 
@@ -257,8 +284,74 @@ TEST(SignalRecordDBTest, WriteMovesRecordWhenCanonicalTimestampChanges) {
     EXPECT_EQ(new_range.records[0].signal_id, 12u);
     EXPECT_DOUBLE_EQ(new_range.records[0].total_profit, 44.0);
     EXPECT_EQ(db.count(), 1u);
-    ASSERT_TRUE(db.find_by_uid(60).ok());
+    auto by_uid = db.find_by_uid(60);
+    ASSERT_TRUE(by_uid.ok()) << by_uid.message;
+    ASSERT_EQ(by_uid.records.size(), 1u);
     ASSERT_TRUE(db.find_by_trade_id(1601).ok());
+}
+
+TEST(SignalRecordDBTest, FindByUidReturnsAllMatchingUserIdsWithoutMerging) {
+    const auto config = make_config("signal_record_db_duplicate_uid");
+    SignalRecordDB db(config);
+    ASSERT_TRUE(db.is_open());
+
+    auto first = make_record(77, 1712345600000, 7701);
+    auto second = make_record(77, 1712345660000, 7801);
+
+    auto first_write = db.upsert(first);
+    ASSERT_TRUE(first_write.ok()) << first_write.message;
+    auto second_write = db.upsert(second);
+    ASSERT_TRUE(second_write.ok()) << second_write.message;
+
+    EXPECT_NE(first_write.record.signal_id, second_write.record.signal_id);
+
+    auto by_uid = db.find_by_uid(77);
+    ASSERT_TRUE(by_uid.ok()) << by_uid.message;
+    ASSERT_EQ(by_uid.records.size(), 2u);
+    EXPECT_TRUE(contains_uid(by_uid.records, 77));
+    EXPECT_TRUE(db.find_by_signal_id(first_write.record.signal_id).ok());
+    EXPECT_TRUE(db.find_by_signal_id(second_write.record.signal_id).ok());
+}
+
+TEST(SignalRecordDBTest, WriteRejectsTradeIdOwnedByAnotherSignal) {
+    const auto config = make_config("signal_record_db_trade_conflict_write");
+    SignalRecordDB db(config);
+    ASSERT_TRUE(db.is_open());
+
+    auto first = make_record(81, 1712345600000, 8101);
+    first.signal_id = 1;
+    ASSERT_TRUE(db.write(first).ok());
+
+    auto second = make_record(82, 1712345601000, 8101);
+    second.signal_id = 2;
+    auto conflict = db.write(second);
+    EXPECT_EQ(conflict.status, SignalRecordDBStatus::CONFLICT);
+
+    auto owner = db.find_by_trade_id(8101);
+    ASSERT_TRUE(owner.ok()) << owner.message;
+    EXPECT_EQ(owner.record.signal_id, 1u);
+}
+
+TEST(SignalRecordDBTest, UpsertRejectsAmbiguousTradeIdOwners) {
+    const auto config = make_config("signal_record_db_trade_conflict_upsert");
+    SignalRecordDB db(config);
+    ASSERT_TRUE(db.is_open());
+
+    auto first = make_record(91, 1712345600000, 9101);
+    first.signal_id = 1;
+    ASSERT_TRUE(db.write(first).ok());
+
+    auto second = make_record(92, 1712345601000, 9201);
+    second.signal_id = 2;
+    ASSERT_TRUE(db.write(second).ok());
+
+    auto ambiguous = make_record(93, 1712345602000, 9301);
+    ambiguous.trade_ids.clear();
+    ambiguous.add_trade_id(9101);
+    ambiguous.add_trade_id(9201);
+
+    auto conflict = db.upsert(ambiguous);
+    EXPECT_EQ(conflict.status, SignalRecordDBStatus::CONFLICT);
 }
 
 TEST(SignalRecordDBTest, ProcessRunsQueuedWorkOnCallerThread) {

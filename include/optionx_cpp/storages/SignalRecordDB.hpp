@@ -85,7 +85,6 @@ namespace optionx::storage {
         explicit SignalRecordDB(
             mdbxc::Config config,
             std::string records_table = "signal_records",
-            std::string uid_index_table = "signal_record_uid_index",
             std::string signal_id_index_table = "signal_record_signal_id_index",
             std::string trade_id_index_table = "signal_record_trade_id_index",
             std::string meta_table = "signal_record_meta");
@@ -121,8 +120,8 @@ namespace optionx::storage {
         /// \brief Finds a signal by persistent signal_id.
         SignalRecordDBReadResult find_by_signal_id(std::uint32_t signal_id) const;
 
-        /// \brief Finds a signal through its optional unique_id index.
-        SignalRecordDBReadResult find_by_uid(std::int64_t unique_id) const;
+        /// \brief Finds all signals with the user-defined unique_id value.
+        SignalRecordDBListResult find_by_uid(std::int64_t unique_id) const;
 
         /// \brief Finds the signal that currently owns the given produced trade_id.
         SignalRecordDBReadResult find_by_trade_id(std::uint32_t trade_id) const;
@@ -158,7 +157,7 @@ namespace optionx::storage {
         SignalRecordDBStatus enqueue_find_by_signal_id(std::uint32_t signal_id, read_callback_t callback = {});
 
         /// \brief Enqueues a find-by-UID operation.
-        SignalRecordDBStatus enqueue_find_by_uid(std::int64_t unique_id, read_callback_t callback = {});
+        SignalRecordDBStatus enqueue_find_by_uid(std::int64_t unique_id, list_callback_t callback = {});
 
         /// \brief Enqueues a find-by-trade-id operation.
         SignalRecordDBStatus enqueue_find_by_trade_id(std::uint32_t trade_id, read_callback_t callback = {});
@@ -189,14 +188,12 @@ namespace optionx::storage {
 
     private:
         using records_table_t = mdbxc::KeyValueTable<std::uint64_t, SignalRecord>;
-        using uid_index_table_t = mdbxc::KeyValueTable<std::int64_t, std::uint64_t>;
         using signal_id_index_table_t = mdbxc::KeyValueTable<std::uint32_t, std::uint64_t>;
         using trade_id_index_table_t = mdbxc::KeyValueTable<std::uint32_t, std::uint64_t>;
         using meta_table_t = mdbxc::ValueTable<SignalRecordDBMeta>;
 
         mdbxc::Config m_config;
         std::string m_records_table_name;
-        std::string m_uid_index_table_name;
         std::string m_signal_id_index_table_name;
         std::string m_trade_id_index_table_name;
         std::string m_meta_table_name;
@@ -204,7 +201,6 @@ namespace optionx::storage {
         mutable std::mutex m_db_mutex;
         std::shared_ptr<mdbxc::Connection> m_connection;
         std::unique_ptr<records_table_t> m_records;
-        std::unique_ptr<uid_index_table_t> m_uid_index;
         std::unique_ptr<signal_id_index_table_t> m_signal_id_index;
         std::unique_ptr<trade_id_index_table_t> m_trade_id_index;
         std::unique_ptr<meta_table_t> m_meta;
@@ -234,11 +230,12 @@ namespace optionx::storage {
         void write_indexes_no_lock(const SignalRecord& record, std::uint64_t composite_key, MDBX_txn* txn);
         void store_record_no_lock(const SignalRecord& record, MDBX_txn* txn);
         std::uint32_t find_existing_signal_id_no_lock(const SignalRecord& record, MDBX_txn* txn);
+        bool trade_id_conflicts_no_lock(const SignalRecord& record, MDBX_txn* txn, std::string* message = nullptr);
 
         SignalRecordDBWriteResult write_no_lock(SignalRecord record);
         SignalRecordDBWriteResult upsert_no_lock(SignalRecord record);
         SignalRecordDBReadResult find_by_signal_id_no_lock(std::uint32_t signal_id) const;
-        SignalRecordDBReadResult find_by_uid_no_lock(std::int64_t unique_id) const;
+        SignalRecordDBListResult find_by_uid_no_lock(std::int64_t unique_id) const;
         SignalRecordDBReadResult find_by_trade_id_no_lock(std::uint32_t trade_id) const;
         SignalRecordDBListResult find_by_timestamp_no_lock(std::int64_t timestamp_ms) const;
         SignalRecordDBListResult find_range_no_lock(std::int64_t start_ms, std::int64_t stop_ms) const;

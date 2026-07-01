@@ -357,6 +357,12 @@ namespace optionx {
     private:
         static constexpr std::uint32_t kBinaryMagic = 0x5253584fU; // "OXSR" on little-endian hosts.
         static constexpr std::uint16_t kBinaryVersion = 1;
+        static_assert(sizeof(double) == 8, "SignalRecord binary format requires 64-bit double");
+        static_assert(std::numeric_limits<double>::is_iec559,
+                      "SignalRecord binary format requires IEEE-754 double");
+
+        // This is a compact local storage format, not a cross-architecture wire format.
+        // It is intended for little-endian Windows/Linux targets with IEEE-754 doubles.
 
         template<class T>
         static void append_value(std::vector<std::uint8_t>& bytes, const T& value) {
@@ -426,6 +432,10 @@ namespace optionx {
 
             std::vector<std::uint32_t> read_vector_u32() {
                 const auto length = read<std::uint32_t>();
+                if (length > remaining() / sizeof(std::uint32_t)) {
+                    throw std::runtime_error("SignalRecord::from_bytes: corrupted vector length");
+                }
+
                 std::vector<std::uint32_t> values;
                 values.reserve(length);
                 for (std::uint32_t i = 0; i < length; ++i) {
@@ -438,6 +448,10 @@ namespace optionx {
                 if (m_offset != m_size) {
                     throw std::runtime_error("SignalRecord::from_bytes: trailing data");
                 }
+            }
+
+            std::size_t remaining() const noexcept {
+                return m_size - m_offset;
             }
 
         private:

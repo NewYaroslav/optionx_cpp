@@ -19,7 +19,7 @@ namespace optionx::storage {
     inline mdbxc::Config SignalRecordDB::default_config() {
         mdbxc::Config config;
         config.pathname = OPTIONX_SIGNAL_RECORD_DB_FILE;
-        config.max_dbs = 5;
+        config.max_dbs = 4;
         config.no_subdir = false;
         config.relative_to_exe = true;
         return config;
@@ -31,13 +31,11 @@ namespace optionx::storage {
     inline SignalRecordDB::SignalRecordDB(
         mdbxc::Config config,
         std::string records_table,
-        std::string uid_index_table,
         std::string signal_id_index_table,
         std::string trade_id_index_table,
         std::string meta_table)
         : m_config(std::move(config)),
           m_records_table_name(std::move(records_table)),
-          m_uid_index_table_name(std::move(uid_index_table)),
           m_signal_id_index_table_name(std::move(signal_id_index_table)),
           m_trade_id_index_table_name(std::move(trade_id_index_table)),
           m_meta_table_name(std::move(meta_table)) {
@@ -130,16 +128,16 @@ namespace optionx::storage {
         }
     }
 
-    inline SignalRecordDBReadResult SignalRecordDB::find_by_uid(std::int64_t unique_id) const {
+    inline SignalRecordDBListResult SignalRecordDB::find_by_uid(std::int64_t unique_id) const {
         std::lock_guard<std::mutex> lock(m_db_mutex);
         try {
             return find_by_uid_no_lock(unique_id);
         } catch (const mdbxc::MdbxException& ex) {
             LOGIT_PRINT_ERROR("SignalRecordDB find_by_uid database error: ", ex);
-            return signal_detail::read_error(SignalRecordDBStatus::DB_ERROR, ex.what());
+            return signal_detail::list_error(SignalRecordDBStatus::DB_ERROR, ex.what());
         } catch (const std::exception& ex) {
             LOGIT_PRINT_ERROR("SignalRecordDB find_by_uid error: ", ex);
-            return signal_detail::read_error(SignalRecordDBStatus::DB_ERROR, ex.what());
+            return signal_detail::list_error(SignalRecordDBStatus::DB_ERROR, ex.what());
         }
     }
 
@@ -271,7 +269,7 @@ namespace optionx::storage {
 
     inline SignalRecordDBStatus SignalRecordDB::enqueue_find_by_uid(
             std::int64_t unique_id,
-            read_callback_t callback) {
+            list_callback_t callback) {
         return enqueue_command([this, unique_id, callback = std::move(callback)]() mutable {
             auto result = find_by_uid(unique_id);
             enqueue_callback([callback = std::move(callback), result = std::move(result)]() mutable {
@@ -394,7 +392,6 @@ namespace optionx::storage {
         std::lock_guard<std::mutex> lock(m_db_mutex);
         try {
             m_records.reset();
-            m_uid_index.reset();
             m_signal_id_index.reset();
             m_trade_id_index.reset();
             m_meta.reset();
@@ -413,13 +410,12 @@ namespace optionx::storage {
     inline void SignalRecordDB::open() {
         std::lock_guard<std::mutex> lock(m_db_mutex);
         try {
-            if (m_config.max_dbs < 5) {
-                m_config.max_dbs = 5;
+            if (m_config.max_dbs < 4) {
+                m_config.max_dbs = 4;
             }
             m_read_only = m_config.read_only;
             m_connection = mdbxc::Connection::create(m_config);
             m_records = std::make_unique<records_table_t>(m_connection, m_records_table_name);
-            m_uid_index = std::make_unique<uid_index_table_t>(m_connection, m_uid_index_table_name);
             m_signal_id_index = std::make_unique<signal_id_index_table_t>(
                 m_connection,
                 m_signal_id_index_table_name);
@@ -443,7 +439,7 @@ namespace optionx::storage {
 
     inline bool SignalRecordDB::is_open_no_lock() const noexcept {
         return m_open && m_connection && m_connection->is_connected() &&
-               m_records && m_uid_index && m_signal_id_index && m_trade_id_index && m_meta;
+               m_records && m_signal_id_index && m_trade_id_index && m_meta;
     }
 
     inline void SignalRecordDB::init_meta_no_lock(MDBX_txn* txn) {
@@ -518,9 +514,6 @@ namespace optionx::storage {
         if (record.signal_id > 0) {
             erase_if_same_signal(m_signal_id_index, record.signal_id);
         }
-        if (record.unique_id > 0) {
-            erase_if_same_signal(m_uid_index, record.unique_id);
-        }
         for (const auto trade_id : record.trade_ids) {
             if (trade_id == 0) continue;
             erase_if_same_signal(m_trade_id_index, trade_id);
@@ -533,9 +526,6 @@ namespace optionx::storage {
             MDBX_txn* txn) {
         if (record.signal_id > 0) {
             m_signal_id_index->insert_or_assign(record.signal_id, composite_key, txn);
-        }
-        if (record.unique_id > 0) {
-            m_uid_index->insert_or_assign(record.unique_id, composite_key, txn);
         }
         for (const auto trade_id : record.trade_ids) {
             if (trade_id == 0) continue;
@@ -570,15 +560,6 @@ namespace optionx::storage {
             MDBX_txn* txn) {
         if (record.signal_id > 0) return record.signal_id;
 
-        if (record.unique_id > 0) {
-            const auto composite = m_uid_index->find(record.unique_id, txn);
-            if (composite) {
-                const auto existing_record = m_records->find(*composite, txn);
-                if (existing_record) return existing_record->signal_id;
-                m_uid_index->erase(record.unique_id, txn);
-            }
-        }
-
         for (const auto trade_id : record.trade_ids) {
             if (trade_id == 0) continue;
             const auto composite = m_trade_id_index->find(trade_id, txn);
@@ -589,6 +570,31 @@ namespace optionx::storage {
         }
 
         return 0;
+    }
+
+    inline bool SignalRecordDB::trade_id_conflicts_no_lock(
+            const SignalRecord& record,
+            MDBX_txn* txn,
+            std::string* message) {
+        for (const auto trade_id : record.trade_ids) {
+            if (trade_id == 0) continue;
+
+            const auto composite = m_trade_id_index->find(trade_id, txn);
+            if (!composite) continue;
+
+            const auto existing_record = m_records->find(*composite, txn);
+            if (!existing_record) {
+                m_trade_id_index->erase(trade_id, txn);
+                continue;
+            }
+            if (existing_record->signal_id == record.signal_id) continue;
+
+            if (message) {
+                *message = "SignalRecord trade_id already belongs to another signal";
+            }
+            return true;
+        }
+        return false;
     }
 
     inline SignalRecordDBWriteResult SignalRecordDB::write_no_lock(SignalRecord record) {
@@ -612,6 +618,14 @@ namespace optionx::storage {
         }
 
         auto txn = m_connection->transaction(mdbxc::TransactionMode::WRITABLE);
+        std::string conflict_message;
+        if (trade_id_conflicts_no_lock(record, txn.handle(), &conflict_message)) {
+            return signal_detail::write_error(
+                SignalRecordDBStatus::CONFLICT,
+                std::move(record),
+                conflict_message);
+        }
+
         store_record_no_lock(record, txn.handle());
         txn.commit();
         return signal_detail::write_success(std::move(record));
@@ -645,6 +659,14 @@ namespace optionx::storage {
         }
 
         record.signal_id = selected_signal_id;
+        std::string conflict_message;
+        if (trade_id_conflicts_no_lock(record, txn.handle(), &conflict_message)) {
+            return signal_detail::write_error(
+                SignalRecordDBStatus::CONFLICT,
+                std::move(record),
+                conflict_message);
+        }
+
         store_record_no_lock(record, txn.handle());
         txn.commit();
         return signal_detail::write_success(std::move(record));
@@ -685,42 +707,37 @@ namespace optionx::storage {
         return result;
     }
 
-    inline SignalRecordDBReadResult SignalRecordDB::find_by_uid_no_lock(std::int64_t unique_id) const {
+    inline SignalRecordDBListResult SignalRecordDB::find_by_uid_no_lock(std::int64_t unique_id) const {
         if (!is_open_no_lock()) {
-            return signal_detail::read_error(SignalRecordDBStatus::NOT_OPEN, "SignalRecordDB is not open");
+            return signal_detail::list_error(SignalRecordDBStatus::NOT_OPEN, "SignalRecordDB is not open");
         }
         if (unique_id <= 0) {
-            return signal_detail::read_error(
+            return signal_detail::list_error(
                 SignalRecordDBStatus::INVALID_ARGUMENT,
                 "SignalRecord unique_id is required");
         }
 
+        const auto start_key = signal_detail::make_composite_key(std::numeric_limits<std::int32_t>::min(), 0);
+        const auto stop_key = signal_detail::make_composite_key(
+            std::numeric_limits<std::int32_t>::max(),
+            0xFFFFFFFFu);
+
         auto txn = m_connection->transaction(mdbxc::TransactionMode::READ_ONLY);
-        const auto composite = m_uid_index->find(unique_id, txn);
-        if (!composite) {
-            txn.commit();
-            return signal_detail::read_error(
-                SignalRecordDBStatus::NOT_FOUND,
-                "SignalRecord UID index entry was not found");
-        }
-
-        const auto record = m_records->find(*composite, txn);
-        txn.commit();
-        if (!record) {
-            return signal_detail::read_error(
-                SignalRecordDBStatus::NOT_FOUND,
-                "SignalRecord UID index points to missing record");
-        }
-        if (record->unique_id != unique_id) {
-            return signal_detail::read_error(
-                SignalRecordDBStatus::NOT_FOUND,
-                "SignalRecord UID index points to a different unique_id");
-        }
-
-        SignalRecordDBReadResult result;
+        SignalRecordDBListResult result;
         result.status = SignalRecordDBStatus::SUCCESS;
-        result.record = *record;
-        result.found = true;
+
+        m_records->for_each_range(
+            start_key,
+            stop_key,
+            [&result, unique_id](const std::uint64_t&, const SignalRecord& record) {
+                if (record.unique_id == unique_id) {
+                    result.records.push_back(record);
+                }
+                return true;
+            },
+            txn.handle());
+
+        txn.commit();
         return result;
     }
 
@@ -910,7 +927,6 @@ namespace optionx::storage {
 
         auto txn = m_connection->transaction(mdbxc::TransactionMode::WRITABLE);
         m_records->clear(txn);
-        m_uid_index->clear(txn);
         m_signal_id_index->clear(txn);
         m_trade_id_index->clear(txn);
         m_meta->clear(txn);
