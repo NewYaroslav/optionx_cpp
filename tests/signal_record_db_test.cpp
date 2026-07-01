@@ -295,8 +295,11 @@ TEST(SignalRecordDBTest, FindByUidReturnsAllMatchingUserIdsWithoutMerging) {
     SignalRecordDB db(config);
     ASSERT_TRUE(db.is_open());
 
-    auto first = make_record(77, 1712345600000, 7701);
-    auto second = make_record(77, 1712345660000, 7801);
+    constexpr std::int64_t first_ts = 1712345600000;
+    constexpr std::int64_t second_ts = 1712345660000;
+
+    auto first = make_record(77, first_ts, 7701);
+    auto second = make_record(77, second_ts, 7801);
 
     auto first_write = db.upsert(first);
     ASSERT_TRUE(first_write.ok()) << first_write.message;
@@ -311,6 +314,19 @@ TEST(SignalRecordDBTest, FindByUidReturnsAllMatchingUserIdsWithoutMerging) {
     EXPECT_TRUE(contains_uid(by_uid.records, 77));
     EXPECT_TRUE(db.find_by_signal_id(first_write.record.signal_id).ok());
     EXPECT_TRUE(db.find_by_signal_id(second_write.record.signal_id).ok());
+
+    auto first_range = db.find_by_uid(77, first_ts, first_ts + 999);
+    ASSERT_TRUE(first_range.ok()) << first_range.message;
+    ASSERT_EQ(first_range.records.size(), 1u);
+    EXPECT_EQ(first_range.records[0].signal_id, first_write.record.signal_id);
+
+    auto second_range = db.find_by_uid(77, second_ts, second_ts + 999);
+    ASSERT_TRUE(second_range.ok()) << second_range.message;
+    ASSERT_EQ(second_range.records.size(), 1u);
+    EXPECT_EQ(second_range.records[0].signal_id, second_write.record.signal_id);
+
+    auto invalid_range = db.find_by_uid(77, second_ts, first_ts);
+    EXPECT_EQ(invalid_range.status, SignalRecordDBStatus::INVALID_ARGUMENT);
 }
 
 TEST(SignalRecordDBTest, FindByUidAllowsZeroAndNegativeUserIds) {
@@ -396,11 +412,12 @@ TEST(SignalRecordDBTest, ProcessRunsQueuedWorkOnCallerThread) {
     SignalRecordDB db(config);
     ASSERT_TRUE(db.is_open());
 
+    constexpr std::int64_t record_ts = 1712345600100;
     std::atomic<int> callback_count{0};
     std::uint32_t callback_signal_id = 0;
     ASSERT_EQ(
         db.enqueue_upsert(
-            make_record(70, 1712345600100, 7001),
+            make_record(70, record_ts, 7001),
             [&](optionx::storage::SignalRecordDBWriteResult result) {
                 ASSERT_TRUE(result.ok()) << result.message;
                 callback_signal_id = result.record.signal_id;
@@ -412,6 +429,23 @@ TEST(SignalRecordDBTest, ProcessRunsQueuedWorkOnCallerThread) {
     db.process();
     EXPECT_EQ(callback_count.load(), 1);
     EXPECT_TRUE(db.find_by_signal_id(callback_signal_id).ok());
+
+    std::size_t range_count = 0;
+    ASSERT_EQ(
+        db.enqueue_find_by_uid(
+            70,
+            record_ts,
+            record_ts + 999,
+            [&](optionx::storage::SignalRecordDBListResult result) {
+                ASSERT_TRUE(result.ok()) << result.message;
+                range_count = result.records.size();
+                ++callback_count;
+            }),
+        SignalRecordDBStatus::SUCCESS);
+
+    db.process();
+    EXPECT_EQ(callback_count.load(), 2);
+    EXPECT_EQ(range_count, 1u);
 }
 
 TEST(SignalRecordDBTest, WorkerFlushDeliversCallbacksOnFlushThread) {

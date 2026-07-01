@@ -121,7 +121,15 @@ namespace optionx::storage {
         SignalRecordDBReadResult find_by_signal_id(std::uint32_t signal_id) const;
 
         /// \brief Finds all signals with the user-defined unique_id value.
+        /// \details Convenience full-scan search over all signal records.
+        /// For large journals prefer the overload with an explicit time range.
         SignalRecordDBListResult find_by_uid(std::int64_t unique_id) const;
+
+        /// \brief Finds all signals with unique_id inside [start_ms, stop_ms].
+        SignalRecordDBListResult find_by_uid(
+            std::int64_t unique_id,
+            std::int64_t start_ms,
+            std::int64_t stop_ms) const;
 
         /// \brief Finds the signal that currently owns the given produced trade_id.
         SignalRecordDBReadResult find_by_trade_id(std::uint32_t trade_id) const;
@@ -156,8 +164,15 @@ namespace optionx::storage {
         /// \brief Enqueues a find-by-signal-id operation.
         SignalRecordDBStatus enqueue_find_by_signal_id(std::uint32_t signal_id, read_callback_t callback = {});
 
-        /// \brief Enqueues a find-by-UID operation.
+        /// \brief Enqueues a full-scan find-by-UID operation.
         SignalRecordDBStatus enqueue_find_by_uid(std::int64_t unique_id, list_callback_t callback = {});
+
+        /// \brief Enqueues a time-range find-by-UID operation.
+        SignalRecordDBStatus enqueue_find_by_uid(
+            std::int64_t unique_id,
+            std::int64_t start_ms,
+            std::int64_t stop_ms,
+            list_callback_t callback = {});
 
         /// \brief Enqueues a find-by-trade-id operation.
         SignalRecordDBStatus enqueue_find_by_trade_id(std::uint32_t trade_id, read_callback_t callback = {});
@@ -224,6 +239,7 @@ namespace optionx::storage {
         bool is_open_no_lock() const noexcept;
         void init_meta_no_lock(MDBX_txn* txn);
         void update_last_update_no_lock(MDBX_txn* txn);
+        void close_storage_no_lock() noexcept;
         std::uint32_t reserve_signal_id_no_lock(MDBX_txn* txn);
         void bump_next_signal_id_no_lock(std::uint32_t used_signal_id, MDBX_txn* txn);
         void remove_indexes_no_lock(const SignalRecord& record, MDBX_txn* txn);
@@ -236,6 +252,10 @@ namespace optionx::storage {
         SignalRecordDBWriteResult upsert_no_lock(SignalRecord record);
         SignalRecordDBReadResult find_by_signal_id_no_lock(std::uint32_t signal_id) const;
         SignalRecordDBListResult find_by_uid_no_lock(std::int64_t unique_id) const;
+        SignalRecordDBListResult find_by_uid_no_lock(
+            std::int64_t unique_id,
+            std::int64_t start_ms,
+            std::int64_t stop_ms) const;
         SignalRecordDBReadResult find_by_trade_id_no_lock(std::uint32_t trade_id) const;
         SignalRecordDBListResult find_by_timestamp_no_lock(std::int64_t timestamp_ms) const;
         SignalRecordDBListResult find_range_no_lock(std::int64_t start_ms, std::int64_t stop_ms) const;

@@ -92,26 +92,26 @@ namespace optionx::storage {
     inline SignalRecordDBWriteResult SignalRecordDB::upsert(SignalRecord record) {
         std::lock_guard<std::mutex> lock(m_db_mutex);
         try {
-            return upsert_no_lock(std::move(record));
+            return upsert_no_lock(record);
         } catch (const mdbxc::MdbxException& ex) {
             LOGIT_PRINT_ERROR("SignalRecordDB upsert database error: ", ex);
-            return signal_detail::write_error(SignalRecordDBStatus::DB_ERROR, std::move(record), ex.what());
+            return signal_detail::write_error(SignalRecordDBStatus::DB_ERROR, record, ex.what());
         } catch (const std::exception& ex) {
             LOGIT_PRINT_ERROR("SignalRecordDB upsert error: ", ex);
-            return signal_detail::write_error(SignalRecordDBStatus::DB_ERROR, std::move(record), ex.what());
+            return signal_detail::write_error(SignalRecordDBStatus::DB_ERROR, record, ex.what());
         }
     }
 
     inline SignalRecordDBWriteResult SignalRecordDB::write(SignalRecord record) {
         std::lock_guard<std::mutex> lock(m_db_mutex);
         try {
-            return write_no_lock(std::move(record));
+            return write_no_lock(record);
         } catch (const mdbxc::MdbxException& ex) {
             LOGIT_PRINT_ERROR("SignalRecordDB write database error: ", ex);
-            return signal_detail::write_error(SignalRecordDBStatus::DB_ERROR, std::move(record), ex.what());
+            return signal_detail::write_error(SignalRecordDBStatus::DB_ERROR, record, ex.what());
         } catch (const std::exception& ex) {
             LOGIT_PRINT_ERROR("SignalRecordDB write error: ", ex);
-            return signal_detail::write_error(SignalRecordDBStatus::DB_ERROR, std::move(record), ex.what());
+            return signal_detail::write_error(SignalRecordDBStatus::DB_ERROR, record, ex.what());
         }
     }
 
@@ -137,6 +137,22 @@ namespace optionx::storage {
             return signal_detail::list_error(SignalRecordDBStatus::DB_ERROR, ex.what());
         } catch (const std::exception& ex) {
             LOGIT_PRINT_ERROR("SignalRecordDB find_by_uid error: ", ex);
+            return signal_detail::list_error(SignalRecordDBStatus::DB_ERROR, ex.what());
+        }
+    }
+
+    inline SignalRecordDBListResult SignalRecordDB::find_by_uid(
+            std::int64_t unique_id,
+            std::int64_t start_ms,
+            std::int64_t stop_ms) const {
+        std::lock_guard<std::mutex> lock(m_db_mutex);
+        try {
+            return find_by_uid_no_lock(unique_id, start_ms, stop_ms);
+        } catch (const mdbxc::MdbxException& ex) {
+            LOGIT_PRINT_ERROR("SignalRecordDB find_by_uid range database error: ", ex);
+            return signal_detail::list_error(SignalRecordDBStatus::DB_ERROR, ex.what());
+        } catch (const std::exception& ex) {
+            LOGIT_PRINT_ERROR("SignalRecordDB find_by_uid range error: ", ex);
             return signal_detail::list_error(SignalRecordDBStatus::DB_ERROR, ex.what());
         }
     }
@@ -278,6 +294,19 @@ namespace optionx::storage {
         });
     }
 
+    inline SignalRecordDBStatus SignalRecordDB::enqueue_find_by_uid(
+            std::int64_t unique_id,
+            std::int64_t start_ms,
+            std::int64_t stop_ms,
+            list_callback_t callback) {
+        return enqueue_command([this, unique_id, start_ms, stop_ms, callback = std::move(callback)]() mutable {
+            auto result = find_by_uid(unique_id, start_ms, stop_ms);
+            enqueue_callback([callback = std::move(callback), result = std::move(result)]() mutable {
+                if (callback) callback(std::move(result));
+            });
+        });
+    }
+
     inline SignalRecordDBStatus SignalRecordDB::enqueue_find_by_trade_id(
             std::uint32_t trade_id,
             read_callback_t callback) {
@@ -390,21 +419,7 @@ namespace optionx::storage {
         deliver_callbacks();
 
         std::lock_guard<std::mutex> lock(m_db_mutex);
-        try {
-            m_records.reset();
-            m_signal_id_index.reset();
-            m_trade_id_index.reset();
-            m_meta.reset();
-            if (m_connection && m_connection->is_connected()) {
-                m_connection->shutdown();
-            }
-            m_connection.reset();
-        } catch (const mdbxc::MdbxException& ex) {
-            LOGIT_PRINT_ERROR("SignalRecordDB shutdown database error: ", ex);
-        } catch (const std::exception& ex) {
-            LOGIT_PRINT_ERROR("SignalRecordDB shutdown error: ", ex);
-        }
-        m_open = false;
+        close_storage_no_lock();
     }
 
     inline void SignalRecordDB::open() {
@@ -430,10 +445,10 @@ namespace optionx::storage {
             }
         } catch (const mdbxc::MdbxException& ex) {
             LOGIT_PRINT_ERROR("SignalRecordDB connection error: ", ex);
-            m_open = false;
+            close_storage_no_lock();
         } catch (const std::exception& ex) {
             LOGIT_PRINT_ERROR("SignalRecordDB initialization error: ", ex);
-            m_open = false;
+            close_storage_no_lock();
         }
     }
 
@@ -457,6 +472,28 @@ namespace optionx::storage {
         auto meta = m_meta->get_or(SignalRecordDBMeta{}, txn);
         meta.last_update_ms = time_shield::timestamp_ms();
         m_meta->set(meta, txn);
+    }
+
+    inline void SignalRecordDB::close_storage_no_lock() noexcept {
+        m_records.reset();
+        m_signal_id_index.reset();
+        m_trade_id_index.reset();
+        m_meta.reset();
+
+        try {
+            if (m_connection && m_connection->is_connected()) {
+                m_connection->shutdown();
+            }
+        } catch (const mdbxc::MdbxException& ex) {
+            LOGIT_PRINT_ERROR("SignalRecordDB cleanup database error: ", ex);
+        } catch (const std::exception& ex) {
+            LOGIT_PRINT_ERROR("SignalRecordDB cleanup error: ", ex);
+        } catch (...) {
+            LOGIT_PRINT_ERROR("SignalRecordDB cleanup unknown error");
+        }
+
+        m_connection.reset();
+        m_open = false;
     }
 
     inline std::uint32_t SignalRecordDB::reserve_signal_id_no_lock(MDBX_txn* txn) {
@@ -726,6 +763,44 @@ namespace optionx::storage {
             stop_key,
             [&result, unique_id](const std::uint64_t&, const SignalRecord& record) {
                 if (record.unique_id == unique_id) {
+                    result.records.push_back(record);
+                }
+                return true;
+            },
+            txn.handle());
+
+        txn.commit();
+        return result;
+    }
+
+    inline SignalRecordDBListResult SignalRecordDB::find_by_uid_no_lock(
+            std::int64_t unique_id,
+            std::int64_t start_ms,
+            std::int64_t stop_ms) const {
+        if (!is_open_no_lock()) {
+            return signal_detail::list_error(SignalRecordDBStatus::NOT_OPEN, "SignalRecordDB is not open");
+        }
+        if (start_ms < 0 || stop_ms < 0 || start_ms > stop_ms) {
+            return signal_detail::list_error(
+                SignalRecordDBStatus::INVALID_ARGUMENT,
+                "SignalRecord timestamp range is invalid");
+        }
+
+        const auto start_min = signal_detail::timestamp_ms_to_unix_minutes(start_ms);
+        const auto stop_min = signal_detail::timestamp_ms_to_unix_minutes(stop_ms);
+        const auto start_key = signal_detail::make_composite_key(start_min, 0);
+        const auto stop_key = signal_detail::make_composite_key(stop_min, 0xFFFFFFFFu);
+
+        auto txn = m_connection->transaction(mdbxc::TransactionMode::READ_ONLY);
+        SignalRecordDBListResult result;
+        result.status = SignalRecordDBStatus::SUCCESS;
+
+        m_records->for_each_range(
+            start_key,
+            stop_key,
+            [&result, unique_id, start_ms, stop_ms](const std::uint64_t&, const SignalRecord& record) {
+                const auto timestamp = signal_detail::selected_timestamp_ms(record);
+                if (record.unique_id == unique_id && timestamp >= start_ms && timestamp <= stop_ms) {
                     result.records.push_back(record);
                 }
                 return true;
