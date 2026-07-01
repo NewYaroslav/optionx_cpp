@@ -143,6 +143,175 @@ namespace optionx {
             return record;
         }
 
+        /// \brief Serializes the record using the current binary storage format.
+        std::vector<std::uint8_t> to_bytes() const {
+            std::vector<std::uint8_t> bytes;
+            bytes.reserve(384 + unique_hash.size() + symbol.size() +
+                          signal_name.size() + user_data.size() +
+                          comment.size() + reject_desc.size() +
+                          mm_group_hash.size() + mm_group_name.size() +
+                          mm_params_json.size() + decision_params_json.size() +
+                          metadata_json.size() +
+                          trade_ids.size() * sizeof(std::uint32_t));
+
+            append_value(bytes, kBinaryMagic);
+            append_value(bytes, kBinaryVersion);
+
+            append_value(bytes, signal_id);
+            append_value(bytes, unique_id);
+            append_string(bytes, unique_hash);
+            append_value(bytes, account_id);
+
+            append_enum8(bytes, platform_type);
+            append_enum8(bytes, account_type);
+            append_enum8(bytes, currency);
+            append_string(bytes, symbol);
+            append_string(bytes, signal_name);
+            append_string(bytes, user_data);
+            append_string(bytes, comment);
+
+            append_enum8(bytes, option_type);
+            append_enum8(bytes, order_type);
+            append_value(bytes, amount);
+            append_value(bytes, refund);
+            append_value(bytes, min_payout);
+            append_value(bytes, duration);
+            append_value(bytes, expiry_time);
+
+            append_enum8(bytes, status);
+            append_enum8(bytes, reject_code);
+            append_string(bytes, reject_desc);
+            append_enum8(bytes, outcome);
+            append_enum8(bytes, trade_state);
+            append_value(bytes, total_amount);
+            append_value(bytes, total_profit);
+
+            append_value(bytes, create_date);
+            append_value(bytes, accept_date);
+            append_value(bytes, reject_date);
+            append_value(bytes, complete_date);
+
+            append_enum8(bytes, mm_type);
+            append_value(bytes, mm_step);
+            append_value(bytes, mm_group_id);
+            append_string(bytes, mm_group_hash);
+            append_string(bytes, mm_group_name);
+            append_string(bytes, mm_params_json);
+            append_string(bytes, decision_params_json);
+            append_string(bytes, metadata_json);
+
+            append_vector_u32(bytes, trade_ids);
+            return bytes;
+        }
+
+        /// \brief Deserializes a signal record serialized by the current binary storage format.
+        static SignalRecord from_bytes(const void* data, std::size_t size) {
+            BinaryReader reader(data, size);
+
+            const auto magic = reader.read<std::uint32_t>();
+            if (magic != kBinaryMagic) {
+                throw std::runtime_error("SignalRecord::from_bytes: invalid magic");
+            }
+
+            const auto version = reader.read<std::uint16_t>();
+            if (version != kBinaryVersion) {
+                throw std::runtime_error("SignalRecord::from_bytes: unsupported version");
+            }
+
+            SignalRecord record;
+            record.signal_id = reader.read<std::uint32_t>();
+            record.unique_id = reader.read<std::int64_t>();
+            record.unique_hash = reader.read_string();
+            record.account_id = reader.read<std::int64_t>();
+
+            record.platform_type = reader.read_enum8<PlatformType>();
+            record.account_type = reader.read_enum8<AccountType>();
+            record.currency = reader.read_enum8<CurrencyType>();
+            record.symbol = reader.read_string();
+            record.signal_name = reader.read_string();
+            record.user_data = reader.read_string();
+            record.comment = reader.read_string();
+
+            record.option_type = reader.read_enum8<OptionType>();
+            record.order_type = reader.read_enum8<OrderType>();
+            record.amount = reader.read<double>();
+            record.refund = reader.read<double>();
+            record.min_payout = reader.read<double>();
+            record.duration = reader.read<std::uint32_t>();
+            record.expiry_time = reader.read<std::int64_t>();
+
+            record.status = reader.read_enum8<SignalStatus>();
+            record.reject_code = reader.read_enum8<SignalRejectCode>();
+            record.reject_desc = reader.read_string();
+            record.outcome = reader.read_enum8<SignalOutcome>();
+            record.trade_state = reader.read_enum8<TradeState>();
+            record.total_amount = reader.read<double>();
+            record.total_profit = reader.read<double>();
+
+            record.create_date = reader.read<std::int64_t>();
+            record.accept_date = reader.read<std::int64_t>();
+            record.reject_date = reader.read<std::int64_t>();
+            record.complete_date = reader.read<std::int64_t>();
+
+            record.mm_type = reader.read_enum8<MmSystemType>();
+            record.mm_step = reader.read<std::int32_t>();
+            record.mm_group_id = reader.read<std::int64_t>();
+            record.mm_group_hash = reader.read_string();
+            record.mm_group_name = reader.read_string();
+            record.mm_params_json = reader.read_string();
+            record.decision_params_json = reader.read_string();
+            record.metadata_json = reader.read_string();
+
+            record.trade_ids = reader.read_vector_u32();
+            reader.ensure_finished();
+            return record;
+        }
+
+        bool operator==(const SignalRecord& other) const {
+            return signal_id == other.signal_id &&
+                   unique_id == other.unique_id &&
+                   unique_hash == other.unique_hash &&
+                   account_id == other.account_id &&
+                   platform_type == other.platform_type &&
+                   account_type == other.account_type &&
+                   currency == other.currency &&
+                   symbol == other.symbol &&
+                   signal_name == other.signal_name &&
+                   user_data == other.user_data &&
+                   comment == other.comment &&
+                   option_type == other.option_type &&
+                   order_type == other.order_type &&
+                   amount == other.amount &&
+                   refund == other.refund &&
+                   min_payout == other.min_payout &&
+                   duration == other.duration &&
+                   expiry_time == other.expiry_time &&
+                   status == other.status &&
+                   reject_code == other.reject_code &&
+                   reject_desc == other.reject_desc &&
+                   outcome == other.outcome &&
+                   trade_state == other.trade_state &&
+                   total_amount == other.total_amount &&
+                   total_profit == other.total_profit &&
+                   create_date == other.create_date &&
+                   accept_date == other.accept_date &&
+                   reject_date == other.reject_date &&
+                   complete_date == other.complete_date &&
+                   mm_type == other.mm_type &&
+                   mm_step == other.mm_step &&
+                   mm_group_id == other.mm_group_id &&
+                   mm_group_hash == other.mm_group_hash &&
+                   mm_group_name == other.mm_group_name &&
+                   mm_params_json == other.mm_params_json &&
+                   decision_params_json == other.decision_params_json &&
+                   metadata_json == other.metadata_json &&
+                   trade_ids == other.trade_ids;
+        }
+
+        bool operator!=(const SignalRecord& other) const {
+            return !(*this == other);
+        }
+
         NLOHMANN_DEFINE_TYPE_INTRUSIVE(
             SignalRecord,
             signal_id,
@@ -184,6 +353,104 @@ namespace optionx {
             metadata_json,
             trade_ids
         )
+
+    private:
+        static constexpr std::uint32_t kBinaryMagic = 0x5253584fU; // "OXSR" on little-endian hosts.
+        static constexpr std::uint16_t kBinaryVersion = 1;
+
+        template<class T>
+        static void append_value(std::vector<std::uint8_t>& bytes, const T& value) {
+            static_assert(std::is_trivially_copyable_v<T>, "SignalRecord binary value must be trivially copyable");
+            const auto* ptr = reinterpret_cast<const std::uint8_t*>(&value);
+            bytes.insert(bytes.end(), ptr, ptr + sizeof(T));
+        }
+
+        template<class Enum>
+        static void append_enum8(std::vector<std::uint8_t>& bytes, Enum value) {
+            append_value(bytes, static_cast<std::uint8_t>(value));
+        }
+
+        static void append_string(std::vector<std::uint8_t>& bytes, const std::string& value) {
+            if (value.size() > (std::numeric_limits<std::uint32_t>::max)()) {
+                throw std::length_error("SignalRecord string field is too large to serialize");
+            }
+            append_value(bytes, static_cast<std::uint32_t>(value.size()));
+            bytes.insert(bytes.end(), value.begin(), value.end());
+        }
+
+        static void append_vector_u32(
+                std::vector<std::uint8_t>& bytes,
+                const std::vector<std::uint32_t>& values) {
+            if (values.size() > (std::numeric_limits<std::uint32_t>::max)()) {
+                throw std::length_error("SignalRecord vector field is too large to serialize");
+            }
+            append_value(bytes, static_cast<std::uint32_t>(values.size()));
+            for (const auto value : values) {
+                append_value(bytes, value);
+            }
+        }
+
+        class BinaryReader {
+        public:
+            BinaryReader(const void* data, std::size_t size)
+                : m_data(static_cast<const std::uint8_t*>(data)), m_size(size) {
+                if (!m_data && size > 0) {
+                    throw std::runtime_error("SignalRecord::from_bytes: null data");
+                }
+            }
+
+            template<class T>
+            T read() {
+                static_assert(std::is_trivially_copyable_v<T>, "SignalRecord binary value must be trivially copyable");
+                ensure(sizeof(T));
+                T value{};
+                std::memcpy(&value, m_data + m_offset, sizeof(T));
+                m_offset += sizeof(T);
+                return value;
+            }
+
+            template<class Enum>
+            Enum read_enum8() {
+                return static_cast<Enum>(read<std::uint8_t>());
+            }
+
+            std::string read_string() {
+                const auto length = read<std::uint32_t>();
+                ensure(length);
+                std::string value(
+                    reinterpret_cast<const char*>(m_data + m_offset),
+                    reinterpret_cast<const char*>(m_data + m_offset + length));
+                m_offset += length;
+                return value;
+            }
+
+            std::vector<std::uint32_t> read_vector_u32() {
+                const auto length = read<std::uint32_t>();
+                std::vector<std::uint32_t> values;
+                values.reserve(length);
+                for (std::uint32_t i = 0; i < length; ++i) {
+                    values.push_back(read<std::uint32_t>());
+                }
+                return values;
+            }
+
+            void ensure_finished() const {
+                if (m_offset != m_size) {
+                    throw std::runtime_error("SignalRecord::from_bytes: trailing data");
+                }
+            }
+
+        private:
+            const std::uint8_t* m_data = nullptr;
+            std::size_t m_size = 0;
+            std::size_t m_offset = 0;
+
+            void ensure(std::size_t bytes) const {
+                if (bytes > m_size - m_offset) {
+                    throw std::runtime_error("SignalRecord::from_bytes: corrupted or truncated data");
+                }
+            }
+        };
     };
 
 } // namespace optionx
