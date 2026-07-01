@@ -73,6 +73,33 @@ optionx::TradeRequest make_request() {
     return request;
 }
 
+optionx::TradeSignal make_signal() {
+    optionx::TradeSignal signal;
+    signal.signal_id = 7007;
+    signal.unique_id = 42;
+    signal.unique_hash = "signal-hash";
+    signal.platform_type = optionx::PlatformType::INTRADE_BAR;
+    signal.account_id = 7001;
+    signal.account_type = optionx::AccountType::DEMO;
+    signal.currency = optionx::CurrencyType::USD;
+    signal.symbol = "EURUSD";
+    signal.signal_name = "mean-reversion";
+    signal.user_data = R"({"source":"test"})";
+    signal.comment = "round trip";
+    signal.option_type = optionx::OptionType::CLASSIC;
+    signal.order_type = optionx::OrderType::BUY;
+    signal.amount = 15.5;
+    signal.refund = 0.1;
+    signal.min_payout = 0.75;
+    signal.duration = 60;
+    signal.expiry_time = 1712345700;
+    signal.mm_step = 3;
+    signal.mm_group_id = 73;
+    signal.mm_group_hash = "signal-group-hash";
+    signal.mm_group_name = "signal-group";
+    return signal;
+}
+
 optionx::TradeResult make_result() {
     optionx::TradeResult result;
     result.trade_id = 9001;
@@ -140,9 +167,7 @@ TEST(TradeRecordSerializationTest, RejectsCorruptedPayloads) {
 }
 
 TEST(TradeRecordFactoryTest, AssignsRequestResultAndSignalData) {
-    optionx::TradeSignal signal;
-    signal.request = make_request();
-    signal.set_signal_id(7007);
+    auto signal = make_signal();
     signal.set_money_management(std::make_unique<TestMoneyManagementParams>(3));
     signal.decision_params = std::make_unique<TestDecisionParams>(0.65);
 
@@ -154,7 +179,7 @@ TEST(TradeRecordFactoryTest, AssignsRequestResultAndSignalData) {
     EXPECT_EQ(record.symbol, "EURUSD");
     EXPECT_EQ(record.signal_name, "mean-reversion");
     EXPECT_EQ(record.request_unique_id, 42);
-    EXPECT_EQ(record.request_unique_hash, "request-hash");
+    EXPECT_EQ(record.request_unique_hash, "signal-hash");
     EXPECT_EQ(record.option_id, 123456);
     EXPECT_EQ(record.option_hash, "broker-hash");
     EXPECT_TRUE(record.has_open_balance());
@@ -163,14 +188,16 @@ TEST(TradeRecordFactoryTest, AssignsRequestResultAndSignalData) {
     EXPECT_DOUBLE_EQ(record.close_balance, 1012.71);
     EXPECT_EQ(record.close_date, 1712345700000);
     EXPECT_EQ(record.mm_type, optionx::MmSystemType::MARTINGALE_SIGNAL);
+    EXPECT_EQ(record.mm_step, 3);
+    EXPECT_EQ(record.mm_group_id, 73);
+    EXPECT_EQ(record.mm_group_hash, "signal-group-hash");
+    EXPECT_EQ(record.mm_group_name, "signal-group");
     EXPECT_EQ(nlohmann::json::parse(record.mm_params_json).at("step"), 3);
     EXPECT_EQ(nlohmann::json::parse(record.decision_params_json).at("threshold"), 0.65);
 }
 
 TEST(SignalRecordTest, AssignsSignalDataAndProducedTradeIds) {
-    optionx::TradeSignal signal;
-    signal.request = make_request();
-    signal.set_signal_id(7007);
+    auto signal = make_signal();
     signal.set_money_management(std::make_unique<TestMoneyManagementParams>(3));
     signal.decision_params = std::make_unique<TestDecisionParams>(0.65);
 
@@ -185,13 +212,17 @@ TEST(SignalRecordTest, AssignsSignalDataAndProducedTradeIds) {
     record.add_trade_id(8);
 
     EXPECT_TRUE(record.has_signal_id());
-    EXPECT_EQ(signal.request.signal_id, 7007u);
     EXPECT_EQ(record.signal_id, 7007u);
-    EXPECT_EQ(record.request_unique_id, 42);
-    EXPECT_EQ(record.request_unique_hash, "request-hash");
+    EXPECT_EQ(record.unique_id, 42);
+    EXPECT_EQ(record.unique_hash, "signal-hash");
+    EXPECT_EQ(record.platform_type, optionx::PlatformType::INTRADE_BAR);
     EXPECT_EQ(record.symbol, "EURUSD");
     EXPECT_EQ(record.signal_name, "mean-reversion");
     EXPECT_EQ(record.mm_type, optionx::MmSystemType::MARTINGALE_SIGNAL);
+    EXPECT_EQ(record.mm_step, 3);
+    EXPECT_EQ(record.mm_group_id, 73);
+    EXPECT_EQ(record.mm_group_hash, "signal-group-hash");
+    EXPECT_EQ(record.mm_group_name, "signal-group");
     EXPECT_EQ(nlohmann::json::parse(record.mm_params_json).at("step"), 3);
     EXPECT_EQ(nlohmann::json::parse(record.decision_params_json).at("threshold"), 0.65);
     ASSERT_EQ(record.trade_ids.size(), 2u);
@@ -206,32 +237,73 @@ TEST(SignalRecordTest, AssignsSignalDataAndProducedTradeIds) {
     EXPECT_EQ(restored.trade_ids, record.trade_ids);
 }
 
-TEST(SignalRecordTest, ResolvesSignalIdFromRequestWhenTopLevelIdIsUnset) {
-    optionx::TradeSignal signal;
-    signal.request = make_request();
-    signal.signal_id = 0;
-    signal.request.signal_id = 901;
+TEST(SignalRecordTest, BuildsTradeRequestFromFlatSignalData) {
+    auto signal = make_signal();
 
-    const auto record = optionx::SignalRecord::from_signal(signal);
+    const auto request = signal.to_trade_request();
 
-    EXPECT_EQ(signal.resolved_signal_id(), 901u);
-    EXPECT_EQ(record.signal_id, 901u);
+    EXPECT_EQ(request.signal_id, 7007u);
+    EXPECT_EQ(request.unique_id, 42);
+    EXPECT_EQ(request.unique_hash, "signal-hash");
+    EXPECT_EQ(request.account_id, 7001);
+    EXPECT_EQ(request.account_type, optionx::AccountType::DEMO);
+    EXPECT_EQ(request.currency, optionx::CurrencyType::USD);
+    EXPECT_EQ(request.symbol, "EURUSD");
+    EXPECT_EQ(request.signal_name, "mean-reversion");
+    EXPECT_EQ(request.option_type, optionx::OptionType::CLASSIC);
+    EXPECT_EQ(request.order_type, optionx::OrderType::BUY);
+    EXPECT_DOUBLE_EQ(request.amount, 15.5);
+    EXPECT_DOUBLE_EQ(request.refund, 0.1);
+    EXPECT_DOUBLE_EQ(request.min_payout, 0.75);
+    EXPECT_EQ(request.duration, 60);
+    EXPECT_EQ(request.expiry_time, 1712345700);
 }
 
-TEST(SignalRecordTest, ClonesResolvedSignalIdAndDecisionParams) {
-    optionx::TradeSignal signal;
-    signal.request = make_request();
-    signal.signal_id = 0;
-    signal.request.signal_id = 901;
+TEST(SignalRecordTest, ClonesFlatSignalDataAndDecisionParams) {
+    auto signal = make_signal();
     signal.decision_params = std::make_unique<TestDecisionParams>(0.75);
 
     const auto clone = signal.clone();
 
     ASSERT_NE(clone, nullptr);
-    EXPECT_EQ(clone->signal_id, 901u);
-    EXPECT_EQ(clone->request.signal_id, 901u);
+    EXPECT_EQ(clone->signal_id, 7007u);
+    EXPECT_EQ(clone->unique_id, 42);
+    EXPECT_EQ(clone->unique_hash, "signal-hash");
+    EXPECT_EQ(clone->symbol, "EURUSD");
+    EXPECT_EQ(clone->mm_group_hash, "signal-group-hash");
     ASSERT_NE(clone->decision_params, nullptr);
     EXPECT_EQ(clone->decision_params->to_json().at("threshold"), 0.75);
+}
+
+TEST(SignalRecordTest, BuildsFromDirectTradeRequest) {
+    auto request = make_request();
+
+    const auto record = optionx::SignalRecord::from_signal(request);
+
+    EXPECT_EQ(record.signal_id, 501u);
+    EXPECT_EQ(record.unique_id, 42);
+    EXPECT_EQ(record.unique_hash, "request-hash");
+    EXPECT_EQ(record.symbol, "EURUSD");
+    EXPECT_EQ(record.signal_name, "mean-reversion");
+}
+
+TEST(TradeSignalTest, RoundTripsFlatJsonAndBuildsRequest) {
+    auto signal = make_signal();
+
+    const nlohmann::json json_signal = signal;
+    const auto restored = json_signal.get<optionx::TradeSignal>();
+    const auto request = restored.to_trade_request();
+
+    EXPECT_EQ(restored.signal_id, 7007u);
+    EXPECT_EQ(restored.unique_id, 42);
+    EXPECT_EQ(restored.unique_hash, "signal-hash");
+    EXPECT_EQ(restored.platform_type, optionx::PlatformType::INTRADE_BAR);
+    EXPECT_EQ(restored.mm_group_hash, "signal-group-hash");
+    EXPECT_EQ(request.signal_id, 7007u);
+    EXPECT_EQ(request.unique_id, 42);
+    EXPECT_EQ(request.unique_hash, "signal-hash");
+    EXPECT_EQ(request.symbol, "EURUSD");
+    EXPECT_EQ(request.signal_name, "mean-reversion");
 }
 
 TEST(TradeRecordFactoryTest, PreservesRequestContextWhenResultIsPartial) {

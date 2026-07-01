@@ -13,11 +13,11 @@ namespace optionx {
     public:
         // Storage identity
         std::uint32_t signal_id = 0;          ///< Persistent signal ID; 0 means "not assigned".
-        std::int64_t request_unique_id = 0;   ///< Unique ID from the root TradeRequest.
-        std::string request_unique_hash;      ///< Unique hash from the root TradeRequest.
+        std::int64_t unique_id = 0;           ///< External/runtime signal identifier.
+        std::string unique_hash;              ///< External/runtime signal hash.
         std::int64_t account_id = 0;          ///< Target account ID, if known.
 
-        // Context copied from TradeRequest
+        // Signal context
         PlatformType platform_type = PlatformType::UNKNOWN; ///< Trading platform.
         AccountType account_type = AccountType::UNKNOWN;    ///< Account type.
         CurrencyType currency = CurrencyType::UNKNOWN;      ///< Account currency.
@@ -82,8 +82,8 @@ namespace optionx {
         /// \brief Copies request-side fields into this signal record.
         void assign_request(const TradeRequest& request) {
             signal_id = request.signal_id;
-            request_unique_id = request.unique_id;
-            request_unique_hash = request.unique_hash;
+            unique_id = request.unique_id;
+            unique_hash = request.unique_hash;
             account_id = request.account_id;
             account_type = request.account_type;
             currency = request.currency;
@@ -102,12 +102,29 @@ namespace optionx {
 
         /// \brief Copies request and money-management fields from a signal.
         void assign_signal(const TradeSignal& signal) {
-            assign_request(signal.request);
-            const auto effective_signal_id = signal.resolved_signal_id();
-            if (effective_signal_id != 0) {
-                signal_id = effective_signal_id;
-            }
+            signal_id = signal.signal_id;
+            unique_id = signal.unique_id;
+            unique_hash = signal.unique_hash;
+            account_id = signal.account_id;
+            platform_type = signal.platform_type;
+            account_type = signal.account_type;
+            currency = signal.currency;
+            symbol = signal.symbol;
+            signal_name = signal.signal_name;
+            user_data = signal.user_data;
+            comment = signal.comment;
+            option_type = signal.option_type;
+            order_type = signal.order_type;
+            amount = signal.amount;
+            refund = signal.refund;
+            min_payout = signal.min_payout;
+            duration = signal.duration;
+            expiry_time = signal.expiry_time;
             mm_type = signal.mm_type;
+            mm_step = signal.mm_step;
+            mm_group_id = signal.mm_group_id;
+            mm_group_hash = signal.mm_group_hash;
+            mm_group_name = signal.mm_group_name;
             mm_params_json = signal.mm_params ? signal.mm_params->to_json().dump() : std::string();
             decision_params_json = signal.decision_params ? signal.decision_params->to_json().dump() : std::string();
         }
@@ -129,8 +146,8 @@ namespace optionx {
         NLOHMANN_DEFINE_TYPE_INTRUSIVE(
             SignalRecord,
             signal_id,
-            request_unique_id,
-            request_unique_hash,
+            unique_id,
+            unique_hash,
             account_id,
             platform_type,
             account_type,

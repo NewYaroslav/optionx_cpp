@@ -297,12 +297,12 @@ namespace optionx {
 
         /// \brief Copies request and money-management fields from a signal.
         void assign_signal(const TradeSignal& signal) {
-            assign_request(signal.request);
-            const auto effective_signal_id = signal.resolved_signal_id();
-            if (effective_signal_id != 0) {
-                signal_id = effective_signal_id;
-            }
+            assign_request(signal.to_trade_request());
             mm_type = signal.mm_type;
+            mm_step = signal.mm_step;
+            mm_group_id = signal.mm_group_id;
+            mm_group_hash = signal.mm_group_hash;
+            mm_group_name = signal.mm_group_name;
             mm_params_json = signal.mm_params ? signal.mm_params->to_json().dump() : std::string();
             decision_params_json = signal.decision_params ? signal.decision_params->to_json().dump() : std::string();
         }
