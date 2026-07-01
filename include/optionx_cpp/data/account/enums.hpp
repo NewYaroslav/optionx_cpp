@@ -36,8 +36,8 @@ namespace optionx {
         MIN_AMOUNT,               ///< Minimum allowed trade amount (double)
         MAX_AMOUNT,               ///< Maximum allowed trade amount (double)
         MAX_REFUND,               ///< Maximum refund percentage (0.0-1.0)
-        MIN_DURATION,             ///< Shortest allowed option duration in seconds (uint64)
-        MAX_DURATION,             ///< Longest allowed option duration in seconds (uint64)
+        MIN_DURATION,             ///< Shortest allowed option duration in seconds
+        MAX_DURATION,             ///< Longest allowed option duration in seconds
 
         // Session parameters
         START_TIME,               ///< Trading session start (seconds since midnight UTC)

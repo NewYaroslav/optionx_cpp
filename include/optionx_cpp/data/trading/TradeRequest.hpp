@@ -36,7 +36,7 @@ namespace optionx {
         double min_payout = 0.0; ///< Minimum acceptable payout percentage.
 
         // Timing parameters
-        int64_t duration = 0;        ///< Trade duration in seconds.
+        std::uint32_t duration = 0;  ///< Trade duration in seconds; 0 means not specified.
         int64_t expiry_time = 0;     ///< Expiration time as a Unix timestamp.
 
         TradeRequest() = default;

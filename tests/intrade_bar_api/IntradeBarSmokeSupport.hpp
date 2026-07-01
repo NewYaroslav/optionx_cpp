@@ -619,7 +619,7 @@ public:
             const std::string& symbol,
             double amount,
             optionx::OrderType order_type,
-            int64_t duration_sec,
+            std::uint32_t duration_sec,
             int64_t timeout_ms) {
         LOGIT_SCOPE_INFO("intradebar.smoke.open_trade");
         struct SharedAttempt {
@@ -703,7 +703,7 @@ public:
             const std::string& symbol,
             double amount,
             optionx::OrderType order_type,
-            int64_t duration_sec,
+            std::uint32_t duration_sec,
             int64_t timeout_ms) {
         LOGIT_SCOPE_INFO("intradebar.smoke.open_trade_wait_result");
         struct SharedAttempt {

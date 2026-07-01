@@ -5,6 +5,8 @@
 /// \file TradeExecutionComponent.hpp
 /// \brief Implements trade execution functionality for the Intrade Bar platform.
 
+#include <limits>
+
 #include "SymbolUtils.hpp"
 
 namespace optionx::platforms::intrade_bar {
@@ -53,9 +55,14 @@ namespace optionx::platforms::intrade_bar {
             if (trade_request &&
                 trade_request->option_type == OptionType::CLASSIC) {
                 if (trade_request->expiry_time > 0) {
-                    trade_request->duration = calc_expiration(
+                    const auto duration = calc_expiration(
                         time_shield::ms_to_sec(trade_result->place_date),
                         trade_request->expiry_time);
+                    trade_request->duration =
+                        duration > 0 &&
+                        duration <= static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)())
+                        ? static_cast<std::uint32_t>(duration)
+                        : 0;
                 } else
                 if (trade_request->expiry_time == 0 &&
                     trade_request->duration > 0) {

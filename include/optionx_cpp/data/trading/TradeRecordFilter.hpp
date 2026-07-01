@@ -80,7 +80,7 @@ namespace optionx {
         IncludeExcludeFilter<std::uint32_t> signal_ids;
         IncludeExcludeFilter<std::int64_t> request_unique_ids;
 
-        IncludeExcludeFilter<std::int64_t> durations;
+        IncludeExcludeFilter<std::uint32_t> durations;
         IncludeExcludeFilter<std::int32_t> mm_steps;
 
         IncludeExcludeFilter<std::uint32_t> hours;

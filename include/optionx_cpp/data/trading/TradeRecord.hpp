@@ -57,7 +57,7 @@ namespace optionx {
         std::int64_t send_date = 0;                         ///< Broker send timestamp.
         std::int64_t open_date = 0;                         ///< Trade open timestamp.
         std::int64_t close_date = 0;                        ///< Planned or known close timestamp (classic expiry, sprint open + duration).
-        std::int64_t duration = 0;                          ///< Requested duration in seconds.
+        std::uint32_t duration = 0;                         ///< Requested duration in seconds; 0 means not specified.
 
         // Money management and extensibility
         MmSystemType mm_type = MmSystemType::NONE;          ///< Money management strategy.
@@ -484,7 +484,7 @@ namespace optionx {
             record.send_date = reader.read<std::int64_t>();
             record.open_date = reader.read<std::int64_t>();
             record.close_date = reader.read<std::int64_t>();
-            record.duration = reader.read<std::int64_t>();
+            record.duration = reader.read<std::uint32_t>();
 
             record.mm_type = reader.read_enum8<MmSystemType>();
             record.mm_step = reader.read<std::int32_t>();

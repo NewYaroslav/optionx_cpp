@@ -32,7 +32,7 @@ namespace optionx {
         double amount = 0.0;                                ///< Suggested initial trade amount.
         double refund = 0.0;                                ///< Suggested refund ratio.
         double min_payout = 0.0;                            ///< Minimum acceptable payout.
-        std::int64_t duration = 0;                          ///< Suggested duration in seconds.
+        std::uint32_t duration = 0;                         ///< Suggested duration in seconds; 0 means not specified.
         std::int64_t expiry_time = 0;                       ///< Suggested classic expiry timestamp in seconds.
 
         // Money-management context
@@ -190,7 +190,7 @@ namespace nlohmann {
             signal.amount = j.value("amount", 0.0);
             signal.refund = j.value("refund", 0.0);
             signal.min_payout = j.value("min_payout", 0.0);
-            signal.duration = j.value("duration", std::int64_t{0});
+            signal.duration = j.value("duration", std::uint32_t{0});
             signal.expiry_time = j.value("expiry_time", std::int64_t{0});
             signal.mm_type = j.value("mm_type", optionx::MmSystemType::NONE);
             signal.mm_step = j.value("mm_step", std::int32_t{0});

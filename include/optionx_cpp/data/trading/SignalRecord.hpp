@@ -32,7 +32,7 @@ namespace optionx {
         double amount = 0.0;                                ///< Initial requested amount.
         double refund = 0.0;                                ///< Requested refund ratio.
         double min_payout = 0.0;                            ///< Minimum acceptable payout.
-        std::int64_t duration = 0;                          ///< Requested duration in seconds.
+        std::uint32_t duration = 0;                         ///< Requested duration in seconds; 0 means not specified.
         std::int64_t expiry_time = 0;                       ///< Requested classic expiry time in seconds.
 
         // Signal lifecycle and outcome

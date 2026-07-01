@@ -7,7 +7,9 @@
 #include <cctype>
 #include <cmath>
 #include <iomanip>
+#include <limits>
 #include <map>
+#include <optional>
 #include <vector>
 
 namespace smoke = optionx::tests::intrade_bar_smoke;
@@ -381,6 +383,17 @@ int run_switch_check(smoke::IntradeBarSmokeConfig config, const CliOptions& opti
     return recovered ? 0 : 1;
 }
 
+std::optional<std::uint32_t> trade_duration_from_cli(
+        int64_t duration,
+        std::ostream& err) {
+    if (duration <= 0 ||
+        duration > static_cast<int64_t>((std::numeric_limits<std::uint32_t>::max)())) {
+        err << "--duration must be a positive number of seconds within uint32 range.\n";
+        return std::nullopt;
+    }
+    return static_cast<std::uint32_t>(duration);
+}
+
 int run_open_trade(smoke::IntradeBarSmokeConfig config, const CliOptions& options) {
     if (!smoke::require_live_config(config, std::cerr)) return 2;
     const bool confirmed = options.confirm || config.allow_trade;
@@ -406,6 +419,8 @@ int run_open_trade(smoke::IntradeBarSmokeConfig config, const CliOptions& option
         options.values,
         "duration",
         config.trade_duration_sec);
+    const auto trade_duration = trade_duration_from_cli(duration, std::cerr);
+    if (!trade_duration) return 2;
     const auto order_type = smoke::parse_enum_or<optionx::OrderType>(
         smoke::option_value_or(
             options.values,
@@ -421,7 +436,7 @@ int run_open_trade(smoke::IntradeBarSmokeConfig config, const CliOptions& option
         symbol,
         amount,
         order_type,
-        duration,
+        *trade_duration,
         config.trade_open_timeout_ms);
     std::cout << "trade accepted=" << open.accepted
               << " callback=" << open.callback_received
@@ -484,6 +499,8 @@ int run_open_trades_sync_check(
         options.values,
         "duration",
         default_open_trades_sync_duration_sec(symbol));
+    const auto trade_duration = trade_duration_from_cli(duration, std::cerr);
+    if (!trade_duration) return 2;
     const double amount = smoke::option_double_or(
         options.values,
         "amount",
@@ -556,7 +573,7 @@ int run_open_trades_sync_check(
             symbol,
             amount,
             order_type,
-            duration,
+            *trade_duration,
             config.trade_open_timeout_ms);
 
         bool local_increment = false;
@@ -847,6 +864,8 @@ int run_open_check_result(smoke::IntradeBarSmokeConfig config, const CliOptions&
         options.values,
         "duration",
         5 * time_shield::SEC_PER_MIN);
+    const auto trade_duration = trade_duration_from_cli(duration, std::cerr);
+    if (!trade_duration) return 2;
     const int64_t result_timeout_ms = smoke::option_i64_or(
         options.values,
         "result-timeout-ms",
@@ -878,7 +897,7 @@ int run_open_check_result(smoke::IntradeBarSmokeConfig config, const CliOptions&
         symbol,
         amount,
         order_type,
-        duration,
+        *trade_duration,
         result_timeout_ms);
 
     std::cout << "lifecycle accepted=" << lifecycle.accepted
