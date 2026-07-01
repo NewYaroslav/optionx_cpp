@@ -11,6 +11,7 @@
 /// \note Headers from the trading/ directory are internal components and are
 /// intended to be included through this umbrella header.
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -42,6 +43,7 @@
 #include "trading/IMoneyManagementParams.hpp"
 #include "trading/ITradeDecisionParams.hpp"
 #include "trading/TradeSignal.hpp"
+#include "trading/SignalRecord.hpp"
 #include "trading/TradeRecord.hpp"
 #include "trading/TradeRecordFilter.hpp"
 #include "trading/TradeRecordQuery.hpp"

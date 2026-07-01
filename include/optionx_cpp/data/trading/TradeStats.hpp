@@ -108,7 +108,7 @@ namespace optionx {
         std::map<std::string, TradeWinrateStats>  by_signal;
         std::map<PlatformType, TradeWinrateStats> by_platform;
         std::map<CurrencyType, TradeWinrateStats> by_currency;
-        std::map<std::int64_t, TradeWinrateStats> by_duration;
+        std::map<std::uint32_t, TradeWinrateStats> by_duration;
         std::map<std::int32_t, TradeWinrateStats> by_mm_step;
 
         std::array<TradeWinrateStats, 86400> by_sec;       ///< Index = second of day (0..86399).
@@ -242,7 +242,7 @@ namespace optionx {
         std::vector<CurrencyType> currencies;
         std::vector<std::string> symbols;
         std::vector<std::string> signals;
-        std::vector<std::int64_t> durations;
+        std::vector<std::uint32_t> durations;
         bool has_demo = false;
         bool has_real = false;
 

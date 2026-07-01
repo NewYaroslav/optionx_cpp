@@ -69,6 +69,7 @@ namespace optionx::storage {
             if (!filter.account_ids.match(record.account_id)) return false;
             if (!filter.option_ids.match(record.option_id)) return false;
             if (!filter.trade_ids.match(record.trade_id)) return false;
+            if (!filter.signal_ids.match(record.signal_id)) return false;
             if (!filter.request_unique_ids.match(record.request_unique_id)) return false;
 
             if (!filter.durations.match(record.duration)) return false;

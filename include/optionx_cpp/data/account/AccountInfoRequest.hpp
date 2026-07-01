@@ -21,7 +21,7 @@ namespace optionx {
         CurrencyType    currency    = CurrencyType::UNKNOWN;    ///< Account currency, if supported.
         OptionType      option_type = OptionType::UNKNOWN;      ///< Option type.
         OrderType       order_type  = OrderType::UNKNOWN;       ///< Order type.
-        int64_t         duration    = 0;                        ///< Option duration in seconds.
+        std::uint32_t   duration    = 0;                        ///< Option duration in seconds; 0 means not specified.
         int64_t         expiry_time = 0;                        ///< Expiration timestamp (Unix, sec).
         int64_t         timestamp   = 0;                        ///< General timestamp (Unix, sec).
 

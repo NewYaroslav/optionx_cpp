@@ -114,10 +114,11 @@ namespace optionx::platforms::intrade_bar {
                 if (request.option_type == OptionType::CLASSIC) return true;
                 const int64_t req_min_duration = get_min_duration(request);
                 const int64_t req_max_duration = get_max_duration_sec(request);
-                return (request.duration >= req_min_duration &&
-                        request.duration <= req_max_duration &&
-                        (request.duration % time_shield::SEC_PER_MIN) == 0 &&
-                        request.duration != (2 * time_shield::SEC_PER_MIN));
+                const int64_t req_duration = request.duration;
+                return (req_duration >= req_min_duration &&
+                        req_duration <= req_max_duration &&
+                        (req_duration % time_shield::SEC_PER_MIN) == 0 &&
+                        req_duration != (2 * time_shield::SEC_PER_MIN));
             }
             case AccountInfoType::EXPIRATION_DATE_AVAILABLE: {
                 if (request.option_type == OptionType::SPRINT) return true;
@@ -317,6 +318,7 @@ namespace optionx::platforms::intrade_bar {
         /// \param request The account information request.
         /// \return The payout percentage (as a decimal value).
         double get_payout(const AccountInfoRequest& request) const {
+            const int64_t duration = request.duration;
 
             if ((request.currency == CurrencyType::USD && request.amount < min_usd_amount) ||
                 (request.currency == CurrencyType::RUB && request.amount < min_rub_amount)) {
@@ -330,8 +332,8 @@ namespace optionx::platforms::intrade_bar {
             const int64_t sec_of_day = time_shield::sec_of_day(request.timestamp);
             if (is_btc_symbol(request.symbol)) {
                 if (request.option_type == OptionType::CLASSIC ||
-                    request.duration < min_btc_duration ||
-                    request.duration > max_duration) {
+                    duration < min_btc_duration ||
+                    duration > max_duration) {
                     return 0.0;
                 }
                 // В выходные дни выплаты по сделкам с BTC будут снижены до 60%.
@@ -361,10 +363,10 @@ namespace optionx::platforms::intrade_bar {
             }
 
             if (request.option_type == OptionType::SPRINT) {
-                if (request.duration < time_shield::SEC_PER_MIN ||
-                    request.duration == (2 * time_shield::SEC_PER_MIN) ||
-                    (request.duration % time_shield::SEC_PER_MIN) != 0 ||
-                    request.duration > std::min(time_shield::start_of_min(end_time - time_shield::sec_of_day(request.timestamp)), max_duration)) {
+                if (duration < time_shield::SEC_PER_MIN ||
+                    duration == (2 * time_shield::SEC_PER_MIN) ||
+                    (duration % time_shield::SEC_PER_MIN) != 0 ||
+                    duration > std::min(time_shield::start_of_min(end_time - time_shield::sec_of_day(request.timestamp)), max_duration)) {
                     return 0.0;
                 }
                 if (!check_payout_limits(sec_of_day)) {
@@ -376,19 +378,19 @@ namespace optionx::platforms::intrade_bar {
                         (currency == CurrencyType::RUB && request.amount >= high_payout_rub_amount)) {
                         return 0.85;
                     }
-                    if (request.duration == 180) return 0.82;
-                    if (request.duration == 60) return 0.82;
+                    if (duration == 180) return 0.82;
+                    if (duration == 60) return 0.82;
                     return 0.82;
                 }
                 return 0.6;
             } else
             if (request.option_type == OptionType::CLASSIC) {
-                if (request.duration > time_shield::SEC_PER_YEAR) {
-                    const int64_t expiration = calc_expiration(request.timestamp, request.duration);
+                if (duration > time_shield::SEC_PER_YEAR) {
+                    const int64_t expiration = calc_expiration(request.timestamp, duration);
                     if (expiration == 0) return 0.0;
                 } else {
-                    if ((request.duration % (5 * time_shield::SEC_PER_MIN)) != 0) return 0.0;
-                    const int64_t timestamp = calc_expiry_time(request.timestamp, request.duration / time_shield::SEC_PER_MIN);
+                    if ((duration % (5 * time_shield::SEC_PER_MIN)) != 0) return 0.0;
+                    const int64_t timestamp = calc_expiry_time(request.timestamp, duration / time_shield::SEC_PER_MIN);
                     if (timestamp == 0) return 0.0;
                     if (timestamp > (time_shield::start_of_day(timestamp) + end_time)) return 0.0;
                 }

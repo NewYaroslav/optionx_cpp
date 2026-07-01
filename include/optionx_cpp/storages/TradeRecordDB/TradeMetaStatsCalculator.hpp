@@ -33,7 +33,7 @@ namespace optionx::storage {
             std::set<optionx::CurrencyType> currencies_set;
             std::set<std::string> symbols_set;
             std::set<std::string> signals_set;
-            std::set<std::int64_t> durations_set;
+            std::set<std::uint32_t> durations_set;
 
             for (const auto& rec : records) {
                 if (!TradeRecordFilterMatcher::match_filter(rec, config.filter, config.time_zone)) continue;

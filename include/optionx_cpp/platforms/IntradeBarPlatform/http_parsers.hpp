@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <sstream>
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <regex>
 #include <stdexcept>
@@ -21,6 +22,16 @@
 #include "ApiResponses.hpp"
 
 namespace optionx::platforms::intrade_bar {
+
+    inline std::uint32_t duration_sec_from_ms_delta(std::int64_t delta_ms) noexcept {
+        if (delta_ms <= 0) return 0;
+        const auto seconds = time_shield::ms_to_sec(delta_ms);
+        if (seconds <= 0 ||
+            seconds > static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)())) {
+            return 0;
+        }
+        return static_cast<std::uint32_t>(seconds);
+    }
 
     /// \brief Parses the login response and extracts user ID and hash.
     /// \param content The HTTP response content to parse.
@@ -621,7 +632,7 @@ namespace optionx::platforms::intrade_bar {
             if (auto close_time = parse_history_row_close_time_ms(row)) {
                 record.close_date = *close_time;
                 if (record.open_date > 0 && record.close_date >= record.open_date) {
-                    record.duration = time_shield::ms_to_sec(record.close_date - record.open_date);
+                    record.duration = duration_sec_from_ms_delta(record.close_date - record.open_date);
                 }
             }
             if (auto status = utils::parse_int_attr(row, "data-status")) {
@@ -671,7 +682,7 @@ namespace optionx::platforms::intrade_bar {
             record.open_date = *open_time;
             record.close_date = *close_time;
             if (record.close_date >= record.open_date) {
-                record.duration = time_shield::ms_to_sec(record.close_date - record.open_date);
+                record.duration = duration_sec_from_ms_delta(record.close_date - record.open_date);
             }
             record.open_price = *open_price;
             record.close_price = *close_price;
@@ -863,7 +874,7 @@ namespace optionx::platforms::intrade_bar {
             record.open_date = *open_time;
             record.close_date = *close_time;
             if (record.close_date >= record.open_date) {
-                record.duration = time_shield::ms_to_sec(record.close_date - record.open_date);
+                record.duration = duration_sec_from_ms_delta(record.close_date - record.open_date);
             }
             record.open_price = *open_price;
             record.close_price = *close_price;

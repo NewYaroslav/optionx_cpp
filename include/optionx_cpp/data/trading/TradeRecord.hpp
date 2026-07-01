@@ -15,6 +15,7 @@ namespace optionx {
     public:
         // Storage identity
         std::uint32_t trade_id = 0;           ///< Linear persistent trade ID; 0 means "not assigned".
+        std::uint32_t signal_id = 0;          ///< Persistent signal ID; 0 means "not attached to a signal".
         std::int64_t request_unique_id = 0;   ///< Unique ID from TradeRequest.
         std::string request_unique_hash;      ///< Unique hash from TradeRequest.
         std::int64_t account_id = 0;          ///< Trading account ID.
@@ -56,7 +57,7 @@ namespace optionx {
         std::int64_t send_date = 0;                         ///< Broker send timestamp.
         std::int64_t open_date = 0;                         ///< Trade open timestamp.
         std::int64_t close_date = 0;                        ///< Planned or known close timestamp (classic expiry, sprint open + duration).
-        std::int64_t duration = 0;                          ///< Requested duration in seconds.
+        std::uint32_t duration = 0;                         ///< Requested duration in seconds; 0 means not specified.
 
         // Money management and extensibility
         MmSystemType mm_type = MmSystemType::NONE;          ///< Money management strategy.
@@ -106,6 +107,7 @@ namespace optionx {
         /// \brief Copies request-side fields into this record.
         void assign_request(const TradeRequest& request) {
             trade_id = request.trade_id;
+            signal_id = request.signal_id;
             request_unique_id = request.unique_id;
             request_unique_hash = request.unique_hash;
             account_id = request.account_id;
@@ -295,8 +297,12 @@ namespace optionx {
 
         /// \brief Copies request and money-management fields from a signal.
         void assign_signal(const TradeSignal& signal) {
-            assign_request(signal.request);
+            assign_request(signal.to_trade_request());
             mm_type = signal.mm_type;
+            mm_step = signal.mm_step;
+            mm_group_id = signal.mm_group_id;
+            mm_group_hash = signal.mm_group_hash;
+            mm_group_name = signal.mm_group_name;
             mm_params_json = signal.mm_params ? signal.mm_params->to_json().dump() : std::string();
             decision_params_json = signal.decision_params ? signal.decision_params->to_json().dump() : std::string();
         }
@@ -368,6 +374,7 @@ namespace optionx {
             append_value(bytes, kBinaryVersion);
 
             append_value(bytes, trade_id);
+            append_value(bytes, signal_id);
             append_value(bytes, request_unique_id);
             append_string(bytes, request_unique_hash);
             append_value(bytes, account_id);
@@ -433,12 +440,13 @@ namespace optionx {
             }
 
             const auto version = reader.read<std::uint16_t>();
-            if (version < 1 || version > kBinaryVersion) {
+            if (version != kBinaryVersion) {
                 throw std::runtime_error("TradeRecord::from_bytes: unsupported version");
             }
 
             TradeRecord record;
             record.trade_id = reader.read<std::uint32_t>();
+            record.signal_id = reader.read<std::uint32_t>();
             record.request_unique_id = reader.read<std::int64_t>();
             record.request_unique_hash = reader.read_string();
             record.account_id = reader.read<std::int64_t>();
@@ -460,17 +468,8 @@ namespace optionx {
             record.min_payout = reader.read<double>();
             record.payout = reader.read<double>();
             record.profit = reader.read<double>();
-            double legacy_balance = 0.0;
-            if (version == 1 || version == 2) {
-                legacy_balance = reader.read<double>();
-                if (version == 1) {
-                    record.set_close_balance(legacy_balance);
-                }
-            }
-            if (version >= 2) {
-                record.open_balance = reader.read<double>();
-                record.close_balance = reader.read<double>();
-            }
+            record.open_balance = reader.read<double>();
+            record.close_balance = reader.read<double>();
 
             record.trade_state = reader.read_enum8<TradeState>();
             record.live_state = reader.read_enum8<TradeState>();
@@ -485,7 +484,7 @@ namespace optionx {
             record.send_date = reader.read<std::int64_t>();
             record.open_date = reader.read<std::int64_t>();
             record.close_date = reader.read<std::int64_t>();
-            record.duration = reader.read<std::int64_t>();
+            record.duration = reader.read<std::uint32_t>();
 
             record.mm_type = reader.read_enum8<MmSystemType>();
             record.mm_step = reader.read<std::int32_t>();
@@ -497,17 +496,6 @@ namespace optionx {
             record.metadata_json = reader.read_string();
 
             record.flags = reader.read<std::uint8_t>();
-            if (version < 3) {
-                if (record.open_balance != 0.0) {
-                    record.flags |= FLAG_HAS_OPEN_BALANCE;
-                }
-                if (version == 1 || record.close_balance != 0.0 || legacy_balance != 0.0) {
-                    record.flags |= FLAG_HAS_CLOSE_BALANCE;
-                    if (version == 2 && record.close_balance == 0.0) {
-                        record.close_balance = legacy_balance;
-                    }
-                }
-            }
 
             record.spread.raw = reader.read<std::uint64_t>();
             record.spread.digits = reader.read<std::uint8_t>();
@@ -518,6 +506,7 @@ namespace optionx {
 
         bool operator==(const TradeRecord& other) const {
             return trade_id == other.trade_id &&
+                   signal_id == other.signal_id &&
                    request_unique_id == other.request_unique_id &&
                    request_unique_hash == other.request_unique_hash &&
                    account_id == other.account_id &&
@@ -571,7 +560,7 @@ namespace optionx {
 
     private:
         static constexpr std::uint32_t kBinaryMagic = 0x5254584fU; // "OXTR" on little-endian hosts.
-        static constexpr std::uint16_t kBinaryVersion = 3;
+        static constexpr std::uint16_t kBinaryVersion = 1;
 
         template<typename T>
         static bool same_known(T lhs, T rhs, T unknown) noexcept {

@@ -20,6 +20,7 @@ namespace optionx {
 
         // Identifiers
         std::uint32_t trade_id = 0; ///< Persistent trade record ID propagated into TradeResult::trade_id.
+        std::uint32_t signal_id = 0; ///< Persistent signal ID; 0 means the request is not attached to a signal.
         int64_t unique_id   = 0;    ///< Unique identifier of the trade request.
         int64_t account_id  = 0;    ///< Identifier of the associated trading account.
 
@@ -35,7 +36,7 @@ namespace optionx {
         double min_payout = 0.0; ///< Minimum acceptable payout percentage.
 
         // Timing parameters
-        int64_t duration = 0;        ///< Trade duration in seconds.
+        std::uint32_t duration = 0;  ///< Trade duration in seconds; 0 means not specified.
         int64_t expiry_time = 0;     ///< Expiration time as a Unix timestamp.
 
         TradeRequest() = default;
@@ -129,6 +130,7 @@ namespace optionx {
             comment,
             unique_hash,
             trade_id,
+            signal_id,
             unique_id,
             account_id,
             option_type,
@@ -152,6 +154,7 @@ namespace optionx {
             comment = other.comment;
             unique_hash = other.unique_hash;
             trade_id = other.trade_id;
+            signal_id = other.signal_id;
             unique_id = other.unique_id;
             account_id = other.account_id;
             option_type = other.option_type;
