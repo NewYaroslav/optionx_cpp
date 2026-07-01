@@ -711,11 +711,6 @@ namespace optionx::storage {
         if (!is_open_no_lock()) {
             return signal_detail::list_error(SignalRecordDBStatus::NOT_OPEN, "SignalRecordDB is not open");
         }
-        if (unique_id <= 0) {
-            return signal_detail::list_error(
-                SignalRecordDBStatus::INVALID_ARGUMENT,
-                "SignalRecord unique_id is required");
-        }
 
         const auto start_key = signal_detail::make_composite_key(std::numeric_limits<std::int32_t>::min(), 0);
         const auto stop_key = signal_detail::make_composite_key(

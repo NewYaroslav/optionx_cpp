@@ -313,6 +313,30 @@ TEST(SignalRecordDBTest, FindByUidReturnsAllMatchingUserIdsWithoutMerging) {
     EXPECT_TRUE(db.find_by_signal_id(second_write.record.signal_id).ok());
 }
 
+TEST(SignalRecordDBTest, FindByUidAllowsZeroAndNegativeUserIds) {
+    const auto config = make_config("signal_record_db_zero_negative_uid");
+    SignalRecordDB db(config);
+    ASSERT_TRUE(db.is_open());
+
+    auto zero = make_record(0, 1712345600000, 7901);
+    auto negative = make_record(-7, 1712345660000, 7903);
+
+    auto zero_write = db.upsert(zero);
+    ASSERT_TRUE(zero_write.ok()) << zero_write.message;
+    auto negative_write = db.upsert(negative);
+    ASSERT_TRUE(negative_write.ok()) << negative_write.message;
+
+    auto zero_uid = db.find_by_uid(0);
+    ASSERT_TRUE(zero_uid.ok()) << zero_uid.message;
+    ASSERT_EQ(zero_uid.records.size(), 1u);
+    EXPECT_EQ(zero_uid.records[0].signal_id, zero_write.record.signal_id);
+
+    auto negative_uid = db.find_by_uid(-7);
+    ASSERT_TRUE(negative_uid.ok()) << negative_uid.message;
+    ASSERT_EQ(negative_uid.records.size(), 1u);
+    EXPECT_EQ(negative_uid.records[0].signal_id, negative_write.record.signal_id);
+}
+
 TEST(SignalRecordDBTest, WriteRejectsTradeIdOwnedByAnotherSignal) {
     const auto config = make_config("signal_record_db_trade_conflict_write");
     SignalRecordDB db(config);
@@ -352,6 +376,19 @@ TEST(SignalRecordDBTest, UpsertRejectsAmbiguousTradeIdOwners) {
 
     auto conflict = db.upsert(ambiguous);
     EXPECT_EQ(conflict.status, SignalRecordDBStatus::CONFLICT);
+    EXPECT_EQ(db.count(), 2u);
+
+    auto first_owner = db.find_by_trade_id(9101);
+    ASSERT_TRUE(first_owner.ok()) << first_owner.message;
+    EXPECT_EQ(first_owner.record.signal_id, 1u);
+
+    auto second_owner = db.find_by_trade_id(9201);
+    ASSERT_TRUE(second_owner.ok()) << second_owner.message;
+    EXPECT_EQ(second_owner.record.signal_id, 2u);
+
+    auto conflict_uid = db.find_by_uid(93);
+    ASSERT_TRUE(conflict_uid.ok()) << conflict_uid.message;
+    EXPECT_TRUE(conflict_uid.records.empty());
 }
 
 TEST(SignalRecordDBTest, ProcessRunsQueuedWorkOnCallerThread) {

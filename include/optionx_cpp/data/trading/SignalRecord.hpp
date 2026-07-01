@@ -5,6 +5,11 @@
 /// \file SignalRecord.hpp
 /// \brief Defines the persistent DTO used to store trading signals.
 
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+    (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#   error "SignalRecord binary format requires a little-endian target"
+#endif
+
 namespace optionx {
 
     /// \class SignalRecord
@@ -205,6 +210,9 @@ namespace optionx {
         }
 
         /// \brief Deserializes a signal record serialized by the current binary storage format.
+        /// \details Validates the binary structure, but does not semantically
+        /// validate enum values. Treat invalid enum payloads as local storage
+        /// corruption rather than as supported external input.
         static SignalRecord from_bytes(const void* data, std::size_t size) {
             BinaryReader reader(data, size);
 
