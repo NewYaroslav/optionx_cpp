@@ -15,6 +15,7 @@ namespace optionx {
     public:
         // Storage identity
         std::uint32_t trade_id = 0;           ///< Linear persistent trade ID; 0 means "not assigned".
+        std::uint64_t signal_id = 0;          ///< Persistent signal ID; 0 means "not attached to a signal".
         std::int64_t request_unique_id = 0;   ///< Unique ID from TradeRequest.
         std::string request_unique_hash;      ///< Unique hash from TradeRequest.
         std::int64_t account_id = 0;          ///< Trading account ID.
@@ -106,6 +107,7 @@ namespace optionx {
         /// \brief Copies request-side fields into this record.
         void assign_request(const TradeRequest& request) {
             trade_id = request.trade_id;
+            signal_id = request.signal_id;
             request_unique_id = request.unique_id;
             request_unique_hash = request.unique_hash;
             account_id = request.account_id;
@@ -296,6 +298,10 @@ namespace optionx {
         /// \brief Copies request and money-management fields from a signal.
         void assign_signal(const TradeSignal& signal) {
             assign_request(signal.request);
+            const auto effective_signal_id = signal.resolved_signal_id();
+            if (effective_signal_id != 0) {
+                signal_id = effective_signal_id;
+            }
             mm_type = signal.mm_type;
             mm_params_json = signal.mm_params ? signal.mm_params->to_json().dump() : std::string();
             decision_params_json = signal.decision_params ? signal.decision_params->to_json().dump() : std::string();
@@ -368,6 +374,7 @@ namespace optionx {
             append_value(bytes, kBinaryVersion);
 
             append_value(bytes, trade_id);
+            append_value(bytes, signal_id);
             append_value(bytes, request_unique_id);
             append_string(bytes, request_unique_hash);
             append_value(bytes, account_id);
@@ -439,6 +446,9 @@ namespace optionx {
 
             TradeRecord record;
             record.trade_id = reader.read<std::uint32_t>();
+            if (version >= 3) {
+                record.signal_id = reader.read<std::uint64_t>();
+            }
             record.request_unique_id = reader.read<std::int64_t>();
             record.request_unique_hash = reader.read_string();
             record.account_id = reader.read<std::int64_t>();
@@ -518,6 +528,7 @@ namespace optionx {
 
         bool operator==(const TradeRecord& other) const {
             return trade_id == other.trade_id &&
+                   signal_id == other.signal_id &&
                    request_unique_id == other.request_unique_id &&
                    request_unique_hash == other.request_unique_hash &&
                    account_id == other.account_id &&

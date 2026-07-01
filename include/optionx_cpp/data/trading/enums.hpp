@@ -534,6 +534,234 @@ namespace optionx {
 
 //------------------------------------------------------------------------------
 
+    /// \enum SignalStatus
+    /// \brief Represents lifecycle states of a stored trading signal.
+    enum class SignalStatus {
+        UNKNOWN,     ///< Unknown signal state.
+        RECEIVED,    ///< Signal was received but not accepted yet.
+        ACCEPTED,    ///< Signal passed validation and may produce trades.
+        REJECTED,    ///< Signal was rejected before producing trades.
+        IN_PROGRESS, ///< Signal is producing or waiting for trades.
+        COMPLETED,   ///< Signal processing is complete.
+        CANCELED,    ///< Signal was canceled.
+        FAILED       ///< Signal processing ended with an error.
+    };
+
+    /// \brief Converts SignalStatus to its string representation.
+    inline const std::string& to_str(SignalStatus value) noexcept {
+        static const std::vector<std::string> str_data = {
+            "UNKNOWN",
+            "RECEIVED",
+            "ACCEPTED",
+            "REJECTED",
+            "IN_PROGRESS",
+            "COMPLETED",
+            "CANCELED",
+            "ERROR"
+        };
+        return utils::enum_string_or_unknown(str_data, static_cast<size_t>(value));
+    }
+
+    /// \brief Converts a string to SignalStatus.
+    inline bool to_enum(const std::string& str, SignalStatus& value) noexcept {
+        static const std::unordered_map<std::string, SignalStatus> str_data = {
+            {"UNKNOWN",     SignalStatus::UNKNOWN},
+            {"RECEIVED",    SignalStatus::RECEIVED},
+            {"ACCEPTED",    SignalStatus::ACCEPTED},
+            {"REJECTED",    SignalStatus::REJECTED},
+            {"IN_PROGRESS", SignalStatus::IN_PROGRESS},
+            {"COMPLETED",   SignalStatus::COMPLETED},
+            {"CANCELED",    SignalStatus::CANCELED},
+            {"ERROR",       SignalStatus::FAILED},
+            {"FAILED",      SignalStatus::FAILED}
+        };
+        auto it = str_data.find(utils::to_upper_case(str));
+        if (it != str_data.end()) {
+            value = it->second;
+            return true;
+        }
+        return false;
+    }
+
+    /// \brief Template specialization to convert a string to SignalStatus.
+    template <>
+    inline SignalStatus to_enum<SignalStatus>(const std::string& str) {
+        SignalStatus value;
+        if (!to_enum(str, value)) {
+            throw std::invalid_argument("Invalid SignalStatus string: " + str);
+        }
+        return value;
+    }
+
+    /// \brief Converts SignalStatus to JSON.
+    inline void to_json(nlohmann::json& j, const SignalStatus& status) {
+        j = optionx::to_str(status);
+    }
+
+    /// \brief Converts JSON to SignalStatus.
+    inline void from_json(const nlohmann::json& j, SignalStatus& status) {
+        status = optionx::to_enum<SignalStatus>(j.get<std::string>());
+    }
+
+    /// \brief Stream output operator for SignalStatus.
+    inline std::ostream& operator<<(std::ostream& os, SignalStatus value) {
+        os << optionx::to_str(value);
+        return os;
+    }
+
+//------------------------------------------------------------------------------
+
+    /// \enum SignalRejectCode
+    /// \brief Represents signal-level rejection reasons.
+    enum class SignalRejectCode {
+        NONE,            ///< Signal was not rejected.
+        INVALID_SIGNAL,  ///< Signal payload is invalid.
+        INVALID_REQUEST, ///< Embedded trade request is invalid.
+        FILTERED,        ///< Signal was filtered by strategy/risk rules.
+        RISK_LIMIT,      ///< Risk or money-management limit rejected it.
+        DUPLICATE_SIGNAL, ///< Duplicate signal was detected.
+        NO_CONNECTION,   ///< Required broker/platform connection was unavailable.
+        INTERNAL_ERROR   ///< Internal processing error.
+    };
+
+    /// \brief Converts SignalRejectCode to its string representation.
+    inline const std::string& to_str(SignalRejectCode value) noexcept {
+        static const std::vector<std::string> str_data = {
+            "NONE",
+            "INVALID_SIGNAL",
+            "INVALID_REQUEST",
+            "FILTERED",
+            "RISK_LIMIT",
+            "DUPLICATE",
+            "NO_CONNECTION",
+            "INTERNAL_ERROR"
+        };
+        return utils::enum_string_or_unknown(str_data, static_cast<size_t>(value));
+    }
+
+    /// \brief Converts a string to SignalRejectCode.
+    inline bool to_enum(const std::string& str, SignalRejectCode& value) noexcept {
+        static const std::unordered_map<std::string, SignalRejectCode> str_data = {
+            {"NONE",            SignalRejectCode::NONE},
+            {"INVALID_SIGNAL",  SignalRejectCode::INVALID_SIGNAL},
+            {"INVALID_REQUEST", SignalRejectCode::INVALID_REQUEST},
+            {"FILTERED",        SignalRejectCode::FILTERED},
+            {"RISK_LIMIT",      SignalRejectCode::RISK_LIMIT},
+            {"DUPLICATE",       SignalRejectCode::DUPLICATE_SIGNAL},
+            {"DUPLICATE_SIGNAL", SignalRejectCode::DUPLICATE_SIGNAL},
+            {"NO_CONNECTION",   SignalRejectCode::NO_CONNECTION},
+            {"INTERNAL_ERROR",  SignalRejectCode::INTERNAL_ERROR}
+        };
+        auto it = str_data.find(utils::to_upper_case(str));
+        if (it != str_data.end()) {
+            value = it->second;
+            return true;
+        }
+        return false;
+    }
+
+    /// \brief Template specialization to convert a string to SignalRejectCode.
+    template <>
+    inline SignalRejectCode to_enum<SignalRejectCode>(const std::string& str) {
+        SignalRejectCode value;
+        if (!to_enum(str, value)) {
+            throw std::invalid_argument("Invalid SignalRejectCode string: " + str);
+        }
+        return value;
+    }
+
+    /// \brief Converts SignalRejectCode to JSON.
+    inline void to_json(nlohmann::json& j, const SignalRejectCode& code) {
+        j = optionx::to_str(code);
+    }
+
+    /// \brief Converts JSON to SignalRejectCode.
+    inline void from_json(const nlohmann::json& j, SignalRejectCode& code) {
+        code = optionx::to_enum<SignalRejectCode>(j.get<std::string>());
+    }
+
+    /// \brief Stream output operator for SignalRejectCode.
+    inline std::ostream& operator<<(std::ostream& os, SignalRejectCode value) {
+        os << optionx::to_str(value);
+        return os;
+    }
+
+//------------------------------------------------------------------------------
+
+    /// \enum SignalOutcome
+    /// \brief Represents aggregated outcome of a signal and its produced trades.
+    enum class SignalOutcome {
+        UNKNOWN,  ///< Outcome has not been calculated.
+        WIN,      ///< Signal ended with positive profit.
+        LOSS,     ///< Signal ended with negative profit.
+        STANDOFF, ///< Signal ended flat.
+        REFUND,   ///< Signal was refunded.
+        MIXED,    ///< Produced trades have mixed terminal states.
+        FAILED    ///< Signal ended with an error state.
+    };
+
+    /// \brief Converts SignalOutcome to its string representation.
+    inline const std::string& to_str(SignalOutcome value) noexcept {
+        static const std::vector<std::string> str_data = {
+            "UNKNOWN",
+            "WIN",
+            "LOSS",
+            "STANDOFF",
+            "REFUND",
+            "MIXED",
+            "ERROR"
+        };
+        return utils::enum_string_or_unknown(str_data, static_cast<size_t>(value));
+    }
+
+    /// \brief Converts a string to SignalOutcome.
+    inline bool to_enum(const std::string& str, SignalOutcome& value) noexcept {
+        static const std::unordered_map<std::string, SignalOutcome> str_data = {
+            {"UNKNOWN",  SignalOutcome::UNKNOWN},
+            {"WIN",      SignalOutcome::WIN},
+            {"LOSS",     SignalOutcome::LOSS},
+            {"STANDOFF", SignalOutcome::STANDOFF},
+            {"REFUND",   SignalOutcome::REFUND},
+            {"MIXED",    SignalOutcome::MIXED},
+            {"ERROR",    SignalOutcome::FAILED},
+            {"FAILED",   SignalOutcome::FAILED}
+        };
+        auto it = str_data.find(utils::to_upper_case(str));
+        if (it != str_data.end()) {
+            value = it->second;
+            return true;
+        }
+        return false;
+    }
+
+    /// \brief Template specialization to convert a string to SignalOutcome.
+    template <>
+    inline SignalOutcome to_enum<SignalOutcome>(const std::string& str) {
+        SignalOutcome value;
+        if (!to_enum(str, value)) {
+            throw std::invalid_argument("Invalid SignalOutcome string: " + str);
+        }
+        return value;
+    }
+
+    /// \brief Converts SignalOutcome to JSON.
+    inline void to_json(nlohmann::json& j, const SignalOutcome& outcome) {
+        j = optionx::to_str(outcome);
+    }
+
+    /// \brief Converts JSON to SignalOutcome.
+    inline void from_json(const nlohmann::json& j, SignalOutcome& outcome) {
+        outcome = optionx::to_enum<SignalOutcome>(j.get<std::string>());
+    }
+
+    /// \brief Stream output operator for SignalOutcome.
+    inline std::ostream& operator<<(std::ostream& os, SignalOutcome value) {
+        os << optionx::to_str(value);
+        return os;
+    }
+
+//------------------------------------------------------------------------------
+
     /// \enum TradeErrorCode
     /// \brief Represents error codes for order validation and processing.
     enum class TradeErrorCode {

@@ -116,6 +116,19 @@ TEST(TradeRecordFilterMatcherTest, MatchesBySymbol) {
     EXPECT_FALSE(TradeRecordFilterMatcher::match(rec, query));
 }
 
+TEST(TradeRecordFilterMatcherTest, MatchesBySignalId) {
+    TradeRecord rec = make_win_record(1, 100000);
+    rec.signal_id = 7007;
+
+    TradeRecordQuery query;
+    query.filter.signal_ids.add_include(7007);
+    EXPECT_TRUE(TradeRecordFilterMatcher::match(rec, query));
+
+    query.filter.signal_ids.clear();
+    query.filter.signal_ids.add_include(7008);
+    EXPECT_FALSE(TradeRecordFilterMatcher::match(rec, query));
+}
+
 TEST(TradeRecordFilterMatcherTest, MatchesByPlatformAndState) {
     TradeRecord rec = make_win_record(1, 100000);
     rec.platform_type = optionx::PlatformType::INTRADE_BAR;

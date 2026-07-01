@@ -58,6 +58,7 @@ optionx::TradeRequest make_request() {
     request.user_data = R"({"source":"test"})";
     request.comment = "round trip";
     request.unique_hash = "request-hash";
+    request.signal_id = 501;
     request.unique_id = 42;
     request.account_id = 7001;
     request.option_type = optionx::OptionType::CLASSIC;
@@ -141,6 +142,7 @@ TEST(TradeRecordSerializationTest, RejectsCorruptedPayloads) {
 TEST(TradeRecordFactoryTest, AssignsRequestResultAndSignalData) {
     optionx::TradeSignal signal;
     signal.request = make_request();
+    signal.set_signal_id(7007);
     signal.set_money_management(std::make_unique<TestMoneyManagementParams>(3));
     signal.decision_params = std::make_unique<TestDecisionParams>(0.65);
 
@@ -148,6 +150,7 @@ TEST(TradeRecordFactoryTest, AssignsRequestResultAndSignalData) {
     record.trade_id = 7;
 
     EXPECT_EQ(record.trade_id, 7u);
+    EXPECT_EQ(record.signal_id, 7007u);
     EXPECT_EQ(record.symbol, "EURUSD");
     EXPECT_EQ(record.signal_name, "mean-reversion");
     EXPECT_EQ(record.request_unique_id, 42);
@@ -162,6 +165,73 @@ TEST(TradeRecordFactoryTest, AssignsRequestResultAndSignalData) {
     EXPECT_EQ(record.mm_type, optionx::MmSystemType::MARTINGALE_SIGNAL);
     EXPECT_EQ(nlohmann::json::parse(record.mm_params_json).at("step"), 3);
     EXPECT_EQ(nlohmann::json::parse(record.decision_params_json).at("threshold"), 0.65);
+}
+
+TEST(SignalRecordTest, AssignsSignalDataAndProducedTradeIds) {
+    optionx::TradeSignal signal;
+    signal.request = make_request();
+    signal.set_signal_id(7007);
+    signal.set_money_management(std::make_unique<TestMoneyManagementParams>(3));
+    signal.decision_params = std::make_unique<TestDecisionParams>(0.65);
+
+    auto record = optionx::SignalRecord::from_signal(signal);
+    record.status = optionx::SignalStatus::ACCEPTED;
+    record.outcome = optionx::SignalOutcome::WIN;
+    record.total_profit = 12.71;
+
+    record.add_trade_id(0);
+    record.add_trade_id(7);
+    record.add_trade_id(7);
+    record.add_trade_id(8);
+
+    EXPECT_TRUE(record.has_signal_id());
+    EXPECT_EQ(signal.request.signal_id, 7007u);
+    EXPECT_EQ(record.signal_id, 7007u);
+    EXPECT_EQ(record.request_unique_id, 42);
+    EXPECT_EQ(record.request_unique_hash, "request-hash");
+    EXPECT_EQ(record.symbol, "EURUSD");
+    EXPECT_EQ(record.signal_name, "mean-reversion");
+    EXPECT_EQ(record.mm_type, optionx::MmSystemType::MARTINGALE_SIGNAL);
+    EXPECT_EQ(nlohmann::json::parse(record.mm_params_json).at("step"), 3);
+    EXPECT_EQ(nlohmann::json::parse(record.decision_params_json).at("threshold"), 0.65);
+    ASSERT_EQ(record.trade_ids.size(), 2u);
+    EXPECT_EQ(record.trade_ids[0], 7u);
+    EXPECT_EQ(record.trade_ids[1], 8u);
+
+    const nlohmann::json json_record = record;
+    const auto restored = json_record.get<optionx::SignalRecord>();
+    EXPECT_EQ(restored.signal_id, record.signal_id);
+    EXPECT_EQ(restored.status, optionx::SignalStatus::ACCEPTED);
+    EXPECT_EQ(restored.outcome, optionx::SignalOutcome::WIN);
+    EXPECT_EQ(restored.trade_ids, record.trade_ids);
+}
+
+TEST(SignalRecordTest, ResolvesSignalIdFromRequestWhenTopLevelIdIsUnset) {
+    optionx::TradeSignal signal;
+    signal.request = make_request();
+    signal.signal_id = 0;
+    signal.request.signal_id = 901;
+
+    const auto record = optionx::SignalRecord::from_signal(signal);
+
+    EXPECT_EQ(signal.resolved_signal_id(), 901u);
+    EXPECT_EQ(record.signal_id, 901u);
+}
+
+TEST(SignalRecordTest, ClonesResolvedSignalIdAndDecisionParams) {
+    optionx::TradeSignal signal;
+    signal.request = make_request();
+    signal.signal_id = 0;
+    signal.request.signal_id = 901;
+    signal.decision_params = std::make_unique<TestDecisionParams>(0.75);
+
+    const auto clone = signal.clone();
+
+    ASSERT_NE(clone, nullptr);
+    EXPECT_EQ(clone->signal_id, 901u);
+    EXPECT_EQ(clone->request.signal_id, 901u);
+    ASSERT_NE(clone->decision_params, nullptr);
+    EXPECT_EQ(clone->decision_params->to_json().at("threshold"), 0.75);
 }
 
 TEST(TradeRecordFactoryTest, PreservesRequestContextWhenResultIsPartial) {
@@ -179,6 +249,7 @@ TEST(TradeRecordFactoryTest, PreservesRequestContextWhenResultIsPartial) {
     const auto record = optionx::TradeRecord::from_trade(request, partial_result);
 
     EXPECT_EQ(record.trade_id, 321u);
+    EXPECT_EQ(record.signal_id, 501u);
     EXPECT_EQ(record.option_id, 98765);
     EXPECT_EQ(record.amount, 25.0);
     EXPECT_EQ(record.account_type, optionx::AccountType::DEMO);
