@@ -283,6 +283,9 @@ TEST(LegacyTradingBridge, RunFailsWithoutSignalIdAllocator) {
     EXPECT_TRUE(update_received);
     EXPECT_EQ(last_status, optionx::BridgeStatus::SERVER_START_FAILED);
     EXPECT_NE(last_message.find("signal ID allocator"), std::string::npos);
+
+    bridge.on_status_update() = {};
+    bridge.shutdown();
 }
 
 TEST(LegacyTradingBridge, SendsTradeResultThroughNamedPipe) {
@@ -400,6 +403,9 @@ TEST(LegacyTradingBridge, SendsTradeResultThroughNamedPipe) {
     EXPECT_EQ(received_bridge_id, 42u);
 
     client.close();
+    bridge.on_status_update() = {};
+    bridge.on_trade_signal() = {};
+    bridge.shutdown();
 #else
     GTEST_SKIP() << "Legacy named-pipe transport is Windows-only.";
 #endif
