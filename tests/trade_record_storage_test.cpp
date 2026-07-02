@@ -59,6 +59,7 @@ optionx::TradeRequest make_request() {
     request.comment = "round trip";
     request.unique_hash = "request-hash";
     request.signal_id = 501;
+    request.bridge_id = 11;
     request.unique_id = 42;
     request.account_id = 7001;
     request.option_type = optionx::OptionType::CLASSIC;
@@ -76,6 +77,7 @@ optionx::TradeRequest make_request() {
 optionx::TradeSignal make_signal() {
     optionx::TradeSignal signal;
     signal.signal_id = 7007;
+    signal.bridge_id = 11;
     signal.unique_id = 42;
     signal.unique_hash = "signal-hash";
     signal.platform_type = optionx::PlatformType::INTRADE_BAR;
@@ -176,6 +178,7 @@ TEST(TradeRecordFactoryTest, AssignsRequestResultAndSignalData) {
 
     EXPECT_EQ(record.trade_id, 7u);
     EXPECT_EQ(record.signal_id, 7007u);
+    EXPECT_EQ(record.bridge_id, 11u);
     EXPECT_EQ(record.symbol, "EURUSD");
     EXPECT_EQ(record.signal_name, "mean-reversion");
     EXPECT_EQ(record.unique_id, 42);
@@ -213,6 +216,7 @@ TEST(SignalRecordTest, AssignsSignalDataAndProducedTradeIds) {
 
     EXPECT_TRUE(record.has_signal_id());
     EXPECT_EQ(record.signal_id, 7007u);
+    EXPECT_EQ(record.bridge_id, 11u);
     EXPECT_EQ(record.unique_id, 42);
     EXPECT_EQ(record.unique_hash, "signal-hash");
     EXPECT_EQ(record.platform_type, optionx::PlatformType::INTRADE_BAR);
@@ -232,6 +236,7 @@ TEST(SignalRecordTest, AssignsSignalDataAndProducedTradeIds) {
     const nlohmann::json json_record = record;
     const auto restored = json_record.get<optionx::SignalRecord>();
     EXPECT_EQ(restored.signal_id, record.signal_id);
+    EXPECT_EQ(restored.bridge_id, record.bridge_id);
     EXPECT_EQ(restored.status, optionx::SignalStatus::ACCEPTED);
     EXPECT_EQ(restored.outcome, optionx::SignalOutcome::WIN);
     EXPECT_EQ(restored.trade_ids, record.trade_ids);
@@ -243,6 +248,7 @@ TEST(SignalRecordTest, BuildsTradeRequestFromFlatSignalData) {
     const auto request = signal.to_trade_request();
 
     EXPECT_EQ(request.signal_id, 7007u);
+    EXPECT_EQ(request.bridge_id, 11u);
     EXPECT_EQ(request.unique_id, 42);
     EXPECT_EQ(request.unique_hash, "signal-hash");
     EXPECT_EQ(request.account_id, 7001);
@@ -267,6 +273,7 @@ TEST(SignalRecordTest, ClonesFlatSignalDataAndDecisionParams) {
 
     ASSERT_NE(clone, nullptr);
     EXPECT_EQ(clone->signal_id, 7007u);
+    EXPECT_EQ(clone->bridge_id, 11u);
     EXPECT_EQ(clone->unique_id, 42);
     EXPECT_EQ(clone->unique_hash, "signal-hash");
     EXPECT_EQ(clone->symbol, "EURUSD");
@@ -281,6 +288,7 @@ TEST(SignalRecordTest, BuildsFromDirectTradeRequest) {
     const auto record = optionx::SignalRecord::from_signal(request);
 
     EXPECT_EQ(record.signal_id, 501u);
+    EXPECT_EQ(record.bridge_id, 11u);
     EXPECT_EQ(record.unique_id, 42);
     EXPECT_EQ(record.unique_hash, "request-hash");
     EXPECT_EQ(record.symbol, "EURUSD");
@@ -295,11 +303,13 @@ TEST(TradeSignalTest, RoundTripsFlatJsonAndBuildsRequest) {
     const auto request = restored.to_trade_request();
 
     EXPECT_EQ(restored.signal_id, 7007u);
+    EXPECT_EQ(restored.bridge_id, 11u);
     EXPECT_EQ(restored.unique_id, 42);
     EXPECT_EQ(restored.unique_hash, "signal-hash");
     EXPECT_EQ(restored.platform_type, optionx::PlatformType::INTRADE_BAR);
     EXPECT_EQ(restored.mm_group_hash, "signal-group-hash");
     EXPECT_EQ(request.signal_id, 7007u);
+    EXPECT_EQ(request.bridge_id, 11u);
     EXPECT_EQ(request.unique_id, 42);
     EXPECT_EQ(request.unique_hash, "signal-hash");
     EXPECT_EQ(request.symbol, "EURUSD");
@@ -322,6 +332,7 @@ TEST(TradeRecordFactoryTest, PreservesRequestContextWhenResultIsPartial) {
 
     EXPECT_EQ(record.trade_id, 321u);
     EXPECT_EQ(record.signal_id, 501u);
+    EXPECT_EQ(record.bridge_id, 11u);
     EXPECT_EQ(record.option_id, 98765);
     EXPECT_EQ(record.amount, 25.0);
     EXPECT_EQ(record.account_type, optionx::AccountType::DEMO);

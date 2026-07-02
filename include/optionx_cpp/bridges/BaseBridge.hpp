@@ -11,7 +11,8 @@ namespace optionx::bridges {
     /// \brief Abstract base class for bridges facilitating communication between the application and external platforms.
     class BaseBridge {
     public:
-        using place_trade_callback_t = std::function<void(std::unique_ptr<TradeRequest>)>;
+        using trade_signal_callback_t = std::function<void(std::unique_ptr<TradeSignal>)>;
+        using signal_id_allocator_t = std::function<SignalId()>;
 
         /// \brief Virtual destructor for safe polymorphic destruction.
         virtual ~BaseBridge() = default;
@@ -32,23 +33,33 @@ namespace optionx::bridges {
             return null_callback;
         }
 
-        /// \brief Retrieves a reference to the place trade callback function.
-        /// \return Reference to the place trade callback function.
-        virtual place_trade_callback_t& on_place_trade() {
-            static place_trade_callback_t null_callback;
+        /// \brief Retrieves a reference to the trade signal callback function.
+        /// \return Reference to the trade signal callback function.
+        virtual trade_signal_callback_t& on_trade_signal() {
+            static trade_signal_callback_t null_callback;
             return null_callback;
         }
 
-        /// \brief Retrieves a reference to the trade result callback function.
-        /// \return Reference to the trade result callback function.
-        virtual trade_result_callback_t& on_trade_result() {
-            static trade_result_callback_t null_callback;
-            return null_callback;
+        /// \brief Returns allocator used to initialize empty TradeSignal::signal_id values.
+        /// \return Reference to the signal ID allocator function.
+        virtual signal_id_allocator_t& on_signal_id() {
+            static signal_id_allocator_t null_allocator;
+            return null_allocator;
         }
 
         /// \brief Updates the account information with the provided data.
         /// \param info Structure containing account information updates.
         virtual void update_account_info(const AccountInfoUpdate& info) = 0;
+
+        /// \brief Updates the bridge with a trade result produced by the trading pipeline.
+        /// \param request Original trade request.
+        /// \param result Current trade result snapshot.
+        virtual void update_trade_result(
+                const TradeRequest& request,
+                const TradeResult& result) {
+            (void)request;
+            (void)result;
+        }
 
         /// \brief Initiates the bridge's main operations.
         virtual void run() = 0;

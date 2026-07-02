@@ -12,7 +12,8 @@ namespace optionx {
     class TradeSignal {
     public:
         // Signal identity
-        std::uint32_t signal_id = 0;          ///< Persistent signal ID; 0 means "not assigned".
+        SignalId signal_id = 0;              ///< Persistent signal ID; 0 means "not assigned".
+        BridgeId bridge_id = 0;              ///< Source bridge ID; 0 means "not assigned".
         std::int64_t unique_id = 0;           ///< External/runtime signal identifier.
         std::string unique_hash;              ///< External/runtime signal hash.
 
@@ -49,6 +50,7 @@ namespace optionx {
         /// parameters, but runtime fields such as callbacks are untouched.
         void assign_to_request(TradeRequest& request) const {
             request.signal_id = signal_id;
+            request.bridge_id = bridge_id;
             request.unique_id = unique_id;
             request.unique_hash = unique_hash;
             request.account_id = account_id;
@@ -98,6 +100,7 @@ namespace optionx {
         std::unique_ptr<TradeSignal> clone() const {
             auto cloned = std::make_unique<TradeSignal>();
             cloned->signal_id = signal_id;
+            cloned->bridge_id = bridge_id;
             cloned->unique_id = unique_id;
             cloned->unique_hash = unique_hash;
             cloned->platform_type = platform_type;
@@ -143,6 +146,7 @@ namespace nlohmann {
         static void to_json(json& j, const optionx::TradeSignal& signal) {
             j = json{
                 {"signal_id", signal.signal_id},
+                {"bridge_id", signal.bridge_id},
                 {"unique_id", signal.unique_id},
                 {"unique_hash", signal.unique_hash},
                 {"platform_type", signal.platform_type},
@@ -174,7 +178,8 @@ namespace nlohmann {
         /// \param j The JSON object to read.
         /// \param signal The TradeSignal object to populate.
         static void from_json(const json& j, optionx::TradeSignal& signal) {
-            signal.signal_id = j.value("signal_id", std::uint32_t{0});
+            signal.signal_id = j.value("signal_id", optionx::SignalId{0});
+            signal.bridge_id = j.value("bridge_id", optionx::BridgeId{0});
             signal.unique_id = j.value("unique_id", std::int64_t{0});
             signal.unique_hash = j.value("unique_hash", std::string());
             signal.platform_type = j.value("platform_type", optionx::PlatformType::UNKNOWN);

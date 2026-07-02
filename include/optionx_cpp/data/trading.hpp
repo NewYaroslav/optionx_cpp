@@ -32,6 +32,7 @@
 #include "utils/enum_utils.hpp"
 #include "utils/string_utils.hpp"
 
+#include "trading/types.hpp"
 #include "trading/enums.hpp"
 #include "trading/SpreadPack.hpp"
 #include "trading/TradeResult.hpp"
