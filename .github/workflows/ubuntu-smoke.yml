@@ -30,11 +30,11 @@ jobs:
       - name: Run trade_record_db_test
         run: ./build-linux/trade_record_db_test --gtest_brief=1
 
-      - name: Build legacy_named_pipe_bridge_test
-        run: cmake --build build-linux --target legacy_named_pipe_bridge_test -j
+      - name: Build legacy_trading_bridge_test
+        run: cmake --build build-linux --target legacy_trading_bridge_test -j
 
-      - name: Run legacy_named_pipe_bridge_test
-        run: ./build-linux/legacy_named_pipe_bridge_test --gtest_brief=1
+      - name: Run legacy_trading_bridge_test
+        run: ./build-linux/legacy_trading_bridge_test --gtest_brief=1
 
       - name: Configure submodule consumer
         run: cmake -S tests/cmake/submodule_consumer -B build-submodule-consumer

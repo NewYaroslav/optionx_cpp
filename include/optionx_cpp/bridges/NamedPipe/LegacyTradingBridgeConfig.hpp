@@ -1,17 +1,17 @@
 #pragma once
-#ifndef _OPTIONX_BRIDGES_LEGACY_NAMED_PIPE_BRIDGE_CONFIG_HPP_INCLUDED
-#define _OPTIONX_BRIDGES_LEGACY_NAMED_PIPE_BRIDGE_CONFIG_HPP_INCLUDED
+#ifndef _OPTIONX_BRIDGES_NAMED_PIPE_LEGACY_TRADING_BRIDGE_CONFIG_HPP_INCLUDED
+#define _OPTIONX_BRIDGES_NAMED_PIPE_LEGACY_TRADING_BRIDGE_CONFIG_HPP_INCLUDED
 
-/// \file LegacyNamedPipeBridgeConfig.hpp
-/// \brief Defines configuration for the legacy named-pipe bridge.
+/// \file LegacyTradingBridgeConfig.hpp
+/// \brief Defines configuration for the legacy named-pipe trading bridge.
 
 #include "data.hpp"
 
-namespace optionx::bridges {
+namespace optionx::bridges::named_pipe {
 
-    /// \class LegacyNamedPipeBridgeConfig
-    /// \brief Configuration for the legacy named-pipe bridge protocol.
-    class LegacyNamedPipeBridgeConfig final : public IBridgeConfig {
+    /// \class LegacyTradingBridgeConfig
+    /// \brief Configuration for the legacy named-pipe trading bridge protocol.
+    class LegacyTradingBridgeConfig final : public IBridgeConfig {
     public:
         /// \brief Serializes the bridge configuration.
         /// \param j Output JSON object.
@@ -69,19 +69,19 @@ namespace optionx::bridges {
         /// \brief Creates a unique pointer clone of this configuration.
         /// \return A unique pointer to a copied configuration.
         std::unique_ptr<IBridgeConfig> clone_unique() const override {
-            return std::make_unique<LegacyNamedPipeBridgeConfig>(*this);
+            return std::make_unique<LegacyTradingBridgeConfig>(*this);
         }
 
         /// \brief Creates a shared pointer clone of this configuration.
         /// \return A shared pointer to a copied configuration.
         std::shared_ptr<IBridgeConfig> clone_shared() const override {
-            return std::make_shared<LegacyNamedPipeBridgeConfig>(*this);
+            return std::make_shared<LegacyTradingBridgeConfig>(*this);
         }
 
         /// \brief Returns the bridge type.
-        /// \return `BridgeType::LEGACY_NAMED_PIPE`.
+        /// \return `BridgeType::LEGACY_TRADING_NAMED_PIPE`.
         BridgeType bridge_type() const override {
-            return BridgeType::LEGACY_NAMED_PIPE;
+            return BridgeType::LEGACY_TRADING_NAMED_PIPE;
         }
 
         std::string named_pipe = "intrade_bar_console_bot"; ///< Named pipe endpoint name.
@@ -91,6 +91,6 @@ namespace optionx::bridges {
         std::int64_t ping_period_ms = time_shield::MS_PER_15_SEC; ///< Periodic legacy ping interval.
     };
 
-} // namespace optionx::bridges
+} // namespace optionx::bridges::named_pipe
 
-#endif // _OPTIONX_BRIDGES_LEGACY_NAMED_PIPE_BRIDGE_CONFIG_HPP_INCLUDED
+#endif // _OPTIONX_BRIDGES_NAMED_PIPE_LEGACY_TRADING_BRIDGE_CONFIG_HPP_INCLUDED

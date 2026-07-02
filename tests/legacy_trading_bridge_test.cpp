@@ -77,18 +77,19 @@ private:
     }
 };
 
-using optionx::bridges::LegacyNamedPipeBridge;
+using optionx::bridges::named_pipe::LegacyTradingBridge;
+using optionx::bridges::named_pipe::LegacyTradingBridgeConfig;
 
 std::string make_test_pipe_name() {
     const auto stamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
-    return "OptionxLegacyNamedPipeBridgeTest_" + std::to_string(stamp);
+    return "OptionxLegacyTradingBridgeTest_" + std::to_string(stamp);
 }
 
 } // namespace
 
-TEST(LegacyNamedPipeBridge, ConfigRoundTripsJson) {
-    optionx::bridges::LegacyNamedPipeBridgeConfig config;
+TEST(LegacyTradingBridge, ConfigRoundTripsJson) {
+    LegacyTradingBridgeConfig config;
     config.named_pipe = "custom_pipe";
     config.min_payout = 0.72;
     config.buffer_size = 4096;
@@ -98,7 +99,7 @@ TEST(LegacyNamedPipeBridge, ConfigRoundTripsJson) {
     nlohmann::json json;
     config.to_json(json);
 
-    optionx::bridges::LegacyNamedPipeBridgeConfig restored;
+    LegacyTradingBridgeConfig restored;
     restored.from_json(json);
 
     EXPECT_EQ(restored.named_pipe, "custom_pipe");
@@ -106,16 +107,16 @@ TEST(LegacyNamedPipeBridge, ConfigRoundTripsJson) {
     EXPECT_EQ(restored.buffer_size, 4096u);
     EXPECT_EQ(restored.pipe_timeout_ms, 100u);
     EXPECT_EQ(restored.ping_period_ms, 3000);
-    EXPECT_EQ(restored.bridge_type(), optionx::BridgeType::LEGACY_NAMED_PIPE);
+    EXPECT_EQ(restored.bridge_type(), optionx::BridgeType::LEGACY_TRADING_NAMED_PIPE);
     EXPECT_TRUE(restored.validate().first);
 
     optionx::BridgeType legacy_alias = optionx::BridgeType::UNKNOWN;
     EXPECT_TRUE(optionx::to_enum("INTRADE_BAR_LEGACY", legacy_alias));
-    EXPECT_EQ(legacy_alias, optionx::BridgeType::LEGACY_NAMED_PIPE);
-    EXPECT_EQ(optionx::to_str(legacy_alias), "LEGACY_NAMED_PIPE");
+    EXPECT_EQ(legacy_alias, optionx::BridgeType::LEGACY_TRADING_NAMED_PIPE);
+    EXPECT_EQ(optionx::to_str(legacy_alias), "LEGACY_TRADING_NAMED_PIPE");
 }
 
-TEST(LegacyNamedPipeBridge, ParsesSprintContract) {
+TEST(LegacyTradingBridge, ParsesSprintContract) {
     const nlohmann::json contract = {
         {"s", "btc/usd"},
         {"note", "signal-a&payload"},
@@ -124,21 +125,21 @@ TEST(LegacyNamedPipeBridge, ParsesSprintContract) {
         {"dur", 300}
     };
 
-    const auto request = LegacyNamedPipeBridge::parse_contract(contract, 0.6);
+    const auto signal = LegacyTradingBridge::parse_contract(contract, 0.6);
 
-    ASSERT_TRUE(request);
-    EXPECT_EQ(request->symbol, "BTCUSDT");
-    EXPECT_EQ(request->signal_name, "signal-a");
-    EXPECT_EQ(request->user_data, "payload");
-    EXPECT_DOUBLE_EQ(request->amount, 5.5);
-    EXPECT_EQ(request->order_type, optionx::OrderType::BUY);
-    EXPECT_EQ(request->option_type, optionx::OptionType::SPRINT);
-    EXPECT_EQ(request->duration, 300u);
-    EXPECT_EQ(request->expiry_time, 0);
-    EXPECT_DOUBLE_EQ(request->min_payout, 0.6);
+    ASSERT_TRUE(signal);
+    EXPECT_EQ(signal->symbol, "BTCUSDT");
+    EXPECT_EQ(signal->signal_name, "signal-a");
+    EXPECT_EQ(signal->user_data, "payload");
+    EXPECT_DOUBLE_EQ(signal->amount, 5.5);
+    EXPECT_EQ(signal->order_type, optionx::OrderType::BUY);
+    EXPECT_EQ(signal->option_type, optionx::OptionType::SPRINT);
+    EXPECT_EQ(signal->duration, 300u);
+    EXPECT_EQ(signal->expiry_time, 0);
+    EXPECT_DOUBLE_EQ(signal->min_payout, 0.6);
 }
 
-TEST(LegacyNamedPipeBridge, ParsesClassicExpiryAndDurationModes) {
+TEST(LegacyTradingBridge, ParsesClassicExpiryAndDurationModes) {
     const nlohmann::json duration_contract = {
         {"s", "EURUSD"},
         {"note", "payload-only"},
@@ -147,16 +148,16 @@ TEST(LegacyNamedPipeBridge, ParsesClassicExpiryAndDurationModes) {
         {"exp", 900}
     };
 
-    const auto duration_request =
-        LegacyNamedPipeBridge::parse_contract(duration_contract, 0.0);
+    const auto duration_signal =
+        LegacyTradingBridge::parse_contract(duration_contract, 0.0);
 
-    EXPECT_EQ(duration_request->symbol, "EURUSD");
-    EXPECT_EQ(duration_request->user_data, "payload-only");
-    EXPECT_EQ(duration_request->signal_name, "");
-    EXPECT_EQ(duration_request->order_type, optionx::OrderType::SELL);
-    EXPECT_EQ(duration_request->option_type, optionx::OptionType::CLASSIC);
-    EXPECT_EQ(duration_request->duration, 900u);
-    EXPECT_EQ(duration_request->expiry_time, 0);
+    EXPECT_EQ(duration_signal->symbol, "EURUSD");
+    EXPECT_EQ(duration_signal->user_data, "payload-only");
+    EXPECT_EQ(duration_signal->signal_name, "");
+    EXPECT_EQ(duration_signal->order_type, optionx::OrderType::SELL);
+    EXPECT_EQ(duration_signal->option_type, optionx::OptionType::CLASSIC);
+    EXPECT_EQ(duration_signal->duration, 900u);
+    EXPECT_EQ(duration_signal->expiry_time, 0);
 
     const nlohmann::json expiry_contract = {
         {"s", "EURUSD"},
@@ -166,29 +167,29 @@ TEST(LegacyNamedPipeBridge, ParsesClassicExpiryAndDurationModes) {
         {"exp", 1900000000}
     };
 
-    const auto expiry_request =
-        LegacyNamedPipeBridge::parse_contract(expiry_contract, 0.0);
+    const auto expiry_signal =
+        LegacyTradingBridge::parse_contract(expiry_contract, 0.0);
 
-    EXPECT_EQ(expiry_request->option_type, optionx::OptionType::CLASSIC);
-    EXPECT_EQ(expiry_request->duration, 0u);
-    EXPECT_EQ(expiry_request->expiry_time, 1900000000);
+    EXPECT_EQ(expiry_signal->option_type, optionx::OptionType::CLASSIC);
+    EXPECT_EQ(expiry_signal->duration, 0u);
+    EXPECT_EQ(expiry_signal->expiry_time, 1900000000);
 }
 
-TEST(LegacyNamedPipeBridge, RejectsInvalidContractFields) {
+TEST(LegacyTradingBridge, RejectsInvalidContractFields) {
     EXPECT_THROW(
-        LegacyNamedPipeBridge::parse_contract(
+        LegacyTradingBridge::parse_contract(
             nlohmann::json{{"s", "INVALID"}, {"note", ""}, {"a", 1.0}, {"dir", "BUY"}, {"dur", 60}},
             0.0),
         std::invalid_argument);
 
     EXPECT_THROW(
-        LegacyNamedPipeBridge::parse_contract(
+        LegacyTradingBridge::parse_contract(
             nlohmann::json{{"s", "EURUSD"}, {"note", ""}, {"a", 1.0}, {"dir", "SIDEWAYS"}, {"dur", 60}},
             0.0),
         std::invalid_argument);
 }
 
-TEST(LegacyNamedPipeBridge, FormatsTradeResultUpdate) {
+TEST(LegacyTradingBridge, FormatsTradeResultUpdate) {
     optionx::TradeRequest request;
     request.symbol = "EURUSD";
     request.signal_name = "signal";
@@ -210,7 +211,7 @@ TEST(LegacyNamedPipeBridge, FormatsTradeResultUpdate) {
     result.trade_state = optionx::TradeState::WIN;
 
     const auto message = nlohmann::json::parse(
-        LegacyNamedPipeBridge::format_trade_result(request, result));
+        LegacyTradingBridge::format_trade_result(request, result));
     const auto& update = message.at("update_bet");
 
     EXPECT_EQ(update.at("s").get<std::string>(), "EURUSD");
@@ -225,54 +226,54 @@ TEST(LegacyNamedPipeBridge, FormatsTradeResultUpdate) {
     EXPECT_DOUBLE_EQ(update.at("ct").get<double>(), 302.0);
 }
 
-TEST(LegacyNamedPipeBridge, FormatsOpenStatesAsWait) {
+TEST(LegacyTradingBridge, FormatsOpenStatesAsWait) {
     optionx::TradeRequest request;
     optionx::TradeResult result;
     result.trade_state = optionx::TradeState::IN_PROGRESS;
 
     const auto message = nlohmann::json::parse(
-        LegacyNamedPipeBridge::format_trade_result(request, result));
+        LegacyTradingBridge::format_trade_result(request, result));
 
     EXPECT_EQ(
         message.at("update_bet").at("status").get<std::string>(),
         "wait");
 }
 
-TEST(LegacyNamedPipeBridge, FormatsAccountSnapshots) {
+TEST(LegacyTradingBridge, FormatsAccountSnapshots) {
     TestAccountInfo account_info;
 
     const auto balance = nlohmann::json::parse(
-        LegacyNamedPipeBridge::format_balance_update(account_info));
+        LegacyTradingBridge::format_balance_update(account_info));
     EXPECT_DOUBLE_EQ(balance.at("b").get<double>(), 1234.5);
     EXPECT_EQ(balance.at("rub").get<int>(), 1);
     EXPECT_EQ(balance.at("demo").get<int>(), 1);
 
     const auto connection = nlohmann::json::parse(
-        LegacyNamedPipeBridge::format_connection_update(account_info));
+        LegacyTradingBridge::format_connection_update(account_info));
     EXPECT_EQ(connection.at("conn").get<int>(), 1);
     EXPECT_EQ(connection.at("aid").get<std::int64_t>(), 42);
 }
 
-TEST(LegacyNamedPipeBridge, SendsTradeResultThroughNamedPipe) {
+TEST(LegacyTradingBridge, SendsTradeResultThroughNamedPipe) {
 #if defined(_WIN32)
-    optionx::bridges::LegacyNamedPipeBridge bridge;
+    LegacyTradingBridge bridge;
     const std::string pipe_name = make_test_pipe_name();
 
-    auto config = std::make_unique<optionx::bridges::LegacyNamedPipeBridgeConfig>();
+    auto config = std::make_unique<LegacyTradingBridgeConfig>();
     config->named_pipe = pipe_name;
     config->buffer_size = 4096;
     config->ping_period_ms = 60000;
     ASSERT_TRUE(bridge.configure(std::move(config)));
 
     struct BridgeGuard {
-        optionx::bridges::LegacyNamedPipeBridge& bridge;
+        LegacyTradingBridge& bridge;
         ~BridgeGuard() { bridge.shutdown(); }
     } guard{bridge};
 
     std::mutex mutex;
     std::condition_variable cv;
     bool server_started = false;
-    bool request_received = false;
+    bool signal_received = false;
     std::string status_error;
 
     bridge.on_status_update() = [&](const optionx::BridgeStatusUpdate& update) {
@@ -287,20 +288,23 @@ TEST(LegacyNamedPipeBridge, SendsTradeResultThroughNamedPipe) {
         cv.notify_all();
     };
 
-    bridge.on_place_trade() = [&](std::unique_ptr<optionx::TradeRequest> request) {
+    bridge.on_trade_signal() = [&](std::unique_ptr<optionx::TradeSignal> signal) {
+        ASSERT_TRUE(signal);
+
+        auto request = signal->to_trade_request();
         {
             std::lock_guard<std::mutex> lock(mutex);
-            request_received = true;
+            signal_received = true;
         }
 
-        auto result = request->create_trade_result_unique();
-        result->trade_id = 101;
-        result->option_id = 202;
-        result->amount = request->amount;
-        result->profit = 8.2;
-        result->payout = 0.82;
-        result->trade_state = optionx::TradeState::WIN;
-        request->dispatch_callbacks(request, result);
+        optionx::TradeResult result;
+        result.trade_id = 101;
+        result.option_id = 202;
+        result.amount = request.amount;
+        result.profit = 8.2;
+        result.payout = 0.82;
+        result.trade_state = optionx::TradeState::WIN;
+        bridge.update_trade_result(request, result);
         cv.notify_all();
     };
 
@@ -338,7 +342,7 @@ TEST(LegacyNamedPipeBridge, SendsTradeResultThroughNamedPipe) {
     {
         std::unique_lock<std::mutex> lock(mutex);
         ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(1), [&] {
-            return request_received;
+            return signal_received;
         }));
     }
 

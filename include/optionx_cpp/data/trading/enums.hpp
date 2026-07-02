@@ -91,9 +91,10 @@ namespace optionx {
     /// \enum BridgeType
     /// \brief Represents different types of bridges.
     enum class BridgeType {
-        UNKNOWN = 0,         ///< Unknown bridge type
-        LEGACY_NAMED_PIPE,   ///< Legacy named-pipe bridge.
-        INTRADE_BAR_LEGACY = LEGACY_NAMED_PIPE ///< Backward-compatible alias.
+        UNKNOWN = 0,                  ///< Unknown bridge type.
+        LEGACY_TRADING_NAMED_PIPE,    ///< Legacy named-pipe trading bridge.
+        LEGACY_NAMED_PIPE = LEGACY_TRADING_NAMED_PIPE, ///< Backward-compatible alias.
+        INTRADE_BAR_LEGACY = LEGACY_TRADING_NAMED_PIPE ///< Backward-compatible alias.
     };
 
     /// \brief Converts BridgeType to its string representation.
@@ -101,7 +102,10 @@ namespace optionx {
     /// \return Constant reference to the corresponding string.
     inline const std::string& to_str(BridgeType value, int mode = 0) noexcept {
         (void)mode;
-        static const std::vector<std::string> str_data = {"UNKNOWN", "LEGACY_NAMED_PIPE"};
+        static const std::vector<std::string> str_data = {
+            "UNKNOWN",
+            "LEGACY_TRADING_NAMED_PIPE"
+        };
         return utils::enum_string_or_unknown(str_data, static_cast<size_t>(value));
     }
 
@@ -111,9 +115,10 @@ namespace optionx {
     /// \return True if conversion succeeded.
     inline bool to_enum(const std::string& str, BridgeType& value) noexcept {
         static const std::unordered_map<std::string, BridgeType> str_data = {
-            {"UNKNOWN",             BridgeType::UNKNOWN},
-            {"LEGACY_NAMED_PIPE",   BridgeType::LEGACY_NAMED_PIPE},
-            {"INTRADE_BAR_LEGACY",  BridgeType::LEGACY_NAMED_PIPE}
+            {"UNKNOWN",                    BridgeType::UNKNOWN},
+            {"LEGACY_TRADING_NAMED_PIPE",  BridgeType::LEGACY_TRADING_NAMED_PIPE},
+            {"LEGACY_NAMED_PIPE",          BridgeType::LEGACY_TRADING_NAMED_PIPE},
+            {"INTRADE_BAR_LEGACY",         BridgeType::LEGACY_TRADING_NAMED_PIPE}
         };
         auto it = str_data.find(utils::to_upper_case(str));
         if (it != str_data.end()) {

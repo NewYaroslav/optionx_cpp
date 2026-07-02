@@ -1,14 +1,14 @@
 #pragma once
-#ifndef _OPTIONX_BRIDGES_LEGACY_NAMED_PIPE_BRIDGE_HPP_INCLUDED
-#define _OPTIONX_BRIDGES_LEGACY_NAMED_PIPE_BRIDGE_HPP_INCLUDED
+#ifndef _OPTIONX_BRIDGES_NAMED_PIPE_LEGACY_TRADING_BRIDGE_HPP_INCLUDED
+#define _OPTIONX_BRIDGES_NAMED_PIPE_LEGACY_TRADING_BRIDGE_HPP_INCLUDED
 
-/// \file LegacyNamedPipeBridge.hpp
-/// \brief Defines the legacy named-pipe bridge.
+/// \file LegacyTradingBridge.hpp
+/// \brief Defines the legacy named-pipe trading bridge.
 
 #include "utils.hpp"
 #include "data.hpp"
-#include "BaseBridge.hpp"
-#include "LegacyNamedPipeBridgeConfig.hpp"
+#include "bridges/BaseBridge.hpp"
+#include "LegacyTradingBridgeConfig.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -24,21 +24,23 @@
 #include <SimpleNamedPipe/NamedPipeServer.hpp>
 #endif
 
-namespace optionx::bridges {
+namespace optionx::bridges::named_pipe {
 
-    /// \class LegacyNamedPipeBridge
-    /// \brief Adapter for the legacy named-pipe JSON protocol.
+    /// \class LegacyTradingBridge
+    /// \brief Adapter for the legacy named-pipe trading JSON protocol.
     ///
     /// The protocol was historically used with Intrade Bar, but the wire
     /// contract is broker-neutral: legacy clients send `contract` messages and
-    /// receive `update_bet`, account, connection, and ping messages.
-    class LegacyNamedPipeBridge final : public BaseBridge {
+    /// receive `update_bet`, account, connection, and ping messages. Incoming
+    /// contracts are published as `TradeSignal`; this bridge does not execute
+    /// trades by itself.
+    class LegacyTradingBridge final : public BaseBridge {
     private:
         struct RuntimeState {
             std::mutex mutex;
             std::shared_ptr<BaseAccountInfoData> account_info;
             bridge_status_callback_t status_callback;
-            BaseBridge::place_trade_callback_t place_trade_callback;
+            BaseBridge::trade_signal_callback_t trade_signal_callback;
             trade_result_callback_t trade_result_callback;
             bool running = false;
 
@@ -50,28 +52,28 @@ namespace optionx::bridges {
 
     public:
         /// \brief Constructs a bridge with empty runtime state.
-        LegacyNamedPipeBridge()
+        LegacyTradingBridge()
             : m_state(std::make_shared<RuntimeState>()) {}
 
         /// \brief Stops the bridge before destruction.
-        ~LegacyNamedPipeBridge() override {
+        ~LegacyTradingBridge() override {
             shutdown();
         }
 
         /// \brief Configures the bridge with legacy named-pipe settings.
-        /// \param config Configuration object. Must be `LegacyNamedPipeBridgeConfig`.
+        /// \param config Configuration object. Must be `LegacyTradingBridgeConfig`.
         /// \return `true` when configuration is valid and accepted.
         bool configure(std::unique_ptr<IBridgeConfig> config) override {
             if (!config) return false;
 
             const auto* typed =
-                dynamic_cast<const LegacyNamedPipeBridgeConfig*>(config.get());
+                dynamic_cast<const LegacyTradingBridgeConfig*>(config.get());
             if (!typed) {
-                config->dispatch_callbacks(false, "Invalid legacy named-pipe bridge config type.");
+                config->dispatch_callbacks(false, "Invalid legacy trading bridge config type.");
                 return false;
             }
 
-            auto next_config = std::make_shared<LegacyNamedPipeBridgeConfig>(*typed);
+            auto next_config = std::make_shared<LegacyTradingBridgeConfig>(*typed);
             const auto validation = next_config->validate();
             config->dispatch_callbacks(validation.first, validation.second);
             if (!validation.first) {
@@ -88,9 +90,9 @@ namespace optionx::bridges {
             return m_state->status_callback;
         }
 
-        /// \brief Returns the trade request callback slot.
-        place_trade_callback_t& on_place_trade() override {
-            return m_state->place_trade_callback;
+        /// \brief Returns the trade signal callback slot.
+        trade_signal_callback_t& on_trade_signal() override {
+            return m_state->trade_signal_callback;
         }
 
         /// \brief Returns the trade result callback slot.
@@ -121,6 +123,26 @@ namespace optionx::bridges {
                 break;
             default:
                 break;
+            }
+        }
+
+        /// \brief Sends a trade result update to connected legacy clients.
+        /// \param request Original trade request produced from a signal.
+        /// \param result Current trade result snapshot.
+        void update_trade_result(
+                const TradeRequest& request,
+                const TradeResult& result) override {
+            broadcast(format_trade_result(request, result));
+
+            trade_result_callback_t callback;
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                callback = m_state->trade_result_callback;
+            }
+            if (callback) {
+                callback(
+                    std::make_unique<TradeRequest>(request),
+                    std::make_unique<TradeResult>(result));
             }
         }
 
@@ -161,7 +183,7 @@ namespace optionx::bridges {
             }
 
             if (!m_task_manager.add_periodic_task(
-                    "legacy-named-pipe-ping",
+                    "legacy-trading-bridge-ping",
                     config->ping_period_ms,
                     [state = m_state](std::shared_ptr<utils::Task> task) {
                         if (task->is_shutdown()) return;
@@ -210,22 +232,22 @@ namespace optionx::bridges {
             notify_status(BridgeStatus::SERVER_STOPPED);
         }
 
-        /// \brief Parses a legacy `contract` object into a TradeRequest.
+        /// \brief Parses a legacy `contract` object into a TradeSignal.
         /// \param contract Legacy JSON contract payload.
-        /// \param min_payout Minimum payout copied into the created request.
-        /// \return Newly allocated trade request.
+        /// \param min_payout Minimum payout copied into the created signal.
+        /// \return Newly allocated trade signal.
         /// \throws std::exception when required contract fields are invalid.
-        static std::unique_ptr<TradeRequest> parse_contract(
+        static std::unique_ptr<TradeSignal> parse_contract(
                 const nlohmann::json& contract,
                 double min_payout) {
-            auto request = std::make_unique<TradeRequest>();
-            request->symbol = parse_symbol(contract.at("s").get<std::string>());
-            parse_note(contract.value("note", std::string()), *request);
-            request->amount = contract.at("a").get<double>();
-            request->order_type = parse_order_type(contract.at("dir").get<std::string>());
-            parse_expiry_or_duration(contract, *request);
-            request->min_payout = min_payout;
-            return request;
+            auto signal = std::make_unique<TradeSignal>();
+            signal->symbol = parse_symbol(contract.at("s").get<std::string>());
+            parse_note(contract.value("note", std::string()), *signal);
+            signal->amount = contract.at("a").get<double>();
+            signal->order_type = parse_order_type(contract.at("dir").get<std::string>());
+            parse_expiry_or_duration(contract, *signal);
+            signal->min_payout = min_payout;
+            return signal;
         }
 
         /// \brief Formats a trade result for the legacy `update_bet` message.
@@ -285,12 +307,12 @@ namespace optionx::bridges {
         mutable std::mutex m_mutex;
         std::shared_ptr<RuntimeState> m_state;
         utils::TaskManager m_task_manager;
-        std::shared_ptr<LegacyNamedPipeBridgeConfig> m_config;
+        std::shared_ptr<LegacyTradingBridgeConfig> m_config;
 
-        std::shared_ptr<LegacyNamedPipeBridgeConfig> get_config_or_throw() const {
+        std::shared_ptr<LegacyTradingBridgeConfig> get_config_or_throw() const {
             std::lock_guard<std::mutex> lock(m_mutex);
             if (!m_config) {
-                throw std::invalid_argument("Legacy named-pipe bridge is not configured.");
+                throw std::invalid_argument("Legacy trading bridge is not configured.");
             }
             return m_config;
         }
@@ -336,30 +358,6 @@ namespace optionx::bridges {
             (void)state;
             (void)message;
 #endif
-        }
-
-        static void send_trade_result(
-                const std::shared_ptr<RuntimeState>& state,
-                const std::unique_ptr<TradeRequest>& request,
-                const std::unique_ptr<TradeResult>& result) {
-            if (!request || !result) return;
-            broadcast(state, format_trade_result(*request, *result));
-        }
-
-        static void dispatch_trade_result(
-                const std::shared_ptr<RuntimeState>& state,
-                std::unique_ptr<TradeRequest> request,
-                std::unique_ptr<TradeResult> result) {
-            send_trade_result(state, request, result);
-
-            trade_result_callback_t callback;
-            {
-                std::lock_guard<std::mutex> lock(state->mutex);
-                callback = state->trade_result_callback;
-            }
-            if (callback) {
-                callback(std::move(request), std::move(result));
-            }
         }
 
         static std::string connection_id(int client_id) {
@@ -451,20 +449,15 @@ namespace optionx::bridges {
                 }
 
                 auto config = get_config_or_throw();
-                auto request = parse_contract(payload.at("contract"), config->min_payout);
-                request->add_callback([state = m_state](
-                        std::unique_ptr<TradeRequest> req,
-                        std::unique_ptr<TradeResult> res) {
-                    dispatch_trade_result(state, std::move(req), std::move(res));
-                });
+                auto signal = parse_contract(payload.at("contract"), config->min_payout);
 
-                place_trade_callback_t callback;
+                trade_signal_callback_t callback;
                 {
                     std::lock_guard<std::mutex> lock(m_state->mutex);
-                    callback = m_state->place_trade_callback;
+                    callback = m_state->trade_signal_callback;
                 }
                 if (callback) {
-                    callback(std::move(request));
+                    callback(std::move(signal));
                 }
             } catch (const std::exception& ex) {
                 LOGIT_PRINT_ERROR("Parsing legacy bridge message failed: ", ex.what());
@@ -503,14 +496,14 @@ namespace optionx::bridges {
             throw std::invalid_argument("Invalid symbol in legacy trade request.");
         }
 
-        static void parse_note(const std::string& note, TradeRequest& request) {
+        static void parse_note(const std::string& note, TradeSignal& signal) {
             const auto pos = note.find('&');
             if (pos == std::string::npos) {
-                request.user_data = note;
+                signal.user_data = note;
                 return;
             }
-            request.signal_name = note.substr(0, pos);
-            request.user_data = note.substr(pos + 1);
+            signal.signal_name = note.substr(0, pos);
+            signal.user_data = note.substr(pos + 1);
         }
 
         static OrderType parse_order_type(const std::string& direction) {
@@ -531,20 +524,20 @@ namespace optionx::bridges {
 
         static void parse_expiry_or_duration(
                 const nlohmann::json& contract,
-                TradeRequest& request) {
+                TradeSignal& signal) {
             if (contract.contains("exp")) {
                 if (!contract.at("exp").is_number()) {
                     throw std::invalid_argument("Invalid expiry time in legacy trade request.");
                 }
 
                 const std::int64_t expiry_time = contract.at("exp").get<std::int64_t>();
-                request.option_type = OptionType::CLASSIC;
+                signal.option_type = OptionType::CLASSIC;
                 if (expiry_time < time_shield::SEC_PER_DAY) {
-                    request.duration = parse_duration_value(expiry_time);
-                    request.expiry_time = 0;
+                    signal.duration = parse_duration_value(expiry_time);
+                    signal.expiry_time = 0;
                 } else {
-                    request.duration = 0;
-                    request.expiry_time = expiry_time;
+                    signal.duration = 0;
+                    signal.expiry_time = expiry_time;
                 }
                 return;
             }
@@ -554,8 +547,8 @@ namespace optionx::bridges {
                     throw std::invalid_argument("Invalid duration in legacy trade request.");
                 }
 
-                request.duration = parse_duration_value(contract.at("dur").get<std::int64_t>());
-                request.option_type = OptionType::SPRINT;
+                signal.duration = parse_duration_value(contract.at("dur").get<std::int64_t>());
+                signal.option_type = OptionType::SPRINT;
                 return;
             }
 
@@ -603,6 +596,6 @@ namespace optionx::bridges {
         }
     };
 
-} // namespace optionx::bridges
+} // namespace optionx::bridges::named_pipe
 
-#endif // _OPTIONX_BRIDGES_LEGACY_NAMED_PIPE_BRIDGE_HPP_INCLUDED
+#endif // _OPTIONX_BRIDGES_NAMED_PIPE_LEGACY_TRADING_BRIDGE_HPP_INCLUDED
