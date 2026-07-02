@@ -88,6 +88,11 @@ namespace optionx::platforms::intrade_bar {
         std::vector<SingleTick> ticks;
     };
 
+    /// \brief Historical bar sequence returned by a broker data endpoint.
+    struct BarHistory {
+        BarSequence sequence;
+    };
+
     /// \brief Trade open response payload.
     struct TradeOpenInfo {
         int64_t option_id = 0;
@@ -152,6 +157,7 @@ namespace optionx::platforms::intrade_bar {
     using SettingsSwitchResult = ApiResult<SettingsSwitch>;
     using ActiveTradesSnapshotResult = ApiResult<ActiveTradesSnapshot>;
     using PriceSnapshotResult = ApiResult<PriceSnapshot>;
+    using BarHistoryApiResult = ApiResult<BarHistory>;
     using TradeOpenResult = ApiResult<TradeOpenInfo>;
     using TradeCheckResult = ApiResult<TradeCheckInfo>;
     using TradeHistoryApiResult = ApiResult<TradeHistory>;

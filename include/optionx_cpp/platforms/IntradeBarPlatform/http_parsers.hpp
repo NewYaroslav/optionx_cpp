@@ -20,6 +20,7 @@
 
 #include "utils/response_parse_utils.hpp"
 #include "ApiResponses.hpp"
+#include "http_utils.hpp"
 
 namespace optionx::platforms::intrade_bar {
 
@@ -1302,6 +1303,163 @@ namespace optionx::platforms::intrade_bar {
             result_callback(false, status_code,
                 0, 0, 0, "Exception while parsing trade response: " + std::string(ex.what()));
         }
+    }
+
+    namespace detail {
+
+        inline double read_json_double(
+                const nlohmann::json& value,
+                const char* field_name) {
+            if (value.is_number()) return value.get<double>();
+            if (value.is_string()) return std::stod(value.get<std::string>());
+            throw std::runtime_error(
+                std::string("Expected numeric value for ") + field_name + ".");
+        }
+
+        inline std::int64_t read_json_int64(
+                const nlohmann::json& value,
+                const char* field_name) {
+            if (value.is_number_integer()) return value.get<std::int64_t>();
+            if (value.is_number()) return static_cast<std::int64_t>(value.get<double>());
+            if (value.is_string()) return std::stoll(value.get<std::string>());
+            throw std::runtime_error(
+                std::string("Expected integer value for ") + field_name + ".");
+        }
+
+        inline double select_fx_history_price(
+                double bid,
+                double ask,
+                BarPriceSource source) {
+            switch (source) {
+            case BarPriceSource::BID:
+                return bid;
+            case BarPriceSource::ASK:
+                return ask;
+            case BarPriceSource::MID:
+                return (bid + ask) / 2.0;
+            case BarPriceSource::UNKNOWN:
+            case BarPriceSource::LAST:
+            default:
+                throw std::runtime_error("Unsupported Intrade FX bar price source.");
+            }
+        }
+
+        inline BarSequence make_empty_bar_sequence(
+                const BarHistoryRequest& request,
+                BarPriceSource actual_source) {
+            BarSequence sequence;
+            sequence.symbol = normalize_symbol_name(request.symbol);
+            sequence.provider = to_str(PlatformType::INTRADE_BAR);
+            sequence.timeframe = static_cast<std::uint16_t>(request.timeframe);
+            sequence.flags =
+                static_cast<std::uint16_t>(dfh::BarStatusFlags::HISTORICAL) |
+                static_cast<std::uint16_t>(dfh::BarStatusFlags::FINALIZED);
+            sequence.price_digits = price_digits_for_symbol(sequence.symbol);
+            sequence.volume_digits = 0;
+            sequence.price_source = actual_source;
+            return sequence;
+        }
+
+    } // namespace detail
+
+    /// \brief Parses the Intrade `/fxhis` response into a normalized bar sequence.
+    /// \param content Raw JSON response body.
+    /// \param request Original bar history request.
+    /// \return Parsed bar sequence using the requested BID/ASK/MID price stream.
+    /// \throws std::runtime_error When the payload is malformed or broker rejected the request.
+    inline BarSequence parse_fxhis_bar_history(
+            const std::string& content,
+            const BarHistoryRequest& request) {
+        if (request.price_source == BarPriceSource::UNKNOWN ||
+            request.price_source == BarPriceSource::LAST) {
+            throw std::runtime_error("Intrade FX history supports only BID, ASK, or MID bars.");
+        }
+
+        const auto j = nlohmann::json::parse(content);
+        if (j.contains("response") && j["response"].is_object()) {
+            const auto& response = j["response"];
+            const bool executed = response.value("executed", false);
+            const std::string error = response.value("error", std::string());
+            if (!executed || !error.empty()) {
+                throw std::runtime_error(
+                    error.empty()
+                        ? "Intrade FX history request was rejected."
+                        : "Intrade FX history request was rejected: " + error);
+            }
+        }
+
+        if (!j.contains("candles") || !j["candles"].is_array()) {
+            throw std::runtime_error("Intrade FX history response does not contain a candles array.");
+        }
+
+        auto sequence = detail::make_empty_bar_sequence(request, request.price_source);
+        const auto& candles = j["candles"];
+        sequence.bars.reserve(candles.size());
+
+        for (const auto& item : candles) {
+            if (!item.is_array() || item.size() < 10) {
+                throw std::runtime_error("Malformed Intrade FX history candle.");
+            }
+
+            const auto ts = detail::read_json_int64(item.at(0), "time");
+            const auto bid_open = detail::read_json_double(item.at(1), "bid_open");
+            const auto bid_close = detail::read_json_double(item.at(2), "bid_close");
+            const auto bid_high = detail::read_json_double(item.at(3), "bid_high");
+            const auto bid_low = detail::read_json_double(item.at(4), "bid_low");
+            const auto ask_open = detail::read_json_double(item.at(5), "ask_open");
+            const auto ask_close = detail::read_json_double(item.at(6), "ask_close");
+            const auto ask_high = detail::read_json_double(item.at(7), "ask_high");
+            const auto ask_low = detail::read_json_double(item.at(8), "ask_low");
+            const auto volume = detail::read_json_double(item.at(9), "volume");
+
+            sequence.bars.emplace_back(
+                detail::select_fx_history_price(bid_open, ask_open, request.price_source),
+                detail::select_fx_history_price(bid_high, ask_high, request.price_source),
+                detail::select_fx_history_price(bid_low, ask_low, request.price_source),
+                detail::select_fx_history_price(bid_close, ask_close, request.price_source),
+                volume,
+                static_cast<std::uint64_t>(time_shield::sec_to_ms(ts)));
+        }
+
+        return sequence;
+    }
+
+    /// \brief Parses Binance klines into BTCUSDT historical bars.
+    /// \param content Raw Binance JSON array.
+    /// \param request Original bar history request.
+    /// \return Parsed bar sequence using LAST trade prices.
+    /// \throws std::runtime_error When the payload is malformed.
+    inline BarSequence parse_binance_klines_bar_history(
+            const std::string& content,
+            const BarHistoryRequest& request) {
+        if (request.price_source == BarPriceSource::BID ||
+            request.price_source == BarPriceSource::ASK) {
+            throw std::runtime_error("Binance kline history does not provide bid/ask bars.");
+        }
+
+        const auto j = nlohmann::json::parse(content);
+        if (!j.is_array()) {
+            throw std::runtime_error("Binance kline response is not an array.");
+        }
+
+        auto sequence = detail::make_empty_bar_sequence(request, BarPriceSource::LAST);
+        sequence.bars.reserve(j.size());
+
+        for (const auto& item : j) {
+            if (!item.is_array() || item.size() < 6) {
+                throw std::runtime_error("Malformed Binance kline entry.");
+            }
+
+            sequence.bars.emplace_back(
+                detail::read_json_double(item.at(1), "open"),
+                detail::read_json_double(item.at(2), "high"),
+                detail::read_json_double(item.at(3), "low"),
+                detail::read_json_double(item.at(4), "close"),
+                detail::read_json_double(item.at(5), "volume"),
+                static_cast<std::uint64_t>(detail::read_json_int64(item.at(0), "open_time")));
+        }
+
+        return sequence;
     }
 
     /// \brief Parses a BTCUSDT tick message from the WebSocket and updates the provided SingleTick structure.

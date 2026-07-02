@@ -5,7 +5,11 @@
 /// \file RequestManager.hpp
 /// \brief Handles HTTP requests for user authentication, trade execution, balance updates, and market data retrieval.
 
+#include <algorithm>
+#include <iterator>
+
 #include "ApiResponses.hpp"
+#include "BarHistoryUtils.hpp"
 
 namespace optionx::platforms::intrade_bar {
 
@@ -24,7 +28,9 @@ namespace optionx::platforms::intrade_bar {
         explicit RequestManager(
                 BaseTradingPlatform& platform,
                 HttpClientComponent& client)
-                : BaseComponent(platform.event_bus()), m_client(client) {
+                : BaseComponent(platform.event_bus()),
+                  m_client(client),
+                  m_binance_client("https://api.binance.com") {
             subscribe<events::AuthDataEvent>();
 
             m_api_headers = {
@@ -226,6 +232,13 @@ namespace optionx::platforms::intrade_bar {
         void request_price_result(
             std::function<void(PriceSnapshotResult)> price_callback);
 
+        /// \brief Requests historical bars from the broker market-data backend.
+        /// \param request Symbol, timeframe, range, and preferred price source.
+        /// \param callback Callback receiving a typed bar history result.
+        void request_bar_history_result(
+            const BarHistoryRequest& request,
+            std::function<void(BarHistoryApiResult)> callback);
+
         /// \brief Requests closed trade history export.
         /// \param request History range and timestamp field.
         /// \param account_type Current broker account type selected during authentication.
@@ -283,6 +296,7 @@ namespace optionx::platforms::intrade_bar {
 
     private:
         HttpClientComponent& m_client;      ///< Reference to the HTTP client component.
+        kurlyk::HttpClient m_binance_client; ///< Separate backend for BTCUSDT history.
         kurlyk::Headers   m_api_headers; ///< Default API headers.
         std::string       m_user_id;     ///< User ID for authentication.
         std::string       m_user_hash;   ///< User authentication hash.
@@ -338,6 +352,11 @@ namespace optionx::platforms::intrade_bar {
                 client.set_proxy_server(msg->proxy_server);
                 client.set_proxy_auth(msg->proxy_auth);
                 client.set_proxy_type(msg->proxy_type);
+                m_binance_client.set_user_agent(msg->user_agent);
+                m_binance_client.set_accept_language(msg->accept_language);
+                m_binance_client.set_proxy_server(msg->proxy_server);
+                m_binance_client.set_proxy_auth(msg->proxy_auth);
+                m_binance_client.set_proxy_type(msg->proxy_type);
                 m_trade_history_source = msg->trade_history_source;
                 LOGIT_INFO(
                     "Intrade Bar HTTP client configured. host=",
@@ -348,6 +367,9 @@ namespace optionx::platforms::intrade_bar {
                 client.set_retry_attempts(10, time_shield::MS_PER_SEC);
                 client.set_timeout(30);
                 client.set_connect_timeout(15);
+                m_binance_client.set_retry_attempts(10, time_shield::MS_PER_SEC);
+                m_binance_client.set_timeout(30);
+                m_binance_client.set_connect_timeout(15);
             }
         }
 
@@ -1802,6 +1824,202 @@ namespace optionx::platforms::intrade_bar {
                 }
                 price_callback(PriceSnapshotResult::ok(PriceSnapshot{std::move(ticks)}));
             });
+    }
+
+    inline void RequestManager::request_bar_history_result(
+            const BarHistoryRequest& request,
+            std::function<void(BarHistoryApiResult)> callback) {
+        if (!callback) return;
+
+        if (request.symbol.empty()) {
+            callback(BarHistoryApiResult::fail("Bar history symbol is required."));
+            return;
+        }
+        if (request.timeframe <= 0 ||
+            request.timeframe > static_cast<std::int64_t>((std::numeric_limits<std::uint16_t>::max)())) {
+            callback(BarHistoryApiResult::fail("Bar history timeframe is invalid."));
+            return;
+        }
+        if (request.from_ts <= 0 || request.to_ts < request.from_ts) {
+            callback(BarHistoryApiResult::fail("Bar history request range is invalid."));
+            return;
+        }
+
+        BarHistoryRequest effective_request = request;
+        effective_request.symbol = normalize_symbol_name(request.symbol);
+
+        const bool use_binance = uses_binance_bar_history(effective_request.symbol);
+        const auto min_from_ts = minimum_bar_history_from_ts(effective_request.symbol);
+        if (min_from_ts > 0 && effective_request.from_ts < min_from_ts) {
+            effective_request.from_ts = min_from_ts;
+        }
+
+        const auto make_empty_sequence = [](const BarHistoryRequest& req, BarPriceSource source) {
+            BarSequence sequence;
+            sequence.symbol = normalize_symbol_name(req.symbol);
+            sequence.provider = to_str(PlatformType::INTRADE_BAR);
+            sequence.timeframe = static_cast<std::uint16_t>(req.timeframe);
+            sequence.flags =
+                static_cast<std::uint16_t>(dfh::BarStatusFlags::HISTORICAL) |
+                static_cast<std::uint16_t>(dfh::BarStatusFlags::FINALIZED);
+            sequence.price_digits = price_digits_for_symbol(sequence.symbol);
+            sequence.volume_digits = 0;
+            sequence.price_source = source;
+            return sequence;
+        };
+
+        if (effective_request.from_ts > effective_request.to_ts) {
+            const auto source = use_binance ? BarPriceSource::LAST : effective_request.price_source;
+            callback(BarHistoryApiResult::ok(
+                BarHistory{make_empty_sequence(effective_request, source)}));
+            return;
+        }
+
+        std::string binance_interval;
+        std::int64_t max_bars_per_request = FX_HISTORY_MAX_BARS_PER_REQUEST;
+        if (use_binance) {
+            if (effective_request.price_source == BarPriceSource::BID ||
+                effective_request.price_source == BarPriceSource::ASK ||
+                effective_request.price_source == BarPriceSource::UNKNOWN) {
+                callback(BarHistoryApiResult::fail(
+                    "BTCUSDT bar history is available only as LAST trade-price bars."));
+                return;
+            }
+
+            binance_interval = binance_interval_from_timeframe(effective_request.timeframe);
+            if (binance_interval.empty()) {
+                callback(BarHistoryApiResult::fail(
+                    "Unsupported Binance kline timeframe for BTCUSDT history."));
+                return;
+            }
+            max_bars_per_request = BINANCE_KLINES_MAX_BARS_PER_REQUEST;
+        } else {
+            if (effective_request.price_source == BarPriceSource::UNKNOWN ||
+                effective_request.price_source == BarPriceSource::LAST) {
+                callback(BarHistoryApiResult::fail(
+                    "Intrade FX bar history supports only BID, ASK, or MID price sources."));
+                return;
+            }
+            if (effective_request.timeframe % time_shield::SEC_PER_MIN != 0) {
+                callback(BarHistoryApiResult::fail(
+                    "Intrade FX bar history supports minute-based timeframes only."));
+                return;
+            }
+        }
+
+        auto chunks = build_bar_history_chunks(
+            effective_request.from_ts,
+            effective_request.to_ts,
+            effective_request.timeframe,
+            max_bars_per_request);
+
+        struct BarHistoryState {
+            BarHistoryRequest request;
+            std::vector<BarHistoryChunk> chunks;
+            std::string binance_interval;
+            BarSequence sequence;
+            std::size_t next_index = 0;
+            long last_status = BarHistoryApiResult::NO_HTTP_STATUS;
+            bool use_binance = false;
+            std::function<void(BarHistoryApiResult)> callback;
+        };
+
+        auto state = std::make_shared<BarHistoryState>();
+        state->request = effective_request;
+        state->chunks = std::move(chunks);
+        state->binance_interval = std::move(binance_interval);
+        state->use_binance = use_binance;
+        state->sequence = make_empty_sequence(
+            effective_request,
+            use_binance ? BarPriceSource::LAST : effective_request.price_source);
+        state->callback = std::move(callback);
+
+        auto finish_success = [state]() {
+            auto& bars = state->sequence.bars;
+            std::sort(bars.begin(), bars.end(), [](const Bar& lhs, const Bar& rhs) {
+                return lhs.time_ms < rhs.time_ms;
+            });
+            bars.erase(
+                std::unique(bars.begin(), bars.end(), [](const Bar& lhs, const Bar& rhs) {
+                    return lhs.time_ms == rhs.time_ms;
+                }),
+                bars.end());
+
+            state->callback(BarHistoryApiResult::ok(
+                BarHistory{std::move(state->sequence)},
+                state->last_status));
+        };
+
+        auto request_next = std::make_shared<std::function<void()>>();
+        *request_next = [this, state, request_next, finish_success]() {
+            if (state->next_index >= state->chunks.size()) {
+                finish_success();
+                return;
+            }
+
+            const auto chunk = state->chunks[state->next_index++];
+
+            std::future<kurlyk::HttpResponsePtr> future;
+            if (state->use_binance) {
+                kurlyk::QueryParams query = {
+                    {"symbol", state->request.symbol},
+                    {"interval", state->binance_interval},
+                    {"startTime", std::to_string(time_shield::sec_to_ms(chunk.from_ts))},
+                    {"endTime", std::to_string(time_shield::sec_to_ms(chunk.to_ts))},
+                    {"limit", std::to_string(BINANCE_KLINES_MAX_BARS_PER_REQUEST)}
+                };
+                future = m_binance_client.get(
+                    "/api/v3/klines",
+                    query,
+                    {{"Accept", "application/json"}},
+                    get_rate_limit(RateLimitType::TICK_DATA));
+            } else {
+                kurlyk::QueryParams query = {
+                    {"symbol", fx_history_query_symbol(state->request.symbol)},
+                    {"resolution", std::to_string(state->request.timeframe / time_shield::SEC_PER_MIN)},
+                    {"from", std::to_string(chunk.from_ts)},
+                    {"to", std::to_string(chunk.to_ts)}
+                };
+                future = get_http_client().get(
+                    "/fxhis/",
+                    query,
+                    {{"Accept", "application/json"}, {"Cookie", m_cookies}},
+                    get_rate_limit(RateLimitType::TICK_DATA));
+            }
+
+            auto response_callback = [state, request_next](
+                    kurlyk::HttpResponsePtr response) {
+                if (!validate_response(response)) {
+                    state->callback(BarHistoryApiResult::fail(
+                        "Bar history HTTP response failed validation.",
+                        response ? response->status_code : BarHistoryApiResult::NO_RESPONSE_STATUS));
+                    return;
+                }
+
+                state->last_status = response->status_code;
+                try {
+                    auto chunk_sequence = state->use_binance
+                        ? parse_binance_klines_bar_history(response->content, state->request)
+                        : parse_fxhis_bar_history(response->content, state->request);
+                    auto& target = state->sequence.bars;
+                    target.insert(
+                        target.end(),
+                        std::make_move_iterator(chunk_sequence.bars.begin()),
+                        std::make_move_iterator(chunk_sequence.bars.end()));
+                } catch (const std::exception& ex) {
+                    state->callback(BarHistoryApiResult::fail(
+                        std::string("Failed to parse bar history: ") + ex.what(),
+                        response->status_code));
+                    return;
+                }
+
+                (*request_next)();
+            };
+
+            add_http_request_task(std::move(future), std::move(response_callback));
+        };
+
+        (*request_next)();
     }
 
     inline void RequestManager::request_trade_check_result(
