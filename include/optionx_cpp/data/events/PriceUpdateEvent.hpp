@@ -16,12 +16,12 @@ namespace optionx::events {
     public:
         /// \brief Constructor initializing the tick data.
         /// \param ticks A vector of tick information.
-        explicit PriceUpdateEvent(std::vector<TickData> ticks)
+        explicit PriceUpdateEvent(std::vector<SingleTick> ticks)
             : m_ticks(std::move(ticks)) {}
 
         /// \brief Gets the tick data associated with this event.
         /// \return A constant reference to the vector of tick information.
-        const std::vector<TickData>& get_ticks() const {
+        const std::vector<SingleTick>& get_ticks() const {
             return m_ticks;
         }
 
@@ -38,18 +38,18 @@ namespace optionx::events {
 
         /// \brief Finds a tick by its symbol name.
         /// \param symbol The name of the symbol to find.
-        /// \return An optional containing the found TickData.
-        TickData get_tick_by_symbol(const std::string& symbol) const {
+        /// \return An optional containing the found SingleTick.
+        SingleTick get_tick_by_symbol(const std::string& symbol) const {
             for (const auto& tick : m_ticks) {
                 if (tick.symbol == symbol) {
                     return tick;
                 }
             }
-            return TickData();
+            return SingleTick();
         }
 
     private:
-        std::vector<TickData> m_ticks; ///< Tick information associated with this event.
+        std::vector<SingleTick> m_ticks; ///< Tick information associated with this event.
     };
 
 } // namespace optionx::events

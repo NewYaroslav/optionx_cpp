@@ -284,7 +284,7 @@ public:
     void on_event(const optionx::utils::Event* const) override {
     }
 
-    std::vector<optionx::TickData> ticks() const {
+    std::vector<optionx::SingleTick> ticks() const {
         std::lock_guard<std::mutex> lock(m_mutex);
         return m_ticks;
     }
@@ -304,7 +304,7 @@ public:
 
 private:
     mutable std::mutex m_mutex;
-    std::vector<optionx::TickData> m_ticks;
+    std::vector<optionx::SingleTick> m_ticks;
     std::size_t m_update_count = 0;
 };
 
@@ -505,7 +505,7 @@ public:
             timeout_ms);
     }
 
-    std::vector<optionx::TickData> latest_ticks() const {
+    std::vector<optionx::SingleTick> latest_ticks() const {
         return m_price_capture.ticks();
     }
 

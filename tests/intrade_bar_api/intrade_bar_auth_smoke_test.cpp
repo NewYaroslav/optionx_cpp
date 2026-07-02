@@ -114,7 +114,7 @@ TEST(IntradeBarApiSmoke, AccountInfoAndQuotesAvailableAfterAuth) {
 
     const auto ticks = runtime.latest_ticks();
     EXPECT_FALSE(ticks.empty());
-    EXPECT_TRUE(std::any_of(ticks.begin(), ticks.end(), [&](const optionx::TickData& tick) {
+    EXPECT_TRUE(std::any_of(ticks.begin(), ticks.end(), [&](const optionx::SingleTick& tick) {
         return tick.symbol == quote_symbol;
     })) << "Expected quote symbol in live price snapshot: " << quote_symbol;
 

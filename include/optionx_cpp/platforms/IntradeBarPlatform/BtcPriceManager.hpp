@@ -85,7 +85,7 @@ namespace optionx::platforms::intrade_bar {
 
     private:
         kurlyk::WebSocketClient m_websocket_client; ///< WebSocket client for BTCUSDT.
-        std::vector<TickData>   m_tick_data;        ///< Container for tick data.
+        std::vector<SingleTick>   m_tick_data;        ///< Container for tick data.
         bool                    m_is_error = false; ///< Flag indicating if an error has occurred.
 
         /// \brief Handles incoming WebSocket messages.

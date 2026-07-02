@@ -1068,14 +1068,14 @@ TEST_F(TradeManagerTestFixture, ValidTradeTest) {
     std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 
     // Simulate a price update event to trigger closing.
-    TickData tick;
+    SingleTick tick;
     // Set tick price data so that mid_price > open_price.
     // For example, for BUY order if mid_price > 1.12335 then trade is WIN.
     tick.tick         = { 1.12350, 1.12340, 0.1, 1695483030000, 1695483031000, 0 };
     tick.symbol       = "EURUSD";
     tick.price_digits = 5;
     tick.flags        = optionx::TickStatusFlags::REALTIME | optionx::TickStatusFlags::INITIALIZED;
-    std::vector<TickData> ticks = { tick };
+    std::vector<SingleTick> ticks = { tick };
 
     bus.notify_async(std::make_unique<events::PriceUpdateEvent>(ticks));
 
@@ -1163,14 +1163,14 @@ TEST_F(TradeManagerTestFixture, InvalidTradeTest) {
     std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 
     // Simulate a price update event to trigger closing.
-    TickData tick;
+    SingleTick tick;
     // Set tick price data so that mid_price > open_price.
     // For example, for BUY order if mid_price > 1.12335 then trade is WIN.
     tick.tick         = { 1.12350, 1.12340, 0.1, 1695483030000, 1695483031000, 0 };
     tick.symbol       = "EURUSD";
     tick.price_digits = 5;
     tick.flags        = optionx::TickStatusFlags::REALTIME | optionx::TickStatusFlags::INITIALIZED;
-    std::vector<TickData> ticks = { tick };
+    std::vector<SingleTick> ticks = { tick };
 
     bus.notify_async(std::make_unique<events::PriceUpdateEvent>(ticks));
 
@@ -1260,14 +1260,14 @@ TEST_F(TradeManagerTestFixture, ShutdownTest) {
     std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 
     // Simulate a price update event to trigger closing.
-    TickData tick;
+    SingleTick tick;
     // Set tick price data so that mid_price > open_price.
     // For example, for BUY order if mid_price > 1.12335 then trade is WIN.
     tick.tick         = { 1.12350, 1.12340, 0.1, 1695483030000, 1695483031000, 0 };
     tick.symbol       = "EURUSD";
     tick.price_digits = 5;
     tick.flags        = optionx::TickStatusFlags::REALTIME | optionx::TickStatusFlags::INITIALIZED;
-    std::vector<TickData> ticks = { tick };
+    std::vector<SingleTick> ticks = { tick };
 
     bus.notify_async(std::make_unique<events::PriceUpdateEvent>(ticks));
 

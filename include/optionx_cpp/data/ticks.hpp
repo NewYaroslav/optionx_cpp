@@ -7,7 +7,7 @@
 
 #include "ticks/flags.hpp"
 #include "ticks/Tick.hpp"
-#include "ticks/TickData.hpp"
-#include "ticks/TickSequenceData.hpp"
+#include "ticks/SingleTick.hpp"
+#include "ticks/TickSequence.hpp"
 
 #endif // _OPTIONX_TICKS_HPP_INCLUDED

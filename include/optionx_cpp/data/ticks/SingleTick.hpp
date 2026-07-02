@@ -1,18 +1,19 @@
 #pragma once
-#ifndef _OPTIONX_TICK_DATA_HPP_INCLUDED
-#define _OPTIONX_TICK_DATA_HPP_INCLUDED
+#ifndef _OPTIONX_SINGLE_TICK_HPP_INCLUDED
+#define _OPTIONX_SINGLE_TICK_HPP_INCLUDED
 
-/// \file TickData.hpp
-/// \brief Defines the TickData structure for storing individual tick data with metadata.
+/// \file SingleTick.hpp
+/// \brief Defines the SingleTick structure for storing individual tick data with metadata.
 
 #include <cstdint>
 #include <string>
+#include <utility>
 
 namespace optionx {
 
-    /// \struct TickData
+    /// \struct SingleTick
     /// \brief Represents a single market tick with associated metadata.
-    struct TickData {
+    struct SingleTick {
         Tick tick;              ///< Tick data of the specified type.
         std::string symbol;     ///< Symbol associated with the tick.
         std::string provider;   ///< Data provider associated with the tick.
@@ -21,7 +22,7 @@ namespace optionx {
         uint32_t flags;         ///< Tick data flags (bitmask of UpdateFlags).
 
         /// \brief Default constructor initializing all fields to default values.
-        TickData() : price_digits(0), volume_digits(0), flags(0) {}
+        SingleTick() : price_digits(0), volume_digits(0), flags(0) {}
 
         /// \brief Constructor to initialize all fields.
         /// \param t Tick data.
@@ -30,7 +31,7 @@ namespace optionx {
         /// \param d Number of decimal places for price.
         /// \param vd Number of decimal places for volume.
         /// \param f Tick data flags.
-        TickData(Tick t, std::string s, std::string p, uint32_t d, uint32_t vd, uint32_t f)
+        SingleTick(Tick t, std::string s, std::string p, uint32_t d, uint32_t vd, uint32_t f)
             : tick(std::move(t)), symbol(std::move(s)), provider(std::move(p)), price_digits(d), volume_digits(vd), flags(f) {}
 
         /// \brief Calculates the average price based on bid and ask.
@@ -59,5 +60,4 @@ namespace optionx {
 
 } // namespace optionx
 
-#endif // _OPTIONX_TICK_DATA_HPP_INCLUDED
-
+#endif // _OPTIONX_SINGLE_TICK_HPP_INCLUDED

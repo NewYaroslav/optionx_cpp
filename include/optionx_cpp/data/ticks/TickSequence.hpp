@@ -1,18 +1,19 @@
 #pragma once
-#ifndef _OPTIONX_TICK_SEQUENCE_DATA_HPP_INCLUDED
-#define _OPTIONX_TICK_SEQUENCE_DATA_HPP_INCLUDED
+#ifndef _OPTIONX_TICK_SEQUENCE_HPP_INCLUDED
+#define _OPTIONX_TICK_SEQUENCE_HPP_INCLUDED
 
-/// \file TickSequenceData.hpp
-/// \brief Defines the TickSequenceData structure for storing a sequence of tick data with metadata.
+/// \file TickSequence.hpp
+/// \brief Defines the TickSequence structure for storing a sequence of tick data with metadata.
 
 #include <vector>
 #include <string>
+#include <utility>
 
 namespace optionx {
 
-    /// \struct TickSequenceData
+    /// \struct TickSequence
     /// \brief Represents a sequence of tick data with metadata.
-    struct TickSequenceData {
+    struct TickSequence {
         std::vector<Tick> ticks;    ///< Sequence of tick data of the specified type.
         std::string symbol;         ///< Symbol associated with the tick sequence.
         std::string provider;       ///< Data provider associated with the tick sequence.
@@ -21,7 +22,7 @@ namespace optionx {
         uint32_t flags;             ///< Tick data flags (bitmask of UpdateFlags).
 
         /// \brief Default constructor initializing all fields to default values.
-        TickSequenceData() : price_digits(0), volume_digits(0), flags(0) {}
+        TickSequence() : price_digits(0), volume_digits(0), flags(0) {}
 
         /// \brief Constructor to initialize all fields.
         /// \param ts Sequence of tick data.
@@ -30,10 +31,10 @@ namespace optionx {
         /// \param f Tick data flags.
         /// \param d Number of decimal places for price.
         /// \param vd Number of decimal places for volume.
-        TickSequenceData(std::vector<Tick> ts, std::string s, std::string p, uint32_t d, uint32_t vd, uint32_t f)
+        TickSequence(std::vector<Tick> ts, std::string s, std::string p, uint32_t d, uint32_t vd, uint32_t f)
             : ticks(std::move(ts)), symbol(std::move(s)), provider(std::move(p)), price_digits(d), volume_digits(vd), flags(f) {}
     };
 
 } // namespace optionx
 
-#endif // _OPTIONX_TICK_SEQUENCE_DATA_HPP_INCLUDED
+#endif // _OPTIONX_TICK_SEQUENCE_HPP_INCLUDED

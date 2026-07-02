@@ -1,8 +1,8 @@
 #pragma once
-#ifndef _OPTIONX_SINGLE_BAR_SEQUENCE_HPP_INCLUDED
-#define _OPTIONX_SINGLE_BAR_SEQUENCE_HPP_INCLUDED
+#ifndef _OPTIONX_SINGLE_BAR_HPP_INCLUDED
+#define _OPTIONX_SINGLE_BAR_HPP_INCLUDED
 
-/// \file BarData.hpp
+/// \file SingleBar.hpp
 /// \brief
 
 #include <cstdint>
@@ -11,9 +11,9 @@
 
 namespace optionx {
 
-	/// \struct BarData
+	/// \struct SingleBar
     /// \brief Represents a market bar with additional metadata
-    struct BarData {
+    struct SingleBar {
         Bar bar;        		///< Bar data of the specified type
 		std::string symbol; 	///< Symbol
 		std::string provider;	///< Provider
@@ -25,7 +25,7 @@ namespace optionx {
 
 
         /// \brief Constructor to initialize all fields
-        BarData(
+        SingleBar(
             Bar b,
             std::string s,
             std::string p,
@@ -42,8 +42,8 @@ namespace optionx {
               price_digits(d),
               volume_digits(vd),
               price_source(ps) {}
-    }; // BarData
+    }; // SingleBar
 
 }; // namespace optionx
 
-#endif // _OPTIONX_SINGLE_BAR_SEQUENCE_HPP_INCLUDED
+#endif // _OPTIONX_SINGLE_BAR_HPP_INCLUDED
