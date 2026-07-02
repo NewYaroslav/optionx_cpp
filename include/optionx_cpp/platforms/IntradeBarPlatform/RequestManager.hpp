@@ -220,7 +220,7 @@ namespace optionx::platforms::intrade_bar {
         void request_price(
             std::function<void(
                 bool success,
-                std::vector<TickData> ticks)> price_callback);
+                std::vector<SingleTick> ticks)> price_callback);
 
         /// \brief Typed variant of request_price.
         void request_price_result(
@@ -920,7 +920,7 @@ namespace optionx::platforms::intrade_bar {
     inline void RequestManager::request_price(
             std::function<void(
                 bool success,
-                std::vector<TickData> ticks)> price_callback) {
+                std::vector<SingleTick> ticks)> price_callback) {
         // Отправка GET-запроса
         auto future = get_http_client().get(
             "/price_now",
@@ -938,12 +938,12 @@ namespace optionx::platforms::intrade_bar {
 
             using json = nlohmann::json;
             int64_t received_ms = OPTIONX_TIMESTAMP_MS;
-            std::vector<TickData> ticks;
+            std::vector<SingleTick> ticks;
             try {
                 json j = json::parse(response->content); // Парсинг JSON
                 for (auto& el : j.items()) {
                     const std::string symbol_name = el.key();
-                    TickData tick;
+                    SingleTick tick;
                     tick.provider = to_str(PlatformType::INTRADE_BAR);
                     tick.symbol = normalize_symbol_name(symbol_name);
                     tick.volume_digits = 0;
@@ -1794,7 +1794,7 @@ namespace optionx::platforms::intrade_bar {
         request_price(
             [price_callback = std::move(price_callback)](
                     bool success,
-                    std::vector<TickData> ticks) {
+                    std::vector<SingleTick> ticks) {
                 if (!price_callback) return;
                 if (!success) {
                     price_callback(PriceSnapshotResult::fail("Failed to retrieve price snapshot."));

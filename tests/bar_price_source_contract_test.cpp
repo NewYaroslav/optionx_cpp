@@ -35,8 +35,8 @@ TEST(BarPriceSourceContract, HistoryRequestCanSelectBidOrAsk) {
 TEST(BarPriceSourceContract, BarDataAndSequenceCarryPriceSource) {
     optionx::Bar bar(1.0, 1.2, 0.9, 1.1, 0.0, 123000);
 
-    const optionx::BarData default_data(bar, "EUR/USD", "test", 60, 0, 5, 0);
-    const optionx::BarData bid_data(
+    const optionx::SingleBar default_data(bar, "EUR/USD", "test", 60, 0, 5, 0);
+    const optionx::SingleBar bid_data(
         bar,
         "EUR/USD",
         "test",

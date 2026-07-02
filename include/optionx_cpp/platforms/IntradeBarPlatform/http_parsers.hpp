@@ -1304,11 +1304,11 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
-    /// \brief Parses a BTCUSDT tick message from the WebSocket and updates the provided TickData structure.
+    /// \brief Parses a BTCUSDT tick message from the WebSocket and updates the provided SingleTick structure.
     /// \param message The JSON-formatted string containing the tick data.
-    /// \param tick_data Reference to the TickData structure to be updated.
+    /// \param tick_data Reference to the SingleTick structure to be updated.
     /// \return true if parsing is successful and the symbol matches BTCUSDT; false otherwise.
-    inline bool parse_btcusdt_tick(const std::string& message, TickData& tick_data) {
+    inline bool parse_btcusdt_tick(const std::string& message, SingleTick& tick_data) {
         auto j = nlohmann::json::parse(message);
 
         if (j.contains("data")) {

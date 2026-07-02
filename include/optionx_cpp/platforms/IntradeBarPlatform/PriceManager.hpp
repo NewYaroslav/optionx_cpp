@@ -45,7 +45,7 @@ namespace optionx::platforms::intrade_bar {
     private:
         RequestManager&    m_request_manager; ///< Reference to the request manager.
         utils::TaskManager m_task_manager;    ///< Task manager for handling asynchronous tasks.
-        std::unordered_map<std::string, TickData> m_ticks; ///< Stores the latest tick data for each symbol.
+        std::unordered_map<std::string, SingleTick> m_ticks; ///< Stores the latest tick data for each symbol.
         bool m_has_price_update = false; ///< Flag indicating whether a price update is in progress.
 
         /// \brief Initiates the process of retrieving price updates.
@@ -129,7 +129,7 @@ namespace optionx::platforms::intrade_bar {
         LOGIT_DEBUG("Intrade Bar price: requesting price snapshot.");
         m_request_manager.request_price([this, task](
                 bool success,
-                std::vector<TickData> ticks) {
+                std::vector<SingleTick> ticks) {
             m_has_price_update = false;
             if (task->is_shutdown()) {
                 m_ticks.clear();

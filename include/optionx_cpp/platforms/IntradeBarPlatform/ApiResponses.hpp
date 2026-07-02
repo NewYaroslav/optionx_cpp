@@ -85,7 +85,7 @@ namespace optionx::platforms::intrade_bar {
 
     /// \brief Tick snapshot returned by the polling price endpoint.
     struct PriceSnapshot {
-        std::vector<TickData> ticks;
+        std::vector<SingleTick> ticks;
     };
 
     /// \brief Trade open response payload.

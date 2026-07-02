@@ -8,7 +8,7 @@
 #include "bars/enums.hpp"
 #include "bars/Bar.hpp"
 #include "bars/flags.hpp"
-#include "bars/BarData.hpp"
+#include "bars/SingleBar.hpp"
 #include "bars/BarSequence.hpp"
 #include "bars/BarHistoryRequest.hpp"
 
