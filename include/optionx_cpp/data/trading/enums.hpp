@@ -11,10 +11,9 @@
 #include <unordered_map>
 #include <nlohmann/json.hpp>
 
-namespace optionx {
+#include "types.hpp"
 
-    using BridgeId = std::uint32_t; ///< Runtime bridge/source identifier; 0 means "not assigned".
-    using SignalId = std::uint32_t; ///< Persistent signal identifier; 0 means "not assigned".
+namespace optionx {
 
 	/// \enum PlatformType
     /// \brief Represents different trading platform types.
