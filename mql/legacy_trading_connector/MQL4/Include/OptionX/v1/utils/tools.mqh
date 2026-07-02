@@ -164,12 +164,12 @@ public:
 
     bool set(const string &arg_str_start_time, const string &arg_str_stop_time) {
         time_start = legacy_trading_sec_of_day(arg_str_start_time);
-        if (time_start == SEC_PER_DAY) {
+        if (time_start == TimeShield::sec_per_day()) {
             error_code = 1;
             return false;
         }
         time_stop = legacy_trading_sec_of_day(arg_str_stop_time);
-        if (time_stop == SEC_PER_DAY) {
+        if (time_stop == TimeShield::sec_per_day()) {
             error_code = 2;
             return false;
         }
@@ -311,7 +311,7 @@ public:
         block_bar_time         	= 0;
         block_time             	= 0;
         const datetime current_time = TimeCurrent();
-        const long period_duration = Period() * SEC_PER_MIN;
+        const long period_duration = Period() * TimeShield::sec_per_min();
         last_open_bar_time      = (datetime)((long)current_time - ((long)current_time % period_duration));
         prev_bar_time           = Time[0];
         logger                  = NULL;
@@ -371,7 +371,7 @@ public:
         const datetime gmt_time = TimeGMT();
         const datetime current_time = TimeCurrent();
         const datetime open_bar_time = Time[0];
-        const long period_duration = Period() * SEC_PER_MIN;
+        const long period_duration = Period() * TimeShield::sec_per_min();
         const datetime last_close_bar_time = last_open_bar_time + (datetime)period_duration;
 
         if (current_time >= last_close_bar_time) {
