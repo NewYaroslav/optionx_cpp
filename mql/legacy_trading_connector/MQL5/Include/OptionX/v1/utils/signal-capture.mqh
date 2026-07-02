@@ -185,7 +185,7 @@ private:
             if (StringLen(arrow_name) > 4 && StringSubstr(arrow_name, 0, 4) == "#MC_") continue;
 
             datetime arrow_time = (datetime)ObjectGetInteger(0, arrow_name, OBJPROP_TIME);
-            const datetime period_duration = config.period * LEGACY_TRADING_SEC_PER_MIN;
+            const datetime period_duration = config.period * time_shield::SEC_PER_MIN;
             arrow_time -= arrow_time % period_duration;
             const datetime open_bar_time = get_candle_time(shift);
             //Print("arrow " + TimeToString(arrow_time, TIME_DATE | TIME_MINUTES | TIME_SECONDS), " t: " + TimeToString(open_bar_time, TIME_DATE | TIME_MINUTES | TIME_SECONDS));
@@ -358,7 +358,7 @@ private:
 		datetime signal_bar_time = 0;
 
 		const datetime current_time = TimeCurrent();
-		const long period_duration = config.period * LEGACY_TRADING_SEC_PER_MIN;
+		const long period_duration = config.period * time_shield::SEC_PER_MIN;
 		const datetime close_bar_time = open_bar_time + (datetime)period_duration;
 
 		// обрабатываем событие, когда бар еще не закрылся

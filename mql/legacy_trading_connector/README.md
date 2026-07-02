@@ -34,9 +34,9 @@ instead of extending this one.
 Copy the contents of either `MQL4` or `MQL5` into the corresponding terminal
 data folder, preserving the `Include` and `Indicators` directory structure.
 
-The MT5 package includes `<TimeShield.mqh>`. Install the MQL5 headers from the
-`time-shield-cpp` package into the terminal `MQL5/Include` directory before
-compiling the MT5 connector.
+The MT4 and MT5 packages include `<TimeShield.mqh>`. Install the matching MQL
+headers from the `time-shield-cpp` package into the terminal `MQL4/Include` or
+`MQL5/Include` directory before compiling the connector.
 
 Compile `LegacyTradingConnector.mq4` or `LegacyTradingConnector.mq5` in
 MetaEditor. The C++ CI does not compile MQL files.

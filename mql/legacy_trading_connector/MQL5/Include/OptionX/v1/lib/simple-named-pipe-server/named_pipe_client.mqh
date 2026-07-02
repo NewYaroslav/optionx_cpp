@@ -26,7 +26,7 @@ ulong CreateNamedPipe(string pipeName,int openMode,int pipeMode,int maxInstances
 int   WaitNamedPipeW(string lpNamedPipeName,int nTimeOut);
 bool  SetNamedPipeHandleState(HANDLE fileHandle,int &lpMode, int lpMaxCollectionCount,int lpCollectDataTimeout);
 int   WriteFile(HANDLE file,uchar &buffer[],uint number_of_bytes_to_write,uint &number_of_bytes_written,PVOID overlapped);
-int   ReadFile(HANDLE file,char &buffer[],uint number_of_bytes_to_read,uint &number_of_bytes_read,PVOID overlapped);
+int   ReadFile(HANDLE file,uchar &buffer[],uint number_of_bytes_to_read,uint &number_of_bytes_read,PVOID overlapped);
 bool  PeekNamedPipe(HANDLE fileHandle, int buffer, int bytes, int bytesRead, int &numOfBytes, int bytesLeftThisMessage);
 #import
 //+------------------------------------------------------------------+
@@ -190,7 +190,8 @@ public:
 	bool write(string message) {
 		if (pipe_handle == INVALID_HANDLE_VALUE) return false;
         if (StringLen(message) == 0) return false;
-        int bytes_to_write, bytes_written;
+        int bytes_to_write;
+        uint bytes_written = 0;
         uchar utf8_array[];
         bytes_to_write = StringToCharArray(message, utf8_array, 0, -1, CP_UTF8);
         bytes_to_write = ArraySize(utf8_array);
@@ -198,10 +199,10 @@ public:
         WriteFile(
 			pipe_handle,
 			utf8_array,
-			bytes_to_write,
+			(uint)bytes_to_write,
 			bytes_written,
 			NULL);
-        if(bytes_written != bytes_to_write) {
+        if(bytes_written != (uint)bytes_to_write) {
             close();
             return false;
         }
@@ -216,14 +217,14 @@ public:
         string ret;
         uchar char_array[];
         ArrayResize(char_array, buffer_size);
-        int bytes_read;
+        uint bytes_read = 0;
         ReadFile(
             pipe_handle,
             char_array,
-            buffer_size,
+            (uint)buffer_size,
             bytes_read,
             0);
-        if(bytes_read != 0) ret = CharArrayToString(char_array, 0, bytes_read, CP_UTF8);
+        if(bytes_read != 0) ret = CharArrayToString(char_array, 0, (int)bytes_read, CP_UTF8);
         return ret;
 	}
 

@@ -378,7 +378,7 @@ private:
 		datetime signal_bar_time = 0;
 
 		const datetime current_time = TimeCurrent();
-		const long period_duration = config.period * LEGACY_TRADING_SEC_PER_MIN;
+		const long period_duration = config.period * TSHIELD_SEC_PER_MIN;
 		const datetime close_bar_time = open_bar_time + (datetime)period_duration;
 
 		// обрабатываем событие, когда бар еще не закрылся

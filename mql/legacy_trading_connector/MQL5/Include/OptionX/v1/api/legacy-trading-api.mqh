@@ -124,8 +124,10 @@ private:
                         //MC_BO_WIN
                         //MC_BO_LOSS
 
-                        updated_bo.getInt("step", bo.step);
-                        updated_bo.getInt("max_step", bo.max_step);
+                        int step = 0;
+                        int max_step = 0;
+                        if(updated_bo.getInt("step", step)) bo.step = (uint)step;
+                        if(updated_bo.getInt("max_step", max_step)) bo.max_step = (uint)max_step;
 
                         string status_str = updated_bo.getString("status");
                         if(status_str == "win") bo.status = MegaConnectorBoStatus::MC_BO_WIN;

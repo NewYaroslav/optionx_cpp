@@ -7,72 +7,35 @@
 
 #property strict
 
-const int LEGACY_TRADING_SEC_PER_MIN = 60;
-const int LEGACY_TRADING_SEC_PER_DAY = 86400;
+#include <TimeShield.mqh>
 
 uint legacy_trading_sec_of_day(const datetime timestamp) {
-    return (uint)((ulong)timestamp % LEGACY_TRADING_SEC_PER_DAY);
+    return (uint)TimeShield::sec_of_day((long)timestamp);
 }
 
 uint legacy_trading_sec_of_day(const int hour, const int minute, const int second) {
-    return (uint)(hour * LEGACY_TRADING_SEC_PER_MIN * 60 + minute * LEGACY_TRADING_SEC_PER_MIN + second);
+    return (uint)TimeShield::sec_of_day(hour, minute, second);
 }
 
 uint legacy_trading_sec_of_day(const string value) {
-    uint hour = 0;
-    uint minute = 0;
-    uint second = 0;
-
-    string parts[];
-    const ushort separator = StringGetCharacter(":", 0);
-    const int count = StringSplit(value, separator, parts);
-    if (count == 0 || count > 3) {
-        ArrayFree(parts);
-        return LEGACY_TRADING_SEC_PER_DAY;
-    }
-
-    if (count >= 1) hour = (uint)StringToInteger(parts[0]);
-    if (count >= 2) minute = (uint)StringToInteger(parts[1]);
-    if (count >= 3) second = (uint)StringToInteger(parts[2]);
-
-    ArrayFree(parts);
-
-    if (hour >= 24 || minute >= 60 || second >= 60) {
-        return LEGACY_TRADING_SEC_PER_DAY;
-    }
-
-    return legacy_trading_sec_of_day((int)hour, (int)minute, (int)second);
+    return (uint)TimeShield::sec_of_day(value);
 }
 
 class LegacyTradingTimer {
 private:
-    ulong m_start_time;
-    uint m_prev_tick_count;
-    ulong m_tick_count_offset;
-
-    ulong tick_count64() {
-        const ulong max_tick_count = 4294967295;
-        const uint current = GetTickCount();
-        if (current < m_prev_tick_count) {
-            m_tick_count_offset += max_tick_count;
-        }
-        m_prev_tick_count = current;
-        return m_tick_count_offset + current;
-    }
+    ulong m_start_time_ms;
 
 public:
     LegacyTradingTimer() {
-        m_tick_count_offset = 0;
-        m_prev_tick_count = 0;
         reset();
     }
 
     void reset() {
-        m_start_time = tick_count64();
+        m_start_time_ms = TimeShield::monotonic_ms();
     }
 
     ulong get_elapsed_ms() {
-        return tick_count64() - m_start_time;
+        return TimeShield::monotonic_ms() - m_start_time_ms;
     }
 
     double get_elapsed() {

@@ -9,9 +9,6 @@
 
 #include <TimeShield.mqh>
 
-const long LEGACY_TRADING_SEC_PER_MIN = time_shield::SEC_PER_MIN;
-const long LEGACY_TRADING_SEC_PER_DAY = time_shield::SEC_PER_DAY;
-
 int legacy_trading_sec_of_day(const datetime timestamp) {
     return time_shield::sec_of_day((long)timestamp);
 }
