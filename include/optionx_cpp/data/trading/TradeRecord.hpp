@@ -508,61 +508,6 @@ namespace optionx {
             return record;
         }
 
-        bool operator==(const TradeRecord& other) const {
-            return trade_id == other.trade_id &&
-                   signal_id == other.signal_id &&
-                   bridge_id == other.bridge_id &&
-                   unique_id == other.unique_id &&
-                   unique_hash == other.unique_hash &&
-                   account_id == other.account_id &&
-                   option_id == other.option_id &&
-                   option_hash == other.option_hash &&
-                   platform_type == other.platform_type &&
-                   account_type == other.account_type &&
-                   currency == other.currency &&
-                   symbol == other.symbol &&
-                   signal_name == other.signal_name &&
-                   user_data == other.user_data &&
-                   comment == other.comment &&
-                   option_type == other.option_type &&
-                   order_type == other.order_type &&
-                   amount == other.amount &&
-                   refund == other.refund &&
-                   min_payout == other.min_payout &&
-                   payout == other.payout &&
-                   profit == other.profit &&
-                   open_balance == other.open_balance &&
-                   close_balance == other.close_balance &&
-                   trade_state == other.trade_state &&
-                   live_state == other.live_state &&
-                   error_code == other.error_code &&
-                   error_desc == other.error_desc &&
-                   open_price == other.open_price &&
-                   close_price == other.close_price &&
-                   delay == other.delay &&
-                   ping == other.ping &&
-                   place_date == other.place_date &&
-                   send_date == other.send_date &&
-                   open_date == other.open_date &&
-                   close_date == other.close_date &&
-                   duration == other.duration &&
-                   mm_type == other.mm_type &&
-                   mm_step == other.mm_step &&
-                   mm_group_id == other.mm_group_id &&
-                   mm_group_hash == other.mm_group_hash &&
-                   mm_group_name == other.mm_group_name &&
-                   mm_params_json == other.mm_params_json &&
-                   decision_params_json == other.decision_params_json &&
-                   metadata_json == other.metadata_json &&
-                   flags == other.flags &&
-                   spread.raw == other.spread.raw &&
-                   spread.digits == other.spread.digits;
-        }
-
-        bool operator!=(const TradeRecord& other) const {
-            return !(*this == other);
-        }
-
     private:
         static constexpr std::uint32_t kBinaryMagic = 0x5254584fU; // "OXTR" on little-endian hosts.
         static constexpr std::uint16_t kBinaryVersion = 1;

@@ -145,6 +145,59 @@ optionx::TradeRecord make_record() {
     return record;
 }
 
+void expect_same_trade_record_snapshot(
+        const optionx::TradeRecord& actual,
+        const optionx::TradeRecord& expected) {
+    EXPECT_EQ(actual.trade_id, expected.trade_id);
+    EXPECT_EQ(actual.signal_id, expected.signal_id);
+    EXPECT_EQ(actual.bridge_id, expected.bridge_id);
+    EXPECT_EQ(actual.unique_id, expected.unique_id);
+    EXPECT_EQ(actual.unique_hash, expected.unique_hash);
+    EXPECT_EQ(actual.account_id, expected.account_id);
+    EXPECT_EQ(actual.option_id, expected.option_id);
+    EXPECT_EQ(actual.option_hash, expected.option_hash);
+    EXPECT_EQ(actual.platform_type, expected.platform_type);
+    EXPECT_EQ(actual.account_type, expected.account_type);
+    EXPECT_EQ(actual.currency, expected.currency);
+    EXPECT_EQ(actual.symbol, expected.symbol);
+    EXPECT_EQ(actual.signal_name, expected.signal_name);
+    EXPECT_EQ(actual.user_data, expected.user_data);
+    EXPECT_EQ(actual.comment, expected.comment);
+    EXPECT_EQ(actual.option_type, expected.option_type);
+    EXPECT_EQ(actual.order_type, expected.order_type);
+    EXPECT_EQ(actual.amount, expected.amount);
+    EXPECT_EQ(actual.refund, expected.refund);
+    EXPECT_EQ(actual.min_payout, expected.min_payout);
+    EXPECT_EQ(actual.payout, expected.payout);
+    EXPECT_EQ(actual.profit, expected.profit);
+    EXPECT_EQ(actual.open_balance, expected.open_balance);
+    EXPECT_EQ(actual.close_balance, expected.close_balance);
+    EXPECT_EQ(actual.trade_state, expected.trade_state);
+    EXPECT_EQ(actual.live_state, expected.live_state);
+    EXPECT_EQ(actual.error_code, expected.error_code);
+    EXPECT_EQ(actual.error_desc, expected.error_desc);
+    EXPECT_EQ(actual.open_price, expected.open_price);
+    EXPECT_EQ(actual.close_price, expected.close_price);
+    EXPECT_EQ(actual.delay, expected.delay);
+    EXPECT_EQ(actual.ping, expected.ping);
+    EXPECT_EQ(actual.place_date, expected.place_date);
+    EXPECT_EQ(actual.send_date, expected.send_date);
+    EXPECT_EQ(actual.open_date, expected.open_date);
+    EXPECT_EQ(actual.close_date, expected.close_date);
+    EXPECT_EQ(actual.duration, expected.duration);
+    EXPECT_EQ(actual.mm_type, expected.mm_type);
+    EXPECT_EQ(actual.mm_step, expected.mm_step);
+    EXPECT_EQ(actual.mm_group_id, expected.mm_group_id);
+    EXPECT_EQ(actual.mm_group_hash, expected.mm_group_hash);
+    EXPECT_EQ(actual.mm_group_name, expected.mm_group_name);
+    EXPECT_EQ(actual.mm_params_json, expected.mm_params_json);
+    EXPECT_EQ(actual.decision_params_json, expected.decision_params_json);
+    EXPECT_EQ(actual.metadata_json, expected.metadata_json);
+    EXPECT_EQ(actual.flags, expected.flags);
+    EXPECT_EQ(actual.spread.raw, expected.spread.raw);
+    EXPECT_EQ(actual.spread.digits, expected.spread.digits);
+}
+
 } // namespace
 
 TEST(TradeRecordSerializationTest, RoundTripsCurrentBinaryFormat) {
@@ -152,7 +205,7 @@ TEST(TradeRecordSerializationTest, RoundTripsCurrentBinaryFormat) {
     const auto bytes = record.to_bytes();
     const auto restored = optionx::TradeRecord::from_bytes(bytes.data(), bytes.size());
 
-    EXPECT_EQ(restored, record);
+    expect_same_trade_record_snapshot(restored, record);
 }
 
 TEST(TradeRecordSerializationTest, RejectsCorruptedPayloads) {
@@ -384,7 +437,7 @@ TEST(TradeRecordFactoryTest, EmptyResultPatchDoesNotUpdateRecord) {
     optionx::TradeResult patch;
 
     EXPECT_FALSE(record.merge_result_patch(patch));
-    EXPECT_EQ(record, before);
+    expect_same_trade_record_snapshot(record, before);
 }
 
 TEST(TradeRecordFactoryTest, DoesNotTreatLatestBalanceAsCloseBalance) {
@@ -484,11 +537,11 @@ TEST(TradeRecordStorageTest, StoresInMdbxKeyValueTable) {
 #if __cplusplus >= 201703L
     const auto stored = table.find(record.trade_id);
     ASSERT_TRUE(stored.has_value());
-    EXPECT_EQ(*stored, record);
+    expect_same_trade_record_snapshot(*stored, record);
 #else
     const auto stored = table.find_compat(record.trade_id);
     ASSERT_TRUE(stored.first);
-    EXPECT_EQ(stored.second, record);
+    expect_same_trade_record_snapshot(stored.second, record);
 #endif
 }
 
