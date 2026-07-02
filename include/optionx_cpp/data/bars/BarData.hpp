@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 
 namespace optionx {
 
@@ -17,14 +18,30 @@ namespace optionx {
 		std::string symbol; 	///< Symbol
 		std::string provider;	///< Provider
 		uint16_t timeframe; 	///< Timeframe
-        uint16_t flags;     	///< Bar data flags (bitmask of BarUpdateFlags)
+		uint16_t flags;     	///< Bar data flags (bitmask of BarUpdateFlags)
         uint16_t price_digits;  ///< Number of decimal places for price
         uint16_t volume_digits; ///< Number of decimal places for volume
+        BarPriceSource price_source = BarPriceSource::MID; ///< Price stream used to build the OHLC values.
 
 
         /// \brief Constructor to initialize all fields
-        BarData(Bar b, std::string s, std::string p, uint16_t tf, uint16_t f, uint16_t d, uint16_t vd)
-            : bar(std::move(b)), symbol(std::move(s)), provider(std::move(p)), timeframe(tf), flags(f), price_digits(d), volume_digits(vd) {}
+        BarData(
+            Bar b,
+            std::string s,
+            std::string p,
+            uint16_t tf,
+            uint16_t f,
+            uint16_t d,
+            uint16_t vd,
+            BarPriceSource ps = BarPriceSource::MID)
+            : bar(std::move(b)),
+              symbol(std::move(s)),
+              provider(std::move(p)),
+              timeframe(tf),
+              flags(f),
+              price_digits(d),
+              volume_digits(vd),
+              price_source(ps) {}
     }; // BarData
 
 }; // namespace optionx
