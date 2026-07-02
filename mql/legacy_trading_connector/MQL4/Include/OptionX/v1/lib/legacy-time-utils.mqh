@@ -9,24 +9,21 @@
 
 #include <TimeShield.mqh>
 
-const long LEGACY_TRADING_SEC_PER_MIN = time_shield::SEC_PER_MIN;
-const long LEGACY_TRADING_SEC_PER_DAY = time_shield::SEC_PER_DAY;
-
 uint legacy_trading_sec_of_day(const datetime timestamp) {
-    return (uint)time_shield::sec_of_day((long)timestamp);
+    return (uint)TimeShield::sec_of_day((long)timestamp);
 }
 
 uint legacy_trading_sec_of_day(const int hour, const int minute, const int second) {
-    return (uint)time_shield::sec_of_day(hour, minute, second);
+    return (uint)TimeShield::sec_of_day(hour, minute, second);
 }
 
 uint legacy_trading_sec_of_day(const string value) {
-    return (uint)time_shield::sec_of_day(value);
+    return (uint)TimeShield::sec_of_day(value);
 }
 
 class LegacyTradingTimer {
 private:
-    long m_start_time_ms;
+    ulong m_start_time_ms;
 
 public:
     LegacyTradingTimer() {
@@ -34,11 +31,11 @@ public:
     }
 
     void reset() {
-        m_start_time_ms = time_shield::monotonic_ms();
+        m_start_time_ms = TimeShield::monotonic_ms();
     }
 
     ulong get_elapsed_ms() {
-        return (ulong)(time_shield::monotonic_ms() - m_start_time_ms);
+        return TimeShield::monotonic_ms() - m_start_time_ms;
     }
 
     double get_elapsed() {
