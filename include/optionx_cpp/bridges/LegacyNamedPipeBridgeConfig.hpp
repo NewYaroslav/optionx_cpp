@@ -1,19 +1,20 @@
 #pragma once
-#ifndef _OPTIONX_BRIDGES_INTRADE_BAR_LEGACY_BRIDGE_CONFIG_HPP_INCLUDED
-#define _OPTIONX_BRIDGES_INTRADE_BAR_LEGACY_BRIDGE_CONFIG_HPP_INCLUDED
+#ifndef _OPTIONX_BRIDGES_LEGACY_NAMED_PIPE_BRIDGE_CONFIG_HPP_INCLUDED
+#define _OPTIONX_BRIDGES_LEGACY_NAMED_PIPE_BRIDGE_CONFIG_HPP_INCLUDED
 
-/// \file BridgeConfig.hpp
-/// \brief Defines configuration for the Intrade Bar legacy named-pipe bridge.
+/// \file LegacyNamedPipeBridgeConfig.hpp
+/// \brief Defines configuration for the legacy named-pipe bridge.
 
 #include "data.hpp"
 
-namespace optionx::bridges::intrade_bar_legacy {
+namespace optionx::bridges {
 
-    /// \class BridgeConfig
-    /// \brief Configuration for the legacy Intrade Bar named-pipe bridge.
-    class BridgeConfig final : public IBridgeConfig {
+    /// \class LegacyNamedPipeBridgeConfig
+    /// \brief Configuration for the legacy named-pipe bridge protocol.
+    class LegacyNamedPipeBridgeConfig final : public IBridgeConfig {
     public:
         /// \brief Serializes the bridge configuration.
+        /// \param j Output JSON object.
         void to_json(nlohmann::json& j) const override {
             j = nlohmann::json{
                 {"named_pipe", named_pipe},
@@ -25,6 +26,7 @@ namespace optionx::bridges::intrade_bar_legacy {
         }
 
         /// \brief Deserializes the bridge configuration.
+        /// \param j Input JSON object.
         void from_json(const nlohmann::json& j) override {
             if (j.contains("named_pipe")) {
                 named_pipe = j.at("named_pipe").get<std::string>();
@@ -44,6 +46,7 @@ namespace optionx::bridges::intrade_bar_legacy {
         }
 
         /// \brief Validates the bridge configuration.
+        /// \return Pair with success flag and validation message.
         std::pair<bool, std::string> validate() const override {
             if (named_pipe.empty()) {
                 return {false, "Named pipe is empty."};
@@ -64,18 +67,21 @@ namespace optionx::bridges::intrade_bar_legacy {
         }
 
         /// \brief Creates a unique pointer clone of this configuration.
+        /// \return A unique pointer to a copied configuration.
         std::unique_ptr<IBridgeConfig> clone_unique() const override {
-            return std::make_unique<BridgeConfig>(*this);
+            return std::make_unique<LegacyNamedPipeBridgeConfig>(*this);
         }
 
         /// \brief Creates a shared pointer clone of this configuration.
+        /// \return A shared pointer to a copied configuration.
         std::shared_ptr<IBridgeConfig> clone_shared() const override {
-            return std::make_shared<BridgeConfig>(*this);
+            return std::make_shared<LegacyNamedPipeBridgeConfig>(*this);
         }
 
         /// \brief Returns the bridge type.
+        /// \return `BridgeType::LEGACY_NAMED_PIPE`.
         BridgeType bridge_type() const override {
-            return BridgeType::INTRADE_BAR_LEGACY;
+            return BridgeType::LEGACY_NAMED_PIPE;
         }
 
         std::string named_pipe = "intrade_bar_console_bot"; ///< Named pipe endpoint name.
@@ -85,6 +91,6 @@ namespace optionx::bridges::intrade_bar_legacy {
         std::int64_t ping_period_ms = time_shield::MS_PER_15_SEC; ///< Periodic legacy ping interval.
     };
 
-} // namespace optionx::bridges::intrade_bar_legacy
+} // namespace optionx::bridges
 
-#endif // _OPTIONX_BRIDGES_INTRADE_BAR_LEGACY_BRIDGE_CONFIG_HPP_INCLUDED
+#endif // _OPTIONX_BRIDGES_LEGACY_NAMED_PIPE_BRIDGE_CONFIG_HPP_INCLUDED

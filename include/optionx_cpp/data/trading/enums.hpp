@@ -91,15 +91,17 @@ namespace optionx {
     /// \enum BridgeType
     /// \brief Represents different types of bridges.
     enum class BridgeType {
-        UNKNOWN = 0,    ///< Unknown bridge type
-        INTRADE_BAR_LEGACY  ///< Intrade Bar Legacy bridge
+        UNKNOWN = 0,         ///< Unknown bridge type
+        LEGACY_NAMED_PIPE,   ///< Legacy named-pipe bridge.
+        INTRADE_BAR_LEGACY = LEGACY_NAMED_PIPE ///< Backward-compatible alias.
     };
 
     /// \brief Converts BridgeType to its string representation.
     /// \param value The BridgeType enumeration value.
     /// \return Constant reference to the corresponding string.
     inline const std::string& to_str(BridgeType value, int mode = 0) noexcept {
-        static const std::vector<std::string> str_data = {"UNKNOWN", "INTRADE_BAR_LEGACY"};
+        (void)mode;
+        static const std::vector<std::string> str_data = {"UNKNOWN", "LEGACY_NAMED_PIPE"};
         return utils::enum_string_or_unknown(str_data, static_cast<size_t>(value));
     }
 
@@ -109,10 +111,11 @@ namespace optionx {
     /// \return True if conversion succeeded.
     inline bool to_enum(const std::string& str, BridgeType& value) noexcept {
         static const std::unordered_map<std::string, BridgeType> str_data = {
-            {"UNKNOWN", 		   BridgeType::UNKNOWN           },
-            {"INTRADE_BAR_LEGACY", BridgeType::INTRADE_BAR_LEGACY}
+            {"UNKNOWN",             BridgeType::UNKNOWN},
+            {"LEGACY_NAMED_PIPE",   BridgeType::LEGACY_NAMED_PIPE},
+            {"INTRADE_BAR_LEGACY",  BridgeType::LEGACY_NAMED_PIPE}
         };
-        auto it = str_data.find(str);
+        auto it = str_data.find(utils::to_upper_case(str));
         if (it != str_data.end()) {
             value = it->second;
             return true;

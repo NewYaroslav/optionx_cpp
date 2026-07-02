@@ -1,14 +1,14 @@
 #pragma once
-#ifndef _OPTIONX_BRIDGES_INTRADE_BAR_LEGACY_BRIDGE_HPP_INCLUDED
-#define _OPTIONX_BRIDGES_INTRADE_BAR_LEGACY_BRIDGE_HPP_INCLUDED
+#ifndef _OPTIONX_BRIDGES_LEGACY_NAMED_PIPE_BRIDGE_HPP_INCLUDED
+#define _OPTIONX_BRIDGES_LEGACY_NAMED_PIPE_BRIDGE_HPP_INCLUDED
 
-/// \file IntradeBarLegacyBridge.hpp
-/// \brief Defines the Intrade Bar legacy named-pipe bridge.
+/// \file LegacyNamedPipeBridge.hpp
+/// \brief Defines the legacy named-pipe bridge.
 
 #include "utils.hpp"
 #include "data.hpp"
-#include "bridges/BaseBridge.hpp"
-#include "bridges/IntradeBarLegacyBridge/BridgeConfig.hpp"
+#include "BaseBridge.hpp"
+#include "LegacyNamedPipeBridgeConfig.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -26,9 +26,13 @@
 
 namespace optionx::bridges {
 
-    /// \class IntradeBarLegacyBridge
-    /// \brief Adapter for the legacy Intrade Bar named-pipe JSON protocol.
-    class IntradeBarLegacyBridge final : public BaseBridge {
+    /// \class LegacyNamedPipeBridge
+    /// \brief Adapter for the legacy named-pipe JSON protocol.
+    ///
+    /// The protocol was historically used with Intrade Bar, but the wire
+    /// contract is broker-neutral: legacy clients send `contract` messages and
+    /// receive `update_bet`, account, connection, and ping messages.
+    class LegacyNamedPipeBridge final : public BaseBridge {
     private:
         struct RuntimeState {
             std::mutex mutex;
@@ -46,26 +50,28 @@ namespace optionx::bridges {
 
     public:
         /// \brief Constructs a bridge with empty runtime state.
-        IntradeBarLegacyBridge()
+        LegacyNamedPipeBridge()
             : m_state(std::make_shared<RuntimeState>()) {}
 
         /// \brief Stops the bridge before destruction.
-        ~IntradeBarLegacyBridge() override {
+        ~LegacyNamedPipeBridge() override {
             shutdown();
         }
 
-        /// \brief Configures the bridge with Intrade Bar legacy settings.
+        /// \brief Configures the bridge with legacy named-pipe settings.
+        /// \param config Configuration object. Must be `LegacyNamedPipeBridgeConfig`.
+        /// \return `true` when configuration is valid and accepted.
         bool configure(std::unique_ptr<IBridgeConfig> config) override {
             if (!config) return false;
 
             const auto* typed =
-                dynamic_cast<const intrade_bar_legacy::BridgeConfig*>(config.get());
+                dynamic_cast<const LegacyNamedPipeBridgeConfig*>(config.get());
             if (!typed) {
-                config->dispatch_callbacks(false, "Invalid Intrade Bar legacy bridge config type.");
+                config->dispatch_callbacks(false, "Invalid legacy named-pipe bridge config type.");
                 return false;
             }
 
-            auto next_config = std::make_shared<intrade_bar_legacy::BridgeConfig>(*typed);
+            auto next_config = std::make_shared<LegacyNamedPipeBridgeConfig>(*typed);
             const auto validation = next_config->validate();
             config->dispatch_callbacks(validation.first, validation.second);
             if (!validation.first) {
@@ -93,6 +99,7 @@ namespace optionx::bridges {
         }
 
         /// \brief Broadcasts account snapshots to connected legacy clients.
+        /// \param info Account update received from the trading platform.
         void update_account_info(const AccountInfoUpdate& info) override {
             if (!info.account_info) return;
 
@@ -118,6 +125,9 @@ namespace optionx::bridges {
         }
 
         /// \brief Starts the named-pipe bridge.
+        /// \details On Windows the server is started asynchronously and the
+        ///          method returns after scheduling the server and ping task.
+        ///          On non-Windows targets a failure status is reported.
         void run() override {
             auto config = get_config_or_throw();
 
@@ -151,7 +161,7 @@ namespace optionx::bridges {
             }
 
             if (!m_task_manager.add_periodic_task(
-                    "intrade-bar-legacy-ping",
+                    "legacy-named-pipe-ping",
                     config->ping_period_ms,
                     [state = m_state](std::shared_ptr<utils::Task> task) {
                         if (task->is_shutdown()) return;
@@ -172,11 +182,13 @@ namespace optionx::bridges {
             notify_status(
                 BridgeStatus::SERVER_START_FAILED,
                 {},
-                "Intrade Bar legacy named-pipe bridge is available only on Windows.");
+                "Legacy named-pipe bridge is available only on Windows.");
 #endif
         }
 
         /// \brief Stops the bridge and clears connected clients.
+        /// \details Drains the ping task manager and then stops the pipe server
+        ///          if it was running.
         void shutdown() override {
 #if defined(_WIN32)
             std::shared_ptr<SimpleNamedPipe::NamedPipeServer> server;
@@ -199,6 +211,10 @@ namespace optionx::bridges {
         }
 
         /// \brief Parses a legacy `contract` object into a TradeRequest.
+        /// \param contract Legacy JSON contract payload.
+        /// \param min_payout Minimum payout copied into the created request.
+        /// \return Newly allocated trade request.
+        /// \throws std::exception when required contract fields are invalid.
         static std::unique_ptr<TradeRequest> parse_contract(
                 const nlohmann::json& contract,
                 double min_payout) {
@@ -213,6 +229,9 @@ namespace optionx::bridges {
         }
 
         /// \brief Formats a trade result for the legacy `update_bet` message.
+        /// \param request Original trade request.
+        /// \param result Current trade result snapshot.
+        /// \return Serialized JSON message.
         static std::string format_trade_result(
                 const TradeRequest& request,
                 const TradeResult& result) {
@@ -239,6 +258,8 @@ namespace optionx::bridges {
         }
 
         /// \brief Formats a legacy balance update message.
+        /// \param info Account information snapshot.
+        /// \return Serialized JSON message.
         static std::string format_balance_update(const BaseAccountInfoData& info) {
             nlohmann::json message;
             message["b"] = info.get_info<double>(AccountInfoType::BALANCE);
@@ -250,6 +271,8 @@ namespace optionx::bridges {
         }
 
         /// \brief Formats a legacy connection status update message.
+        /// \param info Account information snapshot.
+        /// \return Serialized JSON message.
         static std::string format_connection_update(const BaseAccountInfoData& info) {
             nlohmann::json message;
             message["conn"] =
@@ -262,12 +285,12 @@ namespace optionx::bridges {
         mutable std::mutex m_mutex;
         std::shared_ptr<RuntimeState> m_state;
         utils::TaskManager m_task_manager;
-        std::shared_ptr<intrade_bar_legacy::BridgeConfig> m_config;
+        std::shared_ptr<LegacyNamedPipeBridgeConfig> m_config;
 
-        std::shared_ptr<intrade_bar_legacy::BridgeConfig> get_config_or_throw() const {
+        std::shared_ptr<LegacyNamedPipeBridgeConfig> get_config_or_throw() const {
             std::lock_guard<std::mutex> lock(m_mutex);
             if (!m_config) {
-                throw std::invalid_argument("Intrade Bar legacy bridge is not configured.");
+                throw std::invalid_argument("Legacy named-pipe bridge is not configured.");
             }
             return m_config;
         }
@@ -582,4 +605,4 @@ namespace optionx::bridges {
 
 } // namespace optionx::bridges
 
-#endif // _OPTIONX_BRIDGES_INTRADE_BAR_LEGACY_BRIDGE_HPP_INCLUDED
+#endif // _OPTIONX_BRIDGES_LEGACY_NAMED_PIPE_BRIDGE_HPP_INCLUDED

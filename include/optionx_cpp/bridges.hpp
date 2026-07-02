@@ -9,6 +9,6 @@
 #include "data.hpp"
 #include "storages.hpp"
 #include "bridges/BaseBridge.hpp"
-#include "bridges/IntradeBarLegacyBridge.hpp"
+#include "bridges/LegacyNamedPipeBridge.hpp"
 
 #endif // _OPTIONX_BRIDGES_HPP_INCLUDED
