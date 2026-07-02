@@ -15,7 +15,8 @@ namespace optionx {
     public:
         // Storage identity
         std::uint32_t trade_id = 0;           ///< Linear persistent trade ID; 0 means "not assigned".
-        std::uint32_t signal_id = 0;          ///< Persistent signal ID; 0 means "not attached to a signal".
+        SignalId signal_id = 0;               ///< Persistent signal ID; 0 means "not attached to a signal".
+        BridgeId bridge_id = 0;               ///< Source bridge ID; 0 means "not attached to a bridge".
         std::int64_t unique_id = 0;          ///< User-defined request/signal correlation ID; 0 means "not assigned".
         std::string unique_hash;             ///< User-defined request/signal correlation hash.
         std::int64_t account_id = 0;          ///< Trading account ID.
@@ -108,6 +109,7 @@ namespace optionx {
         void assign_request(const TradeRequest& request) {
             trade_id = request.trade_id;
             signal_id = request.signal_id;
+            bridge_id = request.bridge_id;
             unique_id = request.unique_id;
             unique_hash = request.unique_hash;
             account_id = request.account_id;
@@ -375,6 +377,7 @@ namespace optionx {
 
             append_value(bytes, trade_id);
             append_value(bytes, signal_id);
+            append_value(bytes, bridge_id);
             append_value(bytes, unique_id);
             append_string(bytes, unique_hash);
             append_value(bytes, account_id);
@@ -447,6 +450,7 @@ namespace optionx {
             TradeRecord record;
             record.trade_id = reader.read<std::uint32_t>();
             record.signal_id = reader.read<std::uint32_t>();
+            record.bridge_id = reader.read<std::uint32_t>();
             record.unique_id = reader.read<std::int64_t>();
             record.unique_hash = reader.read_string();
             record.account_id = reader.read<std::int64_t>();
@@ -507,6 +511,7 @@ namespace optionx {
         bool operator==(const TradeRecord& other) const {
             return trade_id == other.trade_id &&
                    signal_id == other.signal_id &&
+                   bridge_id == other.bridge_id &&
                    unique_id == other.unique_id &&
                    unique_hash == other.unique_hash &&
                    account_id == other.account_id &&

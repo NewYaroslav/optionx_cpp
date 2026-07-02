@@ -91,6 +91,7 @@ std::string make_test_pipe_name() {
 TEST(LegacyTradingBridge, ConfigRoundTripsJson) {
     LegacyTradingBridgeConfig config;
     config.named_pipe = "custom_pipe";
+    config.bridge_id = 17;
     config.min_payout = 0.72;
     config.buffer_size = 4096;
     config.pipe_timeout_ms = 100;
@@ -103,12 +104,16 @@ TEST(LegacyTradingBridge, ConfigRoundTripsJson) {
     restored.from_json(json);
 
     EXPECT_EQ(restored.named_pipe, "custom_pipe");
+    EXPECT_EQ(restored.bridge_id, 17u);
     EXPECT_DOUBLE_EQ(restored.min_payout, 0.72);
     EXPECT_EQ(restored.buffer_size, 4096u);
     EXPECT_EQ(restored.pipe_timeout_ms, 100u);
     EXPECT_EQ(restored.ping_period_ms, 3000);
     EXPECT_EQ(restored.bridge_type(), optionx::BridgeType::LEGACY_TRADING_NAMED_PIPE);
     EXPECT_TRUE(restored.validate().first);
+
+    restored.bridge_id = 0;
+    EXPECT_FALSE(restored.validate().first);
 
     optionx::BridgeType legacy_alias = optionx::BridgeType::UNKNOWN;
     EXPECT_TRUE(optionx::to_enum("INTRADE_BAR_LEGACY", legacy_alias));
@@ -137,6 +142,8 @@ TEST(LegacyTradingBridge, ParsesSprintContract) {
     EXPECT_EQ(signal->duration, 300u);
     EXPECT_EQ(signal->expiry_time, 0);
     EXPECT_DOUBLE_EQ(signal->min_payout, 0.6);
+    EXPECT_EQ(signal->signal_id, 0u);
+    EXPECT_EQ(signal->bridge_id, 0u);
 }
 
 TEST(LegacyTradingBridge, ParsesClassicExpiryAndDurationModes) {
@@ -254,6 +261,30 @@ TEST(LegacyTradingBridge, FormatsAccountSnapshots) {
     EXPECT_EQ(connection.at("aid").get<std::int64_t>(), 42);
 }
 
+TEST(LegacyTradingBridge, RunFailsWithoutSignalIdAllocator) {
+    LegacyTradingBridge bridge;
+
+    auto config = std::make_unique<LegacyTradingBridgeConfig>();
+    config->named_pipe = make_test_pipe_name();
+    config->bridge_id = 42;
+    ASSERT_TRUE(bridge.configure(std::move(config)));
+
+    bool update_received = false;
+    optionx::BridgeStatus last_status = optionx::BridgeStatus::UNKNOWN;
+    std::string last_message;
+    bridge.on_status_update() = [&](const optionx::BridgeStatusUpdate& update) {
+        update_received = true;
+        last_status = update.status;
+        last_message = update.message;
+    };
+
+    bridge.run();
+
+    EXPECT_TRUE(update_received);
+    EXPECT_EQ(last_status, optionx::BridgeStatus::SERVER_START_FAILED);
+    EXPECT_NE(last_message.find("signal ID allocator"), std::string::npos);
+}
+
 TEST(LegacyTradingBridge, SendsTradeResultThroughNamedPipe) {
 #if defined(_WIN32)
     LegacyTradingBridge bridge;
@@ -261,6 +292,7 @@ TEST(LegacyTradingBridge, SendsTradeResultThroughNamedPipe) {
 
     auto config = std::make_unique<LegacyTradingBridgeConfig>();
     config->named_pipe = pipe_name;
+    config->bridge_id = 42;
     config->buffer_size = 4096;
     config->ping_period_ms = 60000;
     ASSERT_TRUE(bridge.configure(std::move(config)));
@@ -274,6 +306,8 @@ TEST(LegacyTradingBridge, SendsTradeResultThroughNamedPipe) {
     std::condition_variable cv;
     bool server_started = false;
     bool signal_received = false;
+    optionx::SignalId received_signal_id = 0;
+    optionx::BridgeId received_bridge_id = 0;
     std::string status_error;
 
     bridge.on_status_update() = [&](const optionx::BridgeStatusUpdate& update) {
@@ -288,13 +322,21 @@ TEST(LegacyTradingBridge, SendsTradeResultThroughNamedPipe) {
         cv.notify_all();
     };
 
+    bridge.on_signal_id() = [] {
+        return optionx::SignalId{9001};
+    };
+
     bridge.on_trade_signal() = [&](std::unique_ptr<optionx::TradeSignal> signal) {
         ASSERT_TRUE(signal);
+        EXPECT_EQ(signal->signal_id, 9001u);
+        EXPECT_EQ(signal->bridge_id, 42u);
 
         auto request = signal->to_trade_request();
         {
             std::lock_guard<std::mutex> lock(mutex);
             signal_received = true;
+            received_signal_id = request.signal_id;
+            received_bridge_id = request.bridge_id;
         }
 
         optionx::TradeResult result;
@@ -354,6 +396,8 @@ TEST(LegacyTradingBridge, SendsTradeResultThroughNamedPipe) {
     EXPECT_EQ(update.at("id").get<std::int64_t>(), 202);
     EXPECT_EQ(update.at("dir").get<std::string>(), "buy");
     EXPECT_EQ(update.at("status").get<std::string>(), "win");
+    EXPECT_EQ(received_signal_id, 9001u);
+    EXPECT_EQ(received_bridge_id, 42u);
 
     client.close();
 #else

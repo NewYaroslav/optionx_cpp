@@ -41,7 +41,7 @@ namespace optionx::bridges::named_pipe {
             std::shared_ptr<BaseAccountInfoData> account_info;
             bridge_status_callback_t status_callback;
             BaseBridge::trade_signal_callback_t trade_signal_callback;
-            trade_result_callback_t trade_result_callback;
+            BaseBridge::signal_id_allocator_t signal_id_allocator;
             bool running = false;
 
 #if defined(_WIN32)
@@ -95,9 +95,9 @@ namespace optionx::bridges::named_pipe {
             return m_state->trade_signal_callback;
         }
 
-        /// \brief Returns the trade result callback slot.
-        trade_result_callback_t& on_trade_result() override {
-            return m_state->trade_result_callback;
+        /// \brief Returns the signal ID allocator slot.
+        signal_id_allocator_t& on_signal_id() override {
+            return m_state->signal_id_allocator;
         }
 
         /// \brief Broadcasts account snapshots to connected legacy clients.
@@ -133,17 +133,6 @@ namespace optionx::bridges::named_pipe {
                 const TradeRequest& request,
                 const TradeResult& result) override {
             broadcast(format_trade_result(request, result));
-
-            trade_result_callback_t callback;
-            {
-                std::lock_guard<std::mutex> lock(m_state->mutex);
-                callback = m_state->trade_result_callback;
-            }
-            if (callback) {
-                callback(
-                    std::make_unique<TradeRequest>(request),
-                    std::make_unique<TradeResult>(result));
-            }
         }
 
         /// \brief Starts the named-pipe bridge.
@@ -152,6 +141,13 @@ namespace optionx::bridges::named_pipe {
         ///          On non-Windows targets a failure status is reported.
         void run() override {
             auto config = get_config_or_throw();
+            if (!get_signal_id_allocator()) {
+                notify_status(
+                    BridgeStatus::SERVER_START_FAILED,
+                    {},
+                    "Legacy trading bridge requires a signal ID allocator.");
+                return;
+            }
 
 #if defined(_WIN32)
             {
@@ -317,6 +313,11 @@ namespace optionx::bridges::named_pipe {
             return m_config;
         }
 
+        signal_id_allocator_t get_signal_id_allocator() const {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            return m_state->signal_id_allocator;
+        }
+
         void notify_status(
                 BridgeStatus status,
                 std::string connection_id = {},
@@ -450,6 +451,24 @@ namespace optionx::bridges::named_pipe {
 
                 auto config = get_config_or_throw();
                 auto signal = parse_contract(payload.at("contract"), config->min_payout);
+                signal->bridge_id = config->bridge_id;
+
+                auto signal_id_allocator = get_signal_id_allocator();
+                if (!signal_id_allocator) {
+                    notify_status(
+                        BridgeStatus::CONNECTION_ERROR,
+                        connection_id(client_id),
+                        "Legacy trading bridge signal ID allocator is not configured.");
+                    return;
+                }
+                signal->signal_id = signal_id_allocator();
+                if (signal->signal_id == 0) {
+                    notify_status(
+                        BridgeStatus::CONNECTION_ERROR,
+                        connection_id(client_id),
+                        "Legacy trading bridge could not allocate signal ID.");
+                    return;
+                }
 
                 trade_signal_callback_t callback;
                 {

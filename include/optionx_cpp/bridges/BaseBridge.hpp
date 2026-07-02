@@ -13,6 +13,7 @@ namespace optionx::bridges {
     public:
         using place_trade_callback_t = std::function<void(std::unique_ptr<TradeRequest>)>;
         using trade_signal_callback_t = std::function<void(std::unique_ptr<TradeSignal>)>;
+        using signal_id_allocator_t = std::function<SignalId()>;
 
         /// \brief Virtual destructor for safe polymorphic destruction.
         virtual ~BaseBridge() = default;
@@ -40,17 +41,17 @@ namespace optionx::bridges {
             return null_callback;
         }
 
+        /// \brief Returns allocator used to initialize empty TradeSignal::signal_id values.
+        /// \return Reference to the signal ID allocator function.
+        virtual signal_id_allocator_t& on_signal_id() {
+            static signal_id_allocator_t null_allocator;
+            return null_allocator;
+        }
+
         /// \brief Retrieves a reference to the place trade callback function.
         /// \return Reference to the place trade callback function.
         virtual place_trade_callback_t& on_place_trade() {
             static place_trade_callback_t null_callback;
-            return null_callback;
-        }
-
-        /// \brief Retrieves a reference to the trade result callback function.
-        /// \return Reference to the trade result callback function.
-        virtual trade_result_callback_t& on_trade_result() {
-            static trade_result_callback_t null_callback;
             return null_callback;
         }
 

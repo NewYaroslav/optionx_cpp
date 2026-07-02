@@ -5,12 +5,16 @@
 /// \file enums.hpp
 /// \brief Defines trading-related enumerations and their utility functions.
 
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <unordered_map>
 #include <nlohmann/json.hpp>
 
 namespace optionx {
+
+    using BridgeId = std::uint32_t; ///< Runtime bridge/source identifier; 0 means "not assigned".
+    using SignalId = std::uint32_t; ///< Persistent signal identifier; 0 means "not assigned".
 
 	/// \enum PlatformType
     /// \brief Represents different trading platform types.

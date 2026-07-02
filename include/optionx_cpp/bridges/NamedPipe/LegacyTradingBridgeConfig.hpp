@@ -18,6 +18,7 @@ namespace optionx::bridges::named_pipe {
         void to_json(nlohmann::json& j) const override {
             j = nlohmann::json{
                 {"named_pipe", named_pipe},
+                {"bridge_id", bridge_id},
                 {"min_payout", min_payout},
                 {"buffer_size", buffer_size},
                 {"pipe_timeout_ms", pipe_timeout_ms},
@@ -30,6 +31,9 @@ namespace optionx::bridges::named_pipe {
         void from_json(const nlohmann::json& j) override {
             if (j.contains("named_pipe")) {
                 named_pipe = j.at("named_pipe").get<std::string>();
+            }
+            if (j.contains("bridge_id")) {
+                bridge_id = j.at("bridge_id").get<BridgeId>();
             }
             if (j.contains("min_payout")) {
                 min_payout = j.at("min_payout").get<double>();
@@ -50,6 +54,9 @@ namespace optionx::bridges::named_pipe {
         std::pair<bool, std::string> validate() const override {
             if (named_pipe.empty()) {
                 return {false, "Named pipe is empty."};
+            }
+            if (bridge_id == 0) {
+                return {false, "Bridge ID is required."};
             }
             if (min_payout < 0.0) {
                 return {false, "Minimum payout must not be negative."};
@@ -85,6 +92,7 @@ namespace optionx::bridges::named_pipe {
         }
 
         std::string named_pipe = "intrade_bar_console_bot"; ///< Named pipe endpoint name.
+        BridgeId bridge_id = 0;                             ///< Source bridge ID; must be non-zero.
         double min_payout = 0.0;                            ///< Minimum accepted payout ratio.
         std::size_t buffer_size = 65536;                    ///< Pipe read/write buffer size.
         std::size_t pipe_timeout_ms = 50;                   ///< Pipe wait timeout in milliseconds.

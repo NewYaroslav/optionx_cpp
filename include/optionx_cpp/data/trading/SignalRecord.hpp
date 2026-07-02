@@ -17,7 +17,8 @@ namespace optionx {
     class SignalRecord {
     public:
         // Storage identity
-        std::uint32_t signal_id = 0;          ///< Persistent signal ID; 0 means "not assigned".
+        SignalId signal_id = 0;              ///< Persistent signal ID; 0 means "not assigned".
+        BridgeId bridge_id = 0;              ///< Source bridge ID; 0 means "not assigned".
         std::int64_t unique_id = 0;           ///< External/runtime signal identifier.
         std::string unique_hash;              ///< External/runtime signal hash.
         std::int64_t account_id = 0;          ///< Target account ID, if known.
@@ -87,6 +88,7 @@ namespace optionx {
         /// \brief Copies request-side fields into this signal record.
         void assign_request(const TradeRequest& request) {
             signal_id = request.signal_id;
+            bridge_id = request.bridge_id;
             unique_id = request.unique_id;
             unique_hash = request.unique_hash;
             account_id = request.account_id;
@@ -108,6 +110,7 @@ namespace optionx {
         /// \brief Copies request and money-management fields from a signal.
         void assign_signal(const TradeSignal& signal) {
             signal_id = signal.signal_id;
+            bridge_id = signal.bridge_id;
             unique_id = signal.unique_id;
             unique_hash = signal.unique_hash;
             account_id = signal.account_id;
@@ -163,6 +166,7 @@ namespace optionx {
             append_value(bytes, kBinaryVersion);
 
             append_value(bytes, signal_id);
+            append_value(bytes, bridge_id);
             append_value(bytes, unique_id);
             append_string(bytes, unique_hash);
             append_value(bytes, account_id);
@@ -228,6 +232,7 @@ namespace optionx {
 
             SignalRecord record;
             record.signal_id = reader.read<std::uint32_t>();
+            record.bridge_id = reader.read<std::uint32_t>();
             record.unique_id = reader.read<std::int64_t>();
             record.unique_hash = reader.read_string();
             record.account_id = reader.read<std::int64_t>();
@@ -277,6 +282,7 @@ namespace optionx {
 
         bool operator==(const SignalRecord& other) const {
             return signal_id == other.signal_id &&
+                   bridge_id == other.bridge_id &&
                    unique_id == other.unique_id &&
                    unique_hash == other.unique_hash &&
                    account_id == other.account_id &&
@@ -323,6 +329,7 @@ namespace optionx {
         NLOHMANN_DEFINE_TYPE_INTRUSIVE(
             SignalRecord,
             signal_id,
+            bridge_id,
             unique_id,
             unique_hash,
             account_id,
