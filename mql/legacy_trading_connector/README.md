@@ -3,7 +3,7 @@
 This package contains the MetaTrader 4 and MetaTrader 5 source files for the
 legacy OptionX named-pipe trading bridge.
 
-The connector speaks the historical MegaConnector V1 JSON protocol:
+The connector speaks the historical legacy JSON protocol:
 
 - sends `contract` messages to `optionx::bridges::named_pipe::LegacyTradingBridge`;
 - receives `update_bet` trade-result messages;
@@ -16,7 +16,7 @@ not depend on a specific broker.
 
 ## Layout
 
-- `MQL4/Include` and `MQL5/Include` contain the legacy `MegaConnector/v1`
+- `MQL4/Include` and `MQL5/Include` contain the legacy `OptionX/v1`
   support headers.
 - `MQL4/Indicators/.../LegacyTradingConnector` contains the MT4 indicator entry
   points.
@@ -24,15 +24,19 @@ not depend on a specific broker.
   points.
 
 The MQL sources are imported with minimal changes from the old connector
-release. Internal `MegaConnector/v1` names and some UI strings are preserved so
-the package remains close to the code that was used in terminals. A future
-non-legacy bridge should use a new package and protocol instead of extending
-this one.
+release. Some internal class names and UI strings still use the historical
+`MegaConnector` prefix so the package remains close to the code that was used
+in terminals. A future non-legacy bridge should use a new package and protocol
+instead of extending this one.
 
 ## Install
 
 Copy the contents of either `MQL4` or `MQL5` into the corresponding terminal
 data folder, preserving the `Include` and `Indicators` directory structure.
+
+The MT5 package includes `<TimeShield.mqh>`. Install the MQL5 headers from the
+`time-shield-cpp` package into the terminal `MQL5/Include` directory before
+compiling the MT5 connector.
 
 Compile `LegacyTradingConnector.mq4` or `LegacyTradingConnector.mq5` in
 MetaEditor. The C++ CI does not compile MQL files.

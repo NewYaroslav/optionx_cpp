@@ -96,9 +96,7 @@ namespace optionx {
     /// \brief Represents different types of bridges.
     enum class BridgeType {
         UNKNOWN = 0,                  ///< Unknown bridge type.
-        LEGACY_TRADING_NAMED_PIPE,    ///< Legacy named-pipe trading bridge.
-        LEGACY_NAMED_PIPE = LEGACY_TRADING_NAMED_PIPE, ///< Backward-compatible alias.
-        INTRADE_BAR_LEGACY = LEGACY_TRADING_NAMED_PIPE ///< Backward-compatible alias.
+        LEGACY_TRADING_NAMED_PIPE     ///< Legacy named-pipe trading bridge.
     };
 
     /// \brief Converts BridgeType to its string representation.
@@ -120,9 +118,7 @@ namespace optionx {
     inline bool to_enum(const std::string& str, BridgeType& value) noexcept {
         static const std::unordered_map<std::string, BridgeType> str_data = {
             {"UNKNOWN",                    BridgeType::UNKNOWN},
-            {"LEGACY_TRADING_NAMED_PIPE",  BridgeType::LEGACY_TRADING_NAMED_PIPE},
-            {"LEGACY_NAMED_PIPE",          BridgeType::LEGACY_TRADING_NAMED_PIPE},
-            {"INTRADE_BAR_LEGACY",         BridgeType::LEGACY_TRADING_NAMED_PIPE}
+            {"LEGACY_TRADING_NAMED_PIPE",  BridgeType::LEGACY_TRADING_NAMED_PIPE}
         };
         auto it = str_data.find(utils::to_upper_case(str));
         if (it != str_data.end()) {
@@ -900,9 +896,9 @@ namespace optionx {
         os << optionx::to_str(value);
         return os;
     }
-	
+
 //------------------------------------------------------------------------------
-	
+
 	/// \enum MmSystemType
     /// \brief Defines various money management strategies.
     enum class MmSystemType {
@@ -910,7 +906,7 @@ namespace optionx {
         FIXED,                     ///< Fixed trade amount.
         PERCENT,                   ///< Percentage of balance.
         KELLY_CRITERION,           ///< Kelly criterion for optimal bet sizing.
-        
+
         // Martingale variations
         MARTINGALE_SIGNAL,          ///< Martingale per signal instance.
         MARTINGALE_SYMBOL,          ///< Martingale per trading symbol.
@@ -931,7 +927,7 @@ namespace optionx {
         SKU_SYMBOL,                 ///< SKU per symbol.
         SKU_BAR                     ///< SKU per bar.
     };
-	
+
 	/// \brief Converts MmSystemType to its string representation.
     /// \param value The MmSystemType enumeration value.
     /// \return A constant reference to the string representation.

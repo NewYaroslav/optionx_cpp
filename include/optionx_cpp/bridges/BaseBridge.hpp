@@ -11,7 +11,6 @@ namespace optionx::bridges {
     /// \brief Abstract base class for bridges facilitating communication between the application and external platforms.
     class BaseBridge {
     public:
-        using place_trade_callback_t = std::function<void(std::unique_ptr<TradeRequest>)>;
         using trade_signal_callback_t = std::function<void(std::unique_ptr<TradeSignal>)>;
         using signal_id_allocator_t = std::function<SignalId()>;
 
@@ -46,13 +45,6 @@ namespace optionx::bridges {
         virtual signal_id_allocator_t& on_signal_id() {
             static signal_id_allocator_t null_allocator;
             return null_allocator;
-        }
-
-        /// \brief Retrieves a reference to the place trade callback function.
-        /// \return Reference to the place trade callback function.
-        virtual place_trade_callback_t& on_place_trade() {
-            static place_trade_callback_t null_callback;
-            return null_callback;
         }
 
         /// \brief Updates the account information with the provided data.

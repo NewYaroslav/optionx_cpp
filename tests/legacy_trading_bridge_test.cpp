@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <optionx_cpp/bridges.hpp>
+#include <optionx_cpp/bridges/NamedPipe/detail/LegacyTradingProtocol.hpp>
 
 #include <chrono>
 #include <condition_variable>
@@ -79,6 +80,7 @@ private:
 
 using optionx::bridges::named_pipe::LegacyTradingBridge;
 using optionx::bridges::named_pipe::LegacyTradingBridgeConfig;
+namespace legacy_protocol = optionx::bridges::named_pipe::detail;
 
 std::string make_test_pipe_name() {
     const auto stamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -114,11 +116,6 @@ TEST(LegacyTradingBridge, ConfigRoundTripsJson) {
 
     restored.bridge_id = 0;
     EXPECT_FALSE(restored.validate().first);
-
-    optionx::BridgeType legacy_alias = optionx::BridgeType::UNKNOWN;
-    EXPECT_TRUE(optionx::to_enum("INTRADE_BAR_LEGACY", legacy_alias));
-    EXPECT_EQ(legacy_alias, optionx::BridgeType::LEGACY_TRADING_NAMED_PIPE);
-    EXPECT_EQ(optionx::to_str(legacy_alias), "LEGACY_TRADING_NAMED_PIPE");
 }
 
 TEST(LegacyTradingBridge, ParsesSprintContract) {
@@ -130,7 +127,7 @@ TEST(LegacyTradingBridge, ParsesSprintContract) {
         {"dur", 300}
     };
 
-    const auto signal = LegacyTradingBridge::parse_contract(contract, 0.6);
+    const auto signal = legacy_protocol::parse_contract(contract, 0.6);
 
     ASSERT_TRUE(signal);
     EXPECT_EQ(signal->symbol, "BTCUSDT");
@@ -156,7 +153,7 @@ TEST(LegacyTradingBridge, ParsesClassicExpiryAndDurationModes) {
     };
 
     const auto duration_signal =
-        LegacyTradingBridge::parse_contract(duration_contract, 0.0);
+        legacy_protocol::parse_contract(duration_contract, 0.0);
 
     EXPECT_EQ(duration_signal->symbol, "EURUSD");
     EXPECT_EQ(duration_signal->user_data, "payload-only");
@@ -175,7 +172,7 @@ TEST(LegacyTradingBridge, ParsesClassicExpiryAndDurationModes) {
     };
 
     const auto expiry_signal =
-        LegacyTradingBridge::parse_contract(expiry_contract, 0.0);
+        legacy_protocol::parse_contract(expiry_contract, 0.0);
 
     EXPECT_EQ(expiry_signal->option_type, optionx::OptionType::CLASSIC);
     EXPECT_EQ(expiry_signal->duration, 0u);
@@ -184,13 +181,13 @@ TEST(LegacyTradingBridge, ParsesClassicExpiryAndDurationModes) {
 
 TEST(LegacyTradingBridge, RejectsInvalidContractFields) {
     EXPECT_THROW(
-        LegacyTradingBridge::parse_contract(
+        legacy_protocol::parse_contract(
             nlohmann::json{{"s", "INVALID"}, {"note", ""}, {"a", 1.0}, {"dir", "BUY"}, {"dur", 60}},
             0.0),
         std::invalid_argument);
 
     EXPECT_THROW(
-        LegacyTradingBridge::parse_contract(
+        legacy_protocol::parse_contract(
             nlohmann::json{{"s", "EURUSD"}, {"note", ""}, {"a", 1.0}, {"dir", "SIDEWAYS"}, {"dur", 60}},
             0.0),
         std::invalid_argument);
@@ -218,7 +215,7 @@ TEST(LegacyTradingBridge, FormatsTradeResultUpdate) {
     result.trade_state = optionx::TradeState::WIN;
 
     const auto message = nlohmann::json::parse(
-        LegacyTradingBridge::format_trade_result(request, result));
+        legacy_protocol::format_trade_result(request, result));
     const auto& update = message.at("update_bet");
 
     EXPECT_EQ(update.at("s").get<std::string>(), "EURUSD");
@@ -239,7 +236,7 @@ TEST(LegacyTradingBridge, FormatsOpenStatesAsWait) {
     result.trade_state = optionx::TradeState::IN_PROGRESS;
 
     const auto message = nlohmann::json::parse(
-        LegacyTradingBridge::format_trade_result(request, result));
+        legacy_protocol::format_trade_result(request, result));
 
     EXPECT_EQ(
         message.at("update_bet").at("status").get<std::string>(),
@@ -250,13 +247,13 @@ TEST(LegacyTradingBridge, FormatsAccountSnapshots) {
     TestAccountInfo account_info;
 
     const auto balance = nlohmann::json::parse(
-        LegacyTradingBridge::format_balance_update(account_info));
+        legacy_protocol::format_balance_update(account_info));
     EXPECT_DOUBLE_EQ(balance.at("b").get<double>(), 1234.5);
     EXPECT_EQ(balance.at("rub").get<int>(), 1);
     EXPECT_EQ(balance.at("demo").get<int>(), 1);
 
     const auto connection = nlohmann::json::parse(
-        LegacyTradingBridge::format_connection_update(account_info));
+        legacy_protocol::format_connection_update(account_info));
     EXPECT_EQ(connection.at("conn").get<int>(), 1);
     EXPECT_EQ(connection.at("aid").get<std::int64_t>(), 42);
 }
