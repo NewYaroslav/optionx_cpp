@@ -280,52 +280,6 @@ namespace optionx {
             return record;
         }
 
-        bool operator==(const SignalRecord& other) const {
-            return signal_id == other.signal_id &&
-                   bridge_id == other.bridge_id &&
-                   unique_id == other.unique_id &&
-                   unique_hash == other.unique_hash &&
-                   account_id == other.account_id &&
-                   platform_type == other.platform_type &&
-                   account_type == other.account_type &&
-                   currency == other.currency &&
-                   symbol == other.symbol &&
-                   signal_name == other.signal_name &&
-                   user_data == other.user_data &&
-                   comment == other.comment &&
-                   option_type == other.option_type &&
-                   order_type == other.order_type &&
-                   amount == other.amount &&
-                   refund == other.refund &&
-                   min_payout == other.min_payout &&
-                   duration == other.duration &&
-                   expiry_time == other.expiry_time &&
-                   status == other.status &&
-                   reject_code == other.reject_code &&
-                   reject_desc == other.reject_desc &&
-                   outcome == other.outcome &&
-                   trade_state == other.trade_state &&
-                   total_amount == other.total_amount &&
-                   total_profit == other.total_profit &&
-                   create_date == other.create_date &&
-                   accept_date == other.accept_date &&
-                   reject_date == other.reject_date &&
-                   complete_date == other.complete_date &&
-                   mm_type == other.mm_type &&
-                   mm_step == other.mm_step &&
-                   mm_group_id == other.mm_group_id &&
-                   mm_group_hash == other.mm_group_hash &&
-                   mm_group_name == other.mm_group_name &&
-                   mm_params_json == other.mm_params_json &&
-                   decision_params_json == other.decision_params_json &&
-                   metadata_json == other.metadata_json &&
-                   trade_ids == other.trade_ids;
-        }
-
-        bool operator!=(const SignalRecord& other) const {
-            return !(*this == other);
-        }
-
         NLOHMANN_DEFINE_TYPE_INTRUSIVE(
             SignalRecord,
             signal_id,

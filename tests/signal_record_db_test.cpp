@@ -87,6 +87,50 @@ bool contains_uid(const std::vector<SignalRecord>& records, std::int64_t uid) {
     });
 }
 
+void expect_same_signal_record_snapshot(
+        const SignalRecord& actual,
+        const SignalRecord& expected) {
+    EXPECT_EQ(actual.signal_id, expected.signal_id);
+    EXPECT_EQ(actual.bridge_id, expected.bridge_id);
+    EXPECT_EQ(actual.unique_id, expected.unique_id);
+    EXPECT_EQ(actual.unique_hash, expected.unique_hash);
+    EXPECT_EQ(actual.account_id, expected.account_id);
+    EXPECT_EQ(actual.platform_type, expected.platform_type);
+    EXPECT_EQ(actual.account_type, expected.account_type);
+    EXPECT_EQ(actual.currency, expected.currency);
+    EXPECT_EQ(actual.symbol, expected.symbol);
+    EXPECT_EQ(actual.signal_name, expected.signal_name);
+    EXPECT_EQ(actual.user_data, expected.user_data);
+    EXPECT_EQ(actual.comment, expected.comment);
+    EXPECT_EQ(actual.option_type, expected.option_type);
+    EXPECT_EQ(actual.order_type, expected.order_type);
+    EXPECT_EQ(actual.amount, expected.amount);
+    EXPECT_EQ(actual.refund, expected.refund);
+    EXPECT_EQ(actual.min_payout, expected.min_payout);
+    EXPECT_EQ(actual.duration, expected.duration);
+    EXPECT_EQ(actual.expiry_time, expected.expiry_time);
+    EXPECT_EQ(actual.status, expected.status);
+    EXPECT_EQ(actual.reject_code, expected.reject_code);
+    EXPECT_EQ(actual.reject_desc, expected.reject_desc);
+    EXPECT_EQ(actual.outcome, expected.outcome);
+    EXPECT_EQ(actual.trade_state, expected.trade_state);
+    EXPECT_EQ(actual.total_amount, expected.total_amount);
+    EXPECT_EQ(actual.total_profit, expected.total_profit);
+    EXPECT_EQ(actual.create_date, expected.create_date);
+    EXPECT_EQ(actual.accept_date, expected.accept_date);
+    EXPECT_EQ(actual.reject_date, expected.reject_date);
+    EXPECT_EQ(actual.complete_date, expected.complete_date);
+    EXPECT_EQ(actual.mm_type, expected.mm_type);
+    EXPECT_EQ(actual.mm_step, expected.mm_step);
+    EXPECT_EQ(actual.mm_group_id, expected.mm_group_id);
+    EXPECT_EQ(actual.mm_group_hash, expected.mm_group_hash);
+    EXPECT_EQ(actual.mm_group_name, expected.mm_group_name);
+    EXPECT_EQ(actual.mm_params_json, expected.mm_params_json);
+    EXPECT_EQ(actual.decision_params_json, expected.decision_params_json);
+    EXPECT_EQ(actual.metadata_json, expected.metadata_json);
+    EXPECT_EQ(actual.trade_ids, expected.trade_ids);
+}
+
 } // namespace
 
 TEST(SignalRecordSerializationTest, RoundTripsCurrentBinaryFormat) {
@@ -96,7 +140,7 @@ TEST(SignalRecordSerializationTest, RoundTripsCurrentBinaryFormat) {
     const auto bytes = record.to_bytes();
     const auto restored = SignalRecord::from_bytes(bytes.data(), bytes.size());
 
-    EXPECT_EQ(restored, record);
+    expect_same_signal_record_snapshot(restored, record);
     EXPECT_EQ(selected_timestamp_ms(restored), record.create_date);
 }
 
