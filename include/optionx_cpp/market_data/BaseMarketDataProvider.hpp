@@ -14,6 +14,7 @@ namespace optionx::market_data {
         using bars_callback_t = std::function<void(const std::vector<SingleBar>&)>;
         using ticks_callback_t = std::function<void(const std::vector<SingleTick>&)>;
         using bar_history_callback_t = std::function<void(BarHistoryResult)>;
+        using subscription_callback_t = std::function<void(MarketDataSubscriptionResult)>;
 
         /// \brief Virtual destructor for polymorphic provider implementations.
         virtual ~BaseMarketDataProvider() = default;
@@ -32,6 +33,86 @@ namespace optionx::market_data {
             return null_callback;
         }
 
+        /// \brief Requests a live tick stream subscription.
+        /// \param request Subscription parameters; stream_type is normalized to TICKS.
+        /// \param callback Callback receiving subscription acceptance or failure.
+        /// \return True if the provider accepted the operation for processing; false otherwise.
+        virtual bool subscribe_ticks(
+                MarketDataSubscriptionRequest request,
+                subscription_callback_t callback) {
+            request.stream_type = MarketDataStreamType::TICKS;
+            if (!request.valid()) {
+                dispatch_subscription_result(
+                    std::move(callback),
+                    MarketDataSubscriptionResult::failed(
+                        std::move(request),
+                        MarketDataSubscriptionStatus::INVALID_REQUEST,
+                        "Invalid tick subscription request."));
+                return false;
+            }
+
+            dispatch_subscription_result(
+                std::move(callback),
+                MarketDataSubscriptionResult::failed(
+                    std::move(request),
+                    MarketDataSubscriptionStatus::UNSUPPORTED,
+                    "Tick subscriptions are not supported by this provider."));
+            return false;
+        }
+
+        /// \brief Requests a live bar stream subscription.
+        /// \param request Subscription parameters; stream_type is normalized to BARS.
+        /// \param callback Callback receiving subscription acceptance or failure.
+        /// \return True if the provider accepted the operation for processing; false otherwise.
+        virtual bool subscribe_bars(
+                MarketDataSubscriptionRequest request,
+                subscription_callback_t callback) {
+            request.stream_type = MarketDataStreamType::BARS;
+            if (!request.valid()) {
+                dispatch_subscription_result(
+                    std::move(callback),
+                    MarketDataSubscriptionResult::failed(
+                        std::move(request),
+                        MarketDataSubscriptionStatus::INVALID_REQUEST,
+                        "Invalid bar subscription request."));
+                return false;
+            }
+
+            dispatch_subscription_result(
+                std::move(callback),
+                MarketDataSubscriptionResult::failed(
+                    std::move(request),
+                    MarketDataSubscriptionStatus::UNSUPPORTED,
+                    "Bar subscriptions are not supported by this provider."));
+            return false;
+        }
+
+        /// \brief Stops a live market-data subscription.
+        /// \param subscription Subscription handle returned by a successful subscribe call.
+        /// \param callback Callback receiving unsubscribe status.
+        /// \return True if the provider accepted the operation for processing; false otherwise.
+        virtual bool unsubscribe(
+                MarketDataSubscriptionHandle subscription,
+                subscription_callback_t callback) {
+            if (!subscription.valid()) {
+                dispatch_subscription_result(
+                    std::move(callback),
+                    MarketDataSubscriptionResult::failed(
+                        std::move(subscription),
+                        MarketDataSubscriptionStatus::INVALID_REQUEST,
+                        "Invalid market-data subscription handle."));
+                return false;
+            }
+
+            dispatch_subscription_result(
+                std::move(callback),
+                MarketDataSubscriptionResult::failed(
+                    std::move(subscription),
+                    MarketDataSubscriptionStatus::UNSUPPORTED,
+                    "Market-data subscriptions are not supported by this provider."));
+            return false;
+        }
+
         /// \brief Requests historical bar data for a specified time range.
         /// \param request Historical bar-data request parameters.
         /// \param callback Callback function to receive bars or a failure reason.
@@ -42,6 +123,16 @@ namespace optionx::market_data {
             (void)request;
             (void)callback;
             return false;
+        }
+
+    protected:
+        /// \brief Delivers a subscription operation result when a callback was supplied.
+        static void dispatch_subscription_result(
+                subscription_callback_t callback,
+                MarketDataSubscriptionResult result) {
+            if (callback) {
+                callback(std::move(result));
+            }
         }
     };
 
