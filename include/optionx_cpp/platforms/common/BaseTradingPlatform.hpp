@@ -5,7 +5,7 @@
 /// \file BaseTradingPlatform.hpp
 /// \brief Base class for interacting with trading platforms.
 
-#include "endpoint.hpp"
+#include "components/BaseEndpoint.hpp"
 #include "BaseTradingApi.hpp"
 
 namespace optionx::platforms {

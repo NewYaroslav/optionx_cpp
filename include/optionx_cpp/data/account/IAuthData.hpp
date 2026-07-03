@@ -9,7 +9,7 @@
 #include <functional>
 #include <list>
 
-#include "data/endpoint/IEndpointConfig.hpp"
+#include "data/IEndpointConfig.hpp"
 
 namespace optionx {
 

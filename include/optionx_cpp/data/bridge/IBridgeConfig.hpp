@@ -5,7 +5,7 @@
 /// \file IBridgeConfig.hpp
 /// \brief Defines the IBridgeConfig interface for handling bridge configuration data.
 
-#include "data/endpoint/IEndpointConfig.hpp"
+#include "data/IEndpointConfig.hpp"
 
 namespace optionx {
 

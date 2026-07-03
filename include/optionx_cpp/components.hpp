@@ -12,6 +12,7 @@
 
 #include "utils.hpp"
 #include "data.hpp"
+#include "components/BaseEndpoint.hpp"
 #include "components/BaseComponent.hpp"
 #include "components/BaseTradeExecutionComponent.hpp"
 #include "components/BaseHttpClientComponent.hpp"
