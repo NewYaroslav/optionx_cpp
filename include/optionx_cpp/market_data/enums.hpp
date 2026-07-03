@@ -32,6 +32,7 @@ namespace optionx::market_data {
         UNSUBSCRIBED,    ///< Subscription was stopped.
         UNSUPPORTED,     ///< Provider does not support the requested subscription.
         INVALID_REQUEST, ///< Request or handle is invalid.
+        WRONG_PROVIDER,  ///< Subscription handle belongs to another provider instance.
         FAILED           ///< Provider attempted the operation but it failed.
     };
 
@@ -64,6 +65,7 @@ namespace optionx::market_data {
             "UNSUBSCRIBED",
             "UNSUPPORTED",
             "INVALID_REQUEST",
+            "WRONG_PROVIDER",
             "FAILED"
         };
         return utils::enum_string_or_unknown(names, static_cast<std::size_t>(value));

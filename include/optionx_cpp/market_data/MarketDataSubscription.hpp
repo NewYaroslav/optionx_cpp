@@ -7,79 +7,110 @@
 
 namespace optionx::market_data {
 
-    /// \brief Persistent runtime identifier assigned by a market-data provider.
-    using MarketDataSubscriptionId = std::uint64_t;
+    /// \brief Runtime identifier of a market-data provider instance.
+    using ProviderInstanceId = std::uint64_t;
+
+    /// \brief Runtime identifier assigned by a market-data provider.
+    using SubscriptionId = std::uint64_t;
+
+    /// \brief Invalid market-data provider instance identifier.
+    inline constexpr ProviderInstanceId kInvalidProviderInstanceId = 0;
 
     /// \brief Invalid market-data subscription identifier.
-    inline constexpr MarketDataSubscriptionId kInvalidMarketDataSubscriptionId = 0;
+    inline constexpr SubscriptionId kInvalidSubscriptionId = 0;
 
-    /// \struct MarketDataSubscriptionRequest
-    /// \brief Request for a live tick or bar market-data stream.
-    struct MarketDataSubscriptionRequest {
+    /// \struct TickSubscriptionRequest
+    /// \brief Request for a live tick market-data stream.
+    struct TickSubscriptionRequest {
         std::string symbol; ///< Broker/provider symbol.
-        MarketDataStreamType stream_type = MarketDataStreamType::UNKNOWN; ///< Requested stream type.
-        std::int64_t timeframe = 0; ///< Bar timeframe in seconds; ignored for tick streams.
-        BarPriceSource price_source = BarPriceSource::MID; ///< Price source for bar streams.
         MarketDataTransport transport = MarketDataTransport::AUTO; ///< Preferred transport.
 
-        /// \brief Creates a tick-stream request.
-        static MarketDataSubscriptionRequest ticks(
-                std::string symbol,
-                MarketDataTransport transport = MarketDataTransport::AUTO) {
-            MarketDataSubscriptionRequest request;
-            request.symbol = std::move(symbol);
-            request.stream_type = MarketDataStreamType::TICKS;
-            request.transport = transport;
-            return request;
-        }
+        /// \brief Default constructor.
+        TickSubscriptionRequest() = default;
 
-        /// \brief Creates a bar-stream request.
-        static MarketDataSubscriptionRequest bars(
+        /// \brief Constructs a tick-stream request.
+        TickSubscriptionRequest(
                 std::string symbol,
-                std::int64_t timeframe,
-                BarPriceSource price_source = BarPriceSource::MID,
-                MarketDataTransport transport = MarketDataTransport::AUTO) {
-            MarketDataSubscriptionRequest request;
-            request.symbol = std::move(symbol);
-            request.stream_type = MarketDataStreamType::BARS;
-            request.timeframe = timeframe;
-            request.price_source = price_source;
-            request.transport = transport;
-            return request;
-        }
+                MarketDataTransport transport = MarketDataTransport::AUTO)
+                : symbol(std::move(symbol)),
+                  transport(transport) {}
 
-        /// \brief Returns true when the request describes a valid live stream.
+        /// \brief Returns true when the request describes a valid live tick stream.
         bool valid() const {
-            if (symbol.empty()) return false;
-            if (stream_type == MarketDataStreamType::TICKS) return true;
-            if (stream_type == MarketDataStreamType::BARS) return timeframe > 0;
-            return false;
+            return !symbol.empty();
+        }
+    };
+
+    /// \struct BarSubscriptionRequest
+    /// \brief Request for a live bar market-data stream.
+    struct BarSubscriptionRequest {
+        std::string symbol; ///< Broker/provider symbol.
+        BarTimeframe timeframe = 0; ///< Bar timeframe in seconds.
+        BarPriceSource price_source = BarPriceSource::MID; ///< Price source for bars.
+        MarketDataTransport transport = MarketDataTransport::AUTO; ///< Preferred transport.
+
+        /// \brief Default constructor.
+        BarSubscriptionRequest() = default;
+
+        /// \brief Constructs a bar-stream request.
+        BarSubscriptionRequest(
+                std::string symbol,
+                BarTimeframe timeframe,
+                BarPriceSource price_source = BarPriceSource::MID,
+                MarketDataTransport transport = MarketDataTransport::AUTO)
+                : symbol(std::move(symbol)),
+                  timeframe(timeframe),
+                  price_source(price_source),
+                  transport(transport) {}
+
+        /// \brief Returns true when the request describes a valid live bar stream.
+        bool valid() const {
+            return !symbol.empty() && timeframe > 0;
         }
     };
 
     /// \struct MarketDataSubscriptionHandle
     /// \brief Opaque handle returned for an accepted live market-data subscription.
     struct MarketDataSubscriptionHandle {
-        MarketDataSubscriptionId id = kInvalidMarketDataSubscriptionId; ///< Provider-assigned ID.
+        ProviderInstanceId provider_id = kInvalidProviderInstanceId; ///< Provider instance that owns the handle.
+        SubscriptionId id = kInvalidSubscriptionId; ///< Provider-assigned subscription ID.
         std::string symbol; ///< Subscribed symbol.
         MarketDataStreamType stream_type = MarketDataStreamType::UNKNOWN; ///< Stream type.
-        std::int64_t timeframe = 0; ///< Bar timeframe in seconds, or 0 for ticks.
+        BarTimeframe timeframe = 0; ///< Bar timeframe in seconds, or 0 for ticks.
         BarPriceSource price_source = BarPriceSource::MID; ///< Price source for bar streams.
         MarketDataTransport transport = MarketDataTransport::AUTO; ///< Transport chosen or requested.
 
         /// \brief Returns true if the handle can identify a provider subscription.
         bool valid() const {
-            return id != kInvalidMarketDataSubscriptionId;
+            return provider_id != kInvalidProviderInstanceId &&
+                   id != kInvalidSubscriptionId;
         }
 
-        /// \brief Builds a handle from a request and provider-assigned ID.
-        static MarketDataSubscriptionHandle from_request(
-                MarketDataSubscriptionId id,
-                const MarketDataSubscriptionRequest& request) {
+        /// \brief Builds a tick handle from a request and provider-assigned IDs.
+        static MarketDataSubscriptionHandle from_tick_request(
+                ProviderInstanceId provider_id,
+                SubscriptionId id,
+                const TickSubscriptionRequest& request) {
             MarketDataSubscriptionHandle handle;
+            handle.provider_id = provider_id;
             handle.id = id;
             handle.symbol = request.symbol;
-            handle.stream_type = request.stream_type;
+            handle.stream_type = MarketDataStreamType::TICKS;
+            handle.timeframe = 0;
+            handle.transport = request.transport;
+            return handle;
+        }
+
+        /// \brief Builds a bar handle from a request and provider-assigned IDs.
+        static MarketDataSubscriptionHandle from_bar_request(
+                ProviderInstanceId provider_id,
+                SubscriptionId id,
+                const BarSubscriptionRequest& request) {
+            MarketDataSubscriptionHandle handle;
+            handle.provider_id = provider_id;
+            handle.id = id;
+            handle.symbol = request.symbol;
+            handle.stream_type = MarketDataStreamType::BARS;
             handle.timeframe = request.timeframe;
             handle.price_source = request.price_source;
             handle.transport = request.transport;
@@ -90,20 +121,31 @@ namespace optionx::market_data {
     /// \struct MarketDataSubscriptionResult
     /// \brief Typed result for market-data subscribe and unsubscribe operations.
     struct MarketDataSubscriptionResult {
-        bool success = false; ///< True if the operation succeeded.
         MarketDataSubscriptionStatus status = MarketDataSubscriptionStatus::UNKNOWN; ///< Operation status.
         std::string error_message; ///< Failure details, if any.
         MarketDataSubscriptionHandle subscription; ///< Related subscription handle.
 
+        /// \brief Returns true when the operation succeeded.
+        bool success() const noexcept {
+            return status == MarketDataSubscriptionStatus::SUBSCRIBED ||
+                   status == MarketDataSubscriptionStatus::UNSUBSCRIBED;
+        }
+
         /// \brief Allows result objects to be used in boolean contexts.
-        explicit operator bool() const {
-            return success;
+        explicit operator bool() const noexcept {
+            return success();
         }
 
         /// \brief Creates a successful subscribe result.
         static MarketDataSubscriptionResult subscribed(MarketDataSubscriptionHandle handle) {
+            if (!handle.valid()) {
+                return failed(
+                    std::move(handle),
+                    MarketDataSubscriptionStatus::INVALID_REQUEST,
+                    "Cannot subscribe with an invalid market-data subscription handle.");
+            }
+
             MarketDataSubscriptionResult result;
-            result.success = true;
             result.status = MarketDataSubscriptionStatus::SUBSCRIBED;
             result.subscription = std::move(handle);
             return result;
@@ -111,24 +153,45 @@ namespace optionx::market_data {
 
         /// \brief Creates a successful unsubscribe result.
         static MarketDataSubscriptionResult unsubscribed(MarketDataSubscriptionHandle handle) {
+            if (!handle.valid()) {
+                return failed(
+                    std::move(handle),
+                    MarketDataSubscriptionStatus::INVALID_REQUEST,
+                    "Cannot unsubscribe with an invalid market-data subscription handle.");
+            }
+
             MarketDataSubscriptionResult result;
-            result.success = true;
             result.status = MarketDataSubscriptionStatus::UNSUBSCRIBED;
             result.subscription = std::move(handle);
             return result;
         }
 
-        /// \brief Creates a failure result for a request.
+        /// \brief Creates a failure result for a tick request.
         static MarketDataSubscriptionResult failed(
-                MarketDataSubscriptionRequest request,
+                TickSubscriptionRequest request,
                 MarketDataSubscriptionStatus status,
                 std::string message) {
             MarketDataSubscriptionResult result;
-            result.success = false;
-            result.status = status;
+            result.status = failure_status_or_failed(status);
             result.error_message = std::move(message);
-            result.subscription = MarketDataSubscriptionHandle::from_request(
-                kInvalidMarketDataSubscriptionId,
+            result.subscription = MarketDataSubscriptionHandle::from_tick_request(
+                kInvalidProviderInstanceId,
+                kInvalidSubscriptionId,
+                request);
+            return result;
+        }
+
+        /// \brief Creates a failure result for a bar request.
+        static MarketDataSubscriptionResult failed(
+                BarSubscriptionRequest request,
+                MarketDataSubscriptionStatus status,
+                std::string message) {
+            MarketDataSubscriptionResult result;
+            result.status = failure_status_or_failed(status);
+            result.error_message = std::move(message);
+            result.subscription = MarketDataSubscriptionHandle::from_bar_request(
+                kInvalidProviderInstanceId,
+                kInvalidSubscriptionId,
                 request);
             return result;
         }
@@ -139,11 +202,20 @@ namespace optionx::market_data {
                 MarketDataSubscriptionStatus status,
                 std::string message) {
             MarketDataSubscriptionResult result;
-            result.success = false;
-            result.status = status;
+            result.status = failure_status_or_failed(status);
             result.error_message = std::move(message);
             result.subscription = std::move(handle);
             return result;
+        }
+
+        /// \brief Converts accidental success statuses to a failure status.
+        static MarketDataSubscriptionStatus failure_status_or_failed(
+                MarketDataSubscriptionStatus status) noexcept {
+            if (status == MarketDataSubscriptionStatus::SUBSCRIBED ||
+                status == MarketDataSubscriptionStatus::UNSUBSCRIBED) {
+                return MarketDataSubscriptionStatus::FAILED;
+            }
+            return status;
         }
     };
 

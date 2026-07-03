@@ -1350,7 +1350,7 @@ namespace optionx::platforms::intrade_bar {
             BarSequence sequence;
             sequence.symbol = normalize_symbol_name(request.symbol);
             sequence.provider = to_str(PlatformType::INTRADE_BAR);
-            sequence.timeframe = static_cast<std::uint16_t>(request.timeframe);
+            sequence.timeframe = request.timeframe;
             sequence.flags =
                 static_cast<std::uint16_t>(dfh::BarStatusFlags::HISTORICAL) |
                 static_cast<std::uint16_t>(dfh::BarStatusFlags::FINALIZED);

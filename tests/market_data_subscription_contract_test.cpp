@@ -5,48 +5,99 @@
 using namespace optionx;
 using namespace optionx::market_data;
 
-TEST(MarketDataSubscriptionRequest, BuildsAndValidatesTickAndBarRequests) {
-    const auto tick_request =
-        MarketDataSubscriptionRequest::ticks("EUR/USD", MarketDataTransport::WEBSOCKET);
+TEST(TickSubscriptionRequest, BuildsAndValidatesTickRequests) {
+    const TickSubscriptionRequest request("EUR/USD", MarketDataTransport::WEBSOCKET);
 
-    EXPECT_TRUE(tick_request.valid());
-    EXPECT_EQ(tick_request.symbol, "EUR/USD");
-    EXPECT_EQ(tick_request.stream_type, MarketDataStreamType::TICKS);
-    EXPECT_EQ(tick_request.transport, MarketDataTransport::WEBSOCKET);
-    EXPECT_EQ(to_str(tick_request.stream_type), std::string("TICKS"));
-    EXPECT_EQ(to_str(tick_request.transport), std::string("WEBSOCKET"));
+    EXPECT_TRUE(request.valid());
+    EXPECT_EQ(request.symbol, "EUR/USD");
+    EXPECT_EQ(request.transport, MarketDataTransport::WEBSOCKET);
+    EXPECT_EQ(to_str(request.transport), std::string("WEBSOCKET"));
 
-    const auto bar_request =
-        MarketDataSubscriptionRequest::bars("BTCUSDT", 60, BarPriceSource::LAST, MarketDataTransport::HYBRID);
-
-    EXPECT_TRUE(bar_request.valid());
-    EXPECT_EQ(bar_request.symbol, "BTCUSDT");
-    EXPECT_EQ(bar_request.stream_type, MarketDataStreamType::BARS);
-    EXPECT_EQ(bar_request.timeframe, 60);
-    EXPECT_EQ(bar_request.price_source, BarPriceSource::LAST);
-    EXPECT_EQ(bar_request.transport, MarketDataTransport::HYBRID);
-
-    auto invalid_bar = MarketDataSubscriptionRequest::bars("EUR/USD", 0);
-    EXPECT_FALSE(invalid_bar.valid());
-
-    auto invalid_tick = MarketDataSubscriptionRequest::ticks("");
-    EXPECT_FALSE(invalid_tick.valid());
+    EXPECT_FALSE(TickSubscriptionRequest("").valid());
 }
 
-TEST(MarketDataSubscriptionHandle, BuildsFromRequestAndReportsValidity) {
-    const auto request =
-        MarketDataSubscriptionRequest::bars("EUR/USD", 300, BarPriceSource::BID);
+TEST(BarSubscriptionRequest, BuildsAndValidatesBarRequests) {
+    const BarSubscriptionRequest request(
+        "BTCUSDT",
+        86400,
+        BarPriceSource::LAST,
+        MarketDataTransport::HYBRID);
 
-    const auto handle = MarketDataSubscriptionHandle::from_request(42, request);
+    EXPECT_TRUE(request.valid());
+    EXPECT_EQ(request.symbol, "BTCUSDT");
+    EXPECT_EQ(request.timeframe, 86400u);
+    EXPECT_EQ(request.price_source, BarPriceSource::LAST);
+    EXPECT_EQ(request.transport, MarketDataTransport::HYBRID);
 
-    EXPECT_TRUE(handle.valid());
-    EXPECT_EQ(handle.id, 42u);
-    EXPECT_EQ(handle.symbol, request.symbol);
-    EXPECT_EQ(handle.stream_type, request.stream_type);
-    EXPECT_EQ(handle.timeframe, request.timeframe);
-    EXPECT_EQ(handle.price_source, request.price_source);
+    EXPECT_FALSE(BarSubscriptionRequest("EUR/USD", 0).valid());
+    EXPECT_FALSE(BarSubscriptionRequest("", 60).valid());
+}
+
+TEST(MarketDataSubscriptionHandle, BuildsTickAndBarHandlesAndReportsValidity) {
+    const TickSubscriptionRequest tick_request("EUR/USD", MarketDataTransport::POLLING);
+    const auto tick_handle =
+        MarketDataSubscriptionHandle::from_tick_request(11, 42, tick_request);
+
+    EXPECT_TRUE(tick_handle.valid());
+    EXPECT_EQ(tick_handle.provider_id, 11u);
+    EXPECT_EQ(tick_handle.id, 42u);
+    EXPECT_EQ(tick_handle.symbol, tick_request.symbol);
+    EXPECT_EQ(tick_handle.stream_type, MarketDataStreamType::TICKS);
+    EXPECT_EQ(tick_handle.timeframe, 0u);
+    EXPECT_EQ(tick_handle.transport, tick_request.transport);
+
+    const BarSubscriptionRequest bar_request("BTCUSDT", 86400, BarPriceSource::LAST);
+    const auto bar_handle =
+        MarketDataSubscriptionHandle::from_bar_request(11, 43, bar_request);
+
+    EXPECT_TRUE(bar_handle.valid());
+    EXPECT_EQ(bar_handle.provider_id, 11u);
+    EXPECT_EQ(bar_handle.id, 43u);
+    EXPECT_EQ(bar_handle.symbol, bar_request.symbol);
+    EXPECT_EQ(bar_handle.stream_type, MarketDataStreamType::BARS);
+    EXPECT_EQ(bar_handle.timeframe, 86400u);
+    EXPECT_EQ(bar_handle.price_source, bar_request.price_source);
 
     EXPECT_FALSE(MarketDataSubscriptionHandle{}.valid());
+}
+
+TEST(MarketDataSubscriptionResult, DerivesSuccessFromStatus) {
+    const TickSubscriptionRequest request("EUR/USD");
+    const auto handle =
+        MarketDataSubscriptionHandle::from_tick_request(3, 7, request);
+
+    const auto subscribed = MarketDataSubscriptionResult::subscribed(handle);
+    EXPECT_TRUE(subscribed);
+    EXPECT_TRUE(subscribed.success());
+    EXPECT_EQ(subscribed.status, MarketDataSubscriptionStatus::SUBSCRIBED);
+
+    const auto failed = MarketDataSubscriptionResult::failed(
+        handle,
+        MarketDataSubscriptionStatus::FAILED,
+        "network error");
+    EXPECT_FALSE(failed);
+    EXPECT_FALSE(failed.success());
+    EXPECT_EQ(failed.status, MarketDataSubscriptionStatus::FAILED);
+}
+
+TEST(MarketDataSubscriptionResult, CannotSubscribeWithInvalidHandle) {
+    const auto result =
+        MarketDataSubscriptionResult::subscribed(MarketDataSubscriptionHandle{});
+
+    EXPECT_FALSE(result);
+    EXPECT_EQ(result.status, MarketDataSubscriptionStatus::INVALID_REQUEST);
+    EXPECT_NE(result.error_message.find("invalid"), std::string::npos);
+}
+
+TEST(MarketDataSubscriptionResult, FailureFactoryDoesNotAcceptSuccessStatus) {
+    const TickSubscriptionRequest request("EUR/USD");
+    const auto result = MarketDataSubscriptionResult::failed(
+        request,
+        MarketDataSubscriptionStatus::SUBSCRIBED,
+        "not actually subscribed");
+
+    EXPECT_FALSE(result);
+    EXPECT_EQ(result.status, MarketDataSubscriptionStatus::FAILED);
 }
 
 TEST(BaseMarketDataProvider, DefaultProviderRejectsTickSubscriptionsWithTypedResult) {
@@ -55,7 +106,7 @@ TEST(BaseMarketDataProvider, DefaultProviderRejectsTickSubscriptionsWithTypedRes
     int callback_count = 0;
 
     const bool accepted = provider.subscribe_ticks(
-        MarketDataSubscriptionRequest::ticks("EUR/USD"),
+        TickSubscriptionRequest("EUR/USD"),
         [&result, &callback_count](MarketDataSubscriptionResult subscription_result) {
             result = std::move(subscription_result);
             ++callback_count;
@@ -76,7 +127,7 @@ TEST(BaseMarketDataProvider, DefaultProviderRejectsInvalidBarSubscriptions) {
     int callback_count = 0;
 
     const bool accepted = provider.subscribe_bars(
-        MarketDataSubscriptionRequest::bars("EUR/USD", 0),
+        BarSubscriptionRequest("EUR/USD", 0),
         [&result, &callback_count](MarketDataSubscriptionResult subscription_result) {
             result = std::move(subscription_result);
             ++callback_count;
@@ -95,8 +146,9 @@ TEST(BaseMarketDataProvider, DefaultProviderRejectsUnsupportedUnsubscribe) {
     MarketDataSubscriptionResult result;
     int callback_count = 0;
 
-    const auto request = MarketDataSubscriptionRequest::ticks("BTCUSDT");
-    const auto handle = MarketDataSubscriptionHandle::from_request(7, request);
+    const TickSubscriptionRequest request("BTCUSDT");
+    const auto handle =
+        MarketDataSubscriptionHandle::from_tick_request(provider.provider_id(), 7, request);
 
     const bool accepted = provider.unsubscribe(
         handle,
@@ -109,7 +161,50 @@ TEST(BaseMarketDataProvider, DefaultProviderRejectsUnsupportedUnsubscribe) {
     EXPECT_EQ(callback_count, 1);
     EXPECT_FALSE(result);
     EXPECT_EQ(result.status, MarketDataSubscriptionStatus::UNSUPPORTED);
+    EXPECT_EQ(result.subscription.provider_id, handle.provider_id);
     EXPECT_EQ(result.subscription.id, handle.id);
+}
+
+TEST(BaseMarketDataProvider, RejectsHandleFromAnotherProvider) {
+    BaseMarketDataProvider provider_a;
+    BaseMarketDataProvider provider_b;
+    MarketDataSubscriptionResult result;
+
+    const TickSubscriptionRequest request("BTCUSDT");
+    const auto handle_from_a =
+        MarketDataSubscriptionHandle::from_tick_request(provider_a.provider_id(), 9, request);
+
+    const bool accepted = provider_b.unsubscribe(
+        handle_from_a,
+        [&result](MarketDataSubscriptionResult subscription_result) {
+            result = std::move(subscription_result);
+        });
+
+    EXPECT_FALSE(accepted);
+    EXPECT_FALSE(result);
+    EXPECT_EQ(result.status, MarketDataSubscriptionStatus::WRONG_PROVIDER);
+    EXPECT_EQ(to_str(result.status), std::string("WRONG_PROVIDER"));
+}
+
+TEST(BarTimeframe, SupportsDailyTimeframeWithoutTruncation) {
+    const Bar bar(1.0, 2.0, 0.5, 1.5, 10.0, 1000);
+    const SingleBar single_bar(
+        bar,
+        "EURUSD",
+        "test",
+        86400,
+        0,
+        5,
+        0);
+
+    EXPECT_EQ(single_bar.timeframe, 86400u);
+
+    BarSequence sequence;
+    sequence.timeframe = 86400;
+    EXPECT_EQ(sequence.timeframe, 86400u);
+
+    const BarHistoryRequest history_request("EURUSD", 86400, 1000, 2000);
+    EXPECT_EQ(history_request.timeframe, 86400u);
 }
 
 int main(int argc, char** argv) {

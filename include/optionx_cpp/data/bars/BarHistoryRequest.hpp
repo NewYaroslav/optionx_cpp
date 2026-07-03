@@ -15,7 +15,7 @@ namespace optionx {
     class BarHistoryRequest {
     public:
         std::string symbol;    ///< The symbol for which the historical data is requested.
-        int64_t timeframe = 0; ///< Timeframe of the requested data in seconds.
+        BarTimeframe timeframe = 0; ///< Timeframe of the requested data in seconds.
         int64_t from_ts = 0;   ///< Start timestamp (Unix time) for the requested data range.
         int64_t to_ts = 0;     ///< End timestamp (Unix time) for the requested data range.
         BarPriceSource price_source = BarPriceSource::MID; ///< Requested price stream for OHLC values.
@@ -31,7 +31,7 @@ namespace optionx {
         /// \param price_source Requested price stream for OHLC values.
         BarHistoryRequest(
             const std::string& symbol,
-            int64_t timeframe,
+            BarTimeframe timeframe,
             int64_t from_ts,
             int64_t to_ts,
             BarPriceSource price_source = BarPriceSource::MID

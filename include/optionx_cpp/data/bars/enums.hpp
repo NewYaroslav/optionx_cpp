@@ -9,6 +9,9 @@
 
 namespace optionx {
 
+    /// \brief Bar timeframe in seconds.
+    using BarTimeframe = std::uint32_t;
+
     /// \enum BarPriceSource
     /// \brief Defines which price stream was used to build a single OHLC bar.
     enum class BarPriceSource : std::uint8_t {
