@@ -10,6 +10,7 @@
 /// intended to be included through this umbrella header.
 
 #include "utils.hpp"
+#include "data/IEndpointConfig.hpp"
 #include "data/bars.hpp"
 #include "data/ticks.hpp"
 #include "data/trading.hpp"

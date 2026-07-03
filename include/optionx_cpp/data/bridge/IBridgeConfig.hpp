@@ -9,7 +9,7 @@ namespace optionx {
 
     /// \class IBridgeConfig
     /// \brief Interface for bridge configuration data management.
-    class IBridgeConfig {
+    class IBridgeConfig : public IEndpointConfig {
     public:
         IBridgeConfig() = default;
 

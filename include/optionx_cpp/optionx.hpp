@@ -7,6 +7,7 @@
 
 #include "utils.hpp"
 #include "data.hpp"
+#include "market_data.hpp"
 #include "storages.hpp"
 #include "components.hpp"
 #include "platforms.hpp"

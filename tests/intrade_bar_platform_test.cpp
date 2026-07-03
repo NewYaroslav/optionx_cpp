@@ -2,7 +2,7 @@
 #define OPTIONX_LOG_UNIQUE_FILE_INDEX 2
 
 #include <iostream>
-#include <optionx_cpp/platforms/IntradeBarPlatform.hpp>
+#include <optionx_cpp/platforms.hpp>
 
 using namespace optionx;
 using namespace optionx::platforms;

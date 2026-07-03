@@ -5,11 +5,6 @@
 /// \file IntradeBarPlatform.hpp
 /// \brief Defines the IntradeBarPlatform class, which provides an implementation of the trading platform API.
 
-#include "utils.hpp"
-#include "data.hpp"
-#include "storages.hpp"
-#include "components.hpp"
-
 #include "common/ApiResult.hpp"
 #include "common/BaseTradingPlatform.hpp"
 #include "IntradeBarPlatform/TradeHistorySource.hpp"
@@ -37,7 +32,9 @@ namespace optionx::platforms {
     /// This class is responsible for handling all trading operations, including authentication,
     /// balance management, price retrieval, trade execution, and account information updates.
     /// It integrates various components that manage these aspects of trading.
-    class IntradeBarPlatform final : public BaseTradingPlatform {
+    class IntradeBarPlatform final
+            : public BaseTradingPlatform,
+              public market_data::BaseMarketDataProvider {
     public:
 
         /// \brief Constructs the Intrade Bar trading platform.
@@ -109,9 +106,9 @@ namespace optionx::platforms {
         /// \param request Symbol, timeframe, range, and preferred price source.
         /// \param callback Callback receiving parsed bars or a failure reason.
         /// \return True if the history request was accepted for processing; false otherwise.
-        bool fetch_candle_data(
+        bool fetch_bar_history(
                 const BarHistoryRequest& request,
-                bar_history_callback_t callback) override {
+                market_data::BaseMarketDataProvider::bar_history_callback_t callback) override {
             if (!callback) return false;
             m_request_manager.request_bar_history_result(
                 request,

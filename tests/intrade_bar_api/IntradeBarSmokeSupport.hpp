@@ -1,6 +1,6 @@
 #pragma once
 
-#include <optionx_cpp/platforms/IntradeBarPlatform.hpp>
+#include <optionx_cpp/platforms.hpp>
 
 #include "../common/SmokeTestUtils.hpp"
 
