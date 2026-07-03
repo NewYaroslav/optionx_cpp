@@ -8,9 +8,13 @@
 namespace optionx::market_data {
 
     /// \brief Runtime identifier of a market-data provider instance.
+    /// \details The value is process-local and is used only to reject handles
+    ///          passed to the wrong provider object.
     using ProviderInstanceId = std::uint64_t;
 
     /// \brief Runtime identifier assigned by a market-data provider.
+    /// \details A subscription ID is meaningful only together with its
+    ///          ProviderInstanceId.
     using SubscriptionId = std::uint64_t;
 
     /// \brief Invalid market-data provider instance identifier.
@@ -29,6 +33,8 @@ namespace optionx::market_data {
         TickSubscriptionRequest() = default;
 
         /// \brief Constructs a tick-stream request.
+        /// \param symbol Broker/provider symbol.
+        /// \param transport Preferred transport for live data.
         TickSubscriptionRequest(
                 std::string symbol,
                 MarketDataTransport transport = MarketDataTransport::AUTO)
@@ -36,6 +42,7 @@ namespace optionx::market_data {
                   transport(transport) {}
 
         /// \brief Returns true when the request describes a valid live tick stream.
+        /// \return True when symbol is not empty.
         bool valid() const {
             return !symbol.empty();
         }
@@ -45,7 +52,7 @@ namespace optionx::market_data {
     /// \brief Request for a live bar market-data stream.
     struct BarSubscriptionRequest {
         std::string symbol; ///< Broker/provider symbol.
-        BarTimeframe timeframe = 0; ///< Bar timeframe in seconds.
+        BarTimeframe timeframe = 0; ///< Bar timeframe in seconds; values <= 0 are invalid.
         BarPriceSource price_source = BarPriceSource::MID; ///< Price source for bars.
         MarketDataTransport transport = MarketDataTransport::AUTO; ///< Preferred transport.
 
@@ -53,6 +60,10 @@ namespace optionx::market_data {
         BarSubscriptionRequest() = default;
 
         /// \brief Constructs a bar-stream request.
+        /// \param symbol Broker/provider symbol.
+        /// \param timeframe Bar timeframe in seconds.
+        /// \param price_source Price stream used to build OHLC values.
+        /// \param transport Preferred transport for live data.
         BarSubscriptionRequest(
                 std::string symbol,
                 BarTimeframe timeframe,
@@ -64,6 +75,7 @@ namespace optionx::market_data {
                   transport(transport) {}
 
         /// \brief Returns true when the request describes a valid live bar stream.
+        /// \return True when symbol is not empty and timeframe is positive.
         bool valid() const {
             return !symbol.empty() && timeframe > 0;
         }
@@ -81,12 +93,16 @@ namespace optionx::market_data {
         MarketDataTransport transport = MarketDataTransport::AUTO; ///< Transport chosen or requested.
 
         /// \brief Returns true if the handle can identify a provider subscription.
+        /// \return True when both provider and subscription IDs are non-zero.
         bool valid() const {
             return provider_id != kInvalidProviderInstanceId &&
                    id != kInvalidSubscriptionId;
         }
 
         /// \brief Builds a tick handle from a request and provider-assigned IDs.
+        /// \param provider_id Runtime provider instance that owns the handle.
+        /// \param id Provider-assigned subscription ID.
+        /// \param request Original tick subscription request.
         static MarketDataSubscriptionHandle from_tick_request(
                 ProviderInstanceId provider_id,
                 SubscriptionId id,
@@ -102,6 +118,9 @@ namespace optionx::market_data {
         }
 
         /// \brief Builds a bar handle from a request and provider-assigned IDs.
+        /// \param provider_id Runtime provider instance that owns the handle.
+        /// \param id Provider-assigned subscription ID.
+        /// \param request Original bar subscription request.
         static MarketDataSubscriptionHandle from_bar_request(
                 ProviderInstanceId provider_id,
                 SubscriptionId id,
@@ -126,6 +145,8 @@ namespace optionx::market_data {
         MarketDataSubscriptionHandle subscription; ///< Related subscription handle.
 
         /// \brief Returns true when the operation succeeded.
+        /// \details The status field is the source of truth; there is no
+        ///          separate mutable success flag.
         bool success() const noexcept {
             return status == MarketDataSubscriptionStatus::SUBSCRIBED ||
                    status == MarketDataSubscriptionStatus::UNSUBSCRIBED;
@@ -137,6 +158,7 @@ namespace optionx::market_data {
         }
 
         /// \brief Creates a successful subscribe result.
+        /// \param handle Accepted subscription handle.
         static MarketDataSubscriptionResult subscribed(MarketDataSubscriptionHandle handle) {
             if (!handle.valid()) {
                 return failed(
@@ -152,6 +174,7 @@ namespace optionx::market_data {
         }
 
         /// \brief Creates a successful unsubscribe result.
+        /// \param handle Stopped subscription handle.
         static MarketDataSubscriptionResult unsubscribed(MarketDataSubscriptionHandle handle) {
             if (!handle.valid()) {
                 return failed(
@@ -167,6 +190,9 @@ namespace optionx::market_data {
         }
 
         /// \brief Creates a failure result for a tick request.
+        /// \param request Rejected request.
+        /// \param status Failure status; accidental success statuses are normalized.
+        /// \param message Diagnostic message for the caller.
         static MarketDataSubscriptionResult failed(
                 TickSubscriptionRequest request,
                 MarketDataSubscriptionStatus status,
@@ -182,6 +208,9 @@ namespace optionx::market_data {
         }
 
         /// \brief Creates a failure result for a bar request.
+        /// \param request Rejected request.
+        /// \param status Failure status; accidental success statuses are normalized.
+        /// \param message Diagnostic message for the caller.
         static MarketDataSubscriptionResult failed(
                 BarSubscriptionRequest request,
                 MarketDataSubscriptionStatus status,
@@ -197,6 +226,9 @@ namespace optionx::market_data {
         }
 
         /// \brief Creates a failure result for an existing handle.
+        /// \param handle Subscription handle related to the failure.
+        /// \param status Failure status; accidental success statuses are normalized.
+        /// \param message Diagnostic message for the caller.
         static MarketDataSubscriptionResult failed(
                 MarketDataSubscriptionHandle handle,
                 MarketDataSubscriptionStatus status,
@@ -209,6 +241,7 @@ namespace optionx::market_data {
         }
 
         /// \brief Converts accidental success statuses to a failure status.
+        /// \return FAILED when status is a success value; otherwise returns status.
         static MarketDataSubscriptionStatus failure_status_or_failed(
                 MarketDataSubscriptionStatus status) noexcept {
             if (status == MarketDataSubscriptionStatus::SUBSCRIBED ||
