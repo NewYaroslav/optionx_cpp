@@ -16,8 +16,16 @@ namespace optionx::market_data {
         using bar_history_callback_t = std::function<void(BarHistoryResult)>;
         using subscription_callback_t = std::function<void(MarketDataSubscriptionResult)>;
 
+        /// \brief Constructs a market-data provider and assigns a runtime instance ID.
+        BaseMarketDataProvider() : m_provider_id(next_provider_instance_id()) {}
+
         /// \brief Virtual destructor for polymorphic provider implementations.
         virtual ~BaseMarketDataProvider() = default;
+
+        /// \brief Returns the runtime provider instance ID used to bind subscription handles.
+        ProviderInstanceId provider_id() const noexcept {
+            return m_provider_id;
+        }
 
         /// \brief Returns a reference to the live bar-data callback.
         /// \return Mutable callback reference, or a null callback if live bars are unsupported.
@@ -34,13 +42,12 @@ namespace optionx::market_data {
         }
 
         /// \brief Requests a live tick stream subscription.
-        /// \param request Subscription parameters; stream_type is normalized to TICKS.
+        /// \param request Tick subscription parameters.
         /// \param callback Callback receiving subscription acceptance or failure.
         /// \return True if the provider accepted the operation for processing; false otherwise.
         virtual bool subscribe_ticks(
-                MarketDataSubscriptionRequest request,
+                TickSubscriptionRequest request,
                 subscription_callback_t callback) {
-            request.stream_type = MarketDataStreamType::TICKS;
             if (!request.valid()) {
                 dispatch_subscription_result(
                     std::move(callback),
@@ -61,13 +68,12 @@ namespace optionx::market_data {
         }
 
         /// \brief Requests a live bar stream subscription.
-        /// \param request Subscription parameters; stream_type is normalized to BARS.
+        /// \param request Bar subscription parameters.
         /// \param callback Callback receiving subscription acceptance or failure.
         /// \return True if the provider accepted the operation for processing; false otherwise.
         virtual bool subscribe_bars(
-                MarketDataSubscriptionRequest request,
+                BarSubscriptionRequest request,
                 subscription_callback_t callback) {
-            request.stream_type = MarketDataStreamType::BARS;
             if (!request.valid()) {
                 dispatch_subscription_result(
                     std::move(callback),
@@ -103,6 +109,15 @@ namespace optionx::market_data {
                         "Invalid market-data subscription handle."));
                 return false;
             }
+            if (subscription.provider_id != provider_id()) {
+                dispatch_subscription_result(
+                    std::move(callback),
+                    MarketDataSubscriptionResult::failed(
+                        std::move(subscription),
+                        MarketDataSubscriptionStatus::WRONG_PROVIDER,
+                        "Market-data subscription handle belongs to another provider."));
+                return false;
+            }
 
             dispatch_subscription_result(
                 std::move(callback),
@@ -133,6 +148,16 @@ namespace optionx::market_data {
             if (callback) {
                 callback(std::move(result));
             }
+        }
+
+    private:
+        ProviderInstanceId m_provider_id = kInvalidProviderInstanceId; ///< Runtime provider instance ID.
+
+        /// \brief Returns the next non-zero provider instance ID.
+        static ProviderInstanceId next_provider_instance_id() {
+            static std::atomic<ProviderInstanceId> counter{1};
+            const auto id = counter.fetch_add(1, std::memory_order_relaxed);
+            return id == kInvalidProviderInstanceId ? counter.fetch_add(1, std::memory_order_relaxed) : id;
         }
     };
 

@@ -17,7 +17,7 @@ namespace optionx {
         Bar bar;        		///< Bar data of the specified type
 		std::string symbol; 	///< Symbol
 		std::string provider;	///< Provider
-		uint16_t timeframe; 	///< Timeframe
+        BarTimeframe timeframe; ///< Bar timeframe in seconds.
 		uint16_t flags;     	///< Bar data flags (bitmask of BarUpdateFlags)
         uint16_t price_digits;  ///< Number of decimal places for price
         uint16_t volume_digits; ///< Number of decimal places for volume
@@ -29,7 +29,7 @@ namespace optionx {
             Bar b,
             std::string s,
             std::string p,
-            uint16_t tf,
+            BarTimeframe tf,
             uint16_t f,
             uint16_t d,
             uint16_t vd,

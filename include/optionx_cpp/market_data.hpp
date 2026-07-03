@@ -4,7 +4,10 @@
 
 /// \file market_data.hpp
 /// \brief Includes public market-data provider contracts.
+/// \note Headers under market_data subdirectories are internal components and
+/// intended to be included through this umbrella header.
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <string>

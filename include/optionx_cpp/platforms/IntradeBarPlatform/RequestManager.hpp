@@ -1835,8 +1835,7 @@ namespace optionx::platforms::intrade_bar {
             callback(BarHistoryApiResult::fail("Bar history symbol is required."));
             return;
         }
-        if (request.timeframe <= 0 ||
-            request.timeframe > static_cast<std::int64_t>((std::numeric_limits<std::uint16_t>::max)())) {
+        if (request.timeframe == 0) {
             callback(BarHistoryApiResult::fail("Bar history timeframe is invalid."));
             return;
         }
@@ -1858,7 +1857,7 @@ namespace optionx::platforms::intrade_bar {
             BarSequence sequence;
             sequence.symbol = normalize_symbol_name(req.symbol);
             sequence.provider = to_str(PlatformType::INTRADE_BAR);
-            sequence.timeframe = static_cast<std::uint16_t>(req.timeframe);
+            sequence.timeframe = req.timeframe;
             sequence.flags =
                 static_cast<std::uint16_t>(dfh::BarStatusFlags::HISTORICAL) |
                 static_cast<std::uint16_t>(dfh::BarStatusFlags::FINALIZED);
