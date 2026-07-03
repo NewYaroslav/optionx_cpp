@@ -9,6 +9,7 @@
 #include "utils/string_utils.hpp"
 
 #include "IEndpointConfig.hpp"
+#include "trading.hpp"
 #include "bridge/enums.hpp"
 #include "bridge/IBridgeConfig.hpp"
 #include "bridge/BridgeStatusUpdate.hpp"

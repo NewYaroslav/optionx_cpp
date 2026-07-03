@@ -5,10 +5,15 @@
 /// \file account.hpp
 /// \brief Core components for account management and data querying.
 
+#include <cstdint>
+#include <vector>
+#include <kurlyk/types.hpp>
+
 #include "utils/enum_utils.hpp"
 #include "utils/string_utils.hpp"
 
 #include "IEndpointConfig.hpp"
+#include "trading.hpp"
 #include "account/enums.hpp"
 #include "account/AccountInfoRequest.hpp"
 #include "account/IAuthData.hpp"
