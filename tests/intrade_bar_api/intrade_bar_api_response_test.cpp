@@ -892,6 +892,35 @@ TEST(IntradeBarApiResponses, ParsesBinanceKlinesAsLastPriceBars) {
     EXPECT_DOUBLE_EQ(sequence.bars[0].volume, 0.25);
 }
 
+TEST(IntradeBarApiResponses, UsesKnownBarHistoryStartLimits) {
+    EXPECT_EQ(minimum_bar_history_from_ts("EUR/USD"), 1007337600);
+    EXPECT_EQ(minimum_bar_history_from_ts("NZDUSD"), 1007424000);
+    EXPECT_EQ(minimum_bar_history_from_ts("AUDCAD"), 1059523200);
+    EXPECT_EQ(minimum_bar_history_from_ts("BTCUSDT"), 1502942400);
+    EXPECT_EQ(minimum_bar_history_from_ts("UNKNOWN"), 0);
+}
+
+TEST(IntradeBarApiResponses, PlatformBarHistoryResultPreservesFailureReason) {
+    IntradeBarPlatform platform;
+    BarHistoryResult result;
+    int callback_count = 0;
+
+    EXPECT_TRUE(platform.fetch_candle_data(
+        BarHistoryRequest("", time_shield::SEC_PER_MIN, 1000, 2000),
+        [&result, &callback_count](BarHistoryResult history_result) {
+            result = std::move(history_result);
+            ++callback_count;
+        }));
+
+    platform.shutdown();
+
+    ASSERT_EQ(callback_count, 1);
+    EXPECT_FALSE(result);
+    EXPECT_EQ(result.status_code, BarHistoryResult::NO_RESPONSE_STATUS);
+    EXPECT_NE(result.error_desc.find("symbol"), std::string::npos);
+    EXPECT_TRUE(result.sequence.bars.empty());
+}
+
 TEST(IntradeBarApiResponses, SplitsFxHisBarHistoryIntoSequentialRequests) {
     const std::int64_t first_ts = 1782980700;
     const std::int64_t second_ts =
@@ -915,11 +944,11 @@ TEST(IntradeBarApiResponses, SplitsFxHisBarHistoryIntoSequentialRequests) {
     ASSERT_EQ(call.callback_count, 1);
     ASSERT_TRUE(call.result);
     EXPECT_EQ(server.fxhis_requests.load(), 2);
-    ASSERT_EQ(call.result.value.sequence.bars.size(), 2u);
-    EXPECT_EQ(call.result.value.sequence.symbol, "NZDUSD");
-    EXPECT_EQ(call.result.value.sequence.price_source, BarPriceSource::MID);
-    EXPECT_EQ(call.result.value.sequence.bars[0].time_ms, time_shield::sec_to_ms(first_ts));
-    EXPECT_EQ(call.result.value.sequence.bars[1].time_ms, time_shield::sec_to_ms(second_ts));
+    ASSERT_EQ(call.result.value.bars.size(), 2u);
+    EXPECT_EQ(call.result.value.symbol, "NZDUSD");
+    EXPECT_EQ(call.result.value.price_source, BarPriceSource::MID);
+    EXPECT_EQ(call.result.value.bars[0].time_ms, time_shield::sec_to_ms(first_ts));
+    EXPECT_EQ(call.result.value.bars[1].time_ms, time_shield::sec_to_ms(second_ts));
 }
 
 TEST(IntradeBarApiResponses, CombinedTradeHistoryRequestReportsHtmlFailureStatus) {

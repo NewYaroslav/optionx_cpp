@@ -14,6 +14,7 @@ namespace optionx::platforms {
         using trade_result_callback_t = std::function<void(std::unique_ptr<TradeRequest>, std::unique_ptr<TradeResult>)>;
         using trade_result_check_callback_t = std::function<void(std::unique_ptr<TradeResult>)>;
         using trade_history_callback_t = std::function<void(TradeHistoryResult)>;
+        using bar_history_callback_t = std::function<void(BarHistoryResult)>;
         using trade_id_provider_t = std::function<std::uint32_t()>;
         using bars_callback_t  = std::function<void(const std::vector<SingleBar>&)>;
         using ticks_callback_t = std::function<void(const std::vector<SingleTick>&)>;
@@ -99,10 +100,10 @@ namespace optionx::platforms {
 
         /// \brief Requests historical candle data for a specified time range.
         /// \param request Historical candle data request parameters.
-        /// \param callback Callback function to receive the candle data.
+        /// \param callback Callback function to receive bars or a failure reason.
         virtual bool fetch_candle_data(
             const BarHistoryRequest& request,
-            std::function<void(const BarSequence&)> callback) { return false; };
+            bar_history_callback_t callback) { return false; };
 
         /// \brief Requests the list of available trading symbols.
         /// \param callback Callback function to receive the symbol list.

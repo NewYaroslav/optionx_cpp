@@ -107,21 +107,24 @@ namespace optionx::platforms {
 
         /// \brief Requests historical Intrade Bar candle data.
         /// \param request Symbol, timeframe, range, and preferred price source.
-        /// \param callback Callback receiving a parsed bar sequence. Failures are
-        ///        adapted to an empty sequence for the legacy base callback shape.
+        /// \param callback Callback receiving parsed bars or a failure reason.
         /// \return True if the history request was accepted for processing; false otherwise.
         bool fetch_candle_data(
                 const BarHistoryRequest& request,
-                std::function<void(const BarSequence&)> callback) override {
+                bar_history_callback_t callback) override {
             if (!callback) return false;
             m_request_manager.request_bar_history_result(
                 request,
                 [callback = std::move(callback)](intrade_bar::BarHistoryApiResult result) {
                     if (result) {
-                        callback(result.value.sequence);
+                        callback(BarHistoryResult::ok(
+                            std::move(result.value),
+                            result.status_code));
                         return;
                     }
-                    callback(BarSequence{});
+                    callback(BarHistoryResult::fail(
+                        std::move(result.error_message),
+                        result.status_code));
                 });
             return true;
         }

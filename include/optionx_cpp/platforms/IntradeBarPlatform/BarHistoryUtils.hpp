@@ -19,7 +19,44 @@ namespace optionx::platforms::intrade_bar {
     inline constexpr std::int64_t FX_HISTORY_MAX_BARS_PER_REQUEST = 1000;
 
     /// \brief Maximum klines requested from Binance at once.
+    /// \details Binance documents 1000 as the maximum kline limit.
     inline constexpr std::int64_t BINANCE_KLINES_MAX_BARS_PER_REQUEST = 1000;
+
+    /// \brief Known lower bound for historical bars of one symbol.
+    struct BarHistoryStartLimit {
+        const char* symbol = "";          ///< Normalized symbol.
+        std::int64_t min_from_ts = 0;     ///< Earliest known timestamp in seconds.
+    };
+
+    /// \brief Empirical FX history lower bounds from the old Intrade history dataset.
+    inline constexpr BarHistoryStartLimit FX_HISTORY_START_LIMITS[] = {
+        {"EURUSD", 1007337600}, // 03.12.2001
+        {"USDJPY", 1007337600}, // 03.12.2001
+        {"GBPUSD", 1007337600}, // 03.12.2001
+        {"USDCHF", 1007337600}, // 03.12.2001
+        {"USDCAD", 1007424000}, // 04.12.2001
+        {"EURJPY", 1006992000}, // 29.11.2001
+        {"AUDUSD", 1039824000}, // 14.12.2002
+        {"NZDUSD", 1007424000}, // 04.12.2001
+        {"EURGBP", 1012521600}, // 01.02.2002
+        {"EURCHF", 1007596800}, // 06.12.2001
+        {"AUDJPY", 1006905600}, // 28.11.2001
+        {"GBPJPY", 1006905600}, // 28.11.2001
+        {"CHFJPY", 1007337600}, // 03.12.2001
+        {"EURCAD", 1007078400}, // 30.11.2001
+        {"AUDCAD", 1059523200}, // 30.07.2003
+        {"CADJPY", 1006992000}, // 29.11.2001
+        {"NZDJPY", 1006992000}, // 29.11.2001
+        {"AUDNZD", 1006992000}, // 29.11.2001
+        {"GBPAUD", 1006992000}, // 29.11.2001
+        {"EURAUD", 1006992000}, // 29.11.2001
+        {"GBPCHF", 1007078400}, // 30.11.2001
+        {"EURNZD", 1206921600}, // 31.03.2008
+        {"AUDCHF", 1006992000}, // 29.11.2001
+        {"GBPNZD", 1007078400}, // 30.11.2001
+        {"GBPCAD", 1006992000}, // 29.11.2001
+        {"XAUUSD", 1254096000}  // 28.09.2009
+    };
 
     /// \brief Inclusive time range for one backend request.
     struct BarHistoryChunk {
@@ -51,9 +88,12 @@ namespace optionx::platforms::intrade_bar {
     inline std::int64_t minimum_bar_history_from_ts(const std::string& symbol) {
         const auto normalized = normalize_symbol_name(symbol);
 
-        // Binance BTCUSDT history begins in August 2017. FX limits differ by
-        // symbol and should be added here only after broker-side verification.
+        // Binance BTCUSDT history begins in August 2017.
         if (normalized == "BTCUSDT") return 1502942400;
+
+        for (const auto& item : FX_HISTORY_START_LIMITS) {
+            if (normalized == item.symbol) return item.min_from_ts;
+        }
 
         return 0;
     }

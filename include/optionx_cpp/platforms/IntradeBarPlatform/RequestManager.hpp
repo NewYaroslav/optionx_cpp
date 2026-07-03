@@ -1871,7 +1871,7 @@ namespace optionx::platforms::intrade_bar {
         if (effective_request.from_ts > effective_request.to_ts) {
             const auto source = use_binance ? BarPriceSource::LAST : effective_request.price_source;
             callback(BarHistoryApiResult::ok(
-                BarHistory{make_empty_sequence(effective_request, source)}));
+                make_empty_sequence(effective_request, source)));
             return;
         }
 
@@ -1946,7 +1946,7 @@ namespace optionx::platforms::intrade_bar {
                 bars.end());
 
             state->callback(BarHistoryApiResult::ok(
-                BarHistory{std::move(state->sequence)},
+                std::move(state->sequence),
                 state->last_status));
         };
 
@@ -1972,7 +1972,7 @@ namespace optionx::platforms::intrade_bar {
                     "/api/v3/klines",
                     query,
                     {{"Accept", "application/json"}},
-                    get_rate_limit(RateLimitType::TICK_DATA));
+                    get_rate_limit(RateLimitType::BTC_BAR_HISTORY));
             } else {
                 kurlyk::QueryParams query = {
                     {"symbol", fx_history_query_symbol(state->request.symbol)},
@@ -1984,7 +1984,7 @@ namespace optionx::platforms::intrade_bar {
                     "/fxhis/",
                     query,
                     {{"Accept", "application/json"}, {"Cookie", m_cookies}},
-                    get_rate_limit(RateLimitType::TICK_DATA));
+                    get_rate_limit(RateLimitType::FX_BAR_HISTORY));
             }
 
             auto response_callback = [state, request_next](
