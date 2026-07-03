@@ -5,6 +5,7 @@
 /// \file bars.hpp
 /// \brief
 
+#include "bars/types.hpp"
 #include "bars/enums.hpp"
 #include "bars/Bar.hpp"
 #include "bars/flags.hpp"

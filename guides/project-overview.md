@@ -30,6 +30,7 @@ broker API и bridges. Основной сценарий: пользовател
 | `optionx_cpp/utils.hpp` | Pub-sub, tasks, crypto, strings, time, ids | Для инфраструктурного кода и новых components |
 | `optionx_cpp/data.hpp` | DTO, events, enums, account/symbol/tick/bar/trading data | Для API boundary и сообщений |
 | `optionx_cpp/components.hpp` | `BaseComponent`, HTTP и trade execution base classes | Для нового manager/component |
+| `optionx_cpp/market_data.hpp` | Market-data provider role, subscription DTOs and statuses | Для live tick/bar subscriptions и history API contracts |
 | `optionx_cpp/platforms.hpp` | Base platform и Intrade Bar platform | Для клиентского кода платформ |
 | `optionx_cpp/storages.hpp` | `ServiceSessionDB` | Для session storage |
 | `optionx_cpp/bridges.hpp` | `BaseBridge` | Для внешних bridge integrations |
@@ -44,7 +45,7 @@ broker API и bridges. Основной сценарий: пользовател
 | Platform facade | `optionx::platforms`, `include/optionx_cpp/platforms` | Публичный API платформы: connect, auth, trades, account info |
 | Components/managers | `optionx::components`, platform subnamespaces | Lifecycle-компоненты, которые получают events и выполняют работу |
 | Trading data | `optionx`, `include/optionx_cpp/data/trading` | `TradeRequest`, `TradeResult`, enums, signals |
-| Market data | `include/optionx_cpp/data/bars`, `ticks`, `symbol` | Свечи, тики, symbols, history requests |
+| Market data | `optionx::market_data`, `include/optionx_cpp/market_data`, `data/bars`, `data/ticks`, `data/symbol` | Live subscriptions, history requests/results, ticks, bars and symbols |
 | Events | `optionx::events`, `include/optionx_cpp/data/events` | Pub-sub контракты между components |
 | Infrastructure | `optionx::utils` | EventBus, tasks, crypto, ids, HTTP helpers |
 | Storage | `optionx::storage` | AES + mdbx session storage |
@@ -67,7 +68,12 @@ broker API и bridges. Основной сценарий: пользовател
    `TradeStateManager`.
 6. `fetch_trade_result()` и `fetch_trade_history()` у конкретной платформы
    делегируются в platform managers и возвращают DTO через callbacks.
-7. `shutdown()` останавливает tasks, вызывает shutdown у components, затем
+7. Market-data entry points (`fetch_bar_history`, `subscribe_ticks`,
+   `subscribe_bars`, `unsubscribe`) are exposed by `BaseMarketDataProvider`
+   implementations. Concrete platforms may use HTTP polling, websockets, or
+   both internally; public subscription results are reported through typed
+   callbacks.
+8. `shutdown()` останавливает tasks, вызывает shutdown у components, затем
    draining event bus.
 
 ## Реальные Платформы
@@ -89,7 +95,7 @@ DTO и events обычно открытые классы/структуры с p
 
 - `data/trading/TradeRequest.hpp`
 - `data/trading/TradeResult.hpp`
-- `data/bars/Bar.hpp`, `BarData.hpp`, `BarSequence.hpp`
+- `data/bars/Bar.hpp`, `SingleBar.hpp`, `BarSequence.hpp`
 - `data/ticks/Tick.hpp`, `TickData.hpp`
 - `data/account/BaseAccountInfoData.hpp`
 - `data/events/TradeRequestEvent.hpp`

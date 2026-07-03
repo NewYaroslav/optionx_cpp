@@ -8,6 +8,7 @@
 | Нужно сделать | Используй | Не начинай с |
 |---|---|---|
 | Подключить торговую платформу в приложении | `platforms::IntradeBarPlatform` или `BaseTradingPlatform` API | Platform-specific managers |
+| Получать market data | `market_data::BaseMarketDataProvider` API | Прямой доступ к price managers |
 | Добавить новый broker flow | Новый `BaseTradingPlatform` descendant + managers | Большой manager со всей логикой сразу |
 | Отправить сделку | `BaseTradingPlatform::place_trade(std::unique_ptr<TradeRequest>)` | Прямое создание `TradeTransactionEvent` из application code |
 | Подписаться на результат сделки | `on_trade_result()` callback или event flow | Polling internal queue |
@@ -56,6 +57,41 @@
 - Callbacks `on_trade_result`, `on_candle_data`, `on_tick_data` в base
   возвращают static null callback; concrete class/component должен дать рабочую
   callback-ссылку, если feature поддерживается.
+
+## `market_data::BaseMarketDataProvider`
+
+Файл: `include/optionx_cpp/market_data/BaseMarketDataProvider.hpp`.
+
+Роль: public role для endpoints, которые умеют отдавать live ticks, live bars
+или historical bars. Торговая платформа может одновременно наследоваться от
+`BaseTradingPlatform` и `BaseMarketDataProvider`, но market-data contract
+остается отдельным: его можно реализовать и у источника котировок без торговых
+операций.
+
+Основные методы:
+
+| Метод | Для чего | Ограничения |
+|---|---|---|
+| `on_tick_data()` | Callback для live tick batches | По умолчанию возвращает null callback |
+| `on_bar_data()` | Callback для live bar batches | По умолчанию возвращает null callback |
+| `subscribe_ticks(request, callback)` | Запросить live tick stream | Request type отдельный от bars |
+| `subscribe_bars(request, callback)` | Запросить live bar stream | `timeframe` в секундах и должен быть > 0 |
+| `unsubscribe(handle, callback)` | Остановить live stream | Handle должен принадлежать этому provider instance |
+| `fetch_bar_history(request, callback)` | Запросить исторические бары | Возвращает `BarHistoryResult`, а не пустой массив при ошибке |
+
+Subscription rules:
+
+- `ProviderInstanceId` and `SubscriptionId` are runtime IDs, not storage IDs.
+- `MarketDataSubscriptionHandle` is valid only for the provider instance that
+  created it. This prevents unsubscribing from a different provider object by
+  accident.
+- `MarketDataSubscriptionResult::status` is the source of truth. Use
+  `result.success()` or `if (result)`.
+- `BaseMarketDataProvider` is non-copyable and non-movable so provider identity
+  cannot be duplicated after handles were issued.
+- Public subscriptions describe consumer routing. Internal platform polling or
+  websocket feeds may still run for trade lifecycle needs even when there are
+  no public subscribers.
 
 ## Concrete Platforms
 

@@ -940,6 +940,26 @@ TEST(IntradeBarApiResponses, PlatformBarHistoryResultPreservesFailureReason) {
     EXPECT_TRUE(result.sequence.bars.empty());
 }
 
+TEST(IntradeBarApiResponses, PlatformBarHistoryRejectsNegativeTimeframe) {
+    IntradeBarPlatform platform;
+    BarHistoryResult result;
+    int callback_count = 0;
+
+    EXPECT_TRUE(platform.fetch_bar_history(
+        BarHistoryRequest("EURUSD", -16, 1000, 2000),
+        [&result, &callback_count](BarHistoryResult history_result) {
+            result = std::move(history_result);
+            ++callback_count;
+        }));
+
+    platform.shutdown();
+
+    ASSERT_EQ(callback_count, 1);
+    EXPECT_FALSE(result);
+    EXPECT_EQ(result.status_code, BarHistoryResult::NO_RESPONSE_STATUS);
+    EXPECT_NE(result.error_desc.find("timeframe"), std::string::npos);
+}
+
 TEST(IntradeBarApiResponses, SplitsFxHisBarHistoryIntoSequentialRequests) {
     const std::int64_t first_ts = 1782980700;
     const std::int64_t second_ts =

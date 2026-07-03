@@ -3,7 +3,7 @@
 #define _OPTIONX_BAR_HISTORY_REQUEST_HPP_INCLUDED
 
 /// \file BarHistoryRequest.hpp
-/// \brief Contains the CandleHistoryRequest class for requesting historical candlestick data.
+/// \brief Contains the BarHistoryRequest class for requesting historical bar data.
 
 #include <cstdint>
 #include <string>
@@ -11,11 +11,11 @@
 namespace optionx {
 
     /// \class BarHistoryRequest
-    /// \brief Represents a request for historical candlestick data over a specified time range.
+    /// \brief Represents a request for historical bar data over a specified time range.
     class BarHistoryRequest {
     public:
         std::string symbol;    ///< The symbol for which the historical data is requested.
-        int64_t timeframe = 0; ///< Timeframe of the requested data in seconds.
+        BarTimeframe timeframe = 0; ///< Requested bar timeframe in seconds; values <= 0 are invalid.
         int64_t from_ts = 0;   ///< Start timestamp (Unix time) for the requested data range.
         int64_t to_ts = 0;     ///< End timestamp (Unix time) for the requested data range.
         BarPriceSource price_source = BarPriceSource::MID; ///< Requested price stream for OHLC values.
@@ -25,13 +25,13 @@ namespace optionx {
 
         /// \brief Constructs a BarHistoryRequest with all parameters.
         /// \param symbol The symbol for the data.
-        /// \param timeframe Timeframe in seconds for each candlestick.
+        /// \param timeframe Timeframe in seconds for each bar.
         /// \param from_ts Start timestamp for data retrieval.
         /// \param to_ts End timestamp for data retrieval.
         /// \param price_source Requested price stream for OHLC values.
         BarHistoryRequest(
             const std::string& symbol,
-            int64_t timeframe,
+            BarTimeframe timeframe,
             int64_t from_ts,
             int64_t to_ts,
             BarPriceSource price_source = BarPriceSource::MID

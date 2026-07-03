@@ -15,6 +15,7 @@
 ```cpp
 #include <optionx_cpp/optionx.hpp>
 #include <optionx_cpp/data.hpp>
+#include <optionx_cpp/market_data.hpp>
 #include <optionx_cpp/platforms.hpp>
 #include <optionx_cpp/platforms/IntradeBarPlatform.hpp>
 ```
@@ -32,9 +33,9 @@
 
 - Не используй `../` в `#include`.
 - Не используй `"optionx_cpp/..."` внутри `include/optionx_cpp`.
-- Public aggregate headers (`optionx.hpp`, `data.hpp`, `platforms.hpp`,
-  `storages.hpp`, `components.hpp`, `utils.hpp`, `bridges.hpp`) задают публичные
-  точки подключения.
+- Public aggregate headers (`optionx.hpp`, `data.hpp`, `market_data.hpp`,
+  `platforms.hpp`, `storages.hpp`, `components.hpp`, `utils.hpp`,
+  `bridges.hpp`) задают публичные точки подключения.
 - Domain aggregates, например `data/trading.hpp`, задают include context для
   связанных leaf headers.
 - Leaf DTO headers не должны вручную восстанавливать весь порядок зависимостей
@@ -85,6 +86,39 @@ Managers (`AuthManager`, `RequestManager`, `TradeManager`, `BalanceManager`,
 etc.) являются implementation detail конкретной платформы. Новый user-facing
 метод сначала должен появиться на facade/base contract, а затем делегироваться
 в manager.
+
+## Market Data Contract
+
+Market-data APIs are split into DTO/data types and a provider role:
+
+- `data/bars/*`, `data/ticks/*`, `data/symbol/*` contain payload DTOs such as
+  `SingleBar`, `BarSequence`, `SingleTick`, `TickSequence` and
+  `BarHistoryRequest`.
+- `market_data.hpp` exposes the provider role and subscription contract:
+  `BaseMarketDataProvider`, `TickSubscriptionRequest`,
+  `BarSubscriptionRequest`, `MarketDataSubscriptionHandle` and
+  `MarketDataSubscriptionResult`.
+
+Contract rules:
+
+- `BarTimeframe` is a signed 32-bit value in seconds. Values less than or equal
+  to zero are invalid in requests.
+- Live tick and live bar subscriptions use separate request types because the
+  payloads and validation rules differ.
+- `MarketDataSubscriptionResult::status` is the source of truth. There is no
+  separate mutable `success` field; use `result.success()` or `if (result)`.
+- Subscription handles are provider-bound. `provider_id` is a runtime identity
+  of a concrete provider object, and `unsubscribe()` must reject handles from
+  another provider with `WRONG_PROVIDER`.
+- A provider object is intentionally non-copyable and non-movable, because
+  copying it would duplicate runtime identity and make existing handles
+  ambiguous.
+- A broker implementation may maintain price polling or websocket connections
+  even when no public subscription exists, because trading logic can also need
+  current prices. Public subscriptions are the routing contract for external
+  consumers, not necessarily the only source lifecycle.
+- Historical bars use `BarHistoryResult` so callers can distinguish an empty
+  successful range from transport, validation or parser failures.
 
 ## Typed Broker Result Pattern
 

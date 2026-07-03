@@ -3,7 +3,7 @@
 #define _OPTIONX_SINGLE_BAR_HPP_INCLUDED
 
 /// \file SingleBar.hpp
-/// \brief
+/// \brief Defines a normalized market bar with provider metadata.
 
 #include <cstdint>
 #include <string>
@@ -11,25 +11,25 @@
 
 namespace optionx {
 
-	/// \struct SingleBar
-    /// \brief Represents a market bar with additional metadata
+    /// \struct SingleBar
+    /// \brief Represents one OHLC market bar and the metadata needed to route it.
     struct SingleBar {
-        Bar bar;        		///< Bar data of the specified type
-		std::string symbol; 	///< Symbol
-		std::string provider;	///< Provider
-		uint16_t timeframe; 	///< Timeframe
-		uint16_t flags;     	///< Bar data flags (bitmask of BarUpdateFlags)
-        uint16_t price_digits;  ///< Number of decimal places for price
-        uint16_t volume_digits; ///< Number of decimal places for volume
+        Bar bar;        		///< OHLC bar payload.
+		std::string symbol; 	///< Provider symbol.
+		std::string provider;	///< Provider name or source identifier.
+        BarTimeframe timeframe; ///< Bar timeframe in seconds; values <= 0 are invalid.
+		uint16_t flags;     	///< Bar data flags (bitmask of BarUpdateFlags).
+        uint16_t price_digits;  ///< Number of decimal places for price.
+        uint16_t volume_digits; ///< Number of decimal places for volume.
         BarPriceSource price_source = BarPriceSource::MID; ///< Price stream used to build the OHLC values.
 
 
-        /// \brief Constructor to initialize all fields
+        /// \brief Constructs a single bar with all metadata fields.
         SingleBar(
             Bar b,
             std::string s,
             std::string p,
-            uint16_t tf,
+            BarTimeframe tf,
             uint16_t f,
             uint16_t d,
             uint16_t vd,
