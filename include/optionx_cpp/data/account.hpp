@@ -9,9 +9,6 @@
 #include <vector>
 #include <kurlyk/types.hpp>
 
-#include "utils/enum_utils.hpp"
-#include "utils/string_utils.hpp"
-
 #include "IEndpointConfig.hpp"
 #include "trading.hpp"
 #include "account/enums.hpp"
