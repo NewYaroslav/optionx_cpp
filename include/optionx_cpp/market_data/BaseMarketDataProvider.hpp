@@ -19,6 +19,11 @@ namespace optionx::market_data {
         /// \brief Constructs a market-data provider and assigns a runtime instance ID.
         BaseMarketDataProvider() : m_provider_id(next_provider_instance_id()) {}
 
+        BaseMarketDataProvider(const BaseMarketDataProvider&) = delete;
+        BaseMarketDataProvider& operator=(const BaseMarketDataProvider&) = delete;
+        BaseMarketDataProvider(BaseMarketDataProvider&&) = delete;
+        BaseMarketDataProvider& operator=(BaseMarketDataProvider&&) = delete;
+
         /// \brief Virtual destructor for polymorphic provider implementations.
         virtual ~BaseMarketDataProvider() = default;
 
