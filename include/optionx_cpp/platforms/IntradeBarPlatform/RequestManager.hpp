@@ -1835,7 +1835,7 @@ namespace optionx::platforms::intrade_bar {
             callback(BarHistoryApiResult::fail("Bar history symbol is required."));
             return;
         }
-        if (request.timeframe == 0) {
+        if (request.timeframe <= 0) {
             callback(BarHistoryApiResult::fail("Bar history timeframe is invalid."));
             return;
         }

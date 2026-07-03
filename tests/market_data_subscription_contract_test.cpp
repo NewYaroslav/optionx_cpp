@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <type_traits>
+
 #include <optionx_cpp/market_data.hpp>
 
 using namespace optionx;
@@ -25,11 +27,12 @@ TEST(BarSubscriptionRequest, BuildsAndValidatesBarRequests) {
 
     EXPECT_TRUE(request.valid());
     EXPECT_EQ(request.symbol, "BTCUSDT");
-    EXPECT_EQ(request.timeframe, 86400u);
+    EXPECT_EQ(request.timeframe, 86400);
     EXPECT_EQ(request.price_source, BarPriceSource::LAST);
     EXPECT_EQ(request.transport, MarketDataTransport::HYBRID);
 
     EXPECT_FALSE(BarSubscriptionRequest("EUR/USD", 0).valid());
+    EXPECT_FALSE(BarSubscriptionRequest("EUR/USD", -16).valid());
     EXPECT_FALSE(BarSubscriptionRequest("", 60).valid());
 }
 
@@ -43,7 +46,7 @@ TEST(MarketDataSubscriptionHandle, BuildsTickAndBarHandlesAndReportsValidity) {
     EXPECT_EQ(tick_handle.id, 42u);
     EXPECT_EQ(tick_handle.symbol, tick_request.symbol);
     EXPECT_EQ(tick_handle.stream_type, MarketDataStreamType::TICKS);
-    EXPECT_EQ(tick_handle.timeframe, 0u);
+    EXPECT_EQ(tick_handle.timeframe, 0);
     EXPECT_EQ(tick_handle.transport, tick_request.transport);
 
     const BarSubscriptionRequest bar_request("BTCUSDT", 86400, BarPriceSource::LAST);
@@ -55,7 +58,7 @@ TEST(MarketDataSubscriptionHandle, BuildsTickAndBarHandlesAndReportsValidity) {
     EXPECT_EQ(bar_handle.id, 43u);
     EXPECT_EQ(bar_handle.symbol, bar_request.symbol);
     EXPECT_EQ(bar_handle.stream_type, MarketDataStreamType::BARS);
-    EXPECT_EQ(bar_handle.timeframe, 86400u);
+    EXPECT_EQ(bar_handle.timeframe, 86400);
     EXPECT_EQ(bar_handle.price_source, bar_request.price_source);
 
     EXPECT_FALSE(MarketDataSubscriptionHandle{}.valid());
@@ -186,6 +189,18 @@ TEST(BaseMarketDataProvider, RejectsHandleFromAnotherProvider) {
     EXPECT_EQ(to_str(result.status), std::string("WRONG_PROVIDER"));
 }
 
+TEST(BaseMarketDataProvider, IsNotCopyableOrMovable) {
+    static_assert(!std::is_copy_constructible<BaseMarketDataProvider>::value,
+                  "provider identity must not be copy-constructible");
+    static_assert(!std::is_copy_assignable<BaseMarketDataProvider>::value,
+                  "provider identity must not be copy-assignable");
+    static_assert(!std::is_move_constructible<BaseMarketDataProvider>::value,
+                  "provider identity must not be move-constructible");
+    static_assert(!std::is_move_assignable<BaseMarketDataProvider>::value,
+                  "provider identity must not be move-assignable");
+    SUCCEED();
+}
+
 TEST(BarTimeframe, SupportsDailyTimeframeWithoutTruncation) {
     const Bar bar(1.0, 2.0, 0.5, 1.5, 10.0, 1000);
     const SingleBar single_bar(
@@ -197,14 +212,14 @@ TEST(BarTimeframe, SupportsDailyTimeframeWithoutTruncation) {
         5,
         0);
 
-    EXPECT_EQ(single_bar.timeframe, 86400u);
+    EXPECT_EQ(single_bar.timeframe, 86400);
 
     BarSequence sequence;
     sequence.timeframe = 86400;
-    EXPECT_EQ(sequence.timeframe, 86400u);
+    EXPECT_EQ(sequence.timeframe, 86400);
 
     const BarHistoryRequest history_request("EURUSD", 86400, 1000, 2000);
-    EXPECT_EQ(history_request.timeframe, 86400u);
+    EXPECT_EQ(history_request.timeframe, 86400);
 }
 
 int main(int argc, char** argv) {
