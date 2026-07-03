@@ -9,7 +9,9 @@
 
 namespace optionx {
 
-    using BarTimeframe = std::int32_t; ///< Bar timeframe in seconds; values <= 0 are invalid.
+    /// \brief Bar timeframe in seconds.
+    /// \details Request DTOs treat values less than or equal to zero as invalid.
+    using BarTimeframe = std::int32_t;
 
 } // namespace optionx
 

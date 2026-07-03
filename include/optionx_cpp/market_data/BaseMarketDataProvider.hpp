@@ -11,17 +11,28 @@ namespace optionx::market_data {
     /// \brief Role interface for endpoints that provide live or historical market data.
     class BaseMarketDataProvider {
     public:
+        /// \brief Callback that receives live bar batches from a provider.
         using bars_callback_t = std::function<void(const std::vector<SingleBar>&)>;
+
+        /// \brief Callback that receives live tick batches from a provider.
         using ticks_callback_t = std::function<void(const std::vector<SingleTick>&)>;
+
+        /// \brief Callback that receives historical bars or a typed failure.
         using bar_history_callback_t = std::function<void(BarHistoryResult)>;
+
+        /// \brief Callback that receives subscribe/unsubscribe operation results.
         using subscription_callback_t = std::function<void(MarketDataSubscriptionResult)>;
 
         /// \brief Constructs a market-data provider and assigns a runtime instance ID.
         BaseMarketDataProvider() : m_provider_id(next_provider_instance_id()) {}
 
+        /// \brief Copying is disabled because subscription handles are bound to provider identity.
         BaseMarketDataProvider(const BaseMarketDataProvider&) = delete;
+        /// \brief Copy assignment is disabled because it would duplicate provider identity.
         BaseMarketDataProvider& operator=(const BaseMarketDataProvider&) = delete;
+        /// \brief Moving is disabled because existing handles must not change owner identity.
         BaseMarketDataProvider(BaseMarketDataProvider&&) = delete;
+        /// \brief Move assignment is disabled because existing handles must not change owner identity.
         BaseMarketDataProvider& operator=(BaseMarketDataProvider&&) = delete;
 
         /// \brief Virtual destructor for polymorphic provider implementations.
@@ -147,6 +158,8 @@ namespace optionx::market_data {
 
     protected:
         /// \brief Delivers a subscription operation result when a callback was supplied.
+        /// \param callback Optional callback supplied by the caller.
+        /// \param result Typed operation result to deliver.
         static void dispatch_subscription_result(
                 subscription_callback_t callback,
                 MarketDataSubscriptionResult result) {
