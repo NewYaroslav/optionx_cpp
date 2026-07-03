@@ -5,6 +5,9 @@
 /// \file market_data.hpp
 /// \brief Includes public market-data provider contracts.
 
+#include <functional>
+#include <vector>
+
 #include "data.hpp"
 #include "market_data/BaseMarketDataProvider.hpp"
 

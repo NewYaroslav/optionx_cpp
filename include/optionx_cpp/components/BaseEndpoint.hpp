@@ -5,11 +5,6 @@
 /// \file BaseEndpoint.hpp
 /// \brief Declares the common runtime contract for public service endpoints.
 
-#include <memory>
-
-#include "data/account.hpp"
-#include "data/IEndpointConfig.hpp"
-
 namespace optionx {
 
     /// \class BaseEndpoint

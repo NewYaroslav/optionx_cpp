@@ -5,12 +5,6 @@
 /// \file IntradeBarPlatform.hpp
 /// \brief Defines the IntradeBarPlatform class, which provides an implementation of the trading platform API.
 
-#include "utils.hpp"
-#include "data.hpp"
-#include "market_data.hpp"
-#include "storages.hpp"
-#include "components.hpp"
-
 #include "common/ApiResult.hpp"
 #include "common/BaseTradingPlatform.hpp"
 #include "IntradeBarPlatform/TradeHistorySource.hpp"

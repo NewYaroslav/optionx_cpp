@@ -10,6 +10,8 @@
 /// trade execution queues. Application-level code normally uses
 /// `platforms.hpp` or a concrete platform facade instead.
 
+#include <memory>
+
 #include "utils.hpp"
 #include "data.hpp"
 #include "components/BaseEndpoint.hpp"

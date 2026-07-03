@@ -9,8 +9,6 @@
 #include <functional>
 #include <list>
 
-#include "data/IEndpointConfig.hpp"
-
 namespace optionx {
 
     /// \class IAuthData

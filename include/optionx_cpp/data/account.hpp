@@ -8,6 +8,7 @@
 #include "utils/enum_utils.hpp"
 #include "utils/string_utils.hpp"
 
+#include "IEndpointConfig.hpp"
 #include "account/enums.hpp"
 #include "account/AccountInfoRequest.hpp"
 #include "account/IAuthData.hpp"

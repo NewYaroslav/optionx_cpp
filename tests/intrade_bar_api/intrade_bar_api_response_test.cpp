@@ -14,7 +14,7 @@
 
 #include <server_http.hpp>
 
-#include <optionx_cpp/platforms/IntradeBarPlatform.hpp>
+#include <optionx_cpp/platforms.hpp>
 
 using namespace optionx;
 using namespace optionx::platforms;

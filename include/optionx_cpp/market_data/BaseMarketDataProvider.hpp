@@ -5,12 +5,6 @@
 /// \file BaseMarketDataProvider.hpp
 /// \brief Declares the public market-data provider role.
 
-#include <functional>
-#include <vector>
-
-#include "data/bars.hpp"
-#include "data/ticks.hpp"
-
 namespace optionx::market_data {
 
     /// \class BaseMarketDataProvider

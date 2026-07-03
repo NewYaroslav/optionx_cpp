@@ -5,12 +5,6 @@
 /// \file BaseTradingApi.hpp
 /// \brief Declares the public trading API role for platform facades.
 
-#include <functional>
-#include <memory>
-#include <utility>
-
-#include "data/trading.hpp"
-
 namespace optionx::platforms {
 
     /// \class BaseTradingApi

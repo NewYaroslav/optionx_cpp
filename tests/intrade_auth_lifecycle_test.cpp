@@ -4,7 +4,7 @@
 #include <string>
 #include <thread>
 
-#include <optionx_cpp/platforms/IntradeBarPlatform.hpp>
+#include <optionx_cpp/platforms.hpp>
 
 namespace {
 
