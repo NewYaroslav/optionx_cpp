@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <server_http.hpp>
@@ -57,6 +58,21 @@ public:
 
 class UnsupportedEndpointConfig final : public optionx::IEndpointConfig {
 };
+
+SingleTick make_market_data_tick(const std::string& symbol, double bid, double ask) {
+    SingleTick tick;
+    tick.symbol = symbol;
+    tick.provider = to_str(PlatformType::INTRADE_BAR);
+    tick.price_digits = price_digits_for_symbol(symbol);
+    tick.volume_digits = 0;
+    tick.tick.bid = bid;
+    tick.tick.ask = ask;
+    tick.tick.time_ms = 1000;
+    tick.tick.received_ms = 1001;
+    tick.set_flag(TickStatusFlags::INITIALIZED);
+    tick.set_flag(TickStatusFlags::REALTIME);
+    return tick;
+}
 
 using TradeHistoryHttpServer = SimpleWeb::Server<SimpleWeb::HTTP>;
 
@@ -529,6 +545,109 @@ TEST(IntradeBarApiResponses, IntradeBarPlatformExposesEndpointTradingAndMarketDa
     EXPECT_FALSE(market_data_provider->fetch_bar_history(BarHistoryRequest{}, nullptr));
     EXPECT_FALSE(endpoint->configure(std::make_unique<UnsupportedEndpointConfig>()));
     EXPECT_TRUE(endpoint->configure(std::make_unique<AuthData>()));
+
+    platform.shutdown();
+}
+
+TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionRoutesMatchingPriceEvents) {
+    IntradeBarPlatform platform;
+    std::vector<SingleTick> delivered_ticks;
+    int tick_callback_count = 0;
+    market_data::MarketDataSubscriptionResult subscription_result;
+
+    platform.on_tick_data() =
+        [&delivered_ticks, &tick_callback_count](const std::vector<SingleTick>& ticks) {
+            delivered_ticks = ticks;
+            ++tick_callback_count;
+        };
+
+    const bool accepted = platform.subscribe_ticks(
+        market_data::MarketDataSubscriptionRequest::ticks(
+            "EUR/USD",
+            market_data::MarketDataTransport::POLLING),
+        [&subscription_result](market_data::MarketDataSubscriptionResult result) {
+            subscription_result = std::move(result);
+        });
+
+    EXPECT_TRUE(accepted);
+    ASSERT_TRUE(subscription_result);
+    EXPECT_EQ(subscription_result.status, market_data::MarketDataSubscriptionStatus::SUBSCRIBED);
+    EXPECT_TRUE(subscription_result.subscription.valid());
+    EXPECT_EQ(subscription_result.subscription.symbol, "EURUSD");
+    EXPECT_EQ(subscription_result.subscription.stream_type, market_data::MarketDataStreamType::TICKS);
+
+    std::vector<SingleTick> event_ticks = {
+        make_market_data_tick("EURUSD", 1.0, 1.1),
+        make_market_data_tick("BTCUSDT", 60000.0, 60001.0)
+    };
+
+    platform.event_bus().notify_async(
+        std::make_unique<events::PriceUpdateEvent>(std::move(event_ticks)));
+    platform.event_bus().process();
+
+    ASSERT_EQ(tick_callback_count, 1);
+    ASSERT_EQ(delivered_ticks.size(), 1u);
+    EXPECT_EQ(delivered_ticks[0].symbol, "EURUSD");
+
+    platform.shutdown();
+}
+
+TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionStopsAfterUnsubscribe) {
+    IntradeBarPlatform platform;
+    int tick_callback_count = 0;
+    market_data::MarketDataSubscriptionResult subscription_result;
+    market_data::MarketDataSubscriptionResult unsubscribe_result;
+
+    platform.on_tick_data() =
+        [&tick_callback_count](const std::vector<SingleTick>& ticks) {
+            if (!ticks.empty()) {
+                ++tick_callback_count;
+            }
+        };
+
+    ASSERT_TRUE(platform.subscribe_ticks(
+        market_data::MarketDataSubscriptionRequest::ticks("BTC/USD"),
+        [&subscription_result](market_data::MarketDataSubscriptionResult result) {
+            subscription_result = std::move(result);
+        }));
+
+    EXPECT_TRUE(platform.unsubscribe(
+        subscription_result.subscription,
+        [&unsubscribe_result](market_data::MarketDataSubscriptionResult result) {
+            unsubscribe_result = std::move(result);
+        }));
+
+    EXPECT_TRUE(unsubscribe_result);
+    EXPECT_EQ(unsubscribe_result.status, market_data::MarketDataSubscriptionStatus::UNSUBSCRIBED);
+
+    std::vector<SingleTick> event_ticks = {
+        make_market_data_tick("BTCUSDT", 60000.0, 60001.0)
+    };
+
+    platform.event_bus().notify_async(
+        std::make_unique<events::PriceUpdateEvent>(std::move(event_ticks)));
+    platform.event_bus().process();
+
+    EXPECT_EQ(tick_callback_count, 0);
+
+    platform.shutdown();
+}
+
+TEST(IntradeBarApiResponses, IntradeBarBarSubscriptionsReportUnsupportedTypedResult) {
+    IntradeBarPlatform platform;
+    market_data::MarketDataSubscriptionResult result;
+
+    const bool accepted = platform.subscribe_bars(
+        market_data::MarketDataSubscriptionRequest::bars("EUR/USD", 60),
+        [&result](market_data::MarketDataSubscriptionResult subscription_result) {
+            result = std::move(subscription_result);
+        });
+
+    EXPECT_FALSE(accepted);
+    EXPECT_FALSE(result);
+    EXPECT_EQ(result.status, market_data::MarketDataSubscriptionStatus::UNSUPPORTED);
+    EXPECT_EQ(result.subscription.symbol, "EURUSD");
+    EXPECT_EQ(result.subscription.stream_type, market_data::MarketDataStreamType::BARS);
 
     platform.shutdown();
 }
