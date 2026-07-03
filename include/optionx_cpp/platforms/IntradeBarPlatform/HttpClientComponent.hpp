@@ -17,8 +17,16 @@ namespace optionx::platforms::intrade_bar {
         ACCOUNT_INFO,           ///< The limit for account information requests.
         ACCOUNT_SETTINGS,       ///< The limit for account type or currency change requests.
         TICK_DATA,              ///< The limit for tick data requests.
+        FX_BAR_HISTORY,         ///< The limit for Intrade FX bar-history requests.
+        BTC_BAR_HISTORY,        ///< The limit for Binance BTCUSDT bar-history requests.
         COUNT                   ///< The total number of rate limit types.
     };
+
+    /// \brief Conservative throttle for the Intrade /fxhis history endpoint.
+    inline constexpr uint32_t FX_BAR_HISTORY_REQUESTS_PER_SECOND = 1;
+
+    /// \brief Conservative throttle for Binance kline history requests.
+    inline constexpr uint32_t BTC_BAR_HISTORY_REQUESTS_PER_SECOND = 1;
 
     /// \class HttpClientComponent
     /// \brief Handles HTTP requests and manages rate limits for the Intrade Bar platform.
@@ -37,6 +45,12 @@ namespace optionx::platforms::intrade_bar {
             set_rate_limit_rpm(RateLimitType::ACCOUNT_INFO, 6);
             set_rate_limit_rpm(RateLimitType::ACCOUNT_SETTINGS, 12);
             set_rate_limit_rps(RateLimitType::TICK_DATA, 1);
+            set_rate_limit_rps(
+                RateLimitType::FX_BAR_HISTORY,
+                FX_BAR_HISTORY_REQUESTS_PER_SECOND);
+            set_rate_limit_rps(
+                RateLimitType::BTC_BAR_HISTORY,
+                BTC_BAR_HISTORY_REQUESTS_PER_SECOND);
 			get_http_client().assign_rate_limit_id(get_rate_limit(RateLimitType::GENERAL));
             platform.register_component(this);
         }

@@ -152,6 +152,7 @@ namespace optionx::platforms::intrade_bar {
     using SettingsSwitchResult = ApiResult<SettingsSwitch>;
     using ActiveTradesSnapshotResult = ApiResult<ActiveTradesSnapshot>;
     using PriceSnapshotResult = ApiResult<PriceSnapshot>;
+    using BarHistoryApiResult = ApiResult<BarSequence>;
     using TradeOpenResult = ApiResult<TradeOpenInfo>;
     using TradeCheckResult = ApiResult<TradeCheckInfo>;
     using TradeHistoryApiResult = ApiResult<TradeHistory>;

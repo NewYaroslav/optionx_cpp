@@ -105,6 +105,30 @@ namespace optionx::platforms {
                 std::move(callback));
         }
 
+        /// \brief Requests historical Intrade Bar candle data.
+        /// \param request Symbol, timeframe, range, and preferred price source.
+        /// \param callback Callback receiving parsed bars or a failure reason.
+        /// \return True if the history request was accepted for processing; false otherwise.
+        bool fetch_candle_data(
+                const BarHistoryRequest& request,
+                bar_history_callback_t callback) override {
+            if (!callback) return false;
+            m_request_manager.request_bar_history_result(
+                request,
+                [callback = std::move(callback)](intrade_bar::BarHistoryApiResult result) {
+                    if (result) {
+                        callback(BarHistoryResult::ok(
+                            std::move(result.value),
+                            result.status_code));
+                        return;
+                    }
+                    callback(BarHistoryResult::fail(
+                        std::move(result.error_message),
+                        result.status_code));
+                });
+            return true;
+        }
+
         /// \brief Returns the platform-level trade result callback.
         /// \return Mutable callback reference from the trade execution component.
         trade_result_callback_t& on_trade_result() override {

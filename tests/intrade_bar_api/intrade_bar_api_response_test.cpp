@@ -1,11 +1,16 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <limits>
 #include <memory>
+#include <mutex>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include <server_http.hpp>
 
@@ -165,6 +170,97 @@ struct CombinedHistoryTestResult {
     bool callback_received = false;
 };
 
+struct BarHistoryTestResult {
+    BarHistoryApiResult result;
+    int callback_count = 0;
+    bool callback_received = false;
+};
+
+struct LocalBarHistoryServer {
+    explicit LocalBarHistoryServer(std::vector<std::string> response_bodies)
+        : bodies(std::move(response_bodies)) {}
+
+    ~LocalBarHistoryServer() {
+        stop();
+    }
+
+    bool start() {
+        server.config.address = "127.0.0.1";
+        server.config.port = 0;
+
+        server.resource["^/health$"]["GET"] = [](
+                std::shared_ptr<TradeHistoryHttpServer::Response> response,
+                std::shared_ptr<TradeHistoryHttpServer::Request>) {
+            response->write(SimpleWeb::StatusCode::success_ok, "ok");
+        };
+
+        server.resource["^/fxhis/?$"]["GET"] = [this](
+                std::shared_ptr<TradeHistoryHttpServer::Response> response,
+                std::shared_ptr<TradeHistoryHttpServer::Request> request) {
+            const auto index = fxhis_requests.fetch_add(1);
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                queries.push_back(request->query_string);
+            }
+
+            const auto body_index =
+                static_cast<std::size_t>(std::min<int>(
+                    index,
+                    static_cast<int>(bodies.size()) - 1));
+            response->write(SimpleWeb::StatusCode::success_ok, bodies[body_index]);
+        };
+
+        thread = std::thread([this]() {
+            server.start();
+        });
+
+        if (!wait_until_ready()) {
+            stop();
+            return false;
+        }
+        return true;
+    }
+
+    void stop() {
+        server.stop();
+        if (thread.joinable()) thread.join();
+    }
+
+    std::string host() const {
+        return "http://127.0.0.1:" + std::to_string(server.bound_port());
+    }
+
+    bool wait_until_ready() const {
+        for (int i = 0; i < 100; ++i) {
+            if (server.bound_port() == 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                continue;
+            }
+
+            try {
+                kurlyk::HttpClient client(host());
+                client.set_timeout(1);
+                client.set_connect_timeout(1);
+                auto future = client.get("/health", {}, {});
+                if (future.wait_for(std::chrono::seconds(1)) == std::future_status::ready) {
+                    auto response = future.get();
+                    if (response && response->status_code == 200) return true;
+                }
+            } catch (...) {
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        return false;
+    }
+
+    BoundPortHttpServer server;
+    std::thread thread;
+    std::vector<std::string> bodies;
+    std::atomic<int> fxhis_requests{0};
+    mutable std::mutex mutex;
+    std::vector<std::string> queries;
+};
+
 std::string valid_trade_history_csv() {
     return
         "id;Type;Asset;Direction;Open;Close;Open quote;Close quote;Amount;Result\n"
@@ -184,6 +280,29 @@ std::string empty_trade_history_html() {
             </div>
         </div>
     )HTML";
+}
+
+std::string fxhis_response(std::int64_t timestamp, double bid_open = 0.56880) {
+    const double bid_close = bid_open - 0.00005;
+    const double bid_high = bid_open + 0.00010;
+    const double bid_low = bid_open - 0.00011;
+    const double ask_open = bid_open + 0.00003;
+    const double ask_close = bid_close + 0.00001;
+    const double ask_high = bid_high + 0.00003;
+    const double ask_low = bid_low + 0.00003;
+
+    std::ostringstream out;
+    out << R"({"response":{"error":"","executed":true},"instrument_id":"NZD\/USD","period_id":"m1","candles":[[)"
+        << timestamp << ','
+        << bid_open << ','
+        << bid_close << ','
+        << bid_high << ','
+        << bid_low << ','
+        << ask_open << ','
+        << ask_close << ','
+        << ask_high << ','
+        << ask_low << ",104]]}";
+    return out.str();
 }
 
 CombinedHistoryTestResult request_trade_history(
@@ -212,6 +331,49 @@ CombinedHistoryTestResult request_trade_history(
         account_type,
         [&call, &callback_count](TradeHistoryApiResult history_result) {
             call.result = std::move(history_result);
+            ++callback_count;
+        });
+
+    for (int i = 0; i < 500; ++i) {
+        http_client.process();
+        if (callback_count.load() != 0) {
+            call.callback_received = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    for (int i = 0; i < 20; ++i) {
+        http_client.process();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    call.callback_count = callback_count.load();
+    platform.shutdown();
+    return call;
+}
+
+BarHistoryTestResult request_bar_history(
+        LocalBarHistoryServer& server,
+        BarHistoryRequest request) {
+    TestPlatform platform;
+    HttpClientComponent http_client(platform);
+    RequestManager request_manager(platform, http_client);
+
+    auto auth_data = std::make_shared<AuthData>();
+    auth_data->host = server.host();
+
+    events::AuthDataEvent auth_event(auth_data);
+    request_manager.on_event(&auth_event);
+    http_client.get_http_client().set_retry_attempts(0, 0);
+
+    BarHistoryTestResult call;
+    std::atomic<int> callback_count{0};
+
+    request_manager.request_bar_history_result(
+        request,
+        [&call, &callback_count](BarHistoryApiResult result) {
+            call.result = std::move(result);
             ++callback_count;
         });
 
@@ -657,6 +819,136 @@ TEST(IntradeBarApiResponses, CombinedTradeHistoryStatusPrefersFailedSource) {
     EXPECT_EQ(select_combined_trade_history_status(false, -1, false, -2), -1);
     EXPECT_EQ(select_combined_trade_history_status(false, 500, false, 451), 500);
     EXPECT_EQ(select_combined_trade_history_status(true, 200, true, 200), 200);
+}
+
+TEST(IntradeBarApiResponses, ParsesFxHisBidAskAndMidBars) {
+    BarHistoryRequest request("NZDUSD", 60, 1782980700, 1782980700);
+    request.price_source = BarPriceSource::MID;
+
+    const auto mid_sequence = parse_fxhis_bar_history(
+        fxhis_response(1782980700),
+        request);
+
+    ASSERT_EQ(mid_sequence.bars.size(), 1u);
+    EXPECT_EQ(mid_sequence.symbol, "NZDUSD");
+    EXPECT_EQ(mid_sequence.provider, to_str(PlatformType::INTRADE_BAR));
+    EXPECT_EQ(mid_sequence.price_source, BarPriceSource::MID);
+    EXPECT_EQ(mid_sequence.bars[0].time_ms, 1782980700000ull);
+    EXPECT_DOUBLE_EQ(mid_sequence.bars[0].open, (0.56880 + 0.56883) / 2.0);
+    EXPECT_DOUBLE_EQ(mid_sequence.bars[0].high, (0.56890 + 0.56893) / 2.0);
+    EXPECT_DOUBLE_EQ(mid_sequence.bars[0].low, (0.56869 + 0.56872) / 2.0);
+    EXPECT_DOUBLE_EQ(mid_sequence.bars[0].close, (0.56875 + 0.56876) / 2.0);
+    EXPECT_DOUBLE_EQ(mid_sequence.bars[0].volume, 104.0);
+
+    request.price_source = BarPriceSource::BID;
+    const auto bid_sequence = parse_fxhis_bar_history(
+        fxhis_response(1782980700),
+        request);
+    ASSERT_EQ(bid_sequence.bars.size(), 1u);
+    EXPECT_EQ(bid_sequence.price_source, BarPriceSource::BID);
+    EXPECT_DOUBLE_EQ(bid_sequence.bars[0].open, 0.56880);
+    EXPECT_DOUBLE_EQ(bid_sequence.bars[0].high, 0.56890);
+    EXPECT_DOUBLE_EQ(bid_sequence.bars[0].low, 0.56869);
+    EXPECT_DOUBLE_EQ(bid_sequence.bars[0].close, 0.56875);
+
+    request.price_source = BarPriceSource::ASK;
+    const auto ask_sequence = parse_fxhis_bar_history(
+        fxhis_response(1782980700),
+        request);
+    ASSERT_EQ(ask_sequence.bars.size(), 1u);
+    EXPECT_EQ(ask_sequence.price_source, BarPriceSource::ASK);
+    EXPECT_DOUBLE_EQ(ask_sequence.bars[0].open, 0.56883);
+    EXPECT_DOUBLE_EQ(ask_sequence.bars[0].high, 0.56893);
+    EXPECT_DOUBLE_EQ(ask_sequence.bars[0].low, 0.56872);
+    EXPECT_DOUBLE_EQ(ask_sequence.bars[0].close, 0.56876);
+}
+
+TEST(IntradeBarApiResponses, RejectsFxHisLastPriceSource) {
+    BarHistoryRequest request("NZDUSD", 60, 1782980700, 1782980700);
+    request.price_source = BarPriceSource::LAST;
+
+    EXPECT_THROW(
+        parse_fxhis_bar_history(fxhis_response(1782980700), request),
+        std::runtime_error);
+}
+
+TEST(IntradeBarApiResponses, ParsesBinanceKlinesAsLastPriceBars) {
+    const std::string payload =
+        R"([[1783016040000,"61521.34","61530.00","61500.00","61510.00","0.25",1783016099999]])";
+
+    BarHistoryRequest request("BTCUSDT", 60, 1783016040, 1783016040);
+    request.price_source = BarPriceSource::MID;
+
+    const auto sequence = parse_binance_klines_bar_history(payload, request);
+
+    ASSERT_EQ(sequence.bars.size(), 1u);
+    EXPECT_EQ(sequence.symbol, "BTCUSDT");
+    EXPECT_EQ(sequence.price_source, BarPriceSource::LAST);
+    EXPECT_EQ(sequence.bars[0].time_ms, 1783016040000ull);
+    EXPECT_DOUBLE_EQ(sequence.bars[0].open, 61521.34);
+    EXPECT_DOUBLE_EQ(sequence.bars[0].high, 61530.00);
+    EXPECT_DOUBLE_EQ(sequence.bars[0].low, 61500.00);
+    EXPECT_DOUBLE_EQ(sequence.bars[0].close, 61510.00);
+    EXPECT_DOUBLE_EQ(sequence.bars[0].volume, 0.25);
+}
+
+TEST(IntradeBarApiResponses, UsesKnownBarHistoryStartLimits) {
+    EXPECT_EQ(minimum_bar_history_from_ts("EUR/USD"), 1007337600);
+    EXPECT_EQ(minimum_bar_history_from_ts("NZDUSD"), 1007424000);
+    EXPECT_EQ(minimum_bar_history_from_ts("AUDCAD"), 1059523200);
+    EXPECT_EQ(minimum_bar_history_from_ts("BTCUSDT"), 1502942400);
+    EXPECT_EQ(minimum_bar_history_from_ts("UNKNOWN"), 0);
+}
+
+TEST(IntradeBarApiResponses, PlatformBarHistoryResultPreservesFailureReason) {
+    IntradeBarPlatform platform;
+    BarHistoryResult result;
+    int callback_count = 0;
+
+    EXPECT_TRUE(platform.fetch_candle_data(
+        BarHistoryRequest("", time_shield::SEC_PER_MIN, 1000, 2000),
+        [&result, &callback_count](BarHistoryResult history_result) {
+            result = std::move(history_result);
+            ++callback_count;
+        }));
+
+    platform.shutdown();
+
+    ASSERT_EQ(callback_count, 1);
+    EXPECT_FALSE(result);
+    EXPECT_EQ(result.status_code, BarHistoryResult::NO_RESPONSE_STATUS);
+    EXPECT_NE(result.error_desc.find("symbol"), std::string::npos);
+    EXPECT_TRUE(result.sequence.bars.empty());
+}
+
+TEST(IntradeBarApiResponses, SplitsFxHisBarHistoryIntoSequentialRequests) {
+    const std::int64_t first_ts = 1782980700;
+    const std::int64_t second_ts =
+        first_ts + FX_HISTORY_MAX_BARS_PER_REQUEST * time_shield::SEC_PER_MIN;
+
+    LocalBarHistoryServer server({
+        fxhis_response(first_ts, 0.56880),
+        fxhis_response(second_ts, 0.57000)
+    });
+    ASSERT_TRUE(server.start());
+
+    const BarHistoryRequest request(
+        "NZD/USD",
+        time_shield::SEC_PER_MIN,
+        first_ts,
+        second_ts);
+
+    const auto call = request_bar_history(server, request);
+
+    ASSERT_TRUE(call.callback_received);
+    ASSERT_EQ(call.callback_count, 1);
+    ASSERT_TRUE(call.result);
+    EXPECT_EQ(server.fxhis_requests.load(), 2);
+    ASSERT_EQ(call.result.value.bars.size(), 2u);
+    EXPECT_EQ(call.result.value.symbol, "NZDUSD");
+    EXPECT_EQ(call.result.value.price_source, BarPriceSource::MID);
+    EXPECT_EQ(call.result.value.bars[0].time_ms, time_shield::sec_to_ms(first_ts));
+    EXPECT_EQ(call.result.value.bars[1].time_ms, time_shield::sec_to_ms(second_ts));
 }
 
 TEST(IntradeBarApiResponses, CombinedTradeHistoryRequestReportsHtmlFailureStatus) {
