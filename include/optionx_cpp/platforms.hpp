@@ -9,9 +9,12 @@
 
 #include "utils.hpp"
 #include "data.hpp"
+#include "endpoint.hpp"
+#include "market_data.hpp"
 #include "storages.hpp"
 #include "components.hpp"
 #include "platforms/common/ApiResult.hpp"
+#include "platforms/common/BaseTradingApi.hpp"
 #include "platforms/common/BaseTradingPlatform.hpp"
 #include "platforms/IntradeBarPlatform.hpp"
 //#include "platforms/TradeUpPlatform.hpp"

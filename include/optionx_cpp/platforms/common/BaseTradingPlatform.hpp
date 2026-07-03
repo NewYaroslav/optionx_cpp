@@ -5,20 +5,15 @@
 /// \file BaseTradingPlatform.hpp
 /// \brief Base class for interacting with trading platforms.
 
+#include "endpoint.hpp"
+#include "BaseTradingApi.hpp"
+
 namespace optionx::platforms {
 
     /// \class BaseTradingPlatform
-    /// \brief Base class for interacting with trading platforms, handling trades, market data, and account management.
-    class BaseTradingPlatform {
+    /// \brief Base endpoint facade for trading platforms, account data, lifecycle, and connection state.
+    class BaseTradingPlatform : public BaseEndpoint, public BaseTradingApi {
     public:
-        using trade_result_callback_t = std::function<void(std::unique_ptr<TradeRequest>, std::unique_ptr<TradeResult>)>;
-        using trade_result_check_callback_t = std::function<void(std::unique_ptr<TradeResult>)>;
-        using trade_history_callback_t = std::function<void(TradeHistoryResult)>;
-        using bar_history_callback_t = std::function<void(BarHistoryResult)>;
-        using trade_id_provider_t = std::function<std::uint32_t()>;
-        using bars_callback_t  = std::function<void(const std::vector<SingleBar>&)>;
-        using ticks_callback_t = std::function<void(const std::vector<SingleTick>&)>;
-
         BaseTradingPlatform(std::shared_ptr<BaseAccountInfoData> account_info)
             : m_account_info(std::move(account_info)),
               m_account_provider(m_account_info),
@@ -30,35 +25,22 @@ namespace optionx::platforms {
             shutdown();
         }
 
-        /// \brief Returns a reference to the trade result callback.
-        /// \return Reference to the stored trade result callback, or a null function if not set.
-        virtual trade_result_callback_t& on_trade_result() {
-            static trade_result_callback_t null_callback;
-            return null_callback;
-        }
-
-        /// \brief Returns provider used by concrete platforms to initialize TradeRequest::trade_id.
-        /// \return Mutable provider callback, or a null provider for base platforms.
-        virtual trade_id_provider_t& on_trade_id() {
-            static trade_id_provider_t null_provider;
-            return null_provider;
-        }
-
         /// \brief Returns a reference to the account info callback.
         virtual account_info_callback_t& on_account_info() {
             return m_account_info_handler.on_account_info();
         }
 
-        /// \brief Returns a reference to the candle data callback.
-        virtual bars_callback_t& on_candle_data() {
-            static bars_callback_t null_callback;
-            return null_callback;
-        }
+        /// \brief Configures the endpoint with a supported platform configuration DTO.
+        /// \param config Endpoint configuration object.
+        /// \return True if the configuration was accepted; false otherwise.
+        bool configure(std::unique_ptr<IEndpointConfig> config) override {
+            if (!config) return false;
 
-        /// \brief Returns a reference to the tick data callback.
-        virtual ticks_callback_t& on_tick_data() {
-            static ticks_callback_t null_callback;
-            return null_callback;
+            auto* auth_data = dynamic_cast<IAuthData*>(config.get());
+            if (!auth_data) return false;
+
+            config.release();
+            return configure_auth(std::unique_ptr<IAuthData>(auth_data));
         }
 
         /// \brief Sets the authorization data for the platform.
@@ -70,60 +52,25 @@ namespace optionx::platforms {
             return true;
         }
 
-        /// \brief Places a trade based on the specified trade request.
-        /// \param trade_request Trade request details.
-        /// \return True if the trade was placed successfully; false otherwise.
-        virtual bool place_trade(std::unique_ptr<TradeRequest> trade_request) { return false; };
-
-        /// \brief Requests the final broker-side result for a previously opened trade.
-        /// \param query Broker-side trade identity and retry settings.
-        /// \param result Partially filled result object to update with broker data.
-        /// \param callback Callback receiving the updated result.
-        /// \return True if the request was accepted for processing; false otherwise.
-        virtual bool fetch_trade_result(
-            TradeResultQuery query,
-            std::unique_ptr<TradeResult> result,
-            trade_result_check_callback_t callback) { return false; };
-
-        /// \brief Requests closed trade history for the account.
-        /// \param request Trade history range and timestamp selection.
-        /// \param callback Callback function to receive the history result.
-        virtual bool fetch_trade_history(
-            const TradeHistoryRequest& request,
-            trade_history_callback_t callback) { return false; };
-
-        /// \brief Requests all available closed trade history for the current account.
-        /// \param callback Callback function to receive the history result.
-        virtual bool fetch_trade_history(trade_history_callback_t callback) {
-            return fetch_trade_history(TradeHistoryRequest::all(), std::move(callback));
-        };
-
-        /// \brief Requests historical candle data for a specified time range.
-        /// \param request Historical candle data request parameters.
-        /// \param callback Callback function to receive bars or a failure reason.
-        virtual bool fetch_candle_data(
-            const BarHistoryRequest& request,
-            bar_history_callback_t callback) { return false; };
-
         /// \brief Requests the list of available trading symbols.
         /// \param callback Callback function to receive the symbol list.
         virtual bool fetch_symbol_list(std::function<void(const std::vector<SymbolInfo>&)> callback) { return false; };
 
         /// \brief Initiates a connection to the trading platform.
         /// \param callback Callback to handle connection result with error code.
-        virtual void connect(connection_callback_t callback) {
+        void connect(connection_callback_t callback) override {
             m_event_bus.notify_async(std::make_unique<events::ConnectRequestEvent>(std::move(callback)));
         }
 
         /// \brief Disconnects from the trading platform.
         /// \param callback Callback to handle completion of the disconnection process.
-        virtual void disconnect(connection_callback_t callback) {
+        void disconnect(connection_callback_t callback) override {
             m_event_bus.notify_async(std::make_unique<events::DisconnectRequestEvent>(std::move(callback)));
         }
 
         /// \brief Checks if the platform is connected.
         /// \return True if connected, otherwise false.
-        virtual bool is_connected() const {
+        bool is_connected() const override {
             return m_account_provider.get_info<bool>(AccountInfoType::CONNECTION_STATUS);
         }
 
@@ -173,7 +120,7 @@ namespace optionx::platforms {
         ///          Repeated calls before shutdown are ignored to avoid duplicate component initialization
         ///          and duplicate processing loops.
         /// \param start_worker_thread  Whether to use an internal background thread for updates.
-        void run(bool start_worker_thread  = true) {
+        void run(bool start_worker_thread  = true) override {
             std::lock_guard<std::mutex> lock(m_lifecycle_mutex);
 
             if (m_stopping.load(std::memory_order_acquire) ||
@@ -235,13 +182,13 @@ namespace optionx::platforms {
         
         /// \brief Manually processes pending tasks and events.
         /// \details Should be called periodically if internal threading is disabled (run(false)).
-        void process() {
+        void process() override {
             m_task_manager.process();
         }
 
         /// \brief Shuts down the platform, stopping the event loop and tasks.
         /// \details Always calls shutdown() on TaskManager, regardless of internal thread usage.
-        void shutdown() noexcept {
+        void shutdown() noexcept override {
             {
                 std::lock_guard<std::mutex> lock(m_lifecycle_mutex);
 

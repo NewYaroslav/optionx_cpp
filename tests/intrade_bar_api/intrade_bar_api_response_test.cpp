@@ -55,6 +55,9 @@ public:
     }
 };
 
+class UnsupportedEndpointConfig final : public optionx::IEndpointConfig {
+};
+
 using TradeHistoryHttpServer = SimpleWeb::Server<SimpleWeb::HTTP>;
 
 class BoundPortHttpServer : public TradeHistoryHttpServer {
@@ -514,6 +517,22 @@ TEST(IntradeBarApiResponses, ApiResultMarksMissingHttpStatusExplicitly) {
     EXPECT_FALSE(failure.has_http_status());
 }
 
+TEST(IntradeBarApiResponses, IntradeBarPlatformExposesEndpointTradingAndMarketDataRoles) {
+    IntradeBarPlatform platform;
+
+    BaseEndpoint* endpoint = &platform;
+    BaseTradingApi* trading_api = &platform;
+    market_data::BaseMarketDataProvider* market_data_provider = &platform;
+
+    EXPECT_FALSE(endpoint->is_connected());
+    EXPECT_NE(trading_api, nullptr);
+    EXPECT_FALSE(market_data_provider->fetch_bar_history(BarHistoryRequest{}, nullptr));
+    EXPECT_FALSE(endpoint->configure(std::make_unique<UnsupportedEndpointConfig>()));
+    EXPECT_TRUE(endpoint->configure(std::make_unique<AuthData>()));
+
+    platform.shutdown();
+}
+
 TEST(IntradeBarApiResponses, PriceDigitsMatchBrokerSymbols) {
     EXPECT_EQ(price_digits_for_symbol("BTCUSD"), 2);
     EXPECT_EQ(price_digits_for_symbol("BTCUSDT"), 2);
@@ -905,7 +924,7 @@ TEST(IntradeBarApiResponses, PlatformBarHistoryResultPreservesFailureReason) {
     BarHistoryResult result;
     int callback_count = 0;
 
-    EXPECT_TRUE(platform.fetch_candle_data(
+    EXPECT_TRUE(platform.fetch_bar_history(
         BarHistoryRequest("", time_shield::SEC_PER_MIN, 1000, 2000),
         [&result, &callback_count](BarHistoryResult history_result) {
             result = std::move(history_result);

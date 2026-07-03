@@ -9,11 +9,13 @@
 #include <functional>
 #include <list>
 
+#include "data/endpoint/IEndpointConfig.hpp"
+
 namespace optionx {
 
     /// \class IAuthData
     /// \brief Interface for handling authorization data used in API connections.
-    class IAuthData {
+    class IAuthData : public IEndpointConfig {
     public:
         IAuthData() = default;
 
