@@ -52,7 +52,7 @@ namespace optionx::platforms {
               m_active_trades_sync_manager(*this, m_request_manager, m_account_info),
               m_price_manager(*this, m_request_manager),
               m_btc_price_manager(*this),
-              m_market_data_subscriptions(*this, m_tick_data_callback, m_bar_data_callback),
+              m_market_data_subscriptions(*this, provider_id(), m_tick_data_callback, m_bar_data_callback),
               m_trade_manager(*this, m_request_manager, m_account_info) {
         }
 
@@ -140,7 +140,7 @@ namespace optionx::platforms {
 
         /// \brief Requests an Intrade Bar live tick stream subscription.
         bool subscribe_ticks(
-                market_data::MarketDataSubscriptionRequest request,
+                market_data::TickSubscriptionRequest request,
                 market_data::BaseMarketDataProvider::subscription_callback_t callback) override {
             return m_market_data_subscriptions.subscribe_ticks(
                 std::move(request),
@@ -149,7 +149,7 @@ namespace optionx::platforms {
 
         /// \brief Requests an Intrade Bar live bar stream subscription.
         bool subscribe_bars(
-                market_data::MarketDataSubscriptionRequest request,
+                market_data::BarSubscriptionRequest request,
                 market_data::BaseMarketDataProvider::subscription_callback_t callback) override {
             return m_market_data_subscriptions.subscribe_bars(
                 std::move(request),

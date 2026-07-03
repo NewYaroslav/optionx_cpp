@@ -562,7 +562,7 @@ TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionRoutesMatchingPriceEvents
         };
 
     const bool accepted = platform.subscribe_ticks(
-        market_data::MarketDataSubscriptionRequest::ticks(
+        market_data::TickSubscriptionRequest(
             "EUR/USD",
             market_data::MarketDataTransport::POLLING),
         [&subscription_result](market_data::MarketDataSubscriptionResult result) {
@@ -573,6 +573,7 @@ TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionRoutesMatchingPriceEvents
     ASSERT_TRUE(subscription_result);
     EXPECT_EQ(subscription_result.status, market_data::MarketDataSubscriptionStatus::SUBSCRIBED);
     EXPECT_TRUE(subscription_result.subscription.valid());
+    EXPECT_EQ(subscription_result.subscription.provider_id, platform.provider_id());
     EXPECT_EQ(subscription_result.subscription.symbol, "EURUSD");
     EXPECT_EQ(subscription_result.subscription.stream_type, market_data::MarketDataStreamType::TICKS);
 
@@ -606,7 +607,7 @@ TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionStopsAfterUnsubscribe) {
         };
 
     ASSERT_TRUE(platform.subscribe_ticks(
-        market_data::MarketDataSubscriptionRequest::ticks("BTC/USD"),
+        market_data::TickSubscriptionRequest("BTC/USD"),
         [&subscription_result](market_data::MarketDataSubscriptionResult result) {
             subscription_result = std::move(result);
         }));
@@ -638,7 +639,7 @@ TEST(IntradeBarApiResponses, IntradeBarBarSubscriptionsReportUnsupportedTypedRes
     market_data::MarketDataSubscriptionResult result;
 
     const bool accepted = platform.subscribe_bars(
-        market_data::MarketDataSubscriptionRequest::bars("EUR/USD", 60),
+        market_data::BarSubscriptionRequest("EUR/USD", 60),
         [&result](market_data::MarketDataSubscriptionResult subscription_result) {
             result = std::move(subscription_result);
         });

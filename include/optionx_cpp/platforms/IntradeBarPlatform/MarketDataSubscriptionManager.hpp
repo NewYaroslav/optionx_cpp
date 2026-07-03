@@ -21,9 +21,11 @@ namespace optionx::platforms::intrade_bar {
         /// \param bars_callback Bar stream data callback owned by the platform.
         MarketDataSubscriptionManager(
                 BaseTradingPlatform& platform,
+                market_data::ProviderInstanceId provider_id,
                 ticks_callback_t& ticks_callback,
                 bars_callback_t& bars_callback)
                 : BaseComponent(platform.event_bus()),
+                  m_provider_id(provider_id),
                   m_ticks_callback(ticks_callback),
                   m_bars_callback(bars_callback) {
             subscribe<events::PriceUpdateEvent>();
@@ -32,12 +34,12 @@ namespace optionx::platforms::intrade_bar {
 
         /// \brief Requests a live tick subscription.
         bool subscribe_ticks(
-                market_data::MarketDataSubscriptionRequest request,
+                market_data::TickSubscriptionRequest request,
                 subscription_callback_t callback);
 
         /// \brief Requests a live bar subscription.
         bool subscribe_bars(
-                market_data::MarketDataSubscriptionRequest request,
+                market_data::BarSubscriptionRequest request,
                 subscription_callback_t callback);
 
         /// \brief Stops a live market-data subscription.
@@ -52,16 +54,17 @@ namespace optionx::platforms::intrade_bar {
         void shutdown() override;
 
     private:
+        market_data::ProviderInstanceId m_provider_id; ///< Owning provider instance ID.
         ticks_callback_t& m_ticks_callback; ///< Platform tick data callback.
         bars_callback_t&  m_bars_callback;  ///< Platform bar data callback.
         std::unordered_map<
-            market_data::MarketDataSubscriptionId,
+            market_data::SubscriptionId,
             market_data::MarketDataSubscriptionHandle> m_tick_subscriptions; ///< Active tick subscriptions.
-        market_data::MarketDataSubscriptionId m_next_subscription_id = 1; ///< Next runtime handle ID.
+        market_data::SubscriptionId m_next_subscription_id = 1; ///< Next runtime handle ID.
         std::mutex m_mutex; ///< Protects subscription handles.
 
         /// \brief Returns the next non-zero subscription ID.
-        market_data::MarketDataSubscriptionId next_subscription_id();
+        market_data::SubscriptionId next_subscription_id();
 
         /// \brief Returns true when any active tick subscription matches the symbol.
         bool has_tick_subscription_no_lock(const std::string& symbol) const;
@@ -76,9 +79,8 @@ namespace optionx::platforms::intrade_bar {
     };
 
     inline bool MarketDataSubscriptionManager::subscribe_ticks(
-            market_data::MarketDataSubscriptionRequest request,
+            market_data::TickSubscriptionRequest request,
             subscription_callback_t callback) {
-        request.stream_type = market_data::MarketDataStreamType::TICKS;
         request.symbol = normalize_symbol_name(std::move(request.symbol));
         if (!request.valid()) {
             dispatch_subscription_result(
@@ -93,7 +95,8 @@ namespace optionx::platforms::intrade_bar {
         market_data::MarketDataSubscriptionHandle handle;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            handle = market_data::MarketDataSubscriptionHandle::from_request(
+            handle = market_data::MarketDataSubscriptionHandle::from_tick_request(
+                m_provider_id,
                 next_subscription_id(),
                 request);
             m_tick_subscriptions[handle.id] = handle;
@@ -106,9 +109,8 @@ namespace optionx::platforms::intrade_bar {
     }
 
     inline bool MarketDataSubscriptionManager::subscribe_bars(
-            market_data::MarketDataSubscriptionRequest request,
+            market_data::BarSubscriptionRequest request,
             subscription_callback_t callback) {
-        request.stream_type = market_data::MarketDataStreamType::BARS;
         request.symbol = normalize_symbol_name(std::move(request.symbol));
         if (!request.valid()) {
             dispatch_subscription_result(
@@ -139,6 +141,15 @@ namespace optionx::platforms::intrade_bar {
                     std::move(subscription),
                     market_data::MarketDataSubscriptionStatus::INVALID_REQUEST,
                     "Invalid Intrade Bar market-data subscription handle."));
+            return false;
+        }
+        if (subscription.provider_id != m_provider_id) {
+            dispatch_subscription_result(
+                std::move(callback),
+                market_data::MarketDataSubscriptionResult::failed(
+                    std::move(subscription),
+                    market_data::MarketDataSubscriptionStatus::WRONG_PROVIDER,
+                    "Intrade Bar market-data subscription handle belongs to another provider."));
             return false;
         }
 
@@ -175,11 +186,11 @@ namespace optionx::platforms::intrade_bar {
         m_tick_subscriptions.clear();
     }
 
-    inline market_data::MarketDataSubscriptionId
+    inline market_data::SubscriptionId
     MarketDataSubscriptionManager::next_subscription_id() {
         const auto id = m_next_subscription_id;
         ++m_next_subscription_id;
-        if (m_next_subscription_id == market_data::kInvalidMarketDataSubscriptionId) {
+        if (m_next_subscription_id == market_data::kInvalidSubscriptionId) {
             m_next_subscription_id = 1;
         }
         return id;
