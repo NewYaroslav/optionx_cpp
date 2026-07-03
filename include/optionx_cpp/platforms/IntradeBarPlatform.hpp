@@ -22,6 +22,7 @@
 #include "IntradeBarPlatform/ActiveTradesSyncManager.hpp"
 #include "IntradeBarPlatform/PriceManager.hpp"
 #include "IntradeBarPlatform/BtcPriceManager.hpp"
+#include "IntradeBarPlatform/FxPriceWebSocketManager.hpp"
 #include "IntradeBarPlatform/MarketDataSubscriptionManager.hpp"
 #include "IntradeBarPlatform/TradeManager.hpp"
 
@@ -52,7 +53,13 @@ namespace optionx::platforms {
               m_active_trades_sync_manager(*this, m_request_manager, m_account_info),
               m_price_manager(*this, m_request_manager),
               m_btc_price_manager(*this),
-              m_market_data_subscriptions(*this, provider_id(), m_tick_data_callback, m_bar_data_callback),
+              m_fx_price_websocket_manager(*this),
+              m_market_data_subscriptions(
+                  *this,
+                  provider_id(),
+                  m_tick_data_callback,
+                  m_bar_data_callback,
+                  &m_fx_price_websocket_manager),
               m_trade_manager(*this, m_request_manager, m_account_info) {
         }
 
@@ -192,6 +199,7 @@ namespace optionx::platforms {
         intrade_bar::ActiveTradesSyncManager m_active_trades_sync_manager; ///< Syncs broker active trade snapshots.
         intrade_bar::PriceManager         m_price_manager;    ///< Retrieves and updates price data.
         intrade_bar::BtcPriceManager      m_btc_price_manager;///< Retrieves BTC/USDT quotes from the websocket stream.
+        intrade_bar::FxPriceWebSocketManager m_fx_price_websocket_manager; ///< Retrieves FX quotes from websocket streams.
         market_data::BaseMarketDataProvider::bars_callback_t m_bar_data_callback; ///< Live bar data callback.
         market_data::BaseMarketDataProvider::ticks_callback_t m_tick_data_callback; ///< Live tick data callback.
         intrade_bar::MarketDataSubscriptionManager m_market_data_subscriptions; ///< Routes live market-data streams.

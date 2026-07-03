@@ -23,11 +23,13 @@ namespace optionx::platforms::intrade_bar {
                 BaseTradingPlatform& platform,
                 market_data::ProviderInstanceId provider_id,
                 ticks_callback_t& ticks_callback,
-                bars_callback_t& bars_callback)
+                bars_callback_t& bars_callback,
+                FxPriceWebSocketManager* fx_websocket_source = nullptr)
                 : BaseComponent(platform.event_bus()),
                   m_provider_id(provider_id),
                   m_ticks_callback(ticks_callback),
-                  m_bars_callback(bars_callback) {
+                  m_bars_callback(bars_callback),
+                  m_fx_websocket_source(fx_websocket_source) {
             subscribe<events::PriceUpdateEvent>();
             platform.register_component(this);
         }
@@ -57,6 +59,7 @@ namespace optionx::platforms::intrade_bar {
         market_data::ProviderInstanceId m_provider_id; ///< Owning provider instance ID.
         ticks_callback_t& m_ticks_callback; ///< Platform tick data callback.
         bars_callback_t&  m_bars_callback;  ///< Platform bar data callback.
+        FxPriceWebSocketManager* m_fx_websocket_source = nullptr; ///< Optional FX websocket source.
         std::unordered_map<
             market_data::SubscriptionId,
             market_data::MarketDataSubscriptionHandle> m_tick_subscriptions; ///< Active tick subscriptions.
@@ -68,6 +71,10 @@ namespace optionx::platforms::intrade_bar {
 
         /// \brief Returns true when any active tick subscription matches the symbol.
         bool has_tick_subscription_no_lock(const std::string& symbol) const;
+
+        /// \brief Returns true when a subscription should activate the FX websocket source.
+        static bool uses_fx_websocket_source(
+                const market_data::MarketDataSubscriptionHandle& subscription);
 
         /// \brief Delivers a subscription operation result when a callback was supplied.
         static void dispatch_subscription_result(
@@ -100,6 +107,10 @@ namespace optionx::platforms::intrade_bar {
                 next_subscription_id(),
                 request);
             m_tick_subscriptions[handle.id] = handle;
+        }
+
+        if (m_fx_websocket_source && uses_fx_websocket_source(handle)) {
+            m_fx_websocket_source->add_symbol_subscription(handle.symbol);
         }
 
         dispatch_subscription_result(
@@ -154,9 +165,15 @@ namespace optionx::platforms::intrade_bar {
         }
 
         bool removed = false;
+        market_data::MarketDataSubscriptionHandle removed_subscription;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            removed = m_tick_subscriptions.erase(subscription.id) > 0;
+            auto it = m_tick_subscriptions.find(subscription.id);
+            if (it != m_tick_subscriptions.end()) {
+                removed_subscription = it->second;
+                m_tick_subscriptions.erase(it);
+                removed = true;
+            }
         }
 
         if (!removed) {
@@ -167,6 +184,10 @@ namespace optionx::platforms::intrade_bar {
                     market_data::MarketDataSubscriptionStatus::FAILED,
                     "Intrade Bar market-data subscription is not active."));
             return false;
+        }
+
+        if (m_fx_websocket_source && uses_fx_websocket_source(removed_subscription)) {
+            m_fx_websocket_source->remove_symbol_subscription(removed_subscription.symbol);
         }
 
         dispatch_subscription_result(
@@ -182,6 +203,24 @@ namespace optionx::platforms::intrade_bar {
     }
 
     inline void MarketDataSubscriptionManager::shutdown() {
+        std::vector<market_data::MarketDataSubscriptionHandle> subscriptions;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            subscriptions.reserve(m_tick_subscriptions.size());
+            for (const auto& [id, subscription] : m_tick_subscriptions) {
+                (void)id;
+                subscriptions.push_back(subscription);
+            }
+        }
+
+        if (m_fx_websocket_source) {
+            for (const auto& subscription : subscriptions) {
+                if (uses_fx_websocket_source(subscription)) {
+                    m_fx_websocket_source->remove_symbol_subscription(subscription.symbol);
+                }
+            }
+        }
+
         std::lock_guard<std::mutex> lock(m_mutex);
         m_tick_subscriptions.clear();
     }
@@ -205,6 +244,17 @@ namespace optionx::platforms::intrade_bar {
             }
         }
         return false;
+    }
+
+    inline bool MarketDataSubscriptionManager::uses_fx_websocket_source(
+            const market_data::MarketDataSubscriptionHandle& subscription) {
+        if (subscription.stream_type != market_data::MarketDataStreamType::TICKS) {
+            return false;
+        }
+        if (subscription.transport == market_data::MarketDataTransport::POLLING) {
+            return false;
+        }
+        return !is_btc_symbol(subscription.symbol);
     }
 
     inline void MarketDataSubscriptionManager::dispatch_subscription_result(

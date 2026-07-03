@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <future>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -14,6 +15,7 @@
 #include <vector>
 
 #include <server_http.hpp>
+#include <server_ws.hpp>
 
 #include <optionx_cpp/platforms.hpp>
 
@@ -75,6 +77,7 @@ SingleTick make_market_data_tick(const std::string& symbol, double bid, double a
 }
 
 using TradeHistoryHttpServer = SimpleWeb::Server<SimpleWeb::HTTP>;
+using MarketDataWsServer = SimpleWeb::SocketServer<SimpleWeb::WS>;
 
 class BoundPortHttpServer : public TradeHistoryHttpServer {
 public:
@@ -181,6 +184,71 @@ struct LocalTradeHistoryServer {
     std::string html_body;
     std::atomic<int> csv_requests{0};
     std::atomic<int> html_requests{0};
+};
+
+struct LocalFxConnectServer {
+    ~LocalFxConnectServer() {
+        stop();
+    }
+
+    bool start() {
+        server.config.address = "127.0.0.1";
+        server.config.port = 0;
+        server.config.thread_pool_size = 1;
+
+        auto& fx = server.endpoint["^/fxconnect/?$"];
+        fx.on_message = [this](
+                std::shared_ptr<MarketDataWsServer::Connection> connection,
+                std::shared_ptr<MarketDataWsServer::InMessage> message) {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                last_subscription = message->string();
+            }
+            ++subscription_count;
+            connection->send(
+                R"({"Updates":1783028728,"ask":1.10002,"bid":1.10001,"symbol":"EUR\/USD"})");
+        };
+
+        auto port_promise = std::make_shared<std::promise<unsigned short>>();
+        auto port_future = port_promise->get_future();
+        thread = std::thread([this, port_promise]() {
+            server.start([port_promise](unsigned short port) {
+                try {
+                    port_promise->set_value(port);
+                } catch (...) {
+                }
+            });
+        });
+
+        if (port_future.wait_for(std::chrono::seconds(5)) != std::future_status::ready) {
+            stop();
+            return false;
+        }
+
+        port = port_future.get();
+        return port != 0;
+    }
+
+    void stop() {
+        server.stop();
+        if (thread.joinable()) thread.join();
+    }
+
+    std::string host() const {
+        return "http://127.0.0.1:" + std::to_string(port);
+    }
+
+    std::string subscribed_symbol() const {
+        std::lock_guard<std::mutex> lock(mutex);
+        return last_subscription;
+    }
+
+    MarketDataWsServer server;
+    std::thread thread;
+    unsigned short port = 0;
+    std::atomic<int> subscription_count{0};
+    mutable std::mutex mutex;
+    std::string last_subscription;
 };
 
 struct CombinedHistoryTestResult {
@@ -682,6 +750,104 @@ TEST(IntradeBarSymbols, NormalizesBtcAliases) {
     EXPECT_TRUE(is_btc_symbol("BTC/USD"));
     EXPECT_TRUE(is_btc_symbol("btc/usd"));
     EXPECT_FALSE(is_btc_symbol("EURUSD"));
+}
+
+TEST(IntradeBarSymbols, FormatsFxConnectSymbols) {
+    EXPECT_EQ(make_fxconnect_symbol("EURUSD"), "EUR/USD");
+    EXPECT_EQ(make_fxconnect_symbol("eur/usd"), "EUR/USD");
+    EXPECT_EQ(make_fxconnect_symbol("NZD/USD"), "NZD/USD");
+    EXPECT_EQ(make_fxconnect_symbol("BTCUSD"), "");
+    EXPECT_EQ(make_fxconnect_symbol("BTCUSDT"), "");
+    EXPECT_EQ(make_fxconnect_symbol(""), "");
+}
+
+TEST(IntradeBarApiResponses, ParsesFxConnectTickMessage) {
+    const std::string message =
+        R"({"Updates":1783028728,"ask":0.56971,"bid":0.5693,"symbol":"NZD\/USD"})";
+
+    SingleTick tick;
+    ASSERT_TRUE(parse_fxconnect_tick(message, tick));
+
+    EXPECT_EQ(tick.symbol, "NZDUSD");
+    EXPECT_EQ(tick.provider, to_str(PlatformType::INTRADE_BAR));
+    EXPECT_EQ(tick.price_digits, 5u);
+    EXPECT_EQ(tick.volume_digits, 0u);
+    EXPECT_DOUBLE_EQ(tick.tick.ask, 0.56971);
+    EXPECT_DOUBLE_EQ(tick.tick.bid, 0.5693);
+    EXPECT_DOUBLE_EQ(tick.tick.volume, 0.0);
+    EXPECT_EQ(tick.tick.time_ms, 1783028728000ULL);
+    EXPECT_TRUE(tick.tick.has_flag(TickUpdateFlags::ASK_UPDATED));
+    EXPECT_TRUE(tick.tick.has_flag(TickUpdateFlags::BID_UPDATED));
+    EXPECT_FALSE(tick.tick.has_flag(TickUpdateFlags::VOLUME_UPDATED));
+    EXPECT_TRUE(tick.has_flag(TickStatusFlags::INITIALIZED));
+    EXPECT_TRUE(tick.has_flag(TickStatusFlags::REALTIME));
+}
+
+TEST(IntradeBarApiResponses, RejectsFxConnectBtcTickMessage) {
+    const std::string message =
+        R"({"Updates":1783028728,"ask":61521.35,"bid":61521.34,"symbol":"BTC\/USD"})";
+
+    SingleTick tick;
+    EXPECT_FALSE(parse_fxconnect_tick(message, tick));
+}
+
+TEST(IntradeBarApiResponses, FxWebSocketSubscriptionReceivesLocalTick) {
+    LocalFxConnectServer server;
+    ASSERT_TRUE(server.start());
+
+    IntradeBarPlatform platform;
+    std::vector<SingleTick> delivered_ticks;
+    int callback_count = 0;
+    platform.on_tick_data() =
+        [&delivered_ticks, &callback_count](const std::vector<SingleTick>& ticks) {
+            ++callback_count;
+            delivered_ticks = ticks;
+        };
+
+    auto auth = std::make_unique<AuthData>();
+    auth->set_email_password("user@example.test", "unused");
+    auth->host = server.host();
+    ASSERT_TRUE(platform.configure_auth(std::move(auth)));
+    platform.event_bus().drain();
+
+    market_data::MarketDataSubscriptionResult subscription_result;
+    const bool accepted = platform.subscribe_ticks(
+        market_data::TickSubscriptionRequest(
+            "EUR/USD",
+            market_data::MarketDataTransport::WEBSOCKET),
+        [&subscription_result](market_data::MarketDataSubscriptionResult result) {
+            subscription_result = std::move(result);
+        });
+
+    ASSERT_TRUE(accepted);
+    ASSERT_TRUE(subscription_result);
+    ASSERT_TRUE(subscription_result.subscription.valid());
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (delivered_ticks.empty() && std::chrono::steady_clock::now() < deadline) {
+        platform.event_bus().drain();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    platform.event_bus().drain();
+
+    EXPECT_EQ(server.subscribed_symbol(), "EUR/USD");
+    ASSERT_EQ(delivered_ticks.size(), 1u);
+    EXPECT_EQ(callback_count, 1);
+    EXPECT_EQ(delivered_ticks[0].symbol, "EURUSD");
+    EXPECT_DOUBLE_EQ(delivered_ticks[0].tick.ask, 1.10002);
+    EXPECT_DOUBLE_EQ(delivered_ticks[0].tick.bid, 1.10001);
+    EXPECT_TRUE(delivered_ticks[0].has_flag(TickStatusFlags::INITIALIZED));
+    EXPECT_TRUE(delivered_ticks[0].has_flag(TickStatusFlags::REALTIME));
+
+    market_data::MarketDataSubscriptionResult unsubscribe_result;
+    EXPECT_TRUE(platform.unsubscribe(
+        subscription_result.subscription,
+        [&unsubscribe_result](market_data::MarketDataSubscriptionResult result) {
+            unsubscribe_result = std::move(result);
+        }));
+    EXPECT_TRUE(unsubscribe_result);
+
+    platform.shutdown();
 }
 
 TEST(IntradeBarAccountInfo, AcceptsBtcAliasAndUsesBtcDurationRules) {

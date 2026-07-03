@@ -117,6 +117,19 @@ Subscription rules:
 - `fetch_trade_history()` делегирует в `m_trade_manager.fetch_trade_history(...)`.
 - `platform_type()` возвращает `PlatformType::INTRADE_BAR`.
 
+Market data:
+
+- `subscribe_ticks()` and `unsubscribe()` delegate to
+  `intrade_bar::MarketDataSubscriptionManager`.
+- FX websocket subscriptions use `intrade_bar::FxPriceWebSocketManager` and
+  the broker `/fxconnect` endpoint. Intrade accepts one FX symbol per websocket,
+  so the manager keeps a refcounted socket per normalized symbol.
+- BTCUSDT ticks continue to come from `intrade_bar::BtcPriceManager` through
+  the broker `/bapi` stream.
+- `intrade_bar::PriceManager` still owns HTTP polling snapshots. Polling is
+  intentionally left in place because trade lifecycle code can need current
+  prices even when no public market-data subscription exists.
+
 Используй эту платформу как основной working example для новой реализации.
 
 ### `platforms::TradeUpPlatform`

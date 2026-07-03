@@ -33,6 +33,17 @@ namespace optionx::platforms::intrade_bar {
         return normalize_symbol_name(symbol) == "BTCUSDT";
     }
 
+    /// \brief Converts a normalized FX symbol to the `/fxconnect` stream format.
+    /// \param symbol Public or broker symbol name.
+    /// \return Slash-separated stream symbol, such as `EUR/USD`; empty for non-FX symbols.
+    inline std::string make_fxconnect_symbol(const std::string& symbol) {
+        const auto normalized = normalize_symbol_name(symbol);
+        if (normalized.empty() || is_btc_symbol(normalized) || normalized.size() != 6) {
+            return {};
+        }
+        return normalized.substr(0, 3) + "/" + normalized.substr(3, 3);
+    }
+
 } // namespace optionx::platforms::intrade_bar
 
 #endif // _OPTIONX_PLATFORMS_INTRADEBAR_SYMBOL_UTILS_HPP_INCLUDED

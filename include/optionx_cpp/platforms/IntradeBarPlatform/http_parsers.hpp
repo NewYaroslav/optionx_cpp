@@ -1487,6 +1487,43 @@ namespace optionx::platforms::intrade_bar {
         return false;
     }
 
+    /// \brief Parses an Intrade `/fxconnect` tick message.
+    /// \param message JSON-formatted message received from the FX websocket.
+    /// \param tick_data Destination tick object to fill.
+    /// \return True when the payload contains a supported FX symbol and bid/ask prices.
+    inline bool parse_fxconnect_tick(const std::string& message, SingleTick& tick_data) {
+        const auto j = nlohmann::json::parse(message);
+
+        if (!j.contains("symbol") || !j.contains("ask") || !j.contains("bid")) {
+            return false;
+        }
+
+        const auto normalized_symbol = normalize_symbol_name(j.at("symbol").get<std::string>());
+        if (normalized_symbol.empty() || is_btc_symbol(normalized_symbol)) {
+            return false;
+        }
+
+        tick_data.symbol = normalized_symbol;
+        tick_data.provider = to_str(PlatformType::INTRADE_BAR);
+        tick_data.price_digits = price_digits_for_symbol(normalized_symbol);
+        tick_data.volume_digits = 0;
+        tick_data.flags = 0;
+        tick_data.tick.flags = 0;
+        tick_data.tick.ask = detail::read_json_double(j.at("ask"), "ask");
+        tick_data.tick.bid = detail::read_json_double(j.at("bid"), "bid");
+        tick_data.tick.volume = 0.0;
+        tick_data.tick.time_ms = j.contains("Updates")
+            ? static_cast<std::uint64_t>(
+                detail::read_json_int64(j.at("Updates"), "Updates")) * time_shield::MS_PER_SEC
+            : 0;
+        tick_data.tick.received_ms = OPTIONX_TIMESTAMP_MS;
+        tick_data.tick.set_flag(TickUpdateFlags::ASK_UPDATED);
+        tick_data.tick.set_flag(TickUpdateFlags::BID_UPDATED);
+        tick_data.set_flag(TickStatusFlags::INITIALIZED);
+        tick_data.set_flag(TickStatusFlags::REALTIME);
+        return true;
+    }
+
 }
 
 #endif // _OPTIONX_PLATFORMS_INTRADERBAR_HTTP_CLIENT_COMPONENT_STRING_PARSERS_HPP_INCLUDED
