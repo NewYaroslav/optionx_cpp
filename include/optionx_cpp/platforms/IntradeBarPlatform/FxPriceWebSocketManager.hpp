@@ -80,9 +80,6 @@ namespace optionx::platforms::intrade_bar {
         /// \brief Configures a websocket client from current manager settings.
         void configure_client_no_lock(kurlyk::WebSocketClient& client) const;
 
-        /// \brief Converts an HTTP(S) or WS(S) host setting to a websocket host.
-        static std::string make_websocket_host(const std::string& host);
-
         /// \brief Creates a configured websocket stream state for a normalized FX symbol.
         std::shared_ptr<FxStreamState> create_stream_no_lock(
                 const std::string& symbol,
@@ -235,25 +232,6 @@ namespace optionx::platforms::intrade_bar {
         client.set_proxy_server(m_proxy_server);
         client.set_proxy_auth(m_proxy_auth);
         client.set_proxy_type(m_proxy_type);
-    }
-
-    inline std::string FxPriceWebSocketManager::make_websocket_host(
-            const std::string& host) {
-        const std::string wss_prefix = "wss://";
-        const std::string ws_prefix = "ws://";
-        const std::string https_prefix = "https://";
-        const std::string http_prefix = "http://";
-
-        if (host.rfind(wss_prefix, 0) == 0 || host.rfind(ws_prefix, 0) == 0) {
-            return host;
-        }
-        if (host.rfind(https_prefix, 0) == 0) {
-            return wss_prefix + host.substr(https_prefix.size());
-        }
-        if (host.rfind(http_prefix, 0) == 0) {
-            return ws_prefix + host.substr(http_prefix.size());
-        }
-        return wss_prefix + host;
     }
 
     inline std::shared_ptr<FxPriceWebSocketManager::FxStreamState>

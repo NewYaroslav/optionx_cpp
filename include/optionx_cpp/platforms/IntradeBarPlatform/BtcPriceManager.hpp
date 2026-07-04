@@ -42,6 +42,7 @@ namespace optionx::platforms::intrade_bar {
                     m_tick_data[0].tick.flags = 0;
                     m_is_error = false;
                     emit_status(market_data::MarketDataStreamStatus::CONNECTED);
+                    // `/bapi` is a fixed BTCUSDT stream; no subscribe frame is needed.
                     emit_status(market_data::MarketDataStreamStatus::READY);
                     break;
                 case kurlyk::WebSocketEventType::WS_MESSAGE:
@@ -106,9 +107,6 @@ namespace optionx::platforms::intrade_bar {
         /// \brief Handles incoming WebSocket messages.
         /// \param message The received message as a JSON string.
         void handle_message(const std::string& message);
-
-        /// \brief Converts an HTTP(S) or WS(S) host setting to a websocket host.
-        static std::string make_websocket_host(const std::string& host);
 
         /// \brief Emits a public BTCUSDT stream status update when a callback is configured.
         void emit_status(
@@ -219,25 +217,6 @@ namespace optionx::platforms::intrade_bar {
                 m_tick_data,
                 MarketDataUpdateSource::WEBSOCKET));
         }
-    }
-
-    inline std::string BtcPriceManager::make_websocket_host(
-            const std::string& host) {
-        const std::string wss_prefix = "wss://";
-        const std::string ws_prefix = "ws://";
-        const std::string https_prefix = "https://";
-        const std::string http_prefix = "http://";
-
-        if (host.rfind(wss_prefix, 0) == 0 || host.rfind(ws_prefix, 0) == 0) {
-            return host;
-        }
-        if (host.rfind(https_prefix, 0) == 0) {
-            return wss_prefix + host.substr(https_prefix.size());
-        }
-        if (host.rfind(http_prefix, 0) == 0) {
-            return ws_prefix + host.substr(http_prefix.size());
-        }
-        return wss_prefix + host;
     }
 
     inline void BtcPriceManager::emit_status(
