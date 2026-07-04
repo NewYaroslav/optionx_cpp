@@ -10,8 +10,6 @@
 #include <cctype>
 #include <string>
 
-#include "data/market/enums.hpp"
-
 namespace optionx {
 
     /// \enum BarPriceSource
