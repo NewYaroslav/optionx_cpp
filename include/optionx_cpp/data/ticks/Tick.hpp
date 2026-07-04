@@ -58,10 +58,10 @@ namespace optionx {
             return ask != 0.0 ? ask : bid;
         }
 
-        /// \brief Calculates and normalizes the midpoint or last traded price.
+        /// \brief Calculates the midpoint or last traded price rounded to symbol precision.
         /// \param price_digits Number of decimal places for price rounding.
         /// \return The value returned by mid_price() rounded to price_digits.
-        double normalized_mid_price(std::uint32_t price_digits) const {
+        double mid_price(std::uint32_t price_digits) const {
             return utils::normalize_double(mid_price(), price_digits);
         }
 

@@ -61,6 +61,9 @@ namespace optionx::platforms::intrade_bar {
         /// \brief Routes price events to active tick subscriptions.
         void on_event(const utils::Event* const event) override;
 
+        /// \brief Flushes pending market-data batches to public callbacks.
+        void process() override;
+
         /// \brief Clears all runtime subscriptions.
         void shutdown() override;
 
@@ -81,6 +84,7 @@ namespace optionx::platforms::intrade_bar {
         std::unordered_map<
             market_data::SubscriptionId,
             market_data::MarketDataSubscriptionHandle> m_tick_subscriptions; ///< Active tick subscriptions.
+        std::vector<market_data::TickDataBatch> m_pending_tick_batches; ///< Tick batches waiting for the next process cycle.
         market_data::SubscriptionId m_next_subscription_id = 1; ///< Next runtime handle ID.
         std::mutex m_mutex; ///< Protects subscription handles.
 
@@ -117,6 +121,15 @@ namespace optionx::platforms::intrade_bar {
 
         /// \brief Handles incoming price update events.
         void handle_event(const events::PriceUpdateEvent& event);
+
+        /// \brief Finds or creates a pending tick delivery batch.
+        market_data::TickDataBatch& pending_tick_batch_for(
+                const market_data::MarketDataSubscriptionHandle& subscription,
+                const events::TickUpdateBatch& source_batch);
+
+        /// \brief Removes queued tick data for an inactive subscription.
+        /// \pre The caller holds m_mutex.
+        void remove_pending_tick_batch_no_lock(market_data::SubscriptionId subscription_id);
     };
 
     inline bool MarketDataSubscriptionManager::subscribe_ticks(
@@ -305,6 +318,7 @@ namespace optionx::platforms::intrade_bar {
             if (!failed) {
                 for (const auto& subscription : removed_subscriptions) {
                     m_tick_subscriptions.erase(subscription.id);
+                    remove_pending_tick_batch_no_lock(subscription.id);
                 }
                 for (const auto& subscription : added_subscriptions) {
                     m_tick_subscriptions[subscription.id] = subscription;
@@ -353,6 +367,7 @@ namespace optionx::platforms::intrade_bar {
                         std::lock_guard<std::mutex> lock(m_mutex);
                         for (const auto& added : added_subscriptions) {
                             m_tick_subscriptions.erase(added.id);
+                            remove_pending_tick_batch_no_lock(added.id);
                         }
                         for (const auto& removed : removed_subscriptions) {
                             m_tick_subscriptions[removed.id] = removed;
@@ -394,6 +409,22 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
+    inline void MarketDataSubscriptionManager::process() {
+        std::vector<market_data::TickDataBatch> batches;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            batches.swap(m_pending_tick_batches);
+        }
+
+        if (!m_ticks_callback) return;
+        for (auto& batch : batches) {
+            if (!batch.empty()) {
+                m_ticks_callback(
+                    std::make_unique<market_data::TickDataBatch>(std::move(batch)));
+            }
+        }
+    }
+
     inline void MarketDataSubscriptionManager::shutdown() {
         std::vector<market_data::MarketDataSubscriptionHandle> subscriptions;
         {
@@ -415,6 +446,7 @@ namespace optionx::platforms::intrade_bar {
 
         std::lock_guard<std::mutex> lock(m_mutex);
         m_tick_subscriptions.clear();
+        m_pending_tick_batches.clear();
     }
 
     inline market_data::SubscriptionId
@@ -519,52 +551,54 @@ namespace optionx::platforms::intrade_bar {
 
     inline void MarketDataSubscriptionManager::handle_event(
             const events::PriceUpdateEvent& event) {
-        std::vector<market_data::TickDataBatch> batches;
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            if (m_tick_subscriptions.empty()) return;
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_tick_subscriptions.empty()) return;
 
-            for (const auto& source_batch : event.get_tick_batches()) {
-                const auto normalized_symbol = normalize_symbol_name(source_batch.symbol);
-                for (const auto& [id, subscription] : m_tick_subscriptions) {
-                    (void)id;
-                    if (subscription.symbol != normalized_symbol) continue;
-                    if (!source_matches_subscription(subscription, event.source())) continue;
+        for (const auto& source_batch : event.get_tick_batches()) {
+            const auto normalized_symbol = normalize_symbol_name(source_batch.symbol);
+            for (const auto& [id, subscription] : m_tick_subscriptions) {
+                (void)id;
+                if (subscription.symbol != normalized_symbol) continue;
+                if (!source_matches_subscription(subscription, event.source())) continue;
 
-                    market_data::TickDataBatch* batch = nullptr;
-                    for (auto& candidate : batches) {
-                        if (candidate.subscription.id == subscription.id) {
-                            batch = &candidate;
-                            break;
-                        }
-                    }
-
-                    if (!batch) {
-                        market_data::TickDataBatch created;
-                        created.subscription = subscription;
-                        created.type = market_data::MarketDataType::TICKS;
-                        created.symbol = subscription.symbol;
-                        created.timeframe = 0;
-                        created.price_digits = source_batch.price_digits;
-                        created.volume_digits = source_batch.volume_digits;
-                        batches.push_back(std::move(created));
-                        batch = &batches.back();
-                    }
-
-                    for (const auto& tick : source_batch.items) {
-                        batch->items.push_back(tick);
-                        batch->items.back().set_flag(MarketDataFlags::REALTIME);
-                    }
+                auto& batch = pending_tick_batch_for(subscription, source_batch);
+                for (const auto& tick : source_batch.items) {
+                    batch.items.push_back(tick);
+                    batch.items.back().set_flag(MarketDataFlags::REALTIME);
                 }
             }
         }
+    }
 
-        if (m_ticks_callback) {
-            for (auto& batch : batches) {
-                if (!batch.empty()) {
-                    m_ticks_callback(
-                        std::make_unique<market_data::TickDataBatch>(std::move(batch)));
-                }
+    inline market_data::TickDataBatch&
+    MarketDataSubscriptionManager::pending_tick_batch_for(
+            const market_data::MarketDataSubscriptionHandle& subscription,
+            const events::TickUpdateBatch& source_batch) {
+        for (auto& batch : m_pending_tick_batches) {
+            if (batch.subscription.id == subscription.id) {
+                return batch;
+            }
+        }
+
+        market_data::TickDataBatch created;
+        created.subscription = subscription;
+        created.type = market_data::MarketDataType::TICKS;
+        created.symbol = subscription.symbol;
+        created.timeframe = 0;
+        created.price_digits = source_batch.price_digits;
+        created.volume_digits = source_batch.volume_digits;
+        m_pending_tick_batches.push_back(std::move(created));
+        return m_pending_tick_batches.back();
+    }
+
+    inline void MarketDataSubscriptionManager::remove_pending_tick_batch_no_lock(
+            market_data::SubscriptionId subscription_id) {
+        for (auto it = m_pending_tick_batches.begin();
+             it != m_pending_tick_batches.end();) {
+            if (it->subscription.id == subscription_id) {
+                it = m_pending_tick_batches.erase(it);
+            } else {
+                ++it;
             }
         }
     }

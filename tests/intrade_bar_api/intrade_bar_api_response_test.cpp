@@ -99,6 +99,15 @@ void publish_account_status(
     platform.event_bus().drain();
 }
 
+void pump_platform(
+        IntradeBarPlatform& platform,
+        int passes = 3) {
+    for (int i = 0; i < passes; ++i) {
+        platform.process();
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+}
+
 template <class Predicate>
 bool wait_for_platform(
         IntradeBarPlatform& platform,
@@ -106,10 +115,12 @@ bool wait_for_platform(
         std::chrono::milliseconds timeout = std::chrono::seconds(5)) {
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     while (!predicate() && std::chrono::steady_clock::now() < deadline) {
+        pump_platform(platform, 1);
         platform.event_bus().drain();
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     platform.event_bus().drain();
+    pump_platform(platform, 1);
     return predicate();
 }
 
@@ -671,6 +682,7 @@ TEST(IntradeBarApiResponses, IntradeBarPlatformExposesEndpointTradingAndMarketDa
 
 TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionRoutesMatchingPriceEvents) {
     IntradeBarPlatform platform;
+    platform.run(false);
     market_data::TickDataBatch delivered_batch;
     int tick_callback_count = 0;
     market_data::MarketDataSubscriptionResult subscription_result;
@@ -707,7 +719,7 @@ TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionRoutesMatchingPriceEvents
 
     platform.event_bus().notify_async(
         std::make_unique<events::PriceUpdateEvent>(std::move(event_ticks)));
-    platform.event_bus().process();
+    pump_platform(platform);
 
     ASSERT_EQ(tick_callback_count, 1);
     ASSERT_EQ(delivered_batch.items.size(), 2u);
@@ -719,8 +731,55 @@ TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionRoutesMatchingPriceEvents
     platform.shutdown();
 }
 
+TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionCoalescesQueuedPriceEvents) {
+    IntradeBarPlatform platform;
+    platform.run(false);
+    market_data::TickDataBatch delivered_batch;
+    int tick_callback_count = 0;
+    market_data::MarketDataSubscriptionResult subscription_result;
+
+    platform.on_tick_data() =
+        [&delivered_batch, &tick_callback_count](std::unique_ptr<market_data::TickDataBatch> batch) {
+            if (batch) {
+                delivered_batch = std::move(*batch);
+            }
+            ++tick_callback_count;
+        };
+
+    ASSERT_TRUE(platform.subscribe_ticks(
+        market_data::TickSubscriptionRequest(
+            "EUR/USD",
+            market_data::MarketDataTransport::POLLING),
+        [&subscription_result](market_data::MarketDataSubscriptionResult result) {
+            subscription_result = std::move(result);
+        }));
+    ASSERT_TRUE(subscription_result);
+
+    std::vector<events::TickUpdateBatch> first_event_ticks = {
+        make_market_data_batch("EURUSD", 1.0, 1.1)
+    };
+    std::vector<events::TickUpdateBatch> second_event_ticks = {
+        make_market_data_batch("EUR/USD", 1.2, 1.3)
+    };
+
+    platform.event_bus().notify_async(
+        std::make_unique<events::PriceUpdateEvent>(std::move(first_event_ticks)));
+    platform.event_bus().notify_async(
+        std::make_unique<events::PriceUpdateEvent>(std::move(second_event_ticks)));
+    pump_platform(platform);
+
+    ASSERT_EQ(tick_callback_count, 1);
+    ASSERT_EQ(delivered_batch.items.size(), 2u);
+    EXPECT_EQ(delivered_batch.subscription.id, subscription_result.subscription.id);
+    EXPECT_TRUE(delivered_batch.items[0].has_flag(MarketDataFlags::REALTIME));
+    EXPECT_TRUE(delivered_batch.items[1].has_flag(MarketDataFlags::REALTIME));
+
+    platform.shutdown();
+}
+
 TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionStopsAfterUnsubscribe) {
     IntradeBarPlatform platform;
+    platform.run(false);
     int tick_callback_count = 0;
     market_data::MarketDataSubscriptionResult subscription_result;
     market_data::MarketDataSubscriptionResult unsubscribe_result;
@@ -753,7 +812,7 @@ TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionStopsAfterUnsubscribe) {
 
     platform.event_bus().notify_async(
         std::make_unique<events::PriceUpdateEvent>(std::move(event_ticks)));
-    platform.event_bus().process();
+    pump_platform(platform);
 
     EXPECT_EQ(tick_callback_count, 0);
 
@@ -762,6 +821,7 @@ TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionStopsAfterUnsubscribe) {
 
 TEST(IntradeBarApiResponses, IntradeBarAppliesTickSubscriptionBatchAtomically) {
     IntradeBarPlatform platform;
+    platform.run(false);
     std::vector<market_data::TickDataBatch> delivered_batches;
     market_data::MarketDataSubscriptionBatchResult apply_result;
     market_data::MarketDataSubscriptionBatchResult unsubscribe_result;
@@ -800,7 +860,7 @@ TEST(IntradeBarApiResponses, IntradeBarAppliesTickSubscriptionBatchAtomically) {
 
     platform.event_bus().notify_async(
         std::make_unique<events::PriceUpdateEvent>(std::move(event_ticks)));
-    platform.event_bus().process();
+    pump_platform(platform);
 
     ASSERT_EQ(delivered_batches.size(), 2u);
     EXPECT_EQ(delivered_batches[0].items.size(), 1u);
@@ -818,6 +878,7 @@ TEST(IntradeBarApiResponses, IntradeBarAppliesTickSubscriptionBatchAtomically) {
 
 TEST(IntradeBarApiResponses, IntradeBarRejectedSubscriptionBatchDoesNotPartiallySubscribe) {
     IntradeBarPlatform platform;
+    platform.run(false);
     int tick_callback_count = 0;
     market_data::MarketDataSubscriptionBatchResult result;
 
@@ -848,7 +909,7 @@ TEST(IntradeBarApiResponses, IntradeBarRejectedSubscriptionBatchDoesNotPartially
     };
     platform.event_bus().notify_async(
         std::make_unique<events::PriceUpdateEvent>(std::move(event_ticks)));
-    platform.event_bus().process();
+    pump_platform(platform);
 
     EXPECT_EQ(tick_callback_count, 0);
 
@@ -985,6 +1046,7 @@ TEST(IntradeBarApiResponses, BtcWebSocketSubscriptionReportsStatusAndRoutesTick)
     ASSERT_TRUE(server.start());
 
     IntradeBarPlatform platform;
+    platform.run(false);
     std::vector<market_data::MarketDataStatusUpdate> status_updates;
     market_data::TickDataBatch delivered_batch;
     std::mutex callback_mutex;
@@ -1129,6 +1191,7 @@ TEST(IntradeBarApiResponses, FxWebSocketSubscriptionReceivesLocalTick) {
     ASSERT_TRUE(server.start());
 
     IntradeBarPlatform platform;
+    platform.run(false);
     market_data::TickDataBatch delivered_batch;
     int callback_count = 0;
     platform.on_tick_data() =
@@ -1189,6 +1252,7 @@ TEST(IntradeBarApiResponses, FxWebSocketSubscriptionReceivesLocalTick) {
 
 TEST(IntradeBarApiResponses, WebsocketSubscriptionIgnoresPollingSnapshotForSameSymbol) {
     IntradeBarPlatform platform;
+    platform.run(false);
     int callback_count = 0;
     market_data::TickDataBatch delivered_batch;
     platform.on_tick_data() =
@@ -1213,7 +1277,7 @@ TEST(IntradeBarApiResponses, WebsocketSubscriptionIgnoresPollingSnapshotForSameS
     polling_ticks.push_back(make_market_data_batch("EURUSD", 1.10001, 1.10002));
     platform.event_bus().notify_async(
         std::make_unique<events::PriceUpdateEvent>(std::move(polling_ticks)));
-    platform.event_bus().drain();
+    pump_platform(platform);
 
     EXPECT_EQ(callback_count, 0);
     EXPECT_TRUE(delivered_batch.items.empty());
@@ -1224,7 +1288,7 @@ TEST(IntradeBarApiResponses, WebsocketSubscriptionIgnoresPollingSnapshotForSameS
         std::make_unique<events::PriceUpdateEvent>(
             std::move(websocket_ticks),
             MarketDataUpdateSource::WEBSOCKET));
-    platform.event_bus().drain();
+    pump_platform(platform);
 
     EXPECT_EQ(callback_count, 1);
     ASSERT_EQ(delivered_batch.items.size(), 1u);

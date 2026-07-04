@@ -660,7 +660,7 @@ namespace optionx::components {
             const auto& quote = quote_batch->items.back();
             if (!quote.has_flag(MarketDataFlags::INITIALIZED)) continue;
 
-            const double close_price = quote.normalized_mid_price(quote_batch->price_digits);
+            const double close_price = quote.mid_price(quote_batch->price_digits);
             result->close_price = close_price;
             result->live_state = m_trade_state_manager.determine_trade_state(result, request, close_price);
             dispatch_trade_event(transaction);

@@ -590,7 +590,7 @@ TEST(TradeStateManagerTest, DetermineTradeStateUsesNormalizedClosePrice) {
     tick.set_flag(MarketDataFlags::INITIALIZED);
 
     ASSERT_GT(tick.mid_price(), result->open_price);
-    const double close_price = tick.normalized_mid_price(5);
+    const double close_price = tick.mid_price(5);
     EXPECT_DOUBLE_EQ(close_price, 1.12335);
     EXPECT_EQ(
         manager.determine_trade_state(result, request, close_price),
