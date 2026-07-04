@@ -5,6 +5,10 @@ against the current public aggregate headers.
 
 Currently maintained examples:
 
+- `intrade_market_data_example.cpp` demonstrates Intrade Bar market-data
+  subscriptions, stream status callbacks, direct bar history, and history routed
+  through `MarketDataContinuityService`. Live authenticated lifecycle reads
+  `OPTIONX_INTRADE_EMAIL` and `OPTIONX_INTRADE_PASSWORD` from the environment.
 - `trade_record_db_example.cpp` demonstrates basic `TradeRecordDB` usage.
 
 Old exploratory broker and component probes were removed because they referenced

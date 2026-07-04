@@ -5,10 +5,12 @@
 /// \file IntradeBarPlatform.hpp
 /// \brief Defines the IntradeBarPlatform class, which provides an implementation of the trading platform API.
 
+#include "config.hpp"
+#include "market_data.hpp"
 #include "common/ApiResult.hpp"
 #include "common/BaseTradingPlatform.hpp"
 #include "IntradeBarPlatform/TradeHistorySource.hpp"
-#include "IntradeBarPlatform/SymbolUtils.hpp"
+#include "IntradeBarPlatform/symbol_utils.hpp"
 #include "IntradeBarPlatform/AuthData.hpp"
 #include "IntradeBarPlatform/AccountInfoData.hpp"
 #include "IntradeBarPlatform/ApiResponses.hpp"
@@ -22,6 +24,7 @@
 #include "IntradeBarPlatform/ActiveTradesSyncManager.hpp"
 #include "IntradeBarPlatform/PriceManager.hpp"
 #include "IntradeBarPlatform/BtcPriceManager.hpp"
+#include "IntradeBarPlatform/FxPriceWebSocketManager.hpp"
 #include "IntradeBarPlatform/MarketDataSubscriptionManager.hpp"
 #include "IntradeBarPlatform/TradeManager.hpp"
 
@@ -52,8 +55,17 @@ namespace optionx::platforms {
               m_active_trades_sync_manager(*this, m_request_manager, m_account_info),
               m_price_manager(*this, m_request_manager),
               m_btc_price_manager(*this),
-              m_market_data_subscriptions(*this, provider_id(), m_tick_data_callback, m_bar_data_callback),
+              m_fx_price_websocket_manager(*this),
+              m_market_data_subscriptions(
+                  *this,
+                  provider_id(),
+                  m_tick_data_callback,
+                  m_bar_data_callback,
+                  &m_fx_price_websocket_manager),
               m_trade_manager(*this, m_request_manager, m_account_info) {
+            m_fx_price_websocket_manager.set_status_sink(
+                provider_id(),
+                &m_market_data_status_callback);
         }
 
         /// \brief Shuts down components while platform-owned component instances are still alive.
@@ -138,6 +150,11 @@ namespace optionx::platforms {
             return m_tick_data_callback;
         }
 
+        /// \brief Returns the live market-data stream status callback.
+        market_data::BaseMarketDataProvider::status_callback_t& on_market_data_status() override {
+            return m_market_data_status_callback;
+        }
+
         /// \brief Requests an Intrade Bar live tick stream subscription.
         bool subscribe_ticks(
                 market_data::TickSubscriptionRequest request,
@@ -163,6 +180,21 @@ namespace optionx::platforms {
             return m_market_data_subscriptions.unsubscribe(
                 std::move(subscription),
                 std::move(callback));
+        }
+
+        /// \brief Applies an Intrade Bar live market-data subscription batch.
+        bool apply_subscriptions(
+                market_data::MarketDataSubscriptionBatch batch,
+                market_data::BaseMarketDataProvider::subscription_batch_callback_t callback) override {
+            return m_market_data_subscriptions.apply_subscriptions(
+                std::move(batch),
+                std::move(callback));
+        }
+
+        /// \brief Stops all Intrade Bar live market-data subscriptions.
+        bool unsubscribe_all(
+                market_data::BaseMarketDataProvider::subscription_batch_callback_t callback) override {
+            return m_market_data_subscriptions.unsubscribe_all(std::move(callback));
         }
 
         /// \brief Returns the platform-level trade result callback.
@@ -192,8 +224,10 @@ namespace optionx::platforms {
         intrade_bar::ActiveTradesSyncManager m_active_trades_sync_manager; ///< Syncs broker active trade snapshots.
         intrade_bar::PriceManager         m_price_manager;    ///< Retrieves and updates price data.
         intrade_bar::BtcPriceManager      m_btc_price_manager;///< Retrieves BTC/USDT quotes from the websocket stream.
+        intrade_bar::FxPriceWebSocketManager m_fx_price_websocket_manager; ///< Retrieves FX quotes from websocket streams.
         market_data::BaseMarketDataProvider::bars_callback_t m_bar_data_callback; ///< Live bar data callback.
         market_data::BaseMarketDataProvider::ticks_callback_t m_tick_data_callback; ///< Live tick data callback.
+        market_data::BaseMarketDataProvider::status_callback_t m_market_data_status_callback; ///< Live stream status callback.
         intrade_bar::MarketDataSubscriptionManager m_market_data_subscriptions; ///< Routes live market-data streams.
         intrade_bar::TradeManager         m_trade_manager;    ///< Manages trades and status updates.
     }; // IntradeBarPlatform

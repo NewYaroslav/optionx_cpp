@@ -6,6 +6,7 @@
 /// \brief Defines the TradeUpPlatform class implementing TradeUp broker API.
 
 #include "utils.hpp"
+#include "config.hpp"
 #include "data.hpp"
 #include "storages.hpp"
 #include "components.hpp"

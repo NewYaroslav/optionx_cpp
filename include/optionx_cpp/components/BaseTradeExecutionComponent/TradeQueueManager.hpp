@@ -655,7 +655,7 @@ namespace optionx::components {
             }
 
             auto tick = event.get_tick_by_symbol(request->symbol);
-            if (!tick.has_flag(TickStatusFlags::INITIALIZED)) continue;
+            if (!tick.tick.has_flag(MarketDataFlags::INITIALIZED)) continue;
 
             result->close_price = tick.mid_price();
             result->live_state = m_trade_state_manager.determine_trade_state(result, request, tick);

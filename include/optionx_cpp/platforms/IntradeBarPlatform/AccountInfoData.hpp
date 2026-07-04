@@ -5,7 +5,7 @@
 /// \file AccountInfoData.hpp
 /// \brief Contains the AccountInfoData class for Intrade Bar platform account information.
 
-#include "SymbolUtils.hpp"
+#include "symbol_utils.hpp"
 
 namespace optionx::platforms::intrade_bar {
 

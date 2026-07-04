@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-#include "SymbolUtils.hpp"
+#include "symbol_utils.hpp"
 
 namespace optionx::platforms::intrade_bar {
 

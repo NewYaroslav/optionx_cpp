@@ -34,7 +34,6 @@
 | `fetch_trade_result(TradeResultQuery, callback)` | Проверить результат одной сделки | В base возвращает `false`; используется для recovery по broker trade id |
 | `fetch_trade_history(request, callback)` | Выгрузить историю закрытых сделок | Возвращает `TradeHistoryResult` с `TradeRecord` records |
 | `fetch_trade_history(callback)` | Выгрузить всю доступную историю | Делегирует в `TradeHistoryRequest::all()` |
-| `fetch_candle_data(...)` | История свечей | В base возвращает `false`; реализация platform-specific |
 | `fetch_symbol_list(...)` | Список symbols | В base возвращает `false`; реализация platform-specific |
 | `connect(callback)` | Публикует `ConnectRequestEvent` | Реальное подключение делает manager |
 | `disconnect(callback)` | Публикует `DisconnectRequestEvent` | Реальное отключение делает manager |
@@ -54,9 +53,9 @@
   `component->process()`, затем `on_loop()`.
 - `shutdown()` сначала останавливает `TaskManager`, потом вызывает
   `component->shutdown()`, потом `m_event_bus.drain()`.
-- Callbacks `on_trade_result`, `on_candle_data`, `on_tick_data` в base
-  возвращают static null callback; concrete class/component должен дать рабочую
-  callback-ссылку, если feature поддерживается.
+- Callback `on_trade_result` в trading base возвращает static null callback.
+  Market-data callbacks (`on_tick_data`, `on_bar_data`, `on_market_data_status`)
+  живут на `market_data::BaseMarketDataProvider`.
 
 ## `market_data::BaseMarketDataProvider`
 
@@ -72,10 +71,12 @@
 
 | Метод | Для чего | Ограничения |
 |---|---|---|
-| `on_tick_data()` | Callback для live tick batches | По умолчанию возвращает null callback |
-| `on_bar_data()` | Callback для live bar batches | По умолчанию возвращает null callback |
+| `on_tick_data()` | Callback для live tick batches | Получает `std::unique_ptr<TickDataBatch>` |
+| `on_bar_data()` | Callback для live bar batches | Получает `std::unique_ptr<BarDataBatch>` |
+| `on_market_data_status()` | Callback для stream lifecycle/status | Status события не смешиваются с data batches |
 | `subscribe_ticks(request, callback)` | Запросить live tick stream | Request type отдельный от bars |
 | `subscribe_bars(request, callback)` | Запросить live bar stream | `timeframe` в секундах и должен быть > 0 |
+| `apply_subscriptions(batch, callback)` | Атомарно применить набор subscribe/unsubscribe изменений | Одиночные helpers являются wrappers над batch |
 | `unsubscribe(handle, callback)` | Остановить live stream | Handle должен принадлежать этому provider instance |
 | `fetch_bar_history(request, callback)` | Запросить исторические бары | Возвращает `BarHistoryResult`, а не пустой массив при ошибке |
 
@@ -87,6 +88,16 @@ Subscription rules:
   accident.
 - `MarketDataSubscriptionResult::status` is the source of truth. Use
   `result.success()` or `if (result)`.
+- `SUBSCRIBED` confirms desired state and handle ownership. It does not mean
+  the physical transport has already reached the source; stream readiness is
+  reported separately as `READY` through `on_market_data_status()`.
+- Data callbacks receive batches. Shared metadata (`symbol`, `timeframe`,
+  digits and subscription handle) lives on the batch; compact payload flags live
+  on `Tick` and `Bar`.
+- Use `MarketDataFlags` for realtime/history/backfill markers and
+  `MarketPriceType` for bid/ask/mid/last payload identity.
+- `MarketDataContinuityService` routes recovered historical bars into the same
+  `BarDataBatch` pipeline and marks them as `HISTORICAL`/`BACKFILL`.
 - `BaseMarketDataProvider` is non-copyable and non-movable so provider identity
   cannot be duplicated after handles were issued.
 - Public subscriptions describe consumer routing. Internal platform polling or
@@ -116,6 +127,20 @@ Subscription rules:
 - `fetch_trade_result()` делегирует в `m_trade_manager.fetch_trade_result(...)`.
 - `fetch_trade_history()` делегирует в `m_trade_manager.fetch_trade_history(...)`.
 - `platform_type()` возвращает `PlatformType::INTRADE_BAR`.
+
+Market data:
+
+- `subscribe_ticks()` and `unsubscribe()` delegate to
+  `intrade_bar::MarketDataSubscriptionManager`.
+- FX websocket subscriptions use `intrade_bar::FxPriceWebSocketManager` and
+  the broker `/fxconnect` endpoint. Intrade accepts one FX symbol per websocket,
+  so the manager keeps a refcounted desired stream per normalized symbol and
+  opens physical sockets only when the platform is connected.
+- BTCUSDT ticks continue to come from `intrade_bar::BtcPriceManager` through
+  the broker `/bapi` stream.
+- `intrade_bar::PriceManager` still owns HTTP polling snapshots. Polling is
+  intentionally left in place because trade lifecycle code can need current
+  prices even when no public market-data subscription exists.
 
 Используй эту платформу как основной working example для новой реализации.
 

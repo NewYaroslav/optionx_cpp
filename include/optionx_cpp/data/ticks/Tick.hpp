@@ -10,18 +10,19 @@
 namespace optionx {
 
     /// \struct Tick
-    /// \brief Represents a market tick with bid, ask, volume, and derived average price.
+    /// \brief Represents a market tick with quote and trade-price fields.
     struct Tick {
         double ask;              ///< Ask price
         double bid;              ///< Bid price
+        double last;             ///< Last traded price, when the feed provides trade ticks.
         double volume;           ///< Trade volume (can store both whole units and high precision)
-        uint64_t time_ms;        ///< Tick timestamp in milliseconds
-        uint64_t received_ms;    ///< Time when tick was received from the server
-        uint64_t flags;          ///< Flags representing tick characteristics (combination of TickUpdateFlags)
+        std::uint64_t time_ms;   ///< Tick timestamp in milliseconds.
+        std::uint64_t received_ms; ///< Time when tick was received from the server.
+        std::uint32_t flags;     ///< Tick update and market-data flags.
 
         /// \brief Default constructor that initializes all fields to zero or equivalent values
         Tick()
-            : ask(0.0), bid(0.0), volume(0.0),
+            : ask(0.0), bid(0.0), last(0.0), volume(0.0),
               time_ms(0), received_ms(0), flags(0) {}
 
         /// \brief Constructor to initialize all fields
@@ -32,32 +33,67 @@ namespace optionx {
         /// \param rt Time when tick was received from the server
         /// \param f Flags representing tick characteristics
         Tick(double a, double b, double v,
-             uint64_t ts, uint64_t rt, uint64_t f)
-            : ask(a), bid(b), volume(v),
+             std::uint64_t ts, std::uint64_t rt, std::uint32_t f)
+            : ask(a), bid(b), last(0.0), volume(v),
+              time_ms(ts), received_ms(rt), flags(f) {}
+
+        /// \brief Constructor to initialize quote, trade, and metadata fields.
+        /// \param a Ask price.
+        /// \param b Bid price.
+        /// \param l Last traded price.
+        /// \param v Trade volume in whole units.
+        /// \param ts Tick timestamp in milliseconds.
+        /// \param rt Time when tick was received from the server.
+        /// \param f Flags representing tick characteristics.
+        Tick(double a, double b, double l, double v,
+             std::uint64_t ts, std::uint64_t rt, std::uint32_t f)
+            : ask(a), bid(b), last(l), volume(v),
               time_ms(ts), received_ms(rt), flags(f) {}
 
         /// \brief Calculates the average price based on bid and ask.
-        /// \return The mid-price (average of bid and ask).
+        /// \return The mid-price for quote ticks, or last price for trade ticks.
         double mid_price() const {
-            return (ask + bid) / 2.0;
+            if (ask != 0.0 && bid != 0.0) return (ask + bid) / 2.0;
+            if (last != 0.0) return last;
+            return ask != 0.0 ? ask : bid;
         }
 
         /// \brief Sets a specific flag in the tick's flags.
         /// \param flag The flag to set (from TickUpdateFlags).
         void set_flag(TickUpdateFlags flag) {
-            flags |= static_cast<uint64_t>(flag);
+            flags |= static_cast<std::uint32_t>(flag);
         }
 
+        /// \brief Sets or clears a tick update flag.
+        /// \param flag Tick update flag to update.
+        /// \param value Whether the flag should be set.
         void set_flag(TickUpdateFlags flag, bool value) {
-            flags |= value ? static_cast<uint64_t>(flag) : 0x00;
+            flags = value
+                ? flags | static_cast<std::uint32_t>(flag)
+                : flags & ~static_cast<std::uint32_t>(flag);
         }
 
         /// \brief Checks if a specific flag is set in the tick's flags.
         /// \param flag The flag to check (from TickUpdateFlags).
         /// \return True if the flag is set, otherwise false.
         bool has_flag(TickUpdateFlags flag) const {
-            return (flags & static_cast<uint64_t>(flag)) != 0;
+            return (flags & static_cast<std::uint32_t>(flag)) != 0;
         }
+
+        /// \brief Sets or clears a market-data payload flag.
+        /// \param flag Market-data flag to update.
+        /// \param value Whether the flag should be set.
+        void set_flag(MarketDataFlags flag, bool value = true) noexcept {
+            set_flag_in_place(flags, flag, value);
+        }
+
+        /// \brief Checks whether a market-data payload flag is set.
+        /// \param flag Market-data flag to check.
+        /// \return True if the flag is present.
+        [[nodiscard]] bool has_flag(MarketDataFlags flag) const noexcept {
+            return optionx::has_flag(flags, flag);
+        }
+
     };
 
 } // namespace optionx

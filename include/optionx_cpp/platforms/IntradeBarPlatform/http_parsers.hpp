@@ -17,6 +17,7 @@
 #include <optional>
 #include <regex>
 #include <stdexcept>
+#include <utility>
 
 #include "utils/response_parse_utils.hpp"
 #include "ApiResponses.hpp"
@@ -356,14 +357,6 @@ namespace optionx::platforms::intrade_bar {
             return HistoryMoney{*amount, currency};
         }
 
-        inline std::string normalize_history_symbol(std::string symbol) {
-            symbol = utils::trim_copy(symbol);
-            symbol.erase(std::remove(symbol.begin(), symbol.end(), '/'), symbol.end());
-            symbol.erase(std::remove(symbol.begin(), symbol.end(), ' '), symbol.end());
-            if (symbol == "BTCUSD") return "BTCUSDT";
-            return symbol;
-        }
-
         inline void replace_all_inplace(
                 std::string& value,
                 const std::string& from,
@@ -619,7 +612,7 @@ namespace optionx::platforms::intrade_bar {
             TradeRecord record;
             record.option_id = *option_id;
             if (auto symbol = utils::extract_html_attr(row, "data-option")) {
-                record.symbol = normalize_history_symbol(*symbol);
+                record.symbol = normalize_symbol_name(*symbol);
             }
             if (auto open_price = utils::parse_double_attr(row, "data-rate")) {
                 record.open_price = *open_price;
@@ -679,7 +672,7 @@ namespace optionx::platforms::intrade_bar {
 
             TradeRecord record;
             record.option_id = *option_id;
-            record.symbol = normalize_history_symbol(price_lines[0]);
+            record.symbol = normalize_symbol_name(price_lines[0]);
             record.open_date = *open_time;
             record.close_date = *close_time;
             if (record.close_date >= record.open_date) {
@@ -859,7 +852,7 @@ namespace optionx::platforms::intrade_bar {
                 record.option_id = *option_id;
             }
             record.option_type = detail::parse_history_option_type(fields[1]);
-            record.symbol = detail::normalize_history_symbol(fields[2]);
+            record.symbol = normalize_symbol_name(fields[2]);
             record.order_type = detail::parse_history_order_type(fields[3]);
 
             auto open_time = detail::parse_history_datetime_ms(fields[4]);
@@ -1351,9 +1344,6 @@ namespace optionx::platforms::intrade_bar {
             sequence.symbol = normalize_symbol_name(request.symbol);
             sequence.provider = to_str(PlatformType::INTRADE_BAR);
             sequence.timeframe = request.timeframe;
-            sequence.flags =
-                static_cast<std::uint16_t>(dfh::BarStatusFlags::HISTORICAL) |
-                static_cast<std::uint16_t>(dfh::BarStatusFlags::FINALIZED);
             sequence.price_digits = price_digits_for_symbol(sequence.symbol);
             sequence.volume_digits = 0;
             sequence.price_source = actual_source;
@@ -1395,6 +1385,7 @@ namespace optionx::platforms::intrade_bar {
         auto sequence = detail::make_empty_bar_sequence(request, request.price_source);
         const auto& candles = j["candles"];
         sequence.bars.reserve(candles.size());
+        const auto price_type = market_price_type_from_bar_price_source(request.price_source);
 
         for (const auto& item : candles) {
             if (!item.is_array() || item.size() < 10) {
@@ -1412,13 +1403,17 @@ namespace optionx::platforms::intrade_bar {
             const auto ask_low = detail::read_json_double(item.at(8), "ask_low");
             const auto volume = detail::read_json_double(item.at(9), "volume");
 
-            sequence.bars.emplace_back(
+            Bar bar(
                 detail::select_fx_history_price(bid_open, ask_open, request.price_source),
                 detail::select_fx_history_price(bid_high, ask_high, request.price_source),
                 detail::select_fx_history_price(bid_low, ask_low, request.price_source),
                 detail::select_fx_history_price(bid_close, ask_close, request.price_source),
                 volume,
                 static_cast<std::uint64_t>(time_shield::sec_to_ms(ts)));
+            bar.set_flag(MarketDataFlags::HISTORICAL);
+            bar.set_flag(MarketDataFlags::FINALIZED);
+            bar.set_price_type(price_type);
+            sequence.bars.push_back(std::move(bar));
         }
 
         return sequence;
@@ -1450,13 +1445,17 @@ namespace optionx::platforms::intrade_bar {
                 throw std::runtime_error("Malformed Binance kline entry.");
             }
 
-            sequence.bars.emplace_back(
+            Bar bar(
                 detail::read_json_double(item.at(1), "open"),
                 detail::read_json_double(item.at(2), "high"),
                 detail::read_json_double(item.at(3), "low"),
                 detail::read_json_double(item.at(4), "close"),
                 detail::read_json_double(item.at(5), "volume"),
                 static_cast<std::uint64_t>(detail::read_json_int64(item.at(0), "open_time")));
+            bar.set_flag(MarketDataFlags::HISTORICAL);
+            bar.set_flag(MarketDataFlags::FINALIZED);
+            bar.set_price_type(MarketPriceType::LAST);
+            sequence.bars.push_back(std::move(bar));
         }
 
         return sequence;
@@ -1472,19 +1471,64 @@ namespace optionx::platforms::intrade_bar {
         if (j.contains("data")) {
             const auto& j_data = j["data"];
             if (j_data.value("s", "") != "BTCUSDT") return false;
-            tick_data.tick.ask = tick_data.tick.bid = std::stod(j_data.value("p", "0.0"));
+            if (!j_data.contains("T")) return false;
+            tick_data.symbol = "BTCUSDT";
+            tick_data.provider = to_str(PlatformType::INTRADE_BAR);
+            tick_data.price_digits = 2;
+            tick_data.volume_digits = 5;
+            tick_data.tick.flags = 0;
+            tick_data.tick.ask = 0.0;
+            tick_data.tick.bid = 0.0;
+            tick_data.tick.last = std::stod(j_data.value("p", "0.0"));
             tick_data.tick.volume = std::stod(j_data.value("q", "0.0"));
-            tick_data.tick.time_ms = j_data.value("T", 0);
+            tick_data.tick.time_ms = static_cast<std::uint64_t>(
+                detail::read_json_int64(j_data.at("T"), "T"));
             tick_data.tick.received_ms = OPTIONX_TIMESTAMP_MS;
-            tick_data.tick.set_flag(TickUpdateFlags::ASK_UPDATED);
-            tick_data.tick.set_flag(TickUpdateFlags::BID_UPDATED);
+            tick_data.tick.set_flag(TickUpdateFlags::LAST_UPDATED);
             tick_data.tick.set_flag(TickUpdateFlags::VOLUME_UPDATED);
-            tick_data.set_flag(TickStatusFlags::INITIALIZED);
-            tick_data.set_flag(TickStatusFlags::REALTIME);
+            tick_data.tick.set_flag(MarketDataFlags::INITIALIZED);
+            tick_data.tick.set_flag(MarketDataFlags::REALTIME);
             return true;
         }
 
         return false;
+    }
+
+    /// \brief Parses an Intrade `/fxconnect` tick message.
+    /// \param message JSON-formatted message received from the FX websocket.
+    /// \param tick_data Destination tick object to fill.
+    /// \return True when the payload contains a supported FX symbol and bid/ask prices.
+    inline bool parse_fxconnect_tick(const std::string& message, SingleTick& tick_data) {
+        const auto j = nlohmann::json::parse(message);
+
+        if (!j.contains("symbol") || !j.contains("ask") || !j.contains("bid")) {
+            return false;
+        }
+
+        const auto normalized_symbol = normalize_symbol_name(j.at("symbol").get<std::string>());
+        if (!is_fxconnect_supported_symbol(normalized_symbol)) {
+            return false;
+        }
+
+        tick_data.symbol = normalized_symbol;
+        tick_data.provider = to_str(PlatformType::INTRADE_BAR);
+        tick_data.price_digits = price_digits_for_symbol(normalized_symbol);
+        tick_data.volume_digits = 0;
+        tick_data.tick.flags = 0;
+        tick_data.tick.ask = detail::read_json_double(j.at("ask"), "ask");
+        tick_data.tick.bid = detail::read_json_double(j.at("bid"), "bid");
+        tick_data.tick.last = 0.0;
+        tick_data.tick.volume = 0.0;
+        tick_data.tick.time_ms = j.contains("Updates")
+            ? static_cast<std::uint64_t>(
+                detail::read_json_int64(j.at("Updates"), "Updates")) * time_shield::MS_PER_SEC
+            : 0;
+        tick_data.tick.received_ms = OPTIONX_TIMESTAMP_MS;
+        tick_data.tick.set_flag(TickUpdateFlags::ASK_UPDATED);
+        tick_data.tick.set_flag(TickUpdateFlags::BID_UPDATED);
+        tick_data.tick.set_flag(MarketDataFlags::INITIALIZED);
+        tick_data.tick.set_flag(MarketDataFlags::REALTIME);
+        return true;
     }
 
 }

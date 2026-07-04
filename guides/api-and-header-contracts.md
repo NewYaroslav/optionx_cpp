@@ -77,9 +77,8 @@
 - `fetch_trade_result(TradeResultQuery, trade_result_callback_t)`
 - `fetch_trade_history(const TradeHistoryRequest&, trade_history_callback_t)`
 - `fetch_trade_history(trade_history_callback_t)`
-- `fetch_candle_data(...)`
 - `fetch_symbol_list(...)`
-- `on_trade_result()`, `on_candle_data()`, `on_tick_data()`
+- `on_trade_result()`
 - `get_info<T>(AccountInfoType)`
 
 Managers (`AuthManager`, `RequestManager`, `TradeManager`, `BalanceManager`,
@@ -92,12 +91,13 @@ etc.) являются implementation detail конкретной платфор
 Market-data APIs are split into DTO/data types and a provider role:
 
 - `data/bars/*`, `data/ticks/*`, `data/symbol/*` contain payload DTOs such as
-  `SingleBar`, `BarSequence`, `SingleTick`, `TickSequence` and
+  `Bar`, `BarSequence`, `Tick`, `TickSequence` and
   `BarHistoryRequest`.
 - `market_data.hpp` exposes the provider role and subscription contract:
   `BaseMarketDataProvider`, `TickSubscriptionRequest`,
-  `BarSubscriptionRequest`, `MarketDataSubscriptionHandle` and
-  `MarketDataSubscriptionResult`.
+  `BarSubscriptionRequest`, `MarketDataSubscriptionBatch`,
+  `MarketDataSubscriptionHandle`, `MarketDataSubscriptionResult`,
+  `MarketDataBatch<T>` and `MarketDataContinuityService`.
 
 Contract rules:
 
@@ -105,6 +105,20 @@ Contract rules:
   to zero are invalid in requests.
 - Live tick and live bar subscriptions use separate request types because the
   payloads and validation rules differ.
+- `on_tick_data()` and `on_bar_data()` deliver `std::unique_ptr` batches.
+  Shared stream metadata (`symbol`, `timeframe`, digits, subscription handle)
+  lives on the batch; individual `Tick`/`Bar` payloads keep only price/time data
+  plus compact `flags`.
+- Payload `flags` encode realtime/history/backfill state through
+  `MarketDataFlags` and the compact price stream through `MarketPriceType`.
+- `on_market_data_status()` is a separate stream-status callback. Data callbacks
+  should carry data batches, not connection lifecycle sentinel payloads.
+- `apply_subscriptions()` applies subscription changes atomically. The old
+  single-operation helpers (`subscribe_ticks`, `subscribe_bars`, `unsubscribe`)
+  are wrappers around a one-operation batch.
+- `SUBSCRIBED` means the provider accepted the desired subscription and
+  returned a handle. Physical stream readiness is separate and is reported
+  through `on_market_data_status()` with `READY`.
 - `MarketDataSubscriptionResult::status` is the source of truth. There is no
   separate mutable `success` field; use `result.success()` or `if (result)`.
 - Subscription handles are provider-bound. `provider_id` is a runtime identity
@@ -119,6 +133,9 @@ Contract rules:
   consumers, not necessarily the only source lifecycle.
 - Historical bars use `BarHistoryResult` so callers can distinguish an empty
   successful range from transport, validation or parser failures.
+- `MarketDataContinuityService` is the thin helper for routing recovered history
+  into the same bar batch pipeline. It marks payload bars as
+  `HISTORICAL` and, for gap recovery, `BACKFILL`.
 
 ## Typed Broker Result Pattern
 

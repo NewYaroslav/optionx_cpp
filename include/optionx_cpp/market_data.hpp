@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -17,6 +18,8 @@
 #include "data.hpp"
 #include "market_data/enums.hpp"
 #include "market_data/MarketDataSubscription.hpp"
+#include "market_data/MarketDataBatch.hpp"
 #include "market_data/BaseMarketDataProvider.hpp"
+#include "market_data/MarketDataContinuityService.hpp"
 
 #endif // _OPTIONX_MARKET_DATA_HPP_INCLUDED

@@ -5,6 +5,7 @@
 /// \file ticks.hpp
 /// \brief Includes all necessary headers for tick data structures and flags.
 
+#include "market.hpp"
 #include "ticks/flags.hpp"
 #include "ticks/Tick.hpp"
 #include "ticks/SingleTick.hpp"

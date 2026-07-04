@@ -160,7 +160,7 @@ namespace optionx::platforms::intrade_bar {
                     it->second = tick;
                 }
             }
-            notify(events::PriceUpdateEvent(ticks));
+            notify(events::PriceUpdateEvent(std::move(ticks), MarketDataUpdateSource::POLLING));
         });
     }
 

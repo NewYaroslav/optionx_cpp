@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include "config.hpp"
 #include "utils.hpp"
 #include "data.hpp"
 #include "market_data.hpp"
