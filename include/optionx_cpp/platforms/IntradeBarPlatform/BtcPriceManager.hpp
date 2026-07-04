@@ -213,8 +213,15 @@ namespace optionx::platforms::intrade_bar {
 
     inline void BtcPriceManager::handle_message(const std::string& message) {
         if (parse_btcusdt_tick(message, m_tick_data[0])) {
+            std::vector<events::TickUpdateBatch> batches;
+            batches.push_back(events::PriceUpdateEvent::make_tick_batch(
+                m_tick_data[0].tick,
+                m_tick_data[0].symbol,
+                m_tick_data[0].provider,
+                m_tick_data[0].price_digits,
+                m_tick_data[0].volume_digits));
             notify_async(std::make_unique<events::PriceUpdateEvent>(
-                m_tick_data,
+                std::move(batches),
                 MarketDataUpdateSource::WEBSOCKET));
         }
     }

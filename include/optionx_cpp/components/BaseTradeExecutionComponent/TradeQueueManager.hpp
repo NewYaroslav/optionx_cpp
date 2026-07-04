@@ -654,11 +654,15 @@ namespace optionx::components {
                 result->trade_state = TradeState::IN_PROGRESS;
             }
 
-            const auto* quote = event.find_tick_by_symbol(request->symbol);
-            if (!quote || !quote->has_flag(MarketDataFlags::INITIALIZED)) continue;
+            const auto* quote_batch = event.find_tick_batch_by_symbol(request->symbol);
+            if (!quote_batch || quote_batch->items.empty()) continue;
 
-            result->close_price = quote->mid_price();
-            result->live_state = m_trade_state_manager.determine_trade_state(result, request, *quote);
+            const auto& quote = quote_batch->items.back();
+            if (!quote.has_flag(MarketDataFlags::INITIALIZED)) continue;
+
+            const double close_price = quote.mid_price(quote_batch->price_digits);
+            result->close_price = close_price;
+            result->live_state = m_trade_state_manager.determine_trade_state(result, request, close_price);
             dispatch_trade_event(transaction);
         }
     }

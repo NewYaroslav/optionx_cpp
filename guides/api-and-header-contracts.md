@@ -109,6 +109,11 @@ Contract rules:
   Shared stream metadata (`symbol`, `timeframe`, digits, subscription handle)
   lives on the batch; individual `Tick`/`Bar` payloads keep only price/time data
   plus compact `flags`.
+- Live data callbacks are flushed from the provider/platform lifecycle
+  (`process()` or the worker loop started by `run()`), after queued price events
+  are routed and coalesced. Calling `event_bus().drain()` alone is an internal
+  event-bus operation and is not part of the public market-data delivery
+  contract.
 - Payload `flags` encode realtime/history/backfill state through
   `MarketDataFlags` and the compact price stream through `MarketPriceType`.
 - `on_market_data_status()` is a separate stream-status callback. Data callbacks

@@ -160,7 +160,18 @@ namespace optionx::platforms::intrade_bar {
                     it->second = tick;
                 }
             }
-            notify(events::PriceUpdateEvent(std::move(ticks), MarketDataUpdateSource::POLLING));
+
+            std::vector<events::TickUpdateBatch> batches;
+            batches.reserve(ticks.size());
+            for (const auto& tick : ticks) {
+                batches.push_back(events::PriceUpdateEvent::make_tick_batch(
+                    tick.tick,
+                    tick.symbol,
+                    tick.provider,
+                    tick.price_digits,
+                    tick.volume_digits));
+            }
+            notify(events::PriceUpdateEvent(std::move(batches), MarketDataUpdateSource::POLLING));
         });
     }
 

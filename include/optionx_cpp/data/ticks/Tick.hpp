@@ -58,6 +58,13 @@ namespace optionx {
             return ask != 0.0 ? ask : bid;
         }
 
+        /// \brief Calculates the midpoint or last traded price rounded to symbol precision.
+        /// \param price_digits Number of decimal places for price rounding.
+        /// \return The value returned by mid_price() rounded to price_digits.
+        double mid_price(std::uint32_t price_digits) const {
+            return utils::normalize_double(mid_price(), price_digits);
+        }
+
         /// \brief Sets a specific flag in the tick's flags.
         /// \param flag The flag to set (from TickUpdateFlags).
         void set_flag(TickUpdateFlags flag) {

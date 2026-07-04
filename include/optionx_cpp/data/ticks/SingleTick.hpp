@@ -44,7 +44,7 @@ namespace optionx {
         /// \brief Returns the normalized quote midpoint or last traded price.
         /// \return The normalized value returned by Tick::mid_price().
         double mid_price() const {
-            return utils::normalize_double(tick.mid_price(), price_digits);
+            return tick.mid_price(price_digits);
         }
 
         /// \brief Checks whether a market-data payload flag is set.

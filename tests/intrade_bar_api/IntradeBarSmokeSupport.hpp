@@ -275,9 +275,9 @@ public:
         subscribe<optionx::events::PriceUpdateEvent>(
             [this](const optionx::events::PriceUpdateEvent& event) {
                 std::lock_guard<std::mutex> lock(m_mutex);
-                m_ticks = event.get_ticks();
+                m_batches = event.get_tick_batches();
                 ++m_update_count;
-                LOGIT_INFO("Intrade Bar smoke price update: ticks=", m_ticks.size());
+                LOGIT_INFO("Intrade Bar smoke price update: batches=", m_batches.size());
             });
     }
 
@@ -286,7 +286,18 @@ public:
 
     std::vector<optionx::SingleTick> ticks() const {
         std::lock_guard<std::mutex> lock(m_mutex);
-        return m_ticks;
+        std::vector<optionx::SingleTick> ticks;
+        for (const auto& batch : m_batches) {
+            for (const auto& item : batch.items) {
+                ticks.emplace_back(
+                    item,
+                    batch.symbol,
+                    batch.provider,
+                    batch.price_digits,
+                    batch.volume_digits);
+            }
+        }
+        return ticks;
     }
 
     std::size_t update_count() const {
@@ -296,15 +307,15 @@ public:
 
     bool has_symbol(const std::string& symbol) const {
         std::lock_guard<std::mutex> lock(m_mutex);
-        for (const auto& tick : m_ticks) {
-            if (tick.symbol == symbol) return true;
+        for (const auto& batch : m_batches) {
+            if (batch.symbol == symbol && !batch.empty()) return true;
         }
         return false;
     }
 
 private:
     mutable std::mutex m_mutex;
-    std::vector<optionx::SingleTick> m_ticks;
+    std::vector<optionx::events::TickUpdateBatch> m_batches;
     std::size_t m_update_count = 0;
 };
 

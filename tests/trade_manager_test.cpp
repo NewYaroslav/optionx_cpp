@@ -526,6 +526,20 @@ std::unique_ptr<TradeRequest> make_valid_sprint_trade_request() {
     return trade_request;
 }
 
+std::unique_ptr<events::PriceUpdateEvent> make_price_update_event(
+        const std::string& symbol,
+        const Tick& tick,
+        std::uint32_t price_digits) {
+    std::vector<events::TickUpdateBatch> batches;
+    batches.push_back(events::PriceUpdateEvent::make_tick_batch(
+        tick,
+        symbol,
+        "test",
+        price_digits,
+        0));
+    return std::make_unique<events::PriceUpdateEvent>(std::move(batches));
+}
+
 TEST(AccountInfoDataTest, PayoutAboveMinAcceptsBrokerPayoutGreaterThanMinimum) {
     optionx::platforms::intrade_bar::AccountInfoData account_info;
     account_info.currency = CurrencyType::USD;
@@ -558,6 +572,29 @@ TEST(AccountInfoDataTest, PayoutAboveMinAcceptsBrokerPayoutGreaterThanMinimum) {
         AccountInfoType::PAYOUT_ABOVE_MIN,
         request,
         timestamp));
+}
+
+TEST(TradeStateManagerTest, DetermineTradeStateUsesNormalizedClosePrice) {
+    auto account_info = std::make_shared<AccountInfoData>();
+    AccountInfoProvider account_info_provider(account_info);
+    TradeStateManager manager(account_info_provider);
+
+    auto result = std::make_shared<TradeResult>();
+    auto request = std::make_shared<TradeRequest>();
+    result->open_price = 1.12335;
+    request->order_type = OrderType::BUY;
+
+    Tick tick;
+    tick.bid = 1.1233548;
+    tick.ask = 1.1233550;
+    tick.set_flag(MarketDataFlags::INITIALIZED);
+
+    ASSERT_GT(tick.mid_price(), result->open_price);
+    const double close_price = tick.mid_price(5);
+    EXPECT_DOUBLE_EQ(close_price, 1.12335);
+    EXPECT_EQ(
+        manager.determine_trade_state(result, request, close_price),
+        TradeState::STANDOFF);
 }
 
 TEST_F(TradeManagerTestFixture, OrderIntervalDelaysQueuedTrades) {
@@ -1068,17 +1105,14 @@ TEST_F(TradeManagerTestFixture, ValidTradeTest) {
     std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 
     // Simulate a price update event to trigger closing.
-    SingleTick tick;
+    Tick tick;
     // Set tick price data so that mid_price > open_price.
     // For example, for BUY order if mid_price > 1.12335 then trade is WIN.
-    tick.tick         = { 1.12350, 1.12340, 0.1, 1695483030000, 1695483031000, 0 };
-    tick.symbol       = "EURUSD";
-    tick.price_digits = 5;
-    tick.tick.set_flag(optionx::MarketDataFlags::REALTIME);
-    tick.tick.set_flag(optionx::MarketDataFlags::INITIALIZED);
-    std::vector<SingleTick> ticks = { tick };
+    tick = { 1.12350, 1.12340, 0.1, 1695483030000, 1695483031000, 0 };
+    tick.set_flag(optionx::MarketDataFlags::REALTIME);
+    tick.set_flag(optionx::MarketDataFlags::INITIALIZED);
 
-    bus.notify_async(std::make_unique<events::PriceUpdateEvent>(ticks));
+    bus.notify_async(make_price_update_event("EURUSD", tick, 5));
 
     // Wait a short time for the callback to be invoked.
     int wait_iterations = 0;
@@ -1164,17 +1198,14 @@ TEST_F(TradeManagerTestFixture, InvalidTradeTest) {
     std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 
     // Simulate a price update event to trigger closing.
-    SingleTick tick;
+    Tick tick;
     // Set tick price data so that mid_price > open_price.
     // For example, for BUY order if mid_price > 1.12335 then trade is WIN.
-    tick.tick         = { 1.12350, 1.12340, 0.1, 1695483030000, 1695483031000, 0 };
-    tick.symbol       = "EURUSD";
-    tick.price_digits = 5;
-    tick.tick.set_flag(optionx::MarketDataFlags::REALTIME);
-    tick.tick.set_flag(optionx::MarketDataFlags::INITIALIZED);
-    std::vector<SingleTick> ticks = { tick };
+    tick = { 1.12350, 1.12340, 0.1, 1695483030000, 1695483031000, 0 };
+    tick.set_flag(optionx::MarketDataFlags::REALTIME);
+    tick.set_flag(optionx::MarketDataFlags::INITIALIZED);
 
-    bus.notify_async(std::make_unique<events::PriceUpdateEvent>(ticks));
+    bus.notify_async(make_price_update_event("EURUSD", tick, 5));
 
     // Wait a short time for the callback to be invoked.
     int wait_iterations = 0;
@@ -1262,17 +1293,14 @@ TEST_F(TradeManagerTestFixture, ShutdownTest) {
     std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 
     // Simulate a price update event to trigger closing.
-    SingleTick tick;
+    Tick tick;
     // Set tick price data so that mid_price > open_price.
     // For example, for BUY order if mid_price > 1.12335 then trade is WIN.
-    tick.tick         = { 1.12350, 1.12340, 0.1, 1695483030000, 1695483031000, 0 };
-    tick.symbol       = "EURUSD";
-    tick.price_digits = 5;
-    tick.tick.set_flag(optionx::MarketDataFlags::REALTIME);
-    tick.tick.set_flag(optionx::MarketDataFlags::INITIALIZED);
-    std::vector<SingleTick> ticks = { tick };
+    tick = { 1.12350, 1.12340, 0.1, 1695483030000, 1695483031000, 0 };
+    tick.set_flag(optionx::MarketDataFlags::REALTIME);
+    tick.set_flag(optionx::MarketDataFlags::INITIALIZED);
 
-    bus.notify_async(std::make_unique<events::PriceUpdateEvent>(ticks));
+    bus.notify_async(make_price_update_event("EURUSD", tick, 5));
 
     // Wait a short time for the callback to be invoked.
     std::this_thread::sleep_for(std::chrono::milliseconds(5000));
