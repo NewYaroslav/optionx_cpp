@@ -55,6 +55,9 @@ namespace optionx::market_data {
         }
 
         /// \brief Returns a reference to the live bar-data callback.
+        /// \details Providers may coalesce queued updates and invoke this callback
+        ///          from their lifecycle `process()`/platform loop, not directly
+        ///          from a low-level event-bus drain.
         /// \return Mutable callback reference, or a null callback if live bars are unsupported.
         virtual bars_callback_t& on_bar_data() {
             static bars_callback_t null_callback;
@@ -62,6 +65,9 @@ namespace optionx::market_data {
         }
 
         /// \brief Returns a reference to the live tick-data callback.
+        /// \details Providers may coalesce queued updates and invoke this callback
+        ///          from their lifecycle `process()`/platform loop, not directly
+        ///          from a low-level event-bus drain.
         /// \return Mutable callback reference, or a null callback if live ticks are unsupported.
         virtual ticks_callback_t& on_tick_data() {
             static ticks_callback_t null_callback;

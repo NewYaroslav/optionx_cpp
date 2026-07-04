@@ -94,6 +94,10 @@ Subscription rules:
 - Data callbacks receive batches. Shared metadata (`symbol`, `timeframe`,
   digits and subscription handle) lives on the batch; compact payload flags live
   on `Tick` and `Bar`.
+- Data callbacks are delivered by the provider/platform lifecycle. With the
+  default worker loop this happens automatically after `run()`. If you use
+  `run(false)` or an external event loop, call `platform.process()`; draining
+  `event_bus()` directly is not enough to flush public market-data batches.
 - Use `MarketDataFlags` for realtime/history/backfill markers and
   `MarketPriceType` for bid/ask/mid/last payload identity.
 - `MarketDataContinuityService` routes recovered historical bars into the same
