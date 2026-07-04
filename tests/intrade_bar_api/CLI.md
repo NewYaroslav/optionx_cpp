@@ -167,7 +167,8 @@ Smoke live market-data streams:
 subscriptions, prints stream status updates, and prints every delivered tick
 batch. When `--bars` is set, it also:
 
-- tries the provider-level live bar subscription and prints the typed result;
+- applies provider-level live bar subscriptions backed by tick-to-bar
+  aggregation and prints the typed result;
 - builds local realtime OHLC updates from the live tick stream for terminal
   inspection;
 - requests a historical/backfill bar batch through `MarketDataContinuityService`
@@ -206,10 +207,9 @@ Expected output includes lines like:
 [bar-batch] symbol=BTCUSDT timeframe=60 items=...
 ```
 
-Intrade live bars are not provider-native yet, so `--bars` currently uses
-local CLI aggregation for realtime bar updates and history/backfill for
-historical bars. The provider-level `subscribe_bars()` result is still printed
-so this command will expose the change when native bar streams are added.
+Intrade live bars are built from the selected tick transport. The CLI also
+keeps its local aggregation output visible so manual smoke runs can compare the
+provider-level bar batches against the raw tick stream.
 
 Fetch closed trade history:
 

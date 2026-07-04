@@ -85,6 +85,21 @@ namespace optionx::platforms::intrade_bar {
             market_data::SubscriptionId,
             market_data::MarketDataSubscriptionHandle> m_tick_subscriptions; ///< Active tick subscriptions.
         std::vector<market_data::TickDataBatch> m_pending_tick_batches; ///< Tick batches waiting for the next process cycle.
+        std::unordered_map<
+            market_data::SubscriptionId,
+            market_data::MarketDataSubscriptionHandle> m_bar_subscriptions; ///< Active bar subscriptions.
+
+        /// \struct BarAggregationState
+        /// \brief Runtime OHLC accumulator for one live bar subscription.
+        struct BarAggregationState {
+            Bar current; ///< Current in-progress bar.
+            bool initialized = false; ///< True after the first valid tick was applied.
+        };
+
+        std::unordered_map<
+            market_data::SubscriptionId,
+            BarAggregationState> m_bar_states; ///< Bar accumulators keyed by subscription ID.
+        std::vector<market_data::BarDataBatch> m_pending_bar_batches; ///< Bar batches waiting for the next process cycle.
         market_data::SubscriptionId m_next_subscription_id = 1; ///< Next runtime handle ID.
         std::mutex m_mutex; ///< Protects subscription handles.
 
@@ -99,6 +114,10 @@ namespace optionx::platforms::intrade_bar {
         /// \brief Selects the concrete Intrade Bar tick source for a tick request.
         static TickSource select_tick_source(
                 const market_data::TickSubscriptionRequest& request);
+
+        /// \brief Selects the concrete Intrade Bar tick source used to build live bars.
+        static TickSource select_tick_source(
+                const market_data::BarSubscriptionRequest& request);
 
         /// \brief Returns the public transport represented by a concrete source.
         static market_data::MarketDataTransport transport_for_source(
@@ -127,9 +146,33 @@ namespace optionx::platforms::intrade_bar {
                 const market_data::MarketDataSubscriptionHandle& subscription,
                 const events::TickUpdateBatch& source_batch);
 
+        /// \brief Finds or creates a pending bar delivery batch.
+        market_data::BarDataBatch& pending_bar_batch_for(
+                const market_data::MarketDataSubscriptionHandle& subscription,
+                const events::TickUpdateBatch& source_batch);
+
         /// \brief Removes queued tick data for an inactive subscription.
         /// \pre The caller holds m_mutex.
         void remove_pending_tick_batch_no_lock(market_data::SubscriptionId subscription_id);
+
+        /// \brief Removes queued bar data for an inactive subscription.
+        /// \pre The caller holds m_mutex.
+        void remove_pending_bar_batch_no_lock(market_data::SubscriptionId subscription_id);
+
+        /// \brief Extracts the configured price from a tick payload.
+        static double price_from_tick(
+                const Tick& tick,
+                BarPriceSource price_source) noexcept;
+
+        /// \brief Returns the event timestamp used for live bar bucketing.
+        static std::uint64_t tick_time_ms(const Tick& tick) noexcept;
+
+        /// \brief Applies one tick to a live bar accumulator.
+        static void append_bar_updates(
+                const market_data::MarketDataSubscriptionHandle& subscription,
+                const Tick& tick,
+                BarAggregationState& state,
+                std::vector<Bar>& updates);
     };
 
     inline bool MarketDataSubscriptionManager::subscribe_ticks(
@@ -186,6 +229,7 @@ namespace optionx::platforms::intrade_bar {
         std::vector<market_data::MarketDataSubscriptionHandle> added_subscriptions;
         std::vector<TickSource> added_sources;
         std::vector<market_data::MarketDataSubscriptionHandle> removed_subscriptions;
+        std::vector<std::pair<market_data::SubscriptionId, BarAggregationState>> removed_bar_states;
         std::vector<market_data::MarketDataSubscriptionResult> results;
         market_data::MarketDataSubscriptionBatchResult failure_result;
         market_data::SubscriptionId previous_next_subscription_id =
@@ -247,20 +291,36 @@ namespace optionx::platforms::intrade_bar {
                 }
                 case market_data::MarketDataSubscriptionAction::SUBSCRIBE_BARS: {
                     change.bar_request.symbol = normalize_symbol_name(std::move(change.bar_request.symbol));
-                    const bool valid = change.bar_request.valid();
-                    const auto status = valid
-                        ? market_data::MarketDataSubscriptionStatus::UNSUPPORTED
-                        : market_data::MarketDataSubscriptionStatus::INVALID_REQUEST;
-                    const std::string message = valid
-                        ? "Intrade Bar bar subscriptions require a tick-to-bar aggregator and are not supported yet."
-                        : "Invalid Intrade Bar bar subscription request.";
-                    set_failure(
-                        status,
-                        message,
-                        {market_data::MarketDataSubscriptionResult::failed(
-                            std::move(change.bar_request),
-                            status,
-                            message)});
+                    if (!change.bar_request.valid()) {
+                        set_failure(
+                            market_data::MarketDataSubscriptionStatus::INVALID_REQUEST,
+                            "Invalid Intrade Bar bar subscription request.",
+                            {market_data::MarketDataSubscriptionResult::failed(
+                                std::move(change.bar_request),
+                                market_data::MarketDataSubscriptionStatus::INVALID_REQUEST,
+                                "Invalid Intrade Bar bar subscription request.")});
+                        break;
+                    }
+                    const auto source = select_tick_source(change.bar_request);
+                    if (source == TickSource::UNKNOWN) {
+                        set_failure(
+                            market_data::MarketDataSubscriptionStatus::UNSUPPORTED,
+                            "Intrade Bar bar subscription source is not supported for this symbol/transport.",
+                            {market_data::MarketDataSubscriptionResult::failed(
+                                std::move(change.bar_request),
+                                market_data::MarketDataSubscriptionStatus::UNSUPPORTED,
+                                "Intrade Bar bar subscription source is not supported for this symbol/transport.")});
+                        break;
+                    }
+
+                    auto handle = market_data::MarketDataSubscriptionHandle::from_bar_request(
+                        m_provider_id,
+                        next_subscription_id_from(next_id),
+                        change.bar_request);
+                    handle.transport = transport_for_source(source);
+                    added_subscriptions.push_back(handle);
+                    added_sources.push_back(source);
+                    results.push_back(market_data::MarketDataSubscriptionResult::subscribed(handle));
                     break;
                 }
                 case market_data::MarketDataSubscriptionAction::UNSUBSCRIBE: {
@@ -285,8 +345,10 @@ namespace optionx::platforms::intrade_bar {
                         break;
                     }
 
-                    auto it = m_tick_subscriptions.find(change.subscription.id);
-                    if (it == m_tick_subscriptions.end()) {
+                    auto tick_it = m_tick_subscriptions.find(change.subscription.id);
+                    auto bar_it = m_bar_subscriptions.find(change.subscription.id);
+                    if (tick_it == m_tick_subscriptions.end() &&
+                        bar_it == m_bar_subscriptions.end()) {
                         set_failure(
                             market_data::MarketDataSubscriptionStatus::FAILED,
                             "Intrade Bar market-data subscription is not active.",
@@ -297,12 +359,20 @@ namespace optionx::platforms::intrade_bar {
                         break;
                     }
 
-                    removed_subscriptions.push_back(it->second);
-                    results.push_back(market_data::MarketDataSubscriptionResult::unsubscribed(it->second));
+                    const auto subscription = tick_it != m_tick_subscriptions.end()
+                        ? tick_it->second
+                        : bar_it->second;
+                    removed_subscriptions.push_back(subscription);
+                    results.push_back(market_data::MarketDataSubscriptionResult::unsubscribed(subscription));
                     break;
                 }
                 case market_data::MarketDataSubscriptionAction::UNSUBSCRIBE_ALL:
                     for (const auto& [id, subscription] : m_tick_subscriptions) {
+                        (void)id;
+                        removed_subscriptions.push_back(subscription);
+                        results.push_back(market_data::MarketDataSubscriptionResult::unsubscribed(subscription));
+                    }
+                    for (const auto& [id, subscription] : m_bar_subscriptions) {
                         (void)id;
                         removed_subscriptions.push_back(subscription);
                         results.push_back(market_data::MarketDataSubscriptionResult::unsubscribed(subscription));
@@ -319,9 +389,20 @@ namespace optionx::platforms::intrade_bar {
                 for (const auto& subscription : removed_subscriptions) {
                     m_tick_subscriptions.erase(subscription.id);
                     remove_pending_tick_batch_no_lock(subscription.id);
+                    m_bar_subscriptions.erase(subscription.id);
+                    remove_pending_bar_batch_no_lock(subscription.id);
+                    auto state_it = m_bar_states.find(subscription.id);
+                    if (state_it != m_bar_states.end()) {
+                        removed_bar_states.push_back(*state_it);
+                    }
+                    m_bar_states.erase(subscription.id);
                 }
                 for (const auto& subscription : added_subscriptions) {
-                    m_tick_subscriptions[subscription.id] = subscription;
+                    if (subscription.stream_type == market_data::MarketDataType::BARS) {
+                        m_bar_subscriptions[subscription.id] = subscription;
+                    } else {
+                        m_tick_subscriptions[subscription.id] = subscription;
+                    }
                 }
                 m_next_subscription_id = next_id;
             }
@@ -368,9 +449,19 @@ namespace optionx::platforms::intrade_bar {
                         for (const auto& added : added_subscriptions) {
                             m_tick_subscriptions.erase(added.id);
                             remove_pending_tick_batch_no_lock(added.id);
+                            m_bar_subscriptions.erase(added.id);
+                            remove_pending_bar_batch_no_lock(added.id);
+                            m_bar_states.erase(added.id);
                         }
                         for (const auto& removed : removed_subscriptions) {
-                            m_tick_subscriptions[removed.id] = removed;
+                            if (removed.stream_type == market_data::MarketDataType::BARS) {
+                                m_bar_subscriptions[removed.id] = removed;
+                            } else {
+                                m_tick_subscriptions[removed.id] = removed;
+                            }
+                        }
+                        for (const auto& [id, state] : removed_bar_states) {
+                            m_bar_states[id] = state;
                         }
                         m_next_subscription_id = previous_next_subscription_id;
                     }
@@ -411,16 +502,28 @@ namespace optionx::platforms::intrade_bar {
 
     inline void MarketDataSubscriptionManager::process() {
         std::vector<market_data::TickDataBatch> batches;
+        std::vector<market_data::BarDataBatch> bar_batches;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             batches.swap(m_pending_tick_batches);
+            bar_batches.swap(m_pending_bar_batches);
         }
 
-        if (!m_ticks_callback) return;
-        for (auto& batch : batches) {
-            if (!batch.empty()) {
-                m_ticks_callback(
-                    std::make_unique<market_data::TickDataBatch>(std::move(batch)));
+        if (m_ticks_callback) {
+            for (auto& batch : batches) {
+                if (!batch.empty()) {
+                    m_ticks_callback(
+                        std::make_unique<market_data::TickDataBatch>(std::move(batch)));
+                }
+            }
+        }
+
+        if (m_bars_callback) {
+            for (auto& batch : bar_batches) {
+                if (!batch.empty()) {
+                    m_bars_callback(
+                        std::make_unique<market_data::BarDataBatch>(std::move(batch)));
+                }
             }
         }
     }
@@ -429,8 +532,12 @@ namespace optionx::platforms::intrade_bar {
         std::vector<market_data::MarketDataSubscriptionHandle> subscriptions;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            subscriptions.reserve(m_tick_subscriptions.size());
+            subscriptions.reserve(m_tick_subscriptions.size() + m_bar_subscriptions.size());
             for (const auto& [id, subscription] : m_tick_subscriptions) {
+                (void)id;
+                subscriptions.push_back(subscription);
+            }
+            for (const auto& [id, subscription] : m_bar_subscriptions) {
                 (void)id;
                 subscriptions.push_back(subscription);
             }
@@ -447,6 +554,9 @@ namespace optionx::platforms::intrade_bar {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_tick_subscriptions.clear();
         m_pending_tick_batches.clear();
+        m_bar_subscriptions.clear();
+        m_bar_states.clear();
+        m_pending_bar_batches.clear();
     }
 
     inline market_data::SubscriptionId
@@ -464,7 +574,8 @@ namespace optionx::platforms::intrade_bar {
 
     inline bool MarketDataSubscriptionManager::uses_fx_websocket_source(
             const market_data::MarketDataSubscriptionHandle& subscription) {
-        if (subscription.stream_type != market_data::MarketDataType::TICKS) {
+        if (subscription.stream_type != market_data::MarketDataType::TICKS &&
+            subscription.stream_type != market_data::MarketDataType::BARS) {
             return false;
         }
         return subscription.transport == market_data::MarketDataTransport::WEBSOCKET &&
@@ -492,6 +603,15 @@ namespace optionx::platforms::intrade_bar {
         default:
             return TickSource::UNKNOWN;
         }
+    }
+
+    inline MarketDataSubscriptionManager::TickSource
+    MarketDataSubscriptionManager::select_tick_source(
+            const market_data::BarSubscriptionRequest& request) {
+        market_data::TickSubscriptionRequest tick_request(
+            request.symbol,
+            request.transport);
+        return select_tick_source(tick_request);
     }
 
     inline market_data::MarketDataTransport
@@ -552,7 +672,7 @@ namespace optionx::platforms::intrade_bar {
     inline void MarketDataSubscriptionManager::handle_event(
             const events::PriceUpdateEvent& event) {
         std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_tick_subscriptions.empty()) return;
+        if (m_tick_subscriptions.empty() && m_bar_subscriptions.empty()) return;
 
         for (const auto& source_batch : event.get_tick_batches()) {
             const auto normalized_symbol = normalize_symbol_name(source_batch.symbol);
@@ -565,6 +685,18 @@ namespace optionx::platforms::intrade_bar {
                 for (const auto& tick : source_batch.items) {
                     batch.items.push_back(tick);
                     batch.items.back().set_flag(MarketDataFlags::REALTIME);
+                }
+            }
+
+            for (const auto& [id, subscription] : m_bar_subscriptions) {
+                (void)id;
+                if (subscription.symbol != normalized_symbol) continue;
+                if (!source_matches_subscription(subscription, event.source())) continue;
+
+                auto& batch = pending_bar_batch_for(subscription, source_batch);
+                auto& state = m_bar_states[subscription.id];
+                for (const auto& tick : source_batch.items) {
+                    append_bar_updates(subscription, tick, state, batch.items);
                 }
             }
         }
@@ -591,6 +723,27 @@ namespace optionx::platforms::intrade_bar {
         return m_pending_tick_batches.back();
     }
 
+    inline market_data::BarDataBatch&
+    MarketDataSubscriptionManager::pending_bar_batch_for(
+            const market_data::MarketDataSubscriptionHandle& subscription,
+            const events::TickUpdateBatch& source_batch) {
+        for (auto& batch : m_pending_bar_batches) {
+            if (batch.subscription.id == subscription.id) {
+                return batch;
+            }
+        }
+
+        market_data::BarDataBatch created;
+        created.subscription = subscription;
+        created.type = market_data::MarketDataType::BARS;
+        created.symbol = subscription.symbol;
+        created.timeframe = subscription.timeframe;
+        created.price_digits = source_batch.price_digits;
+        created.volume_digits = source_batch.volume_digits;
+        m_pending_bar_batches.push_back(std::move(created));
+        return m_pending_bar_batches.back();
+    }
+
     inline void MarketDataSubscriptionManager::remove_pending_tick_batch_no_lock(
             market_data::SubscriptionId subscription_id) {
         for (auto it = m_pending_tick_batches.begin();
@@ -601,6 +754,89 @@ namespace optionx::platforms::intrade_bar {
                 ++it;
             }
         }
+    }
+
+    inline void MarketDataSubscriptionManager::remove_pending_bar_batch_no_lock(
+            market_data::SubscriptionId subscription_id) {
+        for (auto it = m_pending_bar_batches.begin();
+             it != m_pending_bar_batches.end();) {
+            if (it->subscription.id == subscription_id) {
+                it = m_pending_bar_batches.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    inline double MarketDataSubscriptionManager::price_from_tick(
+            const Tick& tick,
+            BarPriceSource price_source) noexcept {
+        switch (price_source) {
+        case BarPriceSource::BID:
+            return tick.bid;
+        case BarPriceSource::ASK:
+            return tick.ask;
+        case BarPriceSource::LAST:
+            return tick.last != 0.0 ? tick.last : tick.mid_price();
+        case BarPriceSource::MID:
+        case BarPriceSource::UNKNOWN:
+        default:
+            return tick.mid_price();
+        }
+    }
+
+    inline std::uint64_t MarketDataSubscriptionManager::tick_time_ms(
+            const Tick& tick) noexcept {
+        return tick.time_ms != 0 ? tick.time_ms : tick.received_ms;
+    }
+
+    inline void MarketDataSubscriptionManager::append_bar_updates(
+            const market_data::MarketDataSubscriptionHandle& subscription,
+            const Tick& tick,
+            BarAggregationState& state,
+            std::vector<Bar>& updates) {
+        if (!tick.has_flag(MarketDataFlags::INITIALIZED)) return;
+
+        const auto timestamp_ms = tick_time_ms(tick);
+        if (timestamp_ms == 0 || subscription.timeframe <= 0) return;
+
+        const auto timeframe_ms =
+            static_cast<std::uint64_t>(subscription.timeframe) * time_shield::MS_PER_SEC;
+        if (timeframe_ms == 0) return;
+
+        const auto price = price_from_tick(tick, subscription.price_source);
+        if (price == 0.0) return;
+
+        const auto bucket_ms = (timestamp_ms / timeframe_ms) * timeframe_ms;
+        const auto price_type = market_price_type_from_bar_price_source(subscription.price_source);
+
+        if (!state.initialized || state.current.time_ms != bucket_ms) {
+            if (state.initialized) {
+                state.current.set_flag(MarketDataFlags::INCOMPLETE, false);
+                state.current.set_flag(MarketDataFlags::FINALIZED);
+                updates.push_back(state.current);
+            }
+
+            state.current = Bar(price, price, price, price, tick.volume, bucket_ms);
+            state.current.set_flag(MarketDataFlags::REALTIME);
+            state.current.set_flag(MarketDataFlags::INCOMPLETE);
+            state.current.set_flag(MarketDataFlags::INITIALIZED);
+            state.current.set_price_type(price_type);
+            state.initialized = true;
+            updates.push_back(state.current);
+            return;
+        }
+
+        state.current.high = std::max(state.current.high, price);
+        state.current.low = std::min(state.current.low, price);
+        state.current.close = price;
+        state.current.volume += tick.volume;
+        state.current.set_flag(MarketDataFlags::REALTIME);
+        state.current.set_flag(MarketDataFlags::INCOMPLETE);
+        state.current.set_flag(MarketDataFlags::FINALIZED, false);
+        state.current.set_flag(MarketDataFlags::INITIALIZED);
+        state.current.set_price_type(price_type);
+        updates.push_back(state.current);
     }
 
 } // namespace optionx::platforms::intrade_bar
