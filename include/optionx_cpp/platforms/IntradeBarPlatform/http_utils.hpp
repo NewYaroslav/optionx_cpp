@@ -50,6 +50,27 @@ namespace optionx::platforms::intrade_bar {
         return 5;
     }
 
+    /// \brief Converts an HTTP(S) or WS(S) host setting to a websocket host.
+    /// \param host Broker host value from endpoint configuration.
+    /// \return Host with `ws://` or `wss://` scheme.
+    inline std::string make_websocket_host(const std::string& host) {
+        const std::string wss_prefix = "wss://";
+        const std::string ws_prefix = "ws://";
+        const std::string https_prefix = "https://";
+        const std::string http_prefix = "http://";
+
+        if (host.rfind(wss_prefix, 0) == 0 || host.rfind(ws_prefix, 0) == 0) {
+            return host;
+        }
+        if (host.rfind(https_prefix, 0) == 0) {
+            return wss_prefix + host.substr(https_prefix.size());
+        }
+        if (host.rfind(http_prefix, 0) == 0) {
+            return ws_prefix + host.substr(http_prefix.size());
+        }
+        return wss_prefix + host;
+    }
+
     /// \brief Marks a SpreadPack as a known zero-spread Intrade Bar value.
     /// \param spread Spread pack to fill.
     /// \param symbol Symbol whose price precision should be stored.

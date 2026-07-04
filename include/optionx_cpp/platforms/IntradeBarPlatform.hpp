@@ -63,6 +63,9 @@ namespace optionx::platforms {
                   m_bar_data_callback,
                   &m_fx_price_websocket_manager),
               m_trade_manager(*this, m_request_manager, m_account_info) {
+            m_btc_price_manager.set_status_sink(
+                provider_id(),
+                &m_market_data_status_callback);
             m_fx_price_websocket_manager.set_status_sink(
                 provider_id(),
                 &m_market_data_status_callback);
@@ -71,6 +74,12 @@ namespace optionx::platforms {
         /// \brief Shuts down components while platform-owned component instances are still alive.
         ~IntradeBarPlatform() override {
             shutdown();
+            m_btc_price_manager.set_status_sink(
+                market_data::kInvalidProviderInstanceId,
+                nullptr);
+            m_fx_price_websocket_manager.set_status_sink(
+                market_data::kInvalidProviderInstanceId,
+                nullptr);
         }
 
         /// \brief Places a trade on the platform.

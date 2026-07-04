@@ -46,6 +46,20 @@ namespace optionx {
         double mid_price() const {
             return utils::normalize_double(tick.mid_price(), price_digits);
         }
+
+        /// \brief Checks whether a market-data payload flag is set.
+        /// \param flag Market-data flag to check.
+        /// \return True if the wrapped tick has the flag.
+        [[nodiscard]] bool has_flag(MarketDataFlags flag) const noexcept {
+            return tick.has_flag(flag);
+        }
+
+        /// \brief Checks whether a tick update flag is set.
+        /// \param flag Tick update flag to check.
+        /// \return True if the wrapped tick has the flag.
+        [[nodiscard]] bool has_flag(TickUpdateFlags flag) const noexcept {
+            return tick.has_flag(flag);
+        }
     };
 
 } // namespace optionx

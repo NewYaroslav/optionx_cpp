@@ -211,6 +211,9 @@ struct LocalTradeHistoryServer {
 };
 
 struct LocalFxConnectServer {
+    explicit LocalFxConnectServer(bool send_bapi_tick = true)
+        : send_bapi_tick(send_bapi_tick) {}
+
     ~LocalFxConnectServer() {
         stop();
     }
@@ -231,6 +234,16 @@ struct LocalFxConnectServer {
             ++subscription_count;
             connection->send(
                 R"({"Updates":1783028728,"ask":1.10002,"bid":1.10001,"symbol":"EUR\/USD"})");
+        };
+
+        auto& bapi = server.endpoint["^/bapi/?$"];
+        bapi.on_open = [this](
+                std::shared_ptr<MarketDataWsServer::Connection> connection) {
+            ++bapi_connection_count;
+            if (send_bapi_tick) {
+                connection->send(
+                    R"({"stream":"btcusdt@aggTrade","data":{"e":"aggTrade","E":1783028778697,"s":"BTCUSDT","a":4005288360,"p":"61521.34000000","q":"0.00017000","f":6473852503,"l":6473852503,"T":1783028778697,"m":false,"M":true}})");
+            }
         };
 
         auto port_promise = std::make_shared<std::promise<unsigned short>>();
@@ -271,8 +284,10 @@ struct LocalFxConnectServer {
     std::thread thread;
     unsigned short port = 0;
     std::atomic<int> subscription_count{0};
+    std::atomic<int> bapi_connection_count{0};
     mutable std::mutex mutex;
     std::string last_subscription;
+    bool send_bapi_tick = true;
 };
 
 struct CombinedHistoryTestResult {
@@ -950,6 +965,150 @@ TEST(IntradeBarApiResponses, ParsesBtcusdtWebSocketTickWithEpochMilliseconds) {
     EXPECT_TRUE(tick.tick.has_flag(TickUpdateFlags::VOLUME_UPDATED));
     EXPECT_TRUE(tick.tick.has_flag(MarketDataFlags::INITIALIZED));
     EXPECT_TRUE(tick.tick.has_flag(MarketDataFlags::REALTIME));
+}
+
+TEST(IntradeBarApiResponses, BtcWebSocketSubscriptionReportsStatusAndRoutesTick) {
+    LocalFxConnectServer server;
+    ASSERT_TRUE(server.start());
+
+    IntradeBarPlatform platform;
+    std::vector<market_data::MarketDataStatusUpdate> status_updates;
+    market_data::TickDataBatch delivered_batch;
+    std::mutex callback_mutex;
+    int tick_callback_count = 0;
+
+    platform.on_market_data_status() =
+        [&status_updates, &callback_mutex](market_data::MarketDataStatusUpdate update) {
+            std::lock_guard<std::mutex> lock(callback_mutex);
+            status_updates.push_back(std::move(update));
+        };
+    platform.on_tick_data() =
+        [&delivered_batch, &tick_callback_count, &callback_mutex](
+                std::unique_ptr<market_data::TickDataBatch> batch) {
+            std::lock_guard<std::mutex> lock(callback_mutex);
+            ++tick_callback_count;
+            if (batch) {
+                delivered_batch = std::move(*batch);
+            }
+        };
+
+    auto auth = std::make_unique<AuthData>();
+    auth->set_email_password("user@example.test", "unused");
+    auth->host = server.host();
+    ASSERT_TRUE(platform.configure_auth(std::move(auth)));
+    platform.event_bus().drain();
+
+    market_data::MarketDataSubscriptionResult subscription_result;
+    ASSERT_TRUE(platform.subscribe_ticks(
+        market_data::TickSubscriptionRequest(
+            "BTCUSDT",
+            market_data::MarketDataTransport::WEBSOCKET),
+        [&subscription_result](market_data::MarketDataSubscriptionResult result) {
+            subscription_result = std::move(result);
+        }));
+    ASSERT_TRUE(subscription_result);
+
+    publish_account_status(platform, AccountUpdateStatus::CONNECTED);
+    ASSERT_TRUE(wait_for_platform(
+        platform,
+        [&]() {
+            std::lock_guard<std::mutex> lock(callback_mutex);
+            const bool ready = std::any_of(
+                status_updates.begin(),
+                status_updates.end(),
+                [](const market_data::MarketDataStatusUpdate& update) {
+                    return update.symbol == "BTCUSDT" &&
+                           update.type == market_data::MarketDataType::TICKS &&
+                           update.transport == market_data::MarketDataTransport::WEBSOCKET &&
+                           update.status == market_data::MarketDataStreamStatus::READY;
+                });
+            return ready && !delivered_batch.items.empty();
+        }));
+
+    EXPECT_GE(server.bapi_connection_count.load(), 1);
+    {
+        std::lock_guard<std::mutex> lock(callback_mutex);
+        EXPECT_GE(tick_callback_count, 1);
+        EXPECT_EQ(delivered_batch.symbol, "BTCUSDT");
+        EXPECT_EQ(delivered_batch.subscription.id, subscription_result.subscription.id);
+        ASSERT_EQ(delivered_batch.items.size(), 1u);
+        EXPECT_DOUBLE_EQ(delivered_batch.items[0].last, 61521.34);
+        EXPECT_TRUE(delivered_batch.items[0].has_flag(TickUpdateFlags::LAST_UPDATED));
+        EXPECT_TRUE(delivered_batch.items[0].has_flag(MarketDataFlags::REALTIME));
+        EXPECT_TRUE(std::any_of(
+            status_updates.begin(),
+            status_updates.end(),
+            [](const market_data::MarketDataStatusUpdate& update) {
+                return update.symbol == "BTCUSDT" &&
+                       update.status == market_data::MarketDataStreamStatus::CONNECTED;
+            }));
+    }
+
+    platform.shutdown();
+}
+
+TEST(IntradeBarApiResponses, BtcWebSocketReportsReadyWhenOpenBeforeFirstPayload) {
+    LocalFxConnectServer server(false);
+    ASSERT_TRUE(server.start());
+
+    IntradeBarPlatform platform;
+    std::vector<market_data::MarketDataStatusUpdate> status_updates;
+    std::mutex callback_mutex;
+    int tick_callback_count = 0;
+
+    platform.on_market_data_status() =
+        [&status_updates, &callback_mutex](market_data::MarketDataStatusUpdate update) {
+            std::lock_guard<std::mutex> lock(callback_mutex);
+            status_updates.push_back(std::move(update));
+        };
+    platform.on_tick_data() =
+        [&tick_callback_count, &callback_mutex](
+                std::unique_ptr<market_data::TickDataBatch> batch) {
+            std::lock_guard<std::mutex> lock(callback_mutex);
+            if (batch && !batch->items.empty()) {
+                ++tick_callback_count;
+            }
+        };
+
+    auto auth = std::make_unique<AuthData>();
+    auth->set_email_password("user@example.test", "unused");
+    auth->host = server.host();
+    ASSERT_TRUE(platform.configure_auth(std::move(auth)));
+    platform.event_bus().drain();
+
+    market_data::MarketDataSubscriptionResult subscription_result;
+    ASSERT_TRUE(platform.subscribe_ticks(
+        market_data::TickSubscriptionRequest(
+            "BTCUSDT",
+            market_data::MarketDataTransport::WEBSOCKET),
+        [&subscription_result](market_data::MarketDataSubscriptionResult result) {
+            subscription_result = std::move(result);
+        }));
+    ASSERT_TRUE(subscription_result);
+
+    publish_account_status(platform, AccountUpdateStatus::CONNECTED);
+    ASSERT_TRUE(wait_for_platform(
+        platform,
+        [&]() {
+            std::lock_guard<std::mutex> lock(callback_mutex);
+            return std::any_of(
+                status_updates.begin(),
+                status_updates.end(),
+                [](const market_data::MarketDataStatusUpdate& update) {
+                    return update.symbol == "BTCUSDT" &&
+                           update.status == market_data::MarketDataStreamStatus::READY;
+                });
+        }));
+
+    {
+        std::lock_guard<std::mutex> lock(callback_mutex);
+        EXPECT_EQ(tick_callback_count, 0);
+        ASSERT_GE(status_updates.size(), 2u);
+        EXPECT_EQ(status_updates[0].status, market_data::MarketDataStreamStatus::CONNECTED);
+        EXPECT_EQ(status_updates[1].status, market_data::MarketDataStreamStatus::READY);
+    }
+
+    platform.shutdown();
 }
 
 TEST(IntradeBarApiResponses, FxWebSocketSubscriptionReceivesLocalTick) {

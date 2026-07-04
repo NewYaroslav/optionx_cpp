@@ -47,7 +47,7 @@ namespace optionx::market_data {
         UNKNOWN = 0,  ///< No status has been assigned.
         CONNECTING,   ///< Stream connection is being established.
         CONNECTED,    ///< Transport is connected.
-        READY,        ///< Stream transport is connected and source-specific subscription is ready.
+        READY,        ///< Stream transport is connected and provider-specific setup is complete; payload may arrive later.
         DISCONNECTED, ///< Stream transport disconnected.
         RECONNECTING, ///< Stream is reconnecting.
         STOPPED,      ///< Stream was stopped intentionally.
