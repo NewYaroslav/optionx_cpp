@@ -1448,6 +1448,71 @@ TEST(IntradeBarApiResponses, BtcWebSocketReportsReadyWhenOpenBeforeFirstPayload)
     platform.shutdown();
 }
 
+TEST(IntradeBarApiResponses, BtcWebSocketSubscriptionRunsWithoutAccountConnection) {
+    LocalFxConnectServer server;
+    ASSERT_TRUE(server.start());
+
+    IntradeBarPlatform platform;
+    platform.run(false);
+    market_data::TickDataBatch delivered_batch;
+    std::vector<market_data::MarketDataStatusUpdate> status_updates;
+    std::mutex callback_mutex;
+
+    platform.on_market_data_status() =
+        [&status_updates, &callback_mutex](market_data::MarketDataStatusUpdate update) {
+            std::lock_guard<std::mutex> lock(callback_mutex);
+            status_updates.push_back(std::move(update));
+        };
+    platform.on_tick_data() =
+        [&delivered_batch, &callback_mutex](std::unique_ptr<market_data::TickDataBatch> batch) {
+            std::lock_guard<std::mutex> lock(callback_mutex);
+            if (batch) {
+                delivered_batch = std::move(*batch);
+            }
+        };
+
+    auto auth = std::make_unique<AuthData>();
+    auth->set_email_password("user@example.test", "unused");
+    auth->host = server.host();
+    ASSERT_TRUE(platform.configure_auth(std::move(auth)));
+    platform.event_bus().drain();
+
+    market_data::MarketDataSubscriptionResult subscription_result;
+    ASSERT_TRUE(platform.subscribe_ticks(
+        market_data::TickSubscriptionRequest(
+            "BTCUSDT",
+            market_data::MarketDataTransport::WEBSOCKET),
+        [&subscription_result](market_data::MarketDataSubscriptionResult result) {
+            subscription_result = std::move(result);
+        }));
+    ASSERT_TRUE(subscription_result);
+
+    ASSERT_TRUE(wait_for_platform(
+        platform,
+        [&]() {
+            std::lock_guard<std::mutex> lock(callback_mutex);
+            const bool ready = std::any_of(
+                status_updates.begin(),
+                status_updates.end(),
+                [](const market_data::MarketDataStatusUpdate& update) {
+                    return update.symbol == "BTCUSDT" &&
+                           update.type == market_data::MarketDataType::TICKS &&
+                           update.status == market_data::MarketDataStreamStatus::READY;
+                });
+            return ready && !delivered_batch.items.empty();
+        }));
+
+    EXPECT_GE(server.bapi_connection_count.load(), 1);
+    {
+        std::lock_guard<std::mutex> lock(callback_mutex);
+        EXPECT_EQ(delivered_batch.symbol, "BTCUSDT");
+        ASSERT_EQ(delivered_batch.items.size(), 1u);
+        EXPECT_DOUBLE_EQ(delivered_batch.items[0].last, 61521.34);
+    }
+
+    platform.shutdown();
+}
+
 TEST(IntradeBarApiResponses, FxWebSocketSubscriptionReceivesLocalTick) {
     LocalFxConnectServer server;
     ASSERT_TRUE(server.start());
@@ -1508,6 +1573,59 @@ TEST(IntradeBarApiResponses, FxWebSocketSubscriptionReceivesLocalTick) {
             unsubscribe_result = std::move(result);
         }));
     EXPECT_TRUE(unsubscribe_result);
+
+    platform.shutdown();
+}
+
+TEST(IntradeBarApiResponses, FxWebSocketSubscriptionRunsWithoutAccountConnection) {
+    LocalFxConnectServer server;
+    ASSERT_TRUE(server.start());
+
+    IntradeBarPlatform platform;
+    platform.run(false);
+    market_data::TickDataBatch delivered_batch;
+    std::mutex callback_mutex;
+
+    platform.on_tick_data() =
+        [&delivered_batch, &callback_mutex](std::unique_ptr<market_data::TickDataBatch> batch) {
+            std::lock_guard<std::mutex> lock(callback_mutex);
+            if (batch) {
+                delivered_batch = std::move(*batch);
+            }
+        };
+
+    auto auth = std::make_unique<AuthData>();
+    auth->set_email_password("user@example.test", "unused");
+    auth->host = server.host();
+    ASSERT_TRUE(platform.configure_auth(std::move(auth)));
+    platform.event_bus().drain();
+
+    market_data::MarketDataSubscriptionResult subscription_result;
+    ASSERT_TRUE(platform.subscribe_ticks(
+        market_data::TickSubscriptionRequest(
+            "EUR/USD",
+            market_data::MarketDataTransport::WEBSOCKET),
+        [&subscription_result](market_data::MarketDataSubscriptionResult result) {
+            subscription_result = std::move(result);
+        }));
+    ASSERT_TRUE(subscription_result);
+
+    ASSERT_TRUE(wait_for_platform(
+        platform,
+        [&]() {
+            std::lock_guard<std::mutex> lock(callback_mutex);
+            return !delivered_batch.items.empty();
+        }));
+
+    EXPECT_GE(server.subscription_count.load(), 1);
+    EXPECT_EQ(server.subscribed_symbol(), "EUR/USD");
+    {
+        std::lock_guard<std::mutex> lock(callback_mutex);
+        EXPECT_EQ(delivered_batch.symbol, "EURUSD");
+        ASSERT_EQ(delivered_batch.items.size(), 1u);
+        EXPECT_DOUBLE_EQ(delivered_batch.items[0].bid, 1.10001);
+        EXPECT_DOUBLE_EQ(delivered_batch.items[0].ask, 1.10002);
+    }
 
     platform.shutdown();
 }
@@ -1585,6 +1703,7 @@ TEST(IntradeBarApiResponses, PollingSubscriptionDoesNotOpenFxWebSocket) {
     ASSERT_TRUE(server.start());
 
     IntradeBarPlatform platform;
+    platform.run(false);
     auto auth = std::make_unique<AuthData>();
     auth->set_email_password("user@example.test", "unused");
     auth->host = server.host();
@@ -1640,14 +1759,14 @@ TEST(IntradeBarApiResponses, FxWebSocketSubscriptionsAreRefCountedBySymbol) {
     ASSERT_TRUE(first_result);
     ASSERT_TRUE(second_result);
 
-    publish_account_status(platform, AccountUpdateStatus::CONNECTED);
     ASSERT_TRUE(wait_for_platform(
         platform,
         [&]() {
             return server.subscription_count.load() >= 1;
         }));
 
-    EXPECT_EQ(server.subscription_count.load(), 1);
+    const auto subscriptions_after_subscribe = server.subscription_count.load();
+    EXPECT_EQ(subscriptions_after_subscribe, 1);
 
     market_data::MarketDataSubscriptionResult unsubscribe_result;
     EXPECT_TRUE(platform.unsubscribe(
@@ -1657,9 +1776,8 @@ TEST(IntradeBarApiResponses, FxWebSocketSubscriptionsAreRefCountedBySymbol) {
         }));
     EXPECT_TRUE(unsubscribe_result);
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(150));
-    platform.event_bus().drain();
-    EXPECT_EQ(server.subscription_count.load(), 1);
+    pump_platform(platform);
+    EXPECT_EQ(server.subscription_count.load(), subscriptions_after_subscribe);
 
     EXPECT_TRUE(platform.unsubscribe(
         second_result.subscription,

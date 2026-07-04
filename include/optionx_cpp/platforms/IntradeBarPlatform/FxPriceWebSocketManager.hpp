@@ -144,10 +144,11 @@ namespace optionx::platforms::intrade_bar {
                 stream = create_stream_no_lock(normalized, stream_symbol);
                 stream->ref_count = 1;
                 m_streams.emplace(normalized, stream);
-                should_connect = m_platform_connected;
+                should_connect = true;
             } else {
                 stream = it->second;
                 ++stream->ref_count;
+                should_connect = !stream->client->is_connected();
             }
         }
 
@@ -286,7 +287,7 @@ namespace optionx::platforms::intrade_bar {
         bool should_connect = false;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            should_connect = m_platform_connected;
+            should_connect = m_platform_connected || !m_streams.empty();
             for (auto& [symbol, stream] : m_streams) {
                 (void)symbol;
                 configure_client_no_lock(*stream->client);

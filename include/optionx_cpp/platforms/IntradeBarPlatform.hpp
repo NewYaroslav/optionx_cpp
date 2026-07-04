@@ -62,6 +62,7 @@ namespace optionx::platforms {
                   m_tick_data_callback,
                   m_bar_data_callback,
                   m_market_data_status_callback,
+                  &m_btc_price_manager,
                   &m_fx_price_websocket_manager),
               m_trade_manager(*this, m_request_manager, m_account_info) {
             m_btc_price_manager.set_status_sink(
