@@ -330,9 +330,7 @@ public:
             bar = optionx::Bar(price, price, price, price, tick.volume, bar_time, 0);
             bar.set_flag(optionx::MarketDataFlags::REALTIME);
             bar.set_flag(optionx::MarketDataFlags::INCOMPLETE);
-            bar.set_price_type(
-                optionx::market_data::MarketDataContinuityService::price_type_from_price_source(
-                    m_price_source));
+            bar.set_price_type(optionx::market_price_type_from_bar_price_source(m_price_source));
             return bar;
         }
 

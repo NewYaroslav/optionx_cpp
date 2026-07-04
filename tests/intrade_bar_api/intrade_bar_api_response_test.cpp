@@ -920,6 +920,14 @@ TEST(IntradeBarApiResponses, RejectsFxConnectBtcTickMessage) {
     EXPECT_FALSE(parse_fxconnect_tick(message, tick));
 }
 
+TEST(IntradeBarApiResponses, RejectsFxConnectUnsupportedTickMessage) {
+    const std::string message =
+        R"({"Updates":1783028728,"ask":2300.10,"bid":2299.90,"symbol":"XAU\/USD"})";
+
+    SingleTick tick;
+    EXPECT_FALSE(parse_fxconnect_tick(message, tick));
+}
+
 TEST(IntradeBarApiResponses, ParsesBtcusdtWebSocketTickWithEpochMilliseconds) {
     const std::string message =
         R"({"stream":"btcusdt@aggTrade","data":{"e":"aggTrade","E":1783028778697,"s":"BTCUSDT","a":4005288360,"p":"61521.34000000","q":"0.00017000","f":6473852503,"l":6473852503,"T":1783028778697,"m":false,"M":true}})";
@@ -1499,6 +1507,9 @@ TEST(IntradeBarApiResponses, ParsesFxHisBidAskAndMidBars) {
     EXPECT_DOUBLE_EQ(mid_sequence.bars[0].low, (0.56869 + 0.56872) / 2.0);
     EXPECT_DOUBLE_EQ(mid_sequence.bars[0].close, (0.56875 + 0.56876) / 2.0);
     EXPECT_DOUBLE_EQ(mid_sequence.bars[0].volume, 104.0);
+    EXPECT_TRUE(mid_sequence.bars[0].has_flag(MarketDataFlags::HISTORICAL));
+    EXPECT_TRUE(mid_sequence.bars[0].has_flag(MarketDataFlags::FINALIZED));
+    EXPECT_EQ(mid_sequence.bars[0].price_type(), MarketPriceType::MID);
 
     request.price_source = BarPriceSource::BID;
     const auto bid_sequence = parse_fxhis_bar_history(
@@ -1510,6 +1521,9 @@ TEST(IntradeBarApiResponses, ParsesFxHisBidAskAndMidBars) {
     EXPECT_DOUBLE_EQ(bid_sequence.bars[0].high, 0.56890);
     EXPECT_DOUBLE_EQ(bid_sequence.bars[0].low, 0.56869);
     EXPECT_DOUBLE_EQ(bid_sequence.bars[0].close, 0.56875);
+    EXPECT_TRUE(bid_sequence.bars[0].has_flag(MarketDataFlags::HISTORICAL));
+    EXPECT_TRUE(bid_sequence.bars[0].has_flag(MarketDataFlags::FINALIZED));
+    EXPECT_EQ(bid_sequence.bars[0].price_type(), MarketPriceType::BID);
 
     request.price_source = BarPriceSource::ASK;
     const auto ask_sequence = parse_fxhis_bar_history(
@@ -1521,6 +1535,9 @@ TEST(IntradeBarApiResponses, ParsesFxHisBidAskAndMidBars) {
     EXPECT_DOUBLE_EQ(ask_sequence.bars[0].high, 0.56893);
     EXPECT_DOUBLE_EQ(ask_sequence.bars[0].low, 0.56872);
     EXPECT_DOUBLE_EQ(ask_sequence.bars[0].close, 0.56876);
+    EXPECT_TRUE(ask_sequence.bars[0].has_flag(MarketDataFlags::HISTORICAL));
+    EXPECT_TRUE(ask_sequence.bars[0].has_flag(MarketDataFlags::FINALIZED));
+    EXPECT_EQ(ask_sequence.bars[0].price_type(), MarketPriceType::ASK);
 }
 
 TEST(IntradeBarApiResponses, RejectsFxHisLastPriceSource) {
@@ -1550,6 +1567,9 @@ TEST(IntradeBarApiResponses, ParsesBinanceKlinesAsLastPriceBars) {
     EXPECT_DOUBLE_EQ(sequence.bars[0].low, 61500.00);
     EXPECT_DOUBLE_EQ(sequence.bars[0].close, 61510.00);
     EXPECT_DOUBLE_EQ(sequence.bars[0].volume, 0.25);
+    EXPECT_TRUE(sequence.bars[0].has_flag(MarketDataFlags::HISTORICAL));
+    EXPECT_TRUE(sequence.bars[0].has_flag(MarketDataFlags::FINALIZED));
+    EXPECT_EQ(sequence.bars[0].price_type(), MarketPriceType::LAST);
 }
 
 TEST(IntradeBarApiResponses, UsesKnownBarHistoryStartLimits) {

@@ -17,6 +17,7 @@
 #include <optional>
 #include <regex>
 #include <stdexcept>
+#include <utility>
 
 #include "utils/response_parse_utils.hpp"
 #include "ApiResponses.hpp"
@@ -1387,6 +1388,7 @@ namespace optionx::platforms::intrade_bar {
         auto sequence = detail::make_empty_bar_sequence(request, request.price_source);
         const auto& candles = j["candles"];
         sequence.bars.reserve(candles.size());
+        const auto price_type = market_price_type_from_bar_price_source(request.price_source);
 
         for (const auto& item : candles) {
             if (!item.is_array() || item.size() < 10) {
@@ -1404,13 +1406,17 @@ namespace optionx::platforms::intrade_bar {
             const auto ask_low = detail::read_json_double(item.at(8), "ask_low");
             const auto volume = detail::read_json_double(item.at(9), "volume");
 
-            sequence.bars.emplace_back(
+            Bar bar(
                 detail::select_fx_history_price(bid_open, ask_open, request.price_source),
                 detail::select_fx_history_price(bid_high, ask_high, request.price_source),
                 detail::select_fx_history_price(bid_low, ask_low, request.price_source),
                 detail::select_fx_history_price(bid_close, ask_close, request.price_source),
                 volume,
                 static_cast<std::uint64_t>(time_shield::sec_to_ms(ts)));
+            bar.set_flag(MarketDataFlags::HISTORICAL);
+            bar.set_flag(MarketDataFlags::FINALIZED);
+            bar.set_price_type(price_type);
+            sequence.bars.push_back(std::move(bar));
         }
 
         return sequence;
@@ -1442,13 +1448,17 @@ namespace optionx::platforms::intrade_bar {
                 throw std::runtime_error("Malformed Binance kline entry.");
             }
 
-            sequence.bars.emplace_back(
+            Bar bar(
                 detail::read_json_double(item.at(1), "open"),
                 detail::read_json_double(item.at(2), "high"),
                 detail::read_json_double(item.at(3), "low"),
                 detail::read_json_double(item.at(4), "close"),
                 detail::read_json_double(item.at(5), "volume"),
                 static_cast<std::uint64_t>(detail::read_json_int64(item.at(0), "open_time")));
+            bar.set_flag(MarketDataFlags::HISTORICAL);
+            bar.set_flag(MarketDataFlags::FINALIZED);
+            bar.set_price_type(MarketPriceType::LAST);
+            sequence.bars.push_back(std::move(bar));
         }
 
         return sequence;
@@ -1500,7 +1510,7 @@ namespace optionx::platforms::intrade_bar {
         }
 
         const auto normalized_symbol = normalize_symbol_name(j.at("symbol").get<std::string>());
-        if (normalized_symbol.empty() || is_btc_symbol(normalized_symbol)) {
+        if (!is_fxconnect_supported_symbol(normalized_symbol)) {
             return false;
         }
 

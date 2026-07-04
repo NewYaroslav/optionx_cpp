@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <cctype>
 #include <string>
-#include <vector>
 
 namespace optionx::market_data {
 
@@ -56,24 +55,31 @@ namespace optionx::market_data {
     };
 
     /// \brief Converts MarketDataType to its string representation.
-    inline const std::string& to_str(MarketDataType value) noexcept {
-        static const std::vector<std::string> names = {
-            "UNKNOWN",
-            "TICKS",
-            "BARS"
-        };
-        return utils::enum_string_or_unknown(names, static_cast<std::size_t>(value));
+    inline const char* to_str(MarketDataType value) noexcept {
+        switch (value) {
+        case MarketDataType::TICKS:
+            return "TICKS";
+        case MarketDataType::BARS:
+            return "BARS";
+        case MarketDataType::UNKNOWN:
+        default:
+            return "UNKNOWN";
+        }
     }
 
     /// \brief Converts MarketDataTransport to its string representation.
-    inline const std::string& to_str(MarketDataTransport value) noexcept {
-        static const std::vector<std::string> names = {
-            "AUTO",
-            "WEBSOCKET",
-            "POLLING",
-            "HYBRID"
-        };
-        return utils::enum_string_or_unknown(names, static_cast<std::size_t>(value));
+    inline const char* to_str(MarketDataTransport value) noexcept {
+        switch (value) {
+        case MarketDataTransport::WEBSOCKET:
+            return "WEBSOCKET";
+        case MarketDataTransport::POLLING:
+            return "POLLING";
+        case MarketDataTransport::HYBRID:
+            return "HYBRID";
+        case MarketDataTransport::AUTO:
+        default:
+            return "AUTO";
+        }
     }
 
     /// \brief Parses a market-data transport token.
@@ -102,33 +108,49 @@ namespace optionx::market_data {
     }
 
     /// \brief Converts MarketDataSubscriptionStatus to its string representation.
-    inline const std::string& to_str(MarketDataSubscriptionStatus value) noexcept {
-        static const std::vector<std::string> names = {
-            "UNKNOWN",
-            "APPLIED",
-            "SUBSCRIBED",
-            "UNSUBSCRIBED",
-            "UNSUPPORTED",
-            "INVALID_REQUEST",
-            "WRONG_PROVIDER",
-            "FAILED"
-        };
-        return utils::enum_string_or_unknown(names, static_cast<std::size_t>(value));
+    inline const char* to_str(MarketDataSubscriptionStatus value) noexcept {
+        switch (value) {
+        case MarketDataSubscriptionStatus::APPLIED:
+            return "APPLIED";
+        case MarketDataSubscriptionStatus::SUBSCRIBED:
+            return "SUBSCRIBED";
+        case MarketDataSubscriptionStatus::UNSUBSCRIBED:
+            return "UNSUBSCRIBED";
+        case MarketDataSubscriptionStatus::UNSUPPORTED:
+            return "UNSUPPORTED";
+        case MarketDataSubscriptionStatus::INVALID_REQUEST:
+            return "INVALID_REQUEST";
+        case MarketDataSubscriptionStatus::WRONG_PROVIDER:
+            return "WRONG_PROVIDER";
+        case MarketDataSubscriptionStatus::FAILED:
+            return "FAILED";
+        case MarketDataSubscriptionStatus::UNKNOWN:
+        default:
+            return "UNKNOWN";
+        }
     }
 
     /// \brief Converts MarketDataStreamStatus to its string representation.
-    inline const std::string& to_str(MarketDataStreamStatus value) noexcept {
-        static const std::vector<std::string> names = {
-            "UNKNOWN",
-            "CONNECTING",
-            "CONNECTED",
-            "READY",
-            "DISCONNECTED",
-            "RECONNECTING",
-            "STOPPED",
-            "FAILED"
-        };
-        return utils::enum_string_or_unknown(names, static_cast<std::size_t>(value));
+    inline const char* to_str(MarketDataStreamStatus value) noexcept {
+        switch (value) {
+        case MarketDataStreamStatus::CONNECTING:
+            return "CONNECTING";
+        case MarketDataStreamStatus::CONNECTED:
+            return "CONNECTED";
+        case MarketDataStreamStatus::READY:
+            return "READY";
+        case MarketDataStreamStatus::DISCONNECTED:
+            return "DISCONNECTED";
+        case MarketDataStreamStatus::RECONNECTING:
+            return "RECONNECTING";
+        case MarketDataStreamStatus::STOPPED:
+            return "STOPPED";
+        case MarketDataStreamStatus::FAILED:
+            return "FAILED";
+        case MarketDataStreamStatus::UNKNOWN:
+        default:
+            return "UNKNOWN";
+        }
     }
 
 } // namespace optionx::market_data

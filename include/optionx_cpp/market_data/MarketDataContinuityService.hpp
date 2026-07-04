@@ -82,7 +82,7 @@ namespace optionx::market_data {
             batch->volume_digits = sequence.volume_digits;
             batch->items = std::move(sequence.bars);
 
-            const auto price_type = price_type_from_price_source(
+            const auto price_type = market_price_type_from_bar_price_source(
                 sequence.price_source == BarPriceSource::UNKNOWN
                     ? request.price_source
                     : sequence.price_source);
@@ -94,25 +94,6 @@ namespace optionx::market_data {
             }
 
             return batch;
-        }
-
-        /// \brief Maps a bar price source to the compact market price type.
-        /// \param source Bar price source.
-        /// \return Matching market price type, or UNKNOWN.
-        static MarketPriceType price_type_from_price_source(BarPriceSource source) noexcept {
-            switch (source) {
-            case BarPriceSource::BID:
-                return MarketPriceType::BID;
-            case BarPriceSource::ASK:
-                return MarketPriceType::ASK;
-            case BarPriceSource::MID:
-                return MarketPriceType::MID;
-            case BarPriceSource::LAST:
-                return MarketPriceType::LAST;
-            case BarPriceSource::UNKNOWN:
-            default:
-                return MarketPriceType::UNKNOWN;
-            }
         }
 
     private:

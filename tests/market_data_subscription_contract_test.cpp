@@ -316,6 +316,8 @@ TEST(MarketDataPayloadFlags, FormatsFlagsAndPriceTypes) {
     set_market_price_type_in_place(flags, MarketPriceType::MID);
 
     EXPECT_STREQ(to_str(MarketPriceType::MID), "MID");
+    EXPECT_STREQ(optionx::market_data::to_str(MarketDataType::TICKS), "TICKS");
+    EXPECT_STREQ(optionx::market_data::to_str(MarketDataStreamStatus::READY), "READY");
     EXPECT_EQ(market_price_type(flags), MarketPriceType::MID);
     EXPECT_EQ(market_data_flags_to_string(flags), "REALTIME|INCOMPLETE");
     EXPECT_EQ(market_data_flags_to_string(0), "NONE");
@@ -326,12 +328,18 @@ TEST(MarketDataPayloadFlags, ParsesPriceSourcesAndTransports) {
     EXPECT_EQ(bar_price_source_from_string(" avg "), BarPriceSource::MID);
     EXPECT_EQ(bar_price_source_from_string("bad", BarPriceSource::LAST), BarPriceSource::LAST);
     EXPECT_STREQ(to_str(BarPriceSource::LAST), "LAST");
+    EXPECT_EQ(
+        market_price_type_from_bar_price_source(BarPriceSource::ASK),
+        MarketPriceType::ASK);
+    EXPECT_EQ(
+        market_price_type_from_bar_price_source(BarPriceSource::UNKNOWN),
+        MarketPriceType::UNKNOWN);
 
     EXPECT_EQ(
-        market_data::market_data_transport_from_string("ws"),
+        optionx::market_data::market_data_transport_from_string("ws"),
         market_data::MarketDataTransport::WEBSOCKET);
     EXPECT_EQ(
-        market_data::market_data_transport_from_string("poll"),
+        optionx::market_data::market_data_transport_from_string("poll"),
         market_data::MarketDataTransport::POLLING);
 }
 

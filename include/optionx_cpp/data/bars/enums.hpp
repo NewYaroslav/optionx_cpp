@@ -10,6 +10,8 @@
 #include <cctype>
 #include <string>
 
+#include "data/market/enums.hpp"
+
 namespace optionx {
 
     /// \enum BarPriceSource
@@ -62,6 +64,26 @@ namespace optionx {
         if (value == "MID" || value == "AVG") return BarPriceSource::MID;
         if (value == "LAST") return BarPriceSource::LAST;
         return fallback;
+    }
+
+    /// \brief Maps a bar price source to the compact market-data price type.
+    /// \param source Bar price source used to build OHLC values.
+    /// \return Matching market-data price type, or UNKNOWN.
+    inline MarketPriceType market_price_type_from_bar_price_source(
+            BarPriceSource source) noexcept {
+        switch (source) {
+        case BarPriceSource::BID:
+            return MarketPriceType::BID;
+        case BarPriceSource::ASK:
+            return MarketPriceType::ASK;
+        case BarPriceSource::MID:
+            return MarketPriceType::MID;
+        case BarPriceSource::LAST:
+            return MarketPriceType::LAST;
+        case BarPriceSource::UNKNOWN:
+        default:
+            return MarketPriceType::UNKNOWN;
+        }
     }
 
 } // namespace optionx
