@@ -100,6 +100,12 @@ Subscription rules:
   `event_bus()` directly is not enough to flush public market-data batches.
 - Use `MarketDataFlags` for realtime/history/backfill markers and
   `MarketPriceType` for bid/ask/mid/last payload identity.
+- Live bar streams can deliver several `INCOMPLETE` snapshots with the same
+  `(provider_id, subscription_id, symbol, timeframe, time_ms)` key before the
+  final `FINALIZED` snapshot. Treat them as upserts, not append-only candles.
+- Tick-driven bar streams finalize the current bar only when a tick from the next
+  timeframe bucket arrives. Timer/process-based finalization is tracked as
+  future work.
 - `MarketDataContinuityService` routes recovered historical bars into the same
   `BarDataBatch` pipeline and marks them as `HISTORICAL`/`BACKFILL`.
 - `BaseMarketDataProvider` is non-copyable and non-movable so provider identity

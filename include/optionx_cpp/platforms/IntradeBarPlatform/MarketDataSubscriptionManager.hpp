@@ -93,6 +93,8 @@ namespace optionx::platforms::intrade_bar {
         /// \brief Runtime OHLC accumulator for one live bar subscription.
         struct BarAggregationState {
             Bar current; ///< Current in-progress bar.
+            std::uint64_t first_tick_time_ms = 0; ///< Earliest tick timestamp in the current bar bucket.
+            std::uint64_t last_tick_time_ms = 0; ///< Latest tick timestamp in the current bar bucket.
             bool initialized = false; ///< True after the first valid tick was applied.
         };
 
@@ -810,6 +812,10 @@ namespace optionx::platforms::intrade_bar {
         const auto bucket_ms = (timestamp_ms / timeframe_ms) * timeframe_ms;
         const auto price_type = market_price_type_from_bar_price_source(subscription.price_source);
 
+        if (state.initialized && bucket_ms < state.current.time_ms) {
+            return;
+        }
+
         if (!state.initialized || state.current.time_ms != bucket_ms) {
             if (state.initialized) {
                 state.current.set_flag(MarketDataFlags::INCOMPLETE, false);
@@ -822,14 +828,23 @@ namespace optionx::platforms::intrade_bar {
             state.current.set_flag(MarketDataFlags::INCOMPLETE);
             state.current.set_flag(MarketDataFlags::INITIALIZED);
             state.current.set_price_type(price_type);
+            state.first_tick_time_ms = timestamp_ms;
+            state.last_tick_time_ms = timestamp_ms;
             state.initialized = true;
             updates.push_back(state.current);
             return;
         }
 
+        if (state.first_tick_time_ms == 0 || timestamp_ms < state.first_tick_time_ms) {
+            state.current.open = price;
+            state.first_tick_time_ms = timestamp_ms;
+        }
         state.current.high = std::max(state.current.high, price);
         state.current.low = std::min(state.current.low, price);
-        state.current.close = price;
+        if (state.last_tick_time_ms == 0 || timestamp_ms >= state.last_tick_time_ms) {
+            state.current.close = price;
+            state.last_tick_time_ms = timestamp_ms;
+        }
         state.current.volume += tick.volume;
         state.current.set_flag(MarketDataFlags::REALTIME);
         state.current.set_flag(MarketDataFlags::INCOMPLETE);

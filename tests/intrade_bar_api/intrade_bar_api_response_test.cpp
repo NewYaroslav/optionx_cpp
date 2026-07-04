@@ -1004,6 +1004,165 @@ TEST(IntradeBarApiResponses, IntradeBarBarSubscriptionAggregatesTickUpdates) {
     platform.shutdown();
 }
 
+TEST(IntradeBarApiResponses, IntradeBarBarSubscriptionIgnoresPreviousBucketTicks) {
+    IntradeBarPlatform platform;
+    platform.run(false);
+    market_data::BarDataBatch delivered_batch;
+    int bar_callback_count = 0;
+    market_data::MarketDataSubscriptionResult result;
+
+    platform.on_bar_data() =
+        [&delivered_batch, &bar_callback_count](std::unique_ptr<market_data::BarDataBatch> batch) {
+            if (batch) {
+                delivered_batch = std::move(*batch);
+            }
+            ++bar_callback_count;
+        };
+
+    ASSERT_TRUE(platform.subscribe_bars(
+        market_data::BarSubscriptionRequest(
+            "EUR/USD",
+            60,
+            BarPriceSource::MID,
+            market_data::MarketDataTransport::POLLING),
+        [&result](market_data::MarketDataSubscriptionResult subscription_result) {
+            result = std::move(subscription_result);
+        }));
+
+    ASSERT_TRUE(result);
+
+    auto first_batch = make_market_data_batch("EURUSD", 1.10000, 1.10020);
+    first_batch.items[0].time_ms = 120000;
+    auto next_batch = make_market_data_batch("EURUSD", 1.10040, 1.10060);
+    next_batch.items[0].time_ms = 180000;
+    auto late_batch = make_market_data_batch("EURUSD", 1.20000, 1.20020);
+    late_batch.items[0].time_ms = 120500;
+
+    std::vector<events::TickUpdateBatch> event_ticks;
+    event_ticks.push_back(std::move(first_batch));
+    event_ticks.push_back(std::move(next_batch));
+    event_ticks.push_back(std::move(late_batch));
+
+    platform.event_bus().notify_async(
+        std::make_unique<events::PriceUpdateEvent>(std::move(event_ticks)));
+    pump_platform(platform);
+
+    ASSERT_EQ(bar_callback_count, 1);
+    ASSERT_EQ(delivered_batch.items.size(), 3u);
+    EXPECT_EQ(delivered_batch.items[0].time_ms, 120000u);
+    EXPECT_EQ(delivered_batch.items[1].time_ms, 120000u);
+    EXPECT_TRUE(delivered_batch.items[1].has_flag(MarketDataFlags::FINALIZED));
+    EXPECT_EQ(delivered_batch.items[2].time_ms, 180000u);
+    EXPECT_DOUBLE_EQ(delivered_batch.items[2].open, 1.10050);
+    EXPECT_DOUBLE_EQ(delivered_batch.items[2].close, 1.10050);
+    EXPECT_DOUBLE_EQ(delivered_batch.items[2].high, 1.10050);
+    EXPECT_DOUBLE_EQ(delivered_batch.items[2].low, 1.10050);
+
+    platform.shutdown();
+}
+
+TEST(IntradeBarApiResponses, IntradeBarBarSubscriptionKeepsCloseFromLatestTickInBucket) {
+    IntradeBarPlatform platform;
+    platform.run(false);
+    market_data::BarDataBatch delivered_batch;
+    int bar_callback_count = 0;
+    market_data::MarketDataSubscriptionResult result;
+
+    platform.on_bar_data() =
+        [&delivered_batch, &bar_callback_count](std::unique_ptr<market_data::BarDataBatch> batch) {
+            if (batch) {
+                delivered_batch = std::move(*batch);
+            }
+            ++bar_callback_count;
+        };
+
+    ASSERT_TRUE(platform.subscribe_bars(
+        market_data::BarSubscriptionRequest(
+            "EUR/USD",
+            60,
+            BarPriceSource::MID,
+            market_data::MarketDataTransport::POLLING),
+        [&result](market_data::MarketDataSubscriptionResult subscription_result) {
+            result = std::move(subscription_result);
+        }));
+
+    ASSERT_TRUE(result);
+
+    auto later_batch = make_market_data_batch("EURUSD", 1.10040, 1.10060);
+    later_batch.items[0].time_ms = 121000;
+    auto earlier_batch = make_market_data_batch("EURUSD", 1.10000, 1.10020);
+    earlier_batch.items[0].time_ms = 120000;
+
+    std::vector<events::TickUpdateBatch> event_ticks;
+    event_ticks.push_back(std::move(later_batch));
+    event_ticks.push_back(std::move(earlier_batch));
+
+    platform.event_bus().notify_async(
+        std::make_unique<events::PriceUpdateEvent>(std::move(event_ticks)));
+    pump_platform(platform);
+
+    ASSERT_EQ(bar_callback_count, 1);
+    ASSERT_EQ(delivered_batch.items.size(), 2u);
+    const auto& updated = delivered_batch.items[1];
+    EXPECT_EQ(updated.time_ms, 120000u);
+    EXPECT_DOUBLE_EQ(updated.open, 1.10010);
+    EXPECT_DOUBLE_EQ(updated.close, 1.10050);
+    EXPECT_DOUBLE_EQ(updated.high, 1.10050);
+    EXPECT_DOUBLE_EQ(updated.low, 1.10010);
+    EXPECT_TRUE(updated.has_flag(MarketDataFlags::INCOMPLETE));
+
+    platform.shutdown();
+}
+
+TEST(IntradeBarApiResponses, IntradeBarBarSubscriptionClearsPendingUpdatesOnUnsubscribe) {
+    IntradeBarPlatform platform;
+    platform.run(false);
+    int bar_callback_count = 0;
+    market_data::MarketDataSubscriptionResult result;
+    market_data::MarketDataSubscriptionResult unsubscribe_result;
+
+    platform.on_bar_data() =
+        [&bar_callback_count](std::unique_ptr<market_data::BarDataBatch> batch) {
+            if (batch && !batch->items.empty()) {
+                ++bar_callback_count;
+            }
+        };
+
+    ASSERT_TRUE(platform.subscribe_bars(
+        market_data::BarSubscriptionRequest(
+            "EUR/USD",
+            60,
+            BarPriceSource::MID,
+            market_data::MarketDataTransport::POLLING),
+        [&result](market_data::MarketDataSubscriptionResult subscription_result) {
+            result = std::move(subscription_result);
+        }));
+
+    ASSERT_TRUE(result);
+
+    std::vector<events::TickUpdateBatch> event_ticks = {
+        make_market_data_batch("EURUSD", 1.10000, 1.10020)
+    };
+    event_ticks[0].items[0].time_ms = 120000;
+
+    platform.event_bus().notify_async(
+        std::make_unique<events::PriceUpdateEvent>(std::move(event_ticks)));
+    platform.event_bus().drain();
+
+    EXPECT_TRUE(platform.unsubscribe(
+        result.subscription,
+        [&unsubscribe_result](market_data::MarketDataSubscriptionResult unsubscribe) {
+            unsubscribe_result = std::move(unsubscribe);
+        }));
+    EXPECT_TRUE(unsubscribe_result);
+    EXPECT_EQ(unsubscribe_result.status, market_data::MarketDataSubscriptionStatus::UNSUBSCRIBED);
+
+    pump_platform(platform);
+    EXPECT_EQ(bar_callback_count, 0);
+
+    platform.shutdown();
+}
+
 TEST(IntradeBarApiResponses, PriceDigitsMatchBrokerSymbols) {
     EXPECT_EQ(price_digits_for_symbol("BTCUSD"), 2);
     EXPECT_EQ(price_digits_for_symbol("BTCUSDT"), 2);
