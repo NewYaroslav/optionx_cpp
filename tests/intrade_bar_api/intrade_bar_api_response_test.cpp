@@ -920,6 +920,29 @@ TEST(IntradeBarApiResponses, RejectsFxConnectBtcTickMessage) {
     EXPECT_FALSE(parse_fxconnect_tick(message, tick));
 }
 
+TEST(IntradeBarApiResponses, ParsesBtcusdtWebSocketTickWithEpochMilliseconds) {
+    const std::string message =
+        R"({"stream":"btcusdt@aggTrade","data":{"e":"aggTrade","E":1783028778697,"s":"BTCUSDT","a":4005288360,"p":"61521.34000000","q":"0.00017000","f":6473852503,"l":6473852503,"T":1783028778697,"m":false,"M":true}})";
+
+    SingleTick tick;
+    ASSERT_TRUE(parse_btcusdt_tick(message, tick));
+
+    EXPECT_EQ(tick.symbol, "BTCUSDT");
+    EXPECT_EQ(tick.provider, to_str(PlatformType::INTRADE_BAR));
+    EXPECT_EQ(tick.price_digits, 2u);
+    EXPECT_EQ(tick.volume_digits, 5u);
+    EXPECT_DOUBLE_EQ(tick.tick.ask, 61521.34);
+    EXPECT_DOUBLE_EQ(tick.tick.bid, 61521.34);
+    EXPECT_DOUBLE_EQ(tick.tick.volume, 0.00017);
+    EXPECT_EQ(tick.tick.time_ms, 1783028778697ULL);
+    EXPECT_TRUE(tick.tick.has_flag(TickUpdateFlags::ASK_UPDATED));
+    EXPECT_TRUE(tick.tick.has_flag(TickUpdateFlags::BID_UPDATED));
+    EXPECT_TRUE(tick.tick.has_flag(TickUpdateFlags::VOLUME_UPDATED));
+    EXPECT_EQ(tick.tick.price_type(), MarketPriceType::LAST);
+    EXPECT_TRUE(tick.has_flag(TickStatusFlags::INITIALIZED));
+    EXPECT_TRUE(tick.has_flag(TickStatusFlags::REALTIME));
+}
+
 TEST(IntradeBarApiResponses, FxWebSocketSubscriptionReceivesLocalTick) {
     LocalFxConnectServer server;
     ASSERT_TRUE(server.start());

@@ -1472,13 +1472,22 @@ namespace optionx::platforms::intrade_bar {
         if (j.contains("data")) {
             const auto& j_data = j["data"];
             if (j_data.value("s", "") != "BTCUSDT") return false;
+            if (!j_data.contains("T")) return false;
+            tick_data.symbol = "BTCUSDT";
+            tick_data.provider = to_str(PlatformType::INTRADE_BAR);
+            tick_data.price_digits = 2;
+            tick_data.volume_digits = 5;
+            tick_data.flags = 0;
+            tick_data.tick.flags = 0;
             tick_data.tick.ask = tick_data.tick.bid = std::stod(j_data.value("p", "0.0"));
             tick_data.tick.volume = std::stod(j_data.value("q", "0.0"));
-            tick_data.tick.time_ms = j_data.value("T", 0);
+            tick_data.tick.time_ms = static_cast<std::uint64_t>(
+                detail::read_json_int64(j_data.at("T"), "T"));
             tick_data.tick.received_ms = OPTIONX_TIMESTAMP_MS;
             tick_data.tick.set_flag(TickUpdateFlags::ASK_UPDATED);
             tick_data.tick.set_flag(TickUpdateFlags::BID_UPDATED);
             tick_data.tick.set_flag(TickUpdateFlags::VOLUME_UPDATED);
+            tick_data.tick.set_price_type(MarketPriceType::LAST);
             tick_data.set_flag(TickStatusFlags::INITIALIZED);
             tick_data.set_flag(TickStatusFlags::REALTIME);
             return true;
