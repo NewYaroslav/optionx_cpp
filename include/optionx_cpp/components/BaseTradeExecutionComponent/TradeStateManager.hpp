@@ -27,15 +27,15 @@ namespace optionx::components {
         TradeErrorCode validate_request(
                 const std::shared_ptr<TradeRequest>& request) const;
 
-        /// \brief Determines the trade outcome based on the latest price update.
+        /// \brief Determines the trade outcome based on the latest comparable close price.
         /// \param result Shared pointer to the trade result.
         /// \param request Shared pointer to the trade request.
-        /// \param tick The latest tick data.
+        /// \param close_price Price already normalized to the traded symbol precision.
         /// \return The final trade state (WIN, LOSS, STANDOFF).
         TradeState determine_trade_state(
                 const std::shared_ptr<TradeResult>& result,
                 const std::shared_ptr<TradeRequest>& request,
-                const Tick& tick) const;
+                double close_price) const;
 
         /// \brief Checks if the given trade state allows closing.
         /// \param state The current trade state.
@@ -103,21 +103,20 @@ namespace optionx::components {
     inline TradeState TradeStateManager::determine_trade_state(
             const std::shared_ptr<TradeResult>& result,
             const std::shared_ptr<TradeRequest>& request,
-            const Tick& tick) const {
+            double close_price) const {
         if (!result->open_price) {
             return TradeState::STANDOFF;
         }
 
-        double mid_price = tick.mid_price();
         if (request->order_type == OrderType::BUY) {
-            if (mid_price > result->open_price) return TradeState::WIN;
-            if (mid_price < result->open_price) return TradeState::LOSS;
+            if (close_price > result->open_price) return TradeState::WIN;
+            if (close_price < result->open_price) return TradeState::LOSS;
             return TradeState::STANDOFF;
         }
 
         if (request->order_type == OrderType::SELL) {
-            if (mid_price < result->open_price) return TradeState::WIN;
-            if (mid_price > result->open_price) return TradeState::LOSS;
+            if (close_price < result->open_price) return TradeState::WIN;
+            if (close_price > result->open_price) return TradeState::LOSS;
             return TradeState::STANDOFF;
         }
 

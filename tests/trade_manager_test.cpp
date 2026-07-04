@@ -574,6 +574,29 @@ TEST(AccountInfoDataTest, PayoutAboveMinAcceptsBrokerPayoutGreaterThanMinimum) {
         timestamp));
 }
 
+TEST(TradeStateManagerTest, DetermineTradeStateUsesNormalizedClosePrice) {
+    auto account_info = std::make_shared<AccountInfoData>();
+    AccountInfoProvider account_info_provider(account_info);
+    TradeStateManager manager(account_info_provider);
+
+    auto result = std::make_shared<TradeResult>();
+    auto request = std::make_shared<TradeRequest>();
+    result->open_price = 1.12335;
+    request->order_type = OrderType::BUY;
+
+    Tick tick;
+    tick.bid = 1.1233548;
+    tick.ask = 1.1233550;
+    tick.set_flag(MarketDataFlags::INITIALIZED);
+
+    ASSERT_GT(tick.mid_price(), result->open_price);
+    const double close_price = tick.normalized_mid_price(5);
+    EXPECT_DOUBLE_EQ(close_price, 1.12335);
+    EXPECT_EQ(
+        manager.determine_trade_state(result, request, close_price),
+        TradeState::STANDOFF);
+}
+
 TEST_F(TradeManagerTestFixture, OrderIntervalDelaysQueuedTrades) {
     utils::EventBus bus;
     auto account_info = std::make_shared<AccountInfoData>();
