@@ -135,10 +135,6 @@ target_include_directories(optionx_cpp INTERFACE
 target_compile_features(optionx_cpp INTERFACE cxx_std_17)
 target_compile_definitions(optionx_cpp INTERFACE ${OPTIONX_COMPILE_DEFINITIONS})
 
-if(WIN32)
-    target_link_libraries(optionx_cpp INTERFACE ${OPTIONX_WINDOWS_SYSTEM_LIBS})
-endif()
-
 if(OPTIONX_BUILD_DEPS)
     set(OPTIONX_DEPS_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}")
     add_subdirectory(external)
@@ -174,6 +170,10 @@ optionx_link_existing_dependencies(optionx_cpp
     kurlyk
     simple-websocket-server
 )
+
+if(WIN32)
+    target_link_libraries(optionx_cpp INTERFACE ${OPTIONX_WINDOWS_SYSTEM_LIBS})
+endif()
 
 if(OPTIONX_BUILD_EXAMPLES)
     if(OPTIONX_BUILD_DEPS)
@@ -237,6 +237,44 @@ if(OPTIONX_BUILD_EXAMPLES)
             COMMAND ${CMAKE_COMMAND}
                 -DOPTIONX_RUNTIME_DLL_DIR="${EXAMPLE_BUILD_LIBS_DIR}/bin"
                 -DOPTIONX_RUNTIME_TARGET_DIR="$<TARGET_FILE_DIR:trade_record_db_example>"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy_runtime_dlls.cmake"
+        )
+    endif()
+
+    add_executable(intrade_market_data_example examples/intrade_market_data_example.cpp)
+
+    target_include_directories(intrade_market_data_example PRIVATE
+        ${EXAMPLE_INCLUDE_DIRS}
+        ${EXAMPLE_DEPS_INCLUDE_DIRS}
+    )
+
+    target_link_directories(intrade_market_data_example PRIVATE ${EXAMPLE_LIBRARY_DIRS})
+    target_compile_definitions(
+        intrade_market_data_example PRIVATE
+        ${EXAMPLE_DEFINES}
+        LOGIT_BASE_PATH="${LOGIT_BASE_PATH_FWD}"
+    )
+    if(MINGW)
+        target_compile_options(intrade_market_data_example PRIVATE -Wa,-mbig-obj)
+    endif()
+    target_link_libraries(intrade_market_data_example PRIVATE ${EXAMPLE_LIBS} optionx_cpp)
+
+    if(OPTIONX_BUILD_DEPS)
+        add_dependencies(intrade_market_data_example mdbx-static AES)
+    endif()
+
+    foreach(dll ${EXAMPLE_DLL_FILES})
+        add_custom_command(TARGET intrade_market_data_example POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${dll}" "$<TARGET_FILE_DIR:intrade_market_data_example>"
+        )
+    endforeach()
+
+    if(WIN32)
+        add_custom_command(TARGET intrade_market_data_example POST_BUILD
+            COMMAND ${CMAKE_COMMAND}
+                -DOPTIONX_RUNTIME_DLL_DIR="${EXAMPLE_BUILD_LIBS_DIR}/bin"
+                -DOPTIONX_RUNTIME_TARGET_DIR="$<TARGET_FILE_DIR:intrade_market_data_example>"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy_runtime_dlls.cmake"
         )
     endif()

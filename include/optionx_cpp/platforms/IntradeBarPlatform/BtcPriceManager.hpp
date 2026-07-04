@@ -186,7 +186,9 @@ namespace optionx::platforms::intrade_bar {
 
     inline void BtcPriceManager::handle_message(const std::string& message) {
         if (parse_btcusdt_tick(message, m_tick_data[0])) {
-            notify_async(std::make_unique<events::PriceUpdateEvent>(m_tick_data));
+            notify_async(std::make_unique<events::PriceUpdateEvent>(
+                m_tick_data,
+                MarketDataUpdateSource::WEBSOCKET));
         }
     }
 

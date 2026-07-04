@@ -3,13 +3,18 @@
 #include "IntradeBarSmokeSupport.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cctype>
 #include <cmath>
+#include <ctime>
 #include <iomanip>
 #include <limits>
 #include <map>
+#include <mutex>
 #include <optional>
+#include <sstream>
+#include <unordered_map>
 #include <vector>
 
 namespace smoke = optionx::tests::intrade_bar_smoke;
@@ -31,6 +36,7 @@ void print_usage(std::ostream& out) {
         << "  intrade_bar_smoke_cli show-account\n"
         << "  intrade_bar_smoke_cli domain-check [--domain-min=-1] [--domain-max=1000]\n"
         << "  intrade_bar_smoke_cli quotes [--symbol=EURUSD]\n"
+        << "  intrade_bar_smoke_cli market-stream [--symbols=BTCUSDT,EURUSD] [--ticks] [--bars] [--transport=WEBSOCKET|POLLING|AUTO|HYBRID] [--seconds=30] [--timeframe=60] [--backfill-minutes=30]\n"
         << "  intrade_bar_smoke_cli history [--source=CSV|HTML|HTML_CSV] [--days=14|--all] [--time-field=CLOSE_DATE] [--comment=...]\n"
         << "  intrade_bar_smoke_cli switch-check --confirm [--account-type=DEMO] [--currency=USD]\n"
         << "  intrade_bar_smoke_cli open-trade --confirm [--symbol=EURUSD] [--amount=1] [--duration=60] [--buy|--sell]\n"
@@ -56,6 +62,12 @@ CliOptions parse_args(int argc, char** argv) {
             options.values["order"] = "BUY";
         } else if (arg == "--sell") {
             options.values["order"] = "SELL";
+        } else if (arg == "--ticks") {
+            options.values["ticks"] = "1";
+        } else if (arg == "--bars") {
+            options.values["bars"] = "1";
+        } else if (arg == "--no-backfill") {
+            options.values["backfill"] = "0";
         } else if (arg.rfind("--", 0) == 0) {
             const auto eq = arg.find('=');
             if (eq != std::string::npos) {
@@ -72,6 +84,123 @@ std::string upper_ascii(std::string value) {
         return static_cast<char>(std::toupper(ch));
     });
     return value;
+}
+
+std::vector<std::string> split_csv_symbols(const std::string& value) {
+    std::vector<std::string> symbols;
+    std::stringstream stream(value);
+    std::string item;
+    while (std::getline(stream, item, ',')) {
+        item = optionx::utils::trim_copy(std::move(item));
+        if (!item.empty()) {
+            symbols.push_back(smoke::normalize_quote_symbol(item));
+        }
+    }
+    return symbols;
+}
+
+optionx::market_data::MarketDataTransport parse_market_data_transport(
+        const std::string& value,
+        optionx::market_data::MarketDataTransport fallback) {
+    const std::string normalized = upper_ascii(value);
+    if (normalized.empty()) return fallback;
+    if (normalized == "AUTO") return optionx::market_data::MarketDataTransport::AUTO;
+    if (normalized == "WEBSOCKET" || normalized == "WS") {
+        return optionx::market_data::MarketDataTransport::WEBSOCKET;
+    }
+    if (normalized == "POLLING" || normalized == "POLL") {
+        return optionx::market_data::MarketDataTransport::POLLING;
+    }
+    if (normalized == "HYBRID") return optionx::market_data::MarketDataTransport::HYBRID;
+    return fallback;
+}
+
+optionx::BarPriceSource parse_bar_price_source(
+        const std::string& value,
+        optionx::BarPriceSource fallback) {
+    const std::string normalized = upper_ascii(value);
+    if (normalized.empty()) return fallback;
+    if (normalized == "BID") return optionx::BarPriceSource::BID;
+    if (normalized == "ASK") return optionx::BarPriceSource::ASK;
+    if (normalized == "MID" || normalized == "AVG") return optionx::BarPriceSource::MID;
+    if (normalized == "LAST") return optionx::BarPriceSource::LAST;
+    return fallback;
+}
+
+const char* bar_price_source_to_string(optionx::BarPriceSource value) noexcept {
+    switch (value) {
+    case optionx::BarPriceSource::BID:
+        return "BID";
+    case optionx::BarPriceSource::ASK:
+        return "ASK";
+    case optionx::BarPriceSource::MID:
+        return "MID";
+    case optionx::BarPriceSource::LAST:
+        return "LAST";
+    case optionx::BarPriceSource::UNKNOWN:
+    default:
+        return "UNKNOWN";
+    }
+}
+
+const char* market_price_type_to_string(optionx::MarketPriceType value) noexcept {
+    switch (value) {
+    case optionx::MarketPriceType::BID:
+        return "BID";
+    case optionx::MarketPriceType::ASK:
+        return "ASK";
+    case optionx::MarketPriceType::MID:
+        return "MID";
+    case optionx::MarketPriceType::LAST:
+        return "LAST";
+    case optionx::MarketPriceType::UNKNOWN:
+    default:
+        return "UNKNOWN";
+    }
+}
+
+std::string market_data_flags_to_string(std::uint32_t flags) {
+    std::vector<std::string> names;
+    if (optionx::has_flag(flags, optionx::MarketDataFlags::REALTIME)) {
+        names.push_back("REALTIME");
+    }
+    if (optionx::has_flag(flags, optionx::MarketDataFlags::HISTORICAL)) {
+        names.push_back("HISTORICAL");
+    }
+    if (optionx::has_flag(flags, optionx::MarketDataFlags::BACKFILL)) {
+        names.push_back("BACKFILL");
+    }
+    if (optionx::has_flag(flags, optionx::MarketDataFlags::INCOMPLETE)) {
+        names.push_back("INCOMPLETE");
+    }
+    if (optionx::has_flag(flags, optionx::MarketDataFlags::FINALIZED)) {
+        names.push_back("FINALIZED");
+    }
+    if (names.empty()) return "NONE";
+
+    std::ostringstream out;
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        if (i > 0) out << '|';
+        out << names[i];
+    }
+    return out.str();
+}
+
+double price_from_tick(
+        const optionx::Tick& tick,
+        optionx::BarPriceSource price_source) {
+    switch (price_source) {
+    case optionx::BarPriceSource::BID:
+        return tick.bid;
+    case optionx::BarPriceSource::ASK:
+        return tick.ask;
+    case optionx::BarPriceSource::LAST:
+        return tick.mid_price();
+    case optionx::BarPriceSource::MID:
+    case optionx::BarPriceSource::UNKNOWN:
+    default:
+        return tick.mid_price();
+    }
 }
 
 const char* trade_history_time_field_to_string(optionx::TradeRecordTimeField value) noexcept {
@@ -261,6 +390,340 @@ int run_quotes(smoke::IntradeBarSmokeConfig config, const CliOptions& options) {
     }
     runtime.disconnect();
     return 0;
+}
+
+class CliBarAggregator {
+public:
+    CliBarAggregator(
+            optionx::BarTimeframe timeframe,
+            optionx::BarPriceSource price_source)
+        : m_timeframe(timeframe),
+          m_price_source(price_source) {}
+
+    std::optional<optionx::Bar> update(const std::string& symbol, const optionx::Tick& tick) {
+        if (m_timeframe <= 0) return std::nullopt;
+        const std::uint64_t width_ms =
+            static_cast<std::uint64_t>(m_timeframe) * 1000ULL;
+        const std::uint64_t tick_time = tick.time_ms != 0
+            ? tick.time_ms
+            : static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count());
+        const std::uint64_t bar_time = (tick_time / width_ms) * width_ms;
+        const double price = price_from_tick(tick, m_price_source);
+
+        auto& bar = m_bars[symbol];
+        if (bar.time_ms != bar_time) {
+            bar = optionx::Bar(price, price, price, price, tick.volume, bar_time, 0);
+            bar.set_flag(optionx::MarketDataFlags::REALTIME);
+            bar.set_flag(optionx::MarketDataFlags::INCOMPLETE);
+            bar.set_price_type(
+                optionx::market_data::MarketDataContinuityService::price_type_from_price_source(
+                    m_price_source));
+            return bar;
+        }
+
+        bar.high = std::max(bar.high, price);
+        bar.low = std::min(bar.low, price);
+        bar.close = price;
+        bar.volume += tick.volume;
+        bar.set_flag(optionx::MarketDataFlags::REALTIME);
+        bar.set_flag(optionx::MarketDataFlags::INCOMPLETE);
+        return bar;
+    }
+
+private:
+    optionx::BarTimeframe m_timeframe = 60;
+    optionx::BarPriceSource m_price_source = optionx::BarPriceSource::MID;
+    std::unordered_map<std::string, optionx::Bar> m_bars;
+};
+
+void print_subscription_result_line(
+        std::ostream& out,
+        const char* prefix,
+        const optionx::market_data::MarketDataSubscriptionResult& result) {
+    out << prefix
+        << " status=" << optionx::market_data::to_str(result.status)
+        << " type=" << optionx::market_data::to_str(result.subscription.stream_type)
+        << " symbol=" << result.subscription.symbol
+        << " id=" << result.subscription.id
+        << " provider=" << result.subscription.provider_id
+        << " transport=" << optionx::market_data::to_str(result.subscription.transport);
+    if (!result.error_message.empty()) {
+        out << " error=\"" << result.error_message << "\"";
+    }
+    out << '\n';
+}
+
+void print_bar_line(
+        std::ostream& out,
+        const char* prefix,
+        const std::string& symbol,
+        optionx::BarTimeframe timeframe,
+        const optionx::Bar& bar) {
+    out << prefix
+        << " symbol=" << symbol
+        << " timeframe=" << timeframe
+        << " time_ms=" << bar.time_ms
+        << " open=" << std::setprecision(12) << bar.open
+        << " high=" << std::setprecision(12) << bar.high
+        << " low=" << std::setprecision(12) << bar.low
+        << " close=" << std::setprecision(12) << bar.close
+        << " volume=" << std::setprecision(12) << bar.volume
+        << " price_type=" << market_price_type_to_string(bar.price_type())
+        << " flags=" << market_data_flags_to_string(bar.flags)
+        << '\n';
+}
+
+int run_market_stream(smoke::IntradeBarSmokeConfig config, const CliOptions& options) {
+    if (!smoke::require_live_config(config, std::cerr)) return 2;
+
+    auto symbols = split_csv_symbols(smoke::option_value_or(
+        options.values,
+        "symbols",
+        "BTCUSDT"));
+    if (symbols.empty()) {
+        std::cerr << "--symbols must contain at least one symbol.\n";
+        return 2;
+    }
+
+    const std::string type = upper_ascii(smoke::option_value_or(
+        options.values,
+        "type",
+        ""));
+    bool wants_ticks = smoke::parse_bool(
+        smoke::option_value_or(options.values, "ticks", "0"),
+        false);
+    bool wants_bars = smoke::parse_bool(
+        smoke::option_value_or(options.values, "bars", "0"),
+        false);
+    if (type == "TICKS" || type == "TICK") wants_ticks = true;
+    if (type == "BARS" || type == "BAR") wants_bars = true;
+    if (type == "BOTH" || type == "ALL") {
+        wants_ticks = true;
+        wants_bars = true;
+    }
+    if (!wants_ticks && !wants_bars) {
+        wants_ticks = true;
+    }
+
+    const auto transport = parse_market_data_transport(
+        smoke::option_value_or(options.values, "transport", "WEBSOCKET"),
+        optionx::market_data::MarketDataTransport::WEBSOCKET);
+    const auto timeframe_i64 = smoke::option_i64_or(options.values, "timeframe", 60);
+    if (timeframe_i64 <= 0 ||
+        timeframe_i64 > static_cast<int64_t>((std::numeric_limits<optionx::BarTimeframe>::max)())) {
+        std::cerr << "--timeframe must be a positive number of seconds within BarTimeframe range.\n";
+        return 2;
+    }
+    const auto timeframe = static_cast<optionx::BarTimeframe>(timeframe_i64);
+    const auto price_source = parse_bar_price_source(
+        smoke::option_value_or(options.values, "price", "MID"),
+        optionx::BarPriceSource::MID);
+    const int64_t run_seconds = smoke::option_i64_or(options.values, "seconds", 30);
+    const int64_t timeout_ms = std::max<int64_t>(1000, run_seconds * 1000);
+    const bool backfill = smoke::parse_bool(
+        smoke::option_value_or(options.values, "backfill", wants_bars ? "1" : "0"),
+        wants_bars);
+    const int64_t backfill_minutes = smoke::option_i64_or(
+        options.values,
+        "backfill-minutes",
+        30);
+
+    std::mutex out_mutex;
+    std::atomic<std::size_t> tick_batches{0};
+    std::atomic<std::size_t> tick_items{0};
+    std::atomic<std::size_t> bar_updates{0};
+    std::atomic<std::size_t> status_updates{0};
+    std::atomic<std::size_t> history_batches{0};
+    CliBarAggregator aggregator(timeframe, price_source);
+
+    smoke::IntradeBarSmokeRuntime runtime(config);
+    auto& platform = runtime.platform();
+
+    platform.on_market_data_status() =
+        [&out_mutex, &status_updates](optionx::market_data::MarketDataStatusUpdate update) {
+            ++status_updates;
+            std::lock_guard<std::mutex> lock(out_mutex);
+            std::cout << "[status]"
+                      << " type=" << optionx::market_data::to_str(update.type)
+                      << " symbol=" << update.symbol
+                      << " transport=" << optionx::market_data::to_str(update.transport)
+                      << " status=" << optionx::market_data::to_str(update.status);
+            if (!update.message.empty()) {
+                std::cout << " message=\"" << update.message << "\"";
+            }
+            std::cout << '\n';
+        };
+
+    platform.on_tick_data() =
+        [&out_mutex,
+         &tick_batches,
+         &tick_items,
+         &bar_updates,
+         &aggregator,
+         wants_ticks,
+         wants_bars,
+         timeframe](std::unique_ptr<optionx::market_data::TickDataBatch> batch) {
+            if (!batch) return;
+            ++tick_batches;
+            tick_items += batch->items.size();
+            for (const auto& tick : batch->items) {
+                if (wants_ticks) {
+                    std::lock_guard<std::mutex> lock(out_mutex);
+                    std::cout << "[tick]"
+                              << " symbol=" << batch->symbol
+                              << " time_ms=" << tick.time_ms
+                              << " bid=" << std::setprecision(12) << tick.bid
+                              << " ask=" << std::setprecision(12) << tick.ask
+                              << " volume=" << std::setprecision(12) << tick.volume
+                              << " price_type=" << market_price_type_to_string(tick.price_type())
+                              << " flags=" << market_data_flags_to_string(tick.flags)
+                              << " subscription=" << batch->subscription.id
+                              << '\n';
+                }
+                if (wants_bars) {
+                    const auto bar = aggregator.update(batch->symbol, tick);
+                    if (bar) {
+                        ++bar_updates;
+                        std::lock_guard<std::mutex> lock(out_mutex);
+                        print_bar_line(
+                            std::cout,
+                            "[bar-update]",
+                            batch->symbol,
+                            timeframe,
+                            *bar);
+                    }
+                }
+            }
+        };
+
+    platform.on_bar_data() =
+        [&out_mutex, &history_batches](std::unique_ptr<optionx::market_data::BarDataBatch> batch) {
+            if (!batch) return;
+            ++history_batches;
+            std::lock_guard<std::mutex> lock(out_mutex);
+            std::cout << "[bar-batch]"
+                      << " symbol=" << batch->symbol
+                      << " timeframe=" << batch->timeframe
+                      << " items=" << batch->items.size()
+                      << " subscription=" << batch->subscription.id
+                      << '\n';
+            for (const auto& bar : batch->items) {
+                print_bar_line(std::cout, "  [bar]", batch->symbol, batch->timeframe, bar);
+            }
+        };
+
+    if (!runtime.start()) {
+        std::cerr << "Failed to configure Intrade Bar runtime.\n";
+        return 1;
+    }
+
+    optionx::market_data::MarketDataSubscriptionBatch tick_batch;
+    for (const auto& symbol : symbols) {
+        tick_batch.subscribe_ticks(optionx::market_data::TickSubscriptionRequest(symbol, transport));
+    }
+
+    optionx::market_data::MarketDataSubscriptionBatchResult tick_subscriptions;
+    const bool tick_batch_accepted = platform.apply_subscriptions(
+        std::move(tick_batch),
+        [&tick_subscriptions, &out_mutex](optionx::market_data::MarketDataSubscriptionBatchResult result) {
+            tick_subscriptions = std::move(result);
+            std::lock_guard<std::mutex> lock(out_mutex);
+            std::cout << "[subscribe-ticks]"
+                      << " status=" << optionx::market_data::to_str(tick_subscriptions.status)
+                      << " results=" << tick_subscriptions.results.size();
+            if (!tick_subscriptions.error_message.empty()) {
+                std::cout << " error=\"" << tick_subscriptions.error_message << "\"";
+            }
+            std::cout << '\n';
+            for (const auto& item : tick_subscriptions.results) {
+                print_subscription_result_line(std::cout, "  [tick-subscription]", item);
+            }
+        });
+    if (!tick_batch_accepted) {
+        std::cerr << "Tick subscription batch was rejected.\n";
+        return 1;
+    }
+
+    if (wants_bars) {
+        for (const auto& symbol : symbols) {
+            optionx::market_data::MarketDataSubscriptionResult bar_subscription;
+            platform.subscribe_bars(
+                optionx::market_data::BarSubscriptionRequest(
+                    symbol,
+                    timeframe,
+                    price_source,
+                    transport),
+                [&bar_subscription, &out_mutex](optionx::market_data::MarketDataSubscriptionResult result) {
+                    bar_subscription = std::move(result);
+                    std::lock_guard<std::mutex> lock(out_mutex);
+                    print_subscription_result_line(std::cout, "[bar-subscription]", bar_subscription);
+                });
+        }
+
+        if (backfill && backfill_minutes > 0) {
+            optionx::market_data::MarketDataContinuityService continuity(platform);
+            const auto now = static_cast<std::int64_t>(std::time(nullptr));
+            const auto from = now - backfill_minutes * time_shield::SEC_PER_MIN;
+            for (const auto& symbol : symbols) {
+                continuity.request_bar_history_batch(
+                    optionx::BarHistoryRequest(symbol, timeframe, from, now, price_source),
+                    {},
+                    platform.on_bar_data(),
+                    [&out_mutex, symbol](optionx::BarHistoryResult result) {
+                        std::lock_guard<std::mutex> lock(out_mutex);
+                        std::cout << "[backfill-error]"
+                                  << " symbol=" << symbol
+                                  << " status_code=" << result.status_code
+                                  << " error=\"" << result.error_desc << "\""
+                                  << '\n';
+                    },
+                    true);
+            }
+        }
+    }
+
+    std::cout << "market_stream symbols=";
+    for (std::size_t i = 0; i < symbols.size(); ++i) {
+        if (i > 0) std::cout << ',';
+        std::cout << symbols[i];
+    }
+    std::cout << " ticks=" << wants_ticks
+              << " bars=" << wants_bars
+              << " transport=" << optionx::market_data::to_str(transport)
+              << " timeframe=" << timeframe
+              << " price=" << bar_price_source_to_string(price_source)
+              << " seconds=" << run_seconds
+              << " backfill=" << backfill
+              << '\n';
+
+    const auto connect = runtime.connect(config.auth_timeout_ms);
+    std::cout << "auth callback=" << connect.callback_received
+              << " success=" << connect.success
+              << " elapsed_ms=" << connect.elapsed_ms
+              << '\n';
+    if (!connect.success) {
+        std::cerr << "auth failed: " << connect.reason << '\n';
+        runtime.disconnect();
+        return 1;
+    }
+
+    smoke::print_account(std::cout, platform);
+    runtime.pump_for(timeout_ms);
+    runtime.disconnect();
+
+    std::cout << "market_stream_summary"
+              << " tick_batches=" << tick_batches.load()
+              << " tick_items=" << tick_items.load()
+              << " bar_updates=" << bar_updates.load()
+              << " bar_batches=" << history_batches.load()
+              << " status_updates=" << status_updates.load()
+              << '\n';
+
+    return tick_items.load() > 0 || bar_updates.load() > 0 || history_batches.load() > 0
+        ? 0
+        : 1;
 }
 
 int run_switch_check(smoke::IntradeBarSmokeConfig config, const CliOptions& options) {
@@ -987,6 +1450,8 @@ int main(int argc, char** argv) {
         result = run_domain_check(std::move(config), options);
     } else if (options.command == "quotes") {
         result = run_quotes(std::move(config), options);
+    } else if (options.command == "market-stream") {
+        result = run_market_stream(std::move(config), options);
     } else if (options.command == "history") {
         result = run_history(std::move(config), options);
     } else if (options.command == "switch-check") {

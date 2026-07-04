@@ -7,9 +7,9 @@
 
 namespace optionx::market_data {
 
-    /// \enum MarketDataStreamType
-    /// \brief Type of live market-data stream requested from a provider.
-    enum class MarketDataStreamType {
+    /// \enum MarketDataType
+    /// \brief Type of market-data payload requested from a provider.
+    enum class MarketDataType {
         UNKNOWN = 0, ///< Invalid or unspecified stream type.
         TICKS,       ///< Tick stream.
         BARS         ///< Bar stream.
@@ -28,7 +28,8 @@ namespace optionx::market_data {
     /// \brief Lifecycle status of a market-data subscription request.
     enum class MarketDataSubscriptionStatus {
         UNKNOWN = 0,     ///< No status has been assigned.
-        SUBSCRIBED,      ///< Subscription was accepted.
+        APPLIED,         ///< Subscription batch was applied successfully.
+        SUBSCRIBED,      ///< Desired subscription was accepted; stream readiness is reported separately.
         UNSUBSCRIBED,    ///< Subscription was stopped.
         UNSUPPORTED,     ///< Provider does not support the requested subscription.
         INVALID_REQUEST, ///< Request or handle is invalid.
@@ -36,8 +37,21 @@ namespace optionx::market_data {
         FAILED           ///< Provider attempted the operation but it failed.
     };
 
-    /// \brief Converts MarketDataStreamType to its string representation.
-    inline const std::string& to_str(MarketDataStreamType value) noexcept {
+    /// \enum MarketDataStreamStatus
+    /// \brief Connection/readiness status of a live market-data stream.
+    enum class MarketDataStreamStatus {
+        UNKNOWN = 0,  ///< No status has been assigned.
+        CONNECTING,   ///< Stream connection is being established.
+        CONNECTED,    ///< Transport is connected.
+        READY,        ///< Stream transport is connected and source-specific subscription is ready.
+        DISCONNECTED, ///< Stream transport disconnected.
+        RECONNECTING, ///< Stream is reconnecting.
+        STOPPED,      ///< Stream was stopped intentionally.
+        FAILED        ///< Stream failed.
+    };
+
+    /// \brief Converts MarketDataType to its string representation.
+    inline const std::string& to_str(MarketDataType value) noexcept {
         static const std::vector<std::string> names = {
             "UNKNOWN",
             "TICKS",
@@ -61,11 +75,27 @@ namespace optionx::market_data {
     inline const std::string& to_str(MarketDataSubscriptionStatus value) noexcept {
         static const std::vector<std::string> names = {
             "UNKNOWN",
+            "APPLIED",
             "SUBSCRIBED",
             "UNSUBSCRIBED",
             "UNSUPPORTED",
             "INVALID_REQUEST",
             "WRONG_PROVIDER",
+            "FAILED"
+        };
+        return utils::enum_string_or_unknown(names, static_cast<std::size_t>(value));
+    }
+
+    /// \brief Converts MarketDataStreamStatus to its string representation.
+    inline const std::string& to_str(MarketDataStreamStatus value) noexcept {
+        static const std::vector<std::string> names = {
+            "UNKNOWN",
+            "CONNECTING",
+            "CONNECTED",
+            "READY",
+            "DISCONNECTED",
+            "RECONNECTING",
+            "STOPPED",
             "FAILED"
         };
         return utils::enum_string_or_unknown(names, static_cast<std::size_t>(value));

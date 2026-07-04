@@ -20,6 +20,7 @@ namespace optionx::platforms::intrade_bar {
         explicit FxPriceWebSocketManager(BaseTradingPlatform& platform)
                 : BaseComponent(platform.event_bus()) {
             subscribe<events::AuthDataEvent>();
+            subscribe<events::ConnectRequestEvent>();
             subscribe<events::DisconnectRequestEvent>();
             subscribe<events::AccountInfoUpdateEvent>();
             subscribe<events::AutoDomainSelectedEvent>();
@@ -40,6 +41,13 @@ namespace optionx::platforms::intrade_bar {
         /// \param symbol Public or broker symbol name.
         void remove_symbol_subscription(const std::string& symbol);
 
+        /// \brief Sets the optional status callback sink used by the public market-data API.
+        /// \param provider_id Runtime market-data provider ID.
+        /// \param callback Callback reference owned by the provider facade.
+        void set_status_sink(
+                market_data::ProviderInstanceId provider_id,
+                market_data::BaseMarketDataProvider::status_callback_t* callback);
+
         /// \brief Handles platform lifecycle/configuration events.
         void on_event(const utils::Event* const event) override;
 
@@ -57,15 +65,17 @@ namespace optionx::platforms::intrade_bar {
         };
 
         std::string m_ws_host = "wss://intrade.bar"; ///< Websocket host.
-        std::string m_user_agent =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"; ///< User-Agent header.
-        std::string m_accept_language = "ru,ru-RU;q=0.9,en;q=0.8,en-US;q=0.7"; ///< Accept-Language header.
+        std::string m_user_agent = OPTIONX_DEFAULT_BROWSER_USER_AGENT; ///< User-Agent header.
+        std::string m_accept_language = OPTIONX_DEFAULT_ACCEPT_LANGUAGE; ///< Accept-Language header.
         std::string m_proxy_server; ///< Proxy address in <ip:port> format.
         std::string m_proxy_auth;   ///< Proxy authentication in <username:password> format.
         kurlyk::ProxyType m_proxy_type = kurlyk::ProxyType::PROXY_HTTP; ///< Proxy type.
         std::unordered_map<std::string, std::shared_ptr<FxStreamState>> m_streams; ///< Active FX streams.
         std::mutex m_mutex; ///< Protects stream state and websocket settings.
+        market_data::ProviderInstanceId m_provider_id =
+            market_data::kInvalidProviderInstanceId; ///< Optional status provider ID.
+        market_data::BaseMarketDataProvider::status_callback_t* m_status_callback = nullptr; ///< Optional status sink.
+        bool m_platform_connected = false; ///< Whether physical sockets may be connected.
 
         /// \brief Configures a websocket client from current manager settings.
         void configure_client_no_lock(kurlyk::WebSocketClient& client) const;
@@ -100,8 +110,17 @@ namespace optionx::platforms::intrade_bar {
                 const std::shared_ptr<FxStreamState>& stream,
                 const std::string& message);
 
+        /// \brief Emits a public stream status update when a callback is configured.
+        void emit_status(
+                const std::shared_ptr<FxStreamState>& stream,
+                market_data::MarketDataStreamStatus status,
+                std::string message = {});
+
         /// \brief Applies Intrade auth/config data to websocket settings.
         void handle_event(const events::AuthDataEvent& event);
+
+        /// \brief Handles a platform connect request.
+        void handle_event(const events::ConnectRequestEvent& event);
 
         /// \brief Handles a platform disconnect request.
         void handle_event(const events::DisconnectRequestEvent& event);
@@ -128,7 +147,7 @@ namespace optionx::platforms::intrade_bar {
                 stream = create_stream_no_lock(normalized, stream_symbol);
                 stream->ref_count = 1;
                 m_streams.emplace(normalized, stream);
-                should_connect = true;
+                should_connect = m_platform_connected;
             } else {
                 stream = it->second;
                 ++stream->ref_count;
@@ -162,8 +181,19 @@ namespace optionx::platforms::intrade_bar {
         disconnect_stream(stream_to_disconnect);
     }
 
+    inline void FxPriceWebSocketManager::set_status_sink(
+            market_data::ProviderInstanceId provider_id,
+            market_data::BaseMarketDataProvider::status_callback_t* callback) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_provider_id = provider_id;
+        m_status_callback = callback;
+    }
+
     inline void FxPriceWebSocketManager::on_event(const utils::Event* const event) {
         if (const auto* msg = dynamic_cast<const events::AuthDataEvent*>(event)) {
+            handle_event(*msg);
+        } else
+        if (const auto* msg = dynamic_cast<const events::ConnectRequestEvent*>(event)) {
             handle_event(*msg);
         } else
         if (const auto* msg = dynamic_cast<const events::DisconnectRequestEvent*>(event)) {
@@ -267,14 +297,28 @@ namespace optionx::platforms::intrade_bar {
             streams.reserve(m_streams.size());
             for (auto& [symbol, stream] : m_streams) {
                 (void)symbol;
-                configure_client_no_lock(*stream->client);
                 streams.push_back(stream);
             }
         }
 
         for (auto& stream : streams) {
             disconnect_stream(stream);
-            connect_stream(stream);
+        }
+
+        bool should_connect = false;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            should_connect = m_platform_connected;
+            for (auto& [symbol, stream] : m_streams) {
+                (void)symbol;
+                configure_client_no_lock(*stream->client);
+            }
+        }
+
+        if (should_connect) {
+            for (auto& stream : streams) {
+                connect_stream(stream);
+            }
         }
     }
 
@@ -284,6 +328,7 @@ namespace optionx::platforms::intrade_bar {
         switch (event.event_type) {
         case kurlyk::WebSocketEventType::WS_OPEN:
             stream->is_error = false;
+            emit_status(stream, market_data::MarketDataStreamStatus::CONNECTED);
             if (event.sender) {
                 const auto result = event.sender->submit_message(stream->stream_symbol);
                 if (!result.accepted) {
@@ -291,6 +336,12 @@ namespace optionx::platforms::intrade_bar {
                                stream->stream_symbol,
                                ": ",
                                result.error_code.message());
+                    emit_status(
+                        stream,
+                        market_data::MarketDataStreamStatus::FAILED,
+                        result.error_code.message());
+                } else {
+                    emit_status(stream, market_data::MarketDataStreamStatus::READY);
                 }
             }
             break;
@@ -299,6 +350,7 @@ namespace optionx::platforms::intrade_bar {
             break;
         case kurlyk::WebSocketEventType::WS_CLOSE:
             stream->is_error = false;
+            emit_status(stream, market_data::MarketDataStreamStatus::DISCONNECTED);
             break;
         case kurlyk::WebSocketEventType::WS_ERROR:
             if (!stream->is_error) {
@@ -308,6 +360,7 @@ namespace optionx::platforms::intrade_bar {
                             event.error_code.message());
                 stream->is_error = true;
             }
+            emit_status(stream, market_data::MarketDataStreamStatus::FAILED, event.error_code.message());
             break;
         default:
             break;
@@ -324,7 +377,9 @@ namespace optionx::platforms::intrade_bar {
 
             std::vector<SingleTick> ticks;
             ticks.push_back(std::move(tick));
-            notify_async(std::make_unique<events::PriceUpdateEvent>(std::move(ticks)));
+            notify_async(std::make_unique<events::PriceUpdateEvent>(
+                std::move(ticks),
+                MarketDataUpdateSource::WEBSOCKET));
         } catch (const std::exception& ex) {
             LOGIT_WARN("Intrade Bar FX websocket: failed to parse tick for ",
                        stream ? stream->stream_symbol : std::string(),
@@ -333,10 +388,38 @@ namespace optionx::platforms::intrade_bar {
         }
     }
 
+    inline void FxPriceWebSocketManager::emit_status(
+            const std::shared_ptr<FxStreamState>& stream,
+            market_data::MarketDataStreamStatus status,
+            std::string message) {
+        market_data::BaseMarketDataProvider::status_callback_t* callback = nullptr;
+        market_data::ProviderInstanceId provider_id = market_data::kInvalidProviderInstanceId;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            callback = m_status_callback;
+            provider_id = m_provider_id;
+        }
+        if (!callback || !*callback || !stream) return;
+
+        market_data::MarketDataStatusUpdate update;
+        update.provider_id = provider_id;
+        update.type = market_data::MarketDataType::TICKS;
+        update.symbol = stream->symbol;
+        update.transport = market_data::MarketDataTransport::WEBSOCKET;
+        update.status = status;
+        update.message = std::move(message);
+        (*callback)(std::move(update));
+    }
+
     inline void FxPriceWebSocketManager::handle_event(
             const events::AuthDataEvent& event) {
         auto auth_data = std::dynamic_pointer_cast<AuthData>(event.auth_data);
         if (!auth_data) return;
+        const auto [success, message] = auth_data->validate();
+        if (!success) {
+            LOGIT_WARN("Intrade Bar FX websocket: ignored invalid auth data: ", message);
+            return;
+        }
 
         {
             std::lock_guard<std::mutex> lock(m_mutex);
@@ -354,8 +437,22 @@ namespace optionx::platforms::intrade_bar {
     }
 
     inline void FxPriceWebSocketManager::handle_event(
+            const events::ConnectRequestEvent& event) {
+        (void)event;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_platform_connected = false;
+        }
+        disconnect_all_streams();
+    }
+
+    inline void FxPriceWebSocketManager::handle_event(
             const events::DisconnectRequestEvent& event) {
         (void)event;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_platform_connected = false;
+        }
         disconnect_all_streams();
     }
 
@@ -363,8 +460,16 @@ namespace optionx::platforms::intrade_bar {
             const events::AccountInfoUpdateEvent& event) {
         using Status = events::AccountInfoUpdateEvent::Status;
         if (event.status == Status::CONNECTED) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                m_platform_connected = true;
+            }
             reconnect_all_streams();
         } else if (event.status == Status::DISCONNECTED) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                m_platform_connected = false;
+            }
             disconnect_all_streams();
         }
     }

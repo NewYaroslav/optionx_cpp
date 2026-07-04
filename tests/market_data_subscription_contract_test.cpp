@@ -7,6 +7,31 @@
 using namespace optionx;
 using namespace optionx::market_data;
 
+namespace {
+
+class FakeHistoryProvider final : public BaseMarketDataProvider {
+public:
+    BarSequence next_sequence;
+    BarHistoryResult next_result = BarHistoryResult::fail("not configured");
+    BarHistoryRequest last_request;
+
+    bool fetch_bar_history(
+            const BarHistoryRequest& request,
+            bar_history_callback_t callback) override {
+        last_request = request;
+        if (callback) {
+            if (next_result) {
+                callback(BarHistoryResult::ok(next_sequence, next_result.status_code));
+            } else {
+                callback(next_result);
+            }
+        }
+        return true;
+    }
+};
+
+} // namespace
+
 TEST(TickSubscriptionRequest, BuildsAndValidatesTickRequests) {
     const TickSubscriptionRequest request("EUR/USD", MarketDataTransport::WEBSOCKET);
 
@@ -45,7 +70,7 @@ TEST(MarketDataSubscriptionHandle, BuildsTickAndBarHandlesAndReportsValidity) {
     EXPECT_EQ(tick_handle.provider_id, 11u);
     EXPECT_EQ(tick_handle.id, 42u);
     EXPECT_EQ(tick_handle.symbol, tick_request.symbol);
-    EXPECT_EQ(tick_handle.stream_type, MarketDataStreamType::TICKS);
+    EXPECT_EQ(tick_handle.stream_type, MarketDataType::TICKS);
     EXPECT_EQ(tick_handle.timeframe, 0);
     EXPECT_EQ(tick_handle.transport, tick_request.transport);
 
@@ -57,7 +82,7 @@ TEST(MarketDataSubscriptionHandle, BuildsTickAndBarHandlesAndReportsValidity) {
     EXPECT_EQ(bar_handle.provider_id, 11u);
     EXPECT_EQ(bar_handle.id, 43u);
     EXPECT_EQ(bar_handle.symbol, bar_request.symbol);
-    EXPECT_EQ(bar_handle.stream_type, MarketDataStreamType::BARS);
+    EXPECT_EQ(bar_handle.stream_type, MarketDataType::BARS);
     EXPECT_EQ(bar_handle.timeframe, 86400);
     EXPECT_EQ(bar_handle.price_source, bar_request.price_source);
 
@@ -80,6 +105,26 @@ TEST(MarketDataSubscriptionResult, DerivesSuccessFromStatus) {
         "network error");
     EXPECT_FALSE(failed);
     EXPECT_FALSE(failed.success());
+    EXPECT_EQ(failed.status, MarketDataSubscriptionStatus::FAILED);
+}
+
+TEST(MarketDataSubscriptionBatchResult, AppliesAllOrFailsAsOneResult) {
+    const TickSubscriptionRequest request("EUR/USD");
+    const auto handle =
+        MarketDataSubscriptionHandle::from_tick_request(3, 7, request);
+    std::vector<MarketDataSubscriptionResult> results;
+    results.push_back(MarketDataSubscriptionResult::subscribed(handle));
+
+    const auto applied = MarketDataSubscriptionBatchResult::applied(std::move(results));
+    EXPECT_TRUE(applied);
+    EXPECT_TRUE(applied.success());
+    EXPECT_EQ(applied.status, MarketDataSubscriptionStatus::APPLIED);
+    EXPECT_EQ(applied.results.size(), 1u);
+
+    const auto failed = MarketDataSubscriptionBatchResult::failed(
+        MarketDataSubscriptionStatus::SUBSCRIBED,
+        "not actually applied");
+    EXPECT_FALSE(failed);
     EXPECT_EQ(failed.status, MarketDataSubscriptionStatus::FAILED);
 }
 
@@ -119,7 +164,7 @@ TEST(BaseMarketDataProvider, DefaultProviderRejectsTickSubscriptionsWithTypedRes
     EXPECT_EQ(callback_count, 1);
     EXPECT_FALSE(result);
     EXPECT_EQ(result.status, MarketDataSubscriptionStatus::UNSUPPORTED);
-    EXPECT_EQ(result.subscription.stream_type, MarketDataStreamType::TICKS);
+    EXPECT_EQ(result.subscription.stream_type, MarketDataType::TICKS);
     EXPECT_EQ(result.subscription.symbol, "EUR/USD");
     EXPECT_NE(result.error_message.find("Tick subscriptions"), std::string::npos);
 }
@@ -140,7 +185,7 @@ TEST(BaseMarketDataProvider, DefaultProviderRejectsInvalidBarSubscriptions) {
     EXPECT_EQ(callback_count, 1);
     EXPECT_FALSE(result);
     EXPECT_EQ(result.status, MarketDataSubscriptionStatus::INVALID_REQUEST);
-    EXPECT_EQ(result.subscription.stream_type, MarketDataStreamType::BARS);
+    EXPECT_EQ(result.subscription.stream_type, MarketDataType::BARS);
     EXPECT_EQ(to_str(result.status), std::string("INVALID_REQUEST"));
 }
 
@@ -189,6 +234,31 @@ TEST(BaseMarketDataProvider, RejectsHandleFromAnotherProvider) {
     EXPECT_EQ(to_str(result.status), std::string("WRONG_PROVIDER"));
 }
 
+TEST(BaseMarketDataProvider, DefaultProviderRejectsBatchSubscriptions) {
+    BaseMarketDataProvider provider;
+    MarketDataSubscriptionBatchResult result;
+    int callback_count = 0;
+
+    MarketDataSubscriptionBatch batch;
+    batch.subscribe_ticks(TickSubscriptionRequest("EUR/USD"));
+    batch.subscribe_bars(BarSubscriptionRequest("EUR/USD", 60));
+
+    const bool accepted = provider.apply_subscriptions(
+        std::move(batch),
+        [&result, &callback_count](MarketDataSubscriptionBatchResult batch_result) {
+            result = std::move(batch_result);
+            ++callback_count;
+        });
+
+    EXPECT_FALSE(accepted);
+    EXPECT_EQ(callback_count, 1);
+    EXPECT_FALSE(result);
+    EXPECT_EQ(result.status, MarketDataSubscriptionStatus::FAILED);
+    EXPECT_EQ(result.results.size(), 2u);
+    EXPECT_EQ(result.results[0].status, MarketDataSubscriptionStatus::UNSUPPORTED);
+    EXPECT_EQ(result.results[1].status, MarketDataSubscriptionStatus::UNSUPPORTED);
+}
+
 TEST(BaseMarketDataProvider, IsNotCopyableOrMovable) {
     static_assert(!std::is_copy_constructible<BaseMarketDataProvider>::value,
                   "provider identity must not be copy-constructible");
@@ -220,6 +290,99 @@ TEST(BarTimeframe, SupportsDailyTimeframeWithoutTruncation) {
 
     const BarHistoryRequest history_request("EURUSD", 86400, 1000, 2000);
     EXPECT_EQ(history_request.timeframe, 86400);
+}
+
+TEST(MarketDataPayloadFlags, TickAndBarEncodeOriginAndPriceType) {
+    Tick tick;
+    tick.set_flag(MarketDataFlags::REALTIME);
+    tick.set_price_type(MarketPriceType::BID);
+    EXPECT_TRUE(tick.has_flag(MarketDataFlags::REALTIME));
+    EXPECT_FALSE(tick.has_flag(MarketDataFlags::HISTORICAL));
+    EXPECT_EQ(tick.price_type(), MarketPriceType::BID);
+
+    Bar bar;
+    bar.set_flag(MarketDataFlags::HISTORICAL);
+    bar.set_flag(MarketDataFlags::BACKFILL);
+    bar.set_price_type(MarketPriceType::MID);
+    EXPECT_TRUE(bar.has_flag(MarketDataFlags::HISTORICAL));
+    EXPECT_TRUE(bar.has_flag(MarketDataFlags::BACKFILL));
+    EXPECT_EQ(bar.price_type(), MarketPriceType::MID);
+}
+
+TEST(MarketDataBatch, CarriesSharedStreamMetadata) {
+    TickDataBatch batch;
+    batch.type = MarketDataType::TICKS;
+    batch.symbol = "EURUSD";
+    batch.price_digits = 5;
+    batch.volume_digits = 0;
+    batch.items.push_back(Tick{1.2, 1.1, 0.0, 1000, 1001, 0});
+
+    EXPECT_FALSE(batch.empty());
+    EXPECT_EQ(batch.size(), 1u);
+    EXPECT_EQ(batch.type, MarketDataType::TICKS);
+    EXPECT_EQ(batch.symbol, "EURUSD");
+    EXPECT_EQ(batch.price_digits, 5u);
+}
+
+TEST(MarketDataContinuityService, RoutesHistoricalBarsAsBackfillBatch) {
+    FakeHistoryProvider provider;
+    provider.next_result = BarHistoryResult::ok(BarSequence{}, 200);
+    provider.next_sequence.symbol = "EURUSD";
+    provider.next_sequence.provider = "fake";
+    provider.next_sequence.timeframe = 60;
+    provider.next_sequence.price_digits = 5;
+    provider.next_sequence.volume_digits = 0;
+    provider.next_sequence.price_source = BarPriceSource::BID;
+    provider.next_sequence.bars.push_back(Bar{1.0, 1.2, 0.9, 1.1, 10.0, 1000});
+
+    const auto handle = MarketDataSubscriptionHandle::from_bar_request(
+        provider.provider_id(),
+        12,
+        BarSubscriptionRequest("EURUSD", 60, BarPriceSource::BID));
+
+    std::unique_ptr<BarDataBatch> delivered;
+    MarketDataContinuityService service(provider);
+    const bool accepted = service.request_bar_history_batch(
+        BarHistoryRequest("EUR/USD", 60, 1000, 2000, BarPriceSource::MID),
+        handle,
+        [&delivered](std::unique_ptr<BarDataBatch> batch) {
+            delivered = std::move(batch);
+        });
+
+    EXPECT_TRUE(accepted);
+    ASSERT_NE(delivered, nullptr);
+    ASSERT_EQ(delivered->items.size(), 1u);
+    EXPECT_EQ(delivered->type, MarketDataType::BARS);
+    EXPECT_EQ(delivered->symbol, "EURUSD");
+    EXPECT_EQ(delivered->timeframe, 60);
+    EXPECT_EQ(delivered->price_digits, 5u);
+    EXPECT_EQ(delivered->subscription.id, handle.id);
+    EXPECT_TRUE(delivered->items[0].has_flag(MarketDataFlags::HISTORICAL));
+    EXPECT_TRUE(delivered->items[0].has_flag(MarketDataFlags::BACKFILL));
+    EXPECT_EQ(delivered->items[0].price_type(), MarketPriceType::BID);
+}
+
+TEST(MarketDataContinuityService, ForwardsTypedHistoryFailure) {
+    FakeHistoryProvider provider;
+    provider.next_result = BarHistoryResult::fail("network down", BarHistoryResult::NO_RESPONSE_STATUS);
+
+    bool data_callback_called = false;
+    BarHistoryResult failure;
+    MarketDataContinuityService service(provider);
+    const bool accepted = service.request_bar_history_batch(
+        BarHistoryRequest("EUR/USD", 60, 1000, 2000),
+        {},
+        [&data_callback_called](std::unique_ptr<BarDataBatch>) {
+            data_callback_called = true;
+        },
+        [&failure](BarHistoryResult result) {
+            failure = std::move(result);
+        });
+
+    EXPECT_TRUE(accepted);
+    EXPECT_FALSE(data_callback_called);
+    EXPECT_FALSE(failure);
+    EXPECT_EQ(failure.error_desc, "network down");
 }
 
 int main(int argc, char** argv) {

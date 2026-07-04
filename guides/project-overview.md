@@ -71,7 +71,8 @@ broker API и bridges. Основной сценарий: пользовател
 7. Market-data entry points (`fetch_bar_history`, `subscribe_ticks`,
    `subscribe_bars`, `unsubscribe`) are exposed by `BaseMarketDataProvider`
    implementations. Concrete platforms may use HTTP polling, websockets, or
-   both internally; public subscription results are reported through typed
+   both internally; public subscription callbacks report desired-state
+   acceptance, while physical stream readiness is reported through status
    callbacks.
 8. `shutdown()` останавливает tasks, вызывает shutdown у components, затем
    draining event bus.
@@ -96,7 +97,8 @@ DTO и events обычно открытые классы/структуры с p
 - `data/trading/TradeRequest.hpp`
 - `data/trading/TradeResult.hpp`
 - `data/bars/Bar.hpp`, `SingleBar.hpp`, `BarSequence.hpp`
-- `data/ticks/Tick.hpp`, `TickData.hpp`
+- `data/ticks/Tick.hpp`, `SingleTick.hpp`, `TickSequence.hpp`
+- `market_data/MarketDataBatch.hpp`, `MarketDataSubscription.hpp`
 - `data/account/BaseAccountInfoData.hpp`
 - `data/events/TradeRequestEvent.hpp`
 

@@ -5,7 +5,7 @@
 /// \file http_utils.hpp
 /// \brief Contains utility functions for handling HTTP responses and errors.
 
-#include "SymbolUtils.hpp"
+#include "symbol_utils.hpp"
 
 namespace optionx::platforms::intrade_bar {
 

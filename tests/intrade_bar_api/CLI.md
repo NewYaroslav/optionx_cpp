@@ -156,6 +156,61 @@ auth callback=1 success=1 elapsed_ms=3639
 EURUSD bid=1.14911 ask=1.14914 mid=1.14913
 ```
 
+Smoke live market-data streams:
+
+```powershell
+.\build-codex\intrade_bar_smoke_cli.exe market-stream --symbols=BTCUSDT --ticks --bars --transport=WEBSOCKET --seconds=60 --timeframe=60
+.\build-codex\intrade_bar_smoke_cli.exe market-stream --symbols=BTCUSDT,EURUSD --type=both --transport=AUTO --seconds=120
+```
+
+`market-stream` uses the public market-data API. It applies tick
+subscriptions, prints stream status updates, and prints every delivered tick
+batch. When `--bars` is set, it also:
+
+- tries the provider-level live bar subscription and prints the typed result;
+- builds local realtime OHLC updates from the live tick stream for terminal
+  inspection;
+- requests a historical/backfill bar batch through `MarketDataContinuityService`
+  unless `--no-backfill` is passed.
+
+Useful options:
+
+```text
+--symbols=BTCUSDT,EURUSD
+--type=ticks
+--type=bars
+--type=both
+--ticks
+--bars
+--transport=WEBSOCKET
+--transport=POLLING
+--transport=AUTO
+--transport=HYBRID
+--seconds=60
+--timeframe=60
+--price=MID
+--price=BID
+--price=ASK
+--price=LAST
+--backfill-minutes=30
+--no-backfill
+```
+
+Expected output includes lines like:
+
+```text
+[subscribe-ticks] status=APPLIED results=1
+[status] type=TICKS symbol=BTCUSDT transport=WEBSOCKET status=READY
+[tick] symbol=BTCUSDT time_ms=... bid=... ask=... flags=REALTIME
+[bar-update] symbol=BTCUSDT timeframe=60 ... flags=REALTIME|INCOMPLETE
+[bar-batch] symbol=BTCUSDT timeframe=60 items=...
+```
+
+Intrade live bars are not provider-native yet, so `--bars` currently uses
+local CLI aggregation for realtime bar updates and history/backfill for
+historical bars. The provider-level `subscribe_bars()` result is still printed
+so this command will expose the change when native bar streams are added.
+
 Fetch closed trade history:
 
 ```powershell

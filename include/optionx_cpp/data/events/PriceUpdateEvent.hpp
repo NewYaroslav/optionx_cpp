@@ -16,13 +16,23 @@ namespace optionx::events {
     public:
         /// \brief Constructor initializing the tick data.
         /// \param ticks A vector of tick information.
-        explicit PriceUpdateEvent(std::vector<SingleTick> ticks)
-            : m_ticks(std::move(ticks)) {}
+        /// \param source Transport-level source that produced the ticks.
+        explicit PriceUpdateEvent(
+                std::vector<SingleTick> ticks,
+                MarketDataUpdateSource source = MarketDataUpdateSource::POLLING)
+            : m_ticks(std::move(ticks)),
+              m_source(source) {}
 
         /// \brief Gets the tick data associated with this event.
         /// \return A constant reference to the vector of tick information.
         const std::vector<SingleTick>& get_ticks() const {
             return m_ticks;
+        }
+
+        /// \brief Returns the source that produced this tick update.
+        /// \return Transport-level market-data source for routing decisions.
+        MarketDataUpdateSource source() const noexcept {
+            return m_source;
         }
 
         /// \brief Default virtual destructor.
@@ -50,6 +60,7 @@ namespace optionx::events {
 
     private:
         std::vector<SingleTick> m_ticks; ///< Tick information associated with this event.
+        MarketDataUpdateSource m_source = MarketDataUpdateSource::UNKNOWN; ///< Tick update source.
     };
 
 } // namespace optionx::events

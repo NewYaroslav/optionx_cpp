@@ -42,6 +42,12 @@ jobs:
       - name: Run market_data_subscription_contract_test
         run: ./build-linux/market_data_subscription_contract_test --gtest_brief=1
 
+      - name: Build intrade_bar_api_response_test
+        run: cmake --build build-linux --target intrade_bar_api_response_test -j
+
+      - name: Run intrade_bar_api_response_test
+        run: ./build-linux/intrade_bar_api_response_test --gtest_brief=1
+
       - name: Configure submodule consumer
         run: cmake -S tests/cmake/submodule_consumer -B build-submodule-consumer
 

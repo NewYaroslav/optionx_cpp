@@ -76,6 +76,30 @@ SingleTick make_market_data_tick(const std::string& symbol, double bid, double a
     return tick;
 }
 
+void publish_account_status(
+        IntradeBarPlatform& platform,
+        AccountUpdateStatus status) {
+    platform.event_bus().notify_async(
+        std::make_unique<events::AccountInfoUpdateEvent>(
+            std::make_shared<AccountInfoData>(),
+            status));
+    platform.event_bus().drain();
+}
+
+template <class Predicate>
+bool wait_for_platform(
+        IntradeBarPlatform& platform,
+        Predicate&& predicate,
+        std::chrono::milliseconds timeout = std::chrono::seconds(5)) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (!predicate() && std::chrono::steady_clock::now() < deadline) {
+        platform.event_bus().drain();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    platform.event_bus().drain();
+    return predicate();
+}
+
 using TradeHistoryHttpServer = SimpleWeb::Server<SimpleWeb::HTTP>;
 using MarketDataWsServer = SimpleWeb::SocketServer<SimpleWeb::WS>;
 
@@ -619,13 +643,15 @@ TEST(IntradeBarApiResponses, IntradeBarPlatformExposesEndpointTradingAndMarketDa
 
 TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionRoutesMatchingPriceEvents) {
     IntradeBarPlatform platform;
-    std::vector<SingleTick> delivered_ticks;
+    market_data::TickDataBatch delivered_batch;
     int tick_callback_count = 0;
     market_data::MarketDataSubscriptionResult subscription_result;
 
     platform.on_tick_data() =
-        [&delivered_ticks, &tick_callback_count](const std::vector<SingleTick>& ticks) {
-            delivered_ticks = ticks;
+        [&delivered_batch, &tick_callback_count](std::unique_ptr<market_data::TickDataBatch> batch) {
+            if (batch) {
+                delivered_batch = std::move(*batch);
+            }
             ++tick_callback_count;
         };
 
@@ -643,10 +669,11 @@ TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionRoutesMatchingPriceEvents
     EXPECT_TRUE(subscription_result.subscription.valid());
     EXPECT_EQ(subscription_result.subscription.provider_id, platform.provider_id());
     EXPECT_EQ(subscription_result.subscription.symbol, "EURUSD");
-    EXPECT_EQ(subscription_result.subscription.stream_type, market_data::MarketDataStreamType::TICKS);
+    EXPECT_EQ(subscription_result.subscription.stream_type, market_data::MarketDataType::TICKS);
 
     std::vector<SingleTick> event_ticks = {
         make_market_data_tick("EURUSD", 1.0, 1.1),
+        make_market_data_tick("EUR/USD", 1.2, 1.3),
         make_market_data_tick("BTCUSDT", 60000.0, 60001.0)
     };
 
@@ -655,8 +682,11 @@ TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionRoutesMatchingPriceEvents
     platform.event_bus().process();
 
     ASSERT_EQ(tick_callback_count, 1);
-    ASSERT_EQ(delivered_ticks.size(), 1u);
-    EXPECT_EQ(delivered_ticks[0].symbol, "EURUSD");
+    ASSERT_EQ(delivered_batch.items.size(), 2u);
+    EXPECT_EQ(delivered_batch.symbol, "EURUSD");
+    EXPECT_EQ(delivered_batch.subscription.id, subscription_result.subscription.id);
+    EXPECT_TRUE(delivered_batch.items[0].has_flag(MarketDataFlags::REALTIME));
+    EXPECT_TRUE(delivered_batch.items[1].has_flag(MarketDataFlags::REALTIME));
 
     platform.shutdown();
 }
@@ -668,8 +698,8 @@ TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionStopsAfterUnsubscribe) {
     market_data::MarketDataSubscriptionResult unsubscribe_result;
 
     platform.on_tick_data() =
-        [&tick_callback_count](const std::vector<SingleTick>& ticks) {
-            if (!ticks.empty()) {
+        [&tick_callback_count](std::unique_ptr<market_data::TickDataBatch> batch) {
+            if (batch && !batch->items.empty()) {
                 ++tick_callback_count;
             }
         };
@@ -702,6 +732,101 @@ TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionStopsAfterUnsubscribe) {
     platform.shutdown();
 }
 
+TEST(IntradeBarApiResponses, IntradeBarAppliesTickSubscriptionBatchAtomically) {
+    IntradeBarPlatform platform;
+    std::vector<market_data::TickDataBatch> delivered_batches;
+    market_data::MarketDataSubscriptionBatchResult apply_result;
+    market_data::MarketDataSubscriptionBatchResult unsubscribe_result;
+
+    platform.on_tick_data() =
+        [&delivered_batches](std::unique_ptr<market_data::TickDataBatch> batch) {
+            if (batch) {
+                delivered_batches.push_back(std::move(*batch));
+            }
+        };
+
+    market_data::MarketDataSubscriptionBatch batch;
+    batch.subscribe_ticks(market_data::TickSubscriptionRequest(
+        "EUR/USD",
+        market_data::MarketDataTransport::POLLING));
+    batch.subscribe_ticks(market_data::TickSubscriptionRequest(
+        "BTC/USD",
+        market_data::MarketDataTransport::POLLING));
+
+    ASSERT_TRUE(platform.apply_subscriptions(
+        std::move(batch),
+        [&apply_result](market_data::MarketDataSubscriptionBatchResult result) {
+            apply_result = std::move(result);
+        }));
+
+    ASSERT_TRUE(apply_result);
+    ASSERT_EQ(apply_result.results.size(), 2u);
+    EXPECT_EQ(apply_result.status, market_data::MarketDataSubscriptionStatus::APPLIED);
+    EXPECT_EQ(apply_result.results[0].subscription.symbol, "EURUSD");
+    EXPECT_EQ(apply_result.results[1].subscription.symbol, "BTCUSDT");
+
+    std::vector<SingleTick> event_ticks = {
+        make_market_data_tick("EURUSD", 1.0, 1.1),
+        make_market_data_tick("BTCUSDT", 60000.0, 60001.0)
+    };
+
+    platform.event_bus().notify_async(
+        std::make_unique<events::PriceUpdateEvent>(std::move(event_ticks)));
+    platform.event_bus().process();
+
+    ASSERT_EQ(delivered_batches.size(), 2u);
+    EXPECT_EQ(delivered_batches[0].items.size(), 1u);
+    EXPECT_EQ(delivered_batches[1].items.size(), 1u);
+
+    EXPECT_TRUE(platform.unsubscribe_all(
+        [&unsubscribe_result](market_data::MarketDataSubscriptionBatchResult result) {
+            unsubscribe_result = std::move(result);
+        }));
+    EXPECT_TRUE(unsubscribe_result);
+    EXPECT_EQ(unsubscribe_result.results.size(), 2u);
+
+    platform.shutdown();
+}
+
+TEST(IntradeBarApiResponses, IntradeBarRejectedSubscriptionBatchDoesNotPartiallySubscribe) {
+    IntradeBarPlatform platform;
+    int tick_callback_count = 0;
+    market_data::MarketDataSubscriptionBatchResult result;
+
+    platform.on_tick_data() =
+        [&tick_callback_count](std::unique_ptr<market_data::TickDataBatch> batch) {
+            if (batch && !batch->items.empty()) {
+                ++tick_callback_count;
+            }
+        };
+
+    market_data::MarketDataSubscriptionBatch batch;
+    batch.subscribe_ticks(market_data::TickSubscriptionRequest(
+        "EUR/USD",
+        market_data::MarketDataTransport::POLLING));
+    batch.subscribe_bars(market_data::BarSubscriptionRequest("EUR/USD", 60));
+
+    EXPECT_FALSE(platform.apply_subscriptions(
+        std::move(batch),
+        [&result](market_data::MarketDataSubscriptionBatchResult batch_result) {
+            result = std::move(batch_result);
+        }));
+
+    EXPECT_FALSE(result);
+    EXPECT_EQ(result.status, market_data::MarketDataSubscriptionStatus::UNSUPPORTED);
+
+    std::vector<SingleTick> event_ticks = {
+        make_market_data_tick("EURUSD", 1.0, 1.1)
+    };
+    platform.event_bus().notify_async(
+        std::make_unique<events::PriceUpdateEvent>(std::move(event_ticks)));
+    platform.event_bus().process();
+
+    EXPECT_EQ(tick_callback_count, 0);
+
+    platform.shutdown();
+}
+
 TEST(IntradeBarApiResponses, IntradeBarBarSubscriptionsReportUnsupportedTypedResult) {
     IntradeBarPlatform platform;
     market_data::MarketDataSubscriptionResult result;
@@ -716,7 +841,7 @@ TEST(IntradeBarApiResponses, IntradeBarBarSubscriptionsReportUnsupportedTypedRes
     EXPECT_FALSE(result);
     EXPECT_EQ(result.status, market_data::MarketDataSubscriptionStatus::UNSUPPORTED);
     EXPECT_EQ(result.subscription.symbol, "EURUSD");
-    EXPECT_EQ(result.subscription.stream_type, market_data::MarketDataStreamType::BARS);
+    EXPECT_EQ(result.subscription.stream_type, market_data::MarketDataType::BARS);
 
     platform.shutdown();
 }
@@ -756,6 +881,10 @@ TEST(IntradeBarSymbols, FormatsFxConnectSymbols) {
     EXPECT_EQ(make_fxconnect_symbol("EURUSD"), "EUR/USD");
     EXPECT_EQ(make_fxconnect_symbol("eur/usd"), "EUR/USD");
     EXPECT_EQ(make_fxconnect_symbol("NZD/USD"), "NZD/USD");
+    EXPECT_TRUE(is_fxconnect_supported_symbol("USDJPY"));
+    EXPECT_FALSE(is_fxconnect_supported_symbol("ABCDEF"));
+    EXPECT_EQ(make_fxconnect_symbol("ABCDEF"), "");
+    EXPECT_EQ(make_fxconnect_symbol("XAUUSD"), "");
     EXPECT_EQ(make_fxconnect_symbol("BTCUSD"), "");
     EXPECT_EQ(make_fxconnect_symbol("BTCUSDT"), "");
     EXPECT_EQ(make_fxconnect_symbol(""), "");
@@ -796,12 +925,14 @@ TEST(IntradeBarApiResponses, FxWebSocketSubscriptionReceivesLocalTick) {
     ASSERT_TRUE(server.start());
 
     IntradeBarPlatform platform;
-    std::vector<SingleTick> delivered_ticks;
+    market_data::TickDataBatch delivered_batch;
     int callback_count = 0;
     platform.on_tick_data() =
-        [&delivered_ticks, &callback_count](const std::vector<SingleTick>& ticks) {
+        [&delivered_batch, &callback_count](std::unique_ptr<market_data::TickDataBatch> batch) {
             ++callback_count;
-            delivered_ticks = ticks;
+            if (batch) {
+                delivered_batch = std::move(*batch);
+            }
         };
 
     auto auth = std::make_unique<AuthData>();
@@ -823,21 +954,23 @@ TEST(IntradeBarApiResponses, FxWebSocketSubscriptionReceivesLocalTick) {
     ASSERT_TRUE(subscription_result);
     ASSERT_TRUE(subscription_result.subscription.valid());
 
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-    while (delivered_ticks.empty() && std::chrono::steady_clock::now() < deadline) {
-        platform.event_bus().drain();
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    platform.event_bus().drain();
+    publish_account_status(platform, AccountUpdateStatus::CONNECTED);
+    ASSERT_TRUE(wait_for_platform(
+        platform,
+        [&]() {
+            return !delivered_batch.items.empty();
+        }));
 
     EXPECT_EQ(server.subscribed_symbol(), "EUR/USD");
-    ASSERT_EQ(delivered_ticks.size(), 1u);
+    ASSERT_EQ(delivered_batch.items.size(), 1u);
     EXPECT_EQ(callback_count, 1);
-    EXPECT_EQ(delivered_ticks[0].symbol, "EURUSD");
-    EXPECT_DOUBLE_EQ(delivered_ticks[0].tick.ask, 1.10002);
-    EXPECT_DOUBLE_EQ(delivered_ticks[0].tick.bid, 1.10001);
-    EXPECT_TRUE(delivered_ticks[0].has_flag(TickStatusFlags::INITIALIZED));
-    EXPECT_TRUE(delivered_ticks[0].has_flag(TickStatusFlags::REALTIME));
+    EXPECT_EQ(delivered_batch.symbol, "EURUSD");
+    EXPECT_EQ(delivered_batch.subscription.id, subscription_result.subscription.id);
+    EXPECT_DOUBLE_EQ(delivered_batch.items[0].ask, 1.10002);
+    EXPECT_DOUBLE_EQ(delivered_batch.items[0].bid, 1.10001);
+    EXPECT_TRUE(delivered_batch.items[0].has_flag(TickUpdateFlags::ASK_UPDATED));
+    EXPECT_TRUE(delivered_batch.items[0].has_flag(TickUpdateFlags::BID_UPDATED));
+    EXPECT_TRUE(delivered_batch.items[0].has_flag(MarketDataFlags::REALTIME));
 
     market_data::MarketDataSubscriptionResult unsubscribe_result;
     EXPECT_TRUE(platform.unsubscribe(
@@ -846,6 +979,205 @@ TEST(IntradeBarApiResponses, FxWebSocketSubscriptionReceivesLocalTick) {
             unsubscribe_result = std::move(result);
         }));
     EXPECT_TRUE(unsubscribe_result);
+
+    platform.shutdown();
+}
+
+TEST(IntradeBarApiResponses, WebsocketSubscriptionIgnoresPollingSnapshotForSameSymbol) {
+    IntradeBarPlatform platform;
+    int callback_count = 0;
+    market_data::TickDataBatch delivered_batch;
+    platform.on_tick_data() =
+        [&callback_count, &delivered_batch](std::unique_ptr<market_data::TickDataBatch> batch) {
+            ++callback_count;
+            if (batch) {
+                delivered_batch = std::move(*batch);
+            }
+        };
+
+    market_data::MarketDataSubscriptionResult subscription_result;
+    ASSERT_TRUE(platform.subscribe_ticks(
+        market_data::TickSubscriptionRequest(
+            "EUR/USD",
+            market_data::MarketDataTransport::WEBSOCKET),
+        [&subscription_result](market_data::MarketDataSubscriptionResult result) {
+            subscription_result = std::move(result);
+        }));
+    ASSERT_TRUE(subscription_result);
+
+    std::vector<SingleTick> polling_ticks;
+    polling_ticks.push_back(make_market_data_tick("EURUSD", 1.10001, 1.10002));
+    platform.event_bus().notify_async(
+        std::make_unique<events::PriceUpdateEvent>(std::move(polling_ticks)));
+    platform.event_bus().drain();
+
+    EXPECT_EQ(callback_count, 0);
+    EXPECT_TRUE(delivered_batch.items.empty());
+
+    std::vector<SingleTick> websocket_ticks;
+    websocket_ticks.push_back(make_market_data_tick("EURUSD", 1.10003, 1.10004));
+    platform.event_bus().notify_async(
+        std::make_unique<events::PriceUpdateEvent>(
+            std::move(websocket_ticks),
+            MarketDataUpdateSource::WEBSOCKET));
+    platform.event_bus().drain();
+
+    EXPECT_EQ(callback_count, 1);
+    ASSERT_EQ(delivered_batch.items.size(), 1u);
+    EXPECT_DOUBLE_EQ(delivered_batch.items[0].bid, 1.10003);
+    EXPECT_DOUBLE_EQ(delivered_batch.items[0].ask, 1.10004);
+
+    platform.shutdown();
+}
+
+TEST(IntradeBarApiResponses, RejectsUnsupportedFxWebsocketSymbol) {
+    IntradeBarPlatform platform;
+
+    market_data::MarketDataSubscriptionResult subscription_result;
+    const bool accepted = platform.subscribe_ticks(
+        market_data::TickSubscriptionRequest(
+            "ABCDEF",
+            market_data::MarketDataTransport::WEBSOCKET),
+        [&subscription_result](market_data::MarketDataSubscriptionResult result) {
+            subscription_result = std::move(result);
+        });
+
+    EXPECT_FALSE(accepted);
+    EXPECT_FALSE(subscription_result);
+    EXPECT_EQ(
+        subscription_result.status,
+        market_data::MarketDataSubscriptionStatus::UNSUPPORTED);
+    EXPECT_FALSE(subscription_result.subscription.valid());
+}
+
+TEST(IntradeBarApiResponses, PollingSubscriptionDoesNotOpenFxWebSocket) {
+    LocalFxConnectServer server;
+    ASSERT_TRUE(server.start());
+
+    IntradeBarPlatform platform;
+    auto auth = std::make_unique<AuthData>();
+    auth->set_email_password("user@example.test", "unused");
+    auth->host = server.host();
+    ASSERT_TRUE(platform.configure_auth(std::move(auth)));
+    platform.event_bus().drain();
+
+    market_data::MarketDataSubscriptionResult subscription_result;
+    ASSERT_TRUE(platform.subscribe_ticks(
+        market_data::TickSubscriptionRequest(
+            "EUR/USD",
+            market_data::MarketDataTransport::POLLING),
+        [&subscription_result](market_data::MarketDataSubscriptionResult result) {
+            subscription_result = std::move(result);
+        }));
+    ASSERT_TRUE(subscription_result);
+
+    publish_account_status(platform, AccountUpdateStatus::CONNECTED);
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    platform.event_bus().drain();
+
+    EXPECT_EQ(server.subscription_count.load(), 0);
+
+    platform.shutdown();
+}
+
+TEST(IntradeBarApiResponses, FxWebSocketSubscriptionsAreRefCountedBySymbol) {
+    LocalFxConnectServer server;
+    ASSERT_TRUE(server.start());
+
+    IntradeBarPlatform platform;
+    auto auth = std::make_unique<AuthData>();
+    auth->set_email_password("user@example.test", "unused");
+    auth->host = server.host();
+    ASSERT_TRUE(platform.configure_auth(std::move(auth)));
+    platform.event_bus().drain();
+
+    market_data::MarketDataSubscriptionResult first_result;
+    market_data::MarketDataSubscriptionResult second_result;
+    ASSERT_TRUE(platform.subscribe_ticks(
+        market_data::TickSubscriptionRequest(
+            "EUR/USD",
+            market_data::MarketDataTransport::WEBSOCKET),
+        [&first_result](market_data::MarketDataSubscriptionResult result) {
+            first_result = std::move(result);
+        }));
+    ASSERT_TRUE(platform.subscribe_ticks(
+        market_data::TickSubscriptionRequest(
+            "EURUSD",
+            market_data::MarketDataTransport::WEBSOCKET),
+        [&second_result](market_data::MarketDataSubscriptionResult result) {
+            second_result = std::move(result);
+        }));
+    ASSERT_TRUE(first_result);
+    ASSERT_TRUE(second_result);
+
+    publish_account_status(platform, AccountUpdateStatus::CONNECTED);
+    ASSERT_TRUE(wait_for_platform(
+        platform,
+        [&]() {
+            return server.subscription_count.load() >= 1;
+        }));
+
+    EXPECT_EQ(server.subscription_count.load(), 1);
+
+    market_data::MarketDataSubscriptionResult unsubscribe_result;
+    EXPECT_TRUE(platform.unsubscribe(
+        first_result.subscription,
+        [&unsubscribe_result](market_data::MarketDataSubscriptionResult result) {
+            unsubscribe_result = std::move(result);
+        }));
+    EXPECT_TRUE(unsubscribe_result);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    platform.event_bus().drain();
+    EXPECT_EQ(server.subscription_count.load(), 1);
+
+    EXPECT_TRUE(platform.unsubscribe(
+        second_result.subscription,
+        [&unsubscribe_result](market_data::MarketDataSubscriptionResult result) {
+            unsubscribe_result = std::move(result);
+        }));
+
+    platform.shutdown();
+}
+
+TEST(IntradeBarApiResponses, FxWebSocketReconnectsDesiredSubscriptions) {
+    LocalFxConnectServer server;
+    ASSERT_TRUE(server.start());
+
+    IntradeBarPlatform platform;
+    auto auth = std::make_unique<AuthData>();
+    auth->set_email_password("user@example.test", "unused");
+    auth->host = server.host();
+    ASSERT_TRUE(platform.configure_auth(std::move(auth)));
+    platform.event_bus().drain();
+
+    market_data::MarketDataSubscriptionResult subscription_result;
+    ASSERT_TRUE(platform.subscribe_ticks(
+        market_data::TickSubscriptionRequest(
+            "EUR/USD",
+            market_data::MarketDataTransport::WEBSOCKET),
+        [&subscription_result](market_data::MarketDataSubscriptionResult result) {
+            subscription_result = std::move(result);
+        }));
+    ASSERT_TRUE(subscription_result);
+
+    publish_account_status(platform, AccountUpdateStatus::CONNECTED);
+    ASSERT_TRUE(wait_for_platform(
+        platform,
+        [&]() {
+            return server.subscription_count.load() >= 1;
+        }));
+
+    publish_account_status(platform, AccountUpdateStatus::DISCONNECTED);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    platform.event_bus().drain();
+
+    publish_account_status(platform, AccountUpdateStatus::CONNECTED);
+    EXPECT_TRUE(wait_for_platform(
+        platform,
+        [&]() {
+            return server.subscription_count.load() >= 2;
+        }));
 
     platform.shutdown();
 }

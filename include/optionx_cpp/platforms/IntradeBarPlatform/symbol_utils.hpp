@@ -2,10 +2,11 @@
 #ifndef _OPTIONX_PLATFORMS_INTRADEBAR_SYMBOL_UTILS_HPP_INCLUDED
 #define _OPTIONX_PLATFORMS_INTRADEBAR_SYMBOL_UTILS_HPP_INCLUDED
 
-/// \file SymbolUtils.hpp
+/// \file symbol_utils.hpp
 /// \brief Broker-specific symbol normalization helpers for Intrade Bar.
 
 #include <cctype>
+#include <array>
 #include <string>
 
 namespace optionx::platforms::intrade_bar {
@@ -33,12 +34,32 @@ namespace optionx::platforms::intrade_bar {
         return normalize_symbol_name(symbol) == "BTCUSDT";
     }
 
+    /// \brief Checks whether `/fxconnect` is expected to support this FX symbol.
+    /// \param symbol Public or broker symbol name.
+    /// \return True for known Intrade Bar FX websocket symbols.
+    inline bool is_fxconnect_supported_symbol(const std::string& symbol) {
+        const auto normalized = normalize_symbol_name(symbol);
+        static constexpr std::array<const char*, 21> symbols = {{
+            "AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD",
+            "CADJPY",
+            "EURAUD", "EURCAD", "EURCHF", "EURGBP", "EURJPY", "EURUSD",
+            "GBPAUD", "GBPCHF", "GBPJPY", "GBPNZD",
+            "NZDJPY", "NZDUSD",
+            "USDCAD", "USDCHF", "USDJPY"
+        }};
+
+        for (const auto* item : symbols) {
+            if (normalized == item) return true;
+        }
+        return false;
+    }
+
     /// \brief Converts a normalized FX symbol to the `/fxconnect` stream format.
     /// \param symbol Public or broker symbol name.
     /// \return Slash-separated stream symbol, such as `EUR/USD`; empty for non-FX symbols.
     inline std::string make_fxconnect_symbol(const std::string& symbol) {
         const auto normalized = normalize_symbol_name(symbol);
-        if (normalized.empty() || is_btc_symbol(normalized) || normalized.size() != 6) {
+        if (!is_fxconnect_supported_symbol(normalized)) {
             return {};
         }
         return normalized.substr(0, 3) + "/" + normalized.substr(3, 3);
