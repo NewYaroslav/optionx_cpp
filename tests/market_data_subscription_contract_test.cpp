@@ -309,6 +309,41 @@ TEST(MarketDataPayloadFlags, TickAndBarEncodeOriginAndPriceType) {
     EXPECT_EQ(bar.price_type(), MarketPriceType::MID);
 }
 
+TEST(MarketDataPayloadFlags, FormatsFlagsAndPriceTypes) {
+    std::uint32_t flags = 0;
+    set_flag_in_place(flags, MarketDataFlags::REALTIME);
+    set_flag_in_place(flags, MarketDataFlags::INCOMPLETE);
+    set_market_price_type_in_place(flags, MarketPriceType::MID);
+
+    EXPECT_STREQ(to_str(MarketPriceType::MID), "MID");
+    EXPECT_EQ(market_price_type(flags), MarketPriceType::MID);
+    EXPECT_EQ(market_data_flags_to_string(flags), "REALTIME|INCOMPLETE");
+    EXPECT_EQ(market_data_flags_to_string(0), "NONE");
+}
+
+TEST(MarketDataPayloadFlags, ParsesPriceSourcesAndTransports) {
+    EXPECT_EQ(bar_price_source_from_string("bid"), BarPriceSource::BID);
+    EXPECT_EQ(bar_price_source_from_string(" avg "), BarPriceSource::MID);
+    EXPECT_EQ(bar_price_source_from_string("bad", BarPriceSource::LAST), BarPriceSource::LAST);
+    EXPECT_STREQ(to_str(BarPriceSource::LAST), "LAST");
+
+    EXPECT_EQ(
+        market_data::market_data_transport_from_string("ws"),
+        market_data::MarketDataTransport::WEBSOCKET);
+    EXPECT_EQ(
+        market_data::market_data_transport_from_string("poll"),
+        market_data::MarketDataTransport::POLLING);
+}
+
+TEST(MarketDataPayloadFlags, SingleTickCanClearStatusFlag) {
+    SingleTick tick;
+    tick.set_flag(TickStatusFlags::REALTIME);
+    ASSERT_TRUE(tick.has_flag(TickStatusFlags::REALTIME));
+
+    tick.set_flag(TickStatusFlags::REALTIME, false);
+    EXPECT_FALSE(tick.has_flag(TickStatusFlags::REALTIME));
+}
+
 TEST(MarketDataBatch, CarriesSharedStreamMetadata) {
     TickDataBatch batch;
     batch.type = MarketDataType::TICKS;

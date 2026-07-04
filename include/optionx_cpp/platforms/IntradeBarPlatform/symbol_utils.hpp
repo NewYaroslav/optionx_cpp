@@ -5,8 +5,9 @@
 /// \file symbol_utils.hpp
 /// \brief Broker-specific symbol normalization helpers for Intrade Bar.
 
-#include <cctype>
+#include <algorithm>
 #include <array>
+#include <cctype>
 #include <string>
 
 namespace optionx::platforms::intrade_bar {
@@ -15,11 +16,12 @@ namespace optionx::platforms::intrade_bar {
     /// \param symbol Public or broker symbol name.
     /// \return Normalized broker symbol name.
     inline std::string normalize_symbol_name(std::string symbol) {
-        for (;;) {
-            auto it_str = symbol.find('/');
-            if (it_str != std::string::npos) symbol.erase(it_str, 1);
-            else break;
-        }
+        symbol.erase(std::remove_if(
+            symbol.begin(),
+            symbol.end(),
+            [](unsigned char ch) {
+                return ch == '/' || std::isspace(ch) != 0;
+            }), symbol.end());
         for (auto& ch : symbol) {
             ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
         }

@@ -5,6 +5,7 @@
 /// \file TickSequence.hpp
 /// \brief Defines the TickSequence structure for storing a sequence of tick data with metadata.
 
+#include <cstdint>
 #include <vector>
 #include <string>
 #include <utility>
@@ -17,9 +18,9 @@ namespace optionx {
         std::vector<Tick> ticks;    ///< Sequence of tick data of the specified type.
         std::string symbol;         ///< Symbol associated with the tick sequence.
         std::string provider;       ///< Data provider associated with the tick sequence.
-        uint32_t price_digits;      ///< Number of decimal places for price.
-        uint32_t volume_digits;     ///< Number of decimal places for volume.
-        uint32_t flags;             ///< Tick data flags (bitmask of UpdateFlags).
+        std::uint32_t price_digits; ///< Number of decimal places for price.
+        std::uint32_t volume_digits; ///< Number of decimal places for volume.
+        std::uint32_t flags;        ///< Tick data flags (bitmask of UpdateFlags).
 
         /// \brief Default constructor initializing all fields to default values.
         TickSequence() : price_digits(0), volume_digits(0), flags(0) {}
@@ -31,7 +32,13 @@ namespace optionx {
         /// \param f Tick data flags.
         /// \param d Number of decimal places for price.
         /// \param vd Number of decimal places for volume.
-        TickSequence(std::vector<Tick> ts, std::string s, std::string p, uint32_t d, uint32_t vd, uint32_t f)
+        TickSequence(
+                std::vector<Tick> ts,
+                std::string s,
+                std::string p,
+                std::uint32_t d,
+                std::uint32_t vd,
+                std::uint32_t f)
             : ticks(std::move(ts)), symbol(std::move(s)), provider(std::move(p)), price_digits(d), volume_digits(vd), flags(f) {}
     };
 

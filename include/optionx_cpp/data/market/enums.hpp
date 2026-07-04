@@ -6,6 +6,7 @@
 /// \brief Defines shared market-data payload flags.
 
 #include <cstdint>
+#include <string>
 
 namespace optionx {
 
@@ -37,6 +38,36 @@ namespace optionx {
         POLLING,     ///< Periodic snapshot/polling source.
         WEBSOCKET    ///< Websocket streaming source.
     };
+
+    /// \brief Converts MarketPriceType to its string representation.
+    inline const char* to_str(MarketPriceType value) noexcept {
+        switch (value) {
+        case MarketPriceType::BID:
+            return "BID";
+        case MarketPriceType::ASK:
+            return "ASK";
+        case MarketPriceType::MID:
+            return "MID";
+        case MarketPriceType::LAST:
+            return "LAST";
+        case MarketPriceType::UNKNOWN:
+        default:
+            return "UNKNOWN";
+        }
+    }
+
+    /// \brief Converts MarketDataUpdateSource to its string representation.
+    inline const char* to_str(MarketDataUpdateSource value) noexcept {
+        switch (value) {
+        case MarketDataUpdateSource::POLLING:
+            return "POLLING";
+        case MarketDataUpdateSource::WEBSOCKET:
+            return "WEBSOCKET";
+        case MarketDataUpdateSource::UNKNOWN:
+        default:
+            return "UNKNOWN";
+        }
+    }
 
     /// \brief Bit offset used to encode MarketPriceType inside payload flags.
     inline constexpr std::uint32_t MARKET_PRICE_TYPE_SHIFT = 24;
@@ -89,6 +120,25 @@ namespace optionx {
             std::uint32_t& flags,
             MarketPriceType type) noexcept {
         flags = set_market_price_type(flags, type);
+    }
+
+    /// \brief Formats market-data origin/completeness flags.
+    /// \param flags Bitmask containing MarketDataFlags and an encoded price type.
+    /// \return Stable pipe-separated flag names, or NONE when no known flag is set.
+    inline std::string market_data_flags_to_string(std::uint32_t flags) {
+        std::string result;
+        const auto append = [&result](const char* name) {
+            if (!result.empty()) result += '|';
+            result += name;
+        };
+
+        if (has_flag(flags, MarketDataFlags::REALTIME)) append("REALTIME");
+        if (has_flag(flags, MarketDataFlags::HISTORICAL)) append("HISTORICAL");
+        if (has_flag(flags, MarketDataFlags::BACKFILL)) append("BACKFILL");
+        if (has_flag(flags, MarketDataFlags::INCOMPLETE)) append("INCOMPLETE");
+        if (has_flag(flags, MarketDataFlags::FINALIZED)) append("FINALIZED");
+
+        return result.empty() ? std::string("NONE") : result;
     }
 
 } // namespace optionx

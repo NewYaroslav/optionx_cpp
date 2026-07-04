@@ -356,14 +356,6 @@ namespace optionx::platforms::intrade_bar {
             return HistoryMoney{*amount, currency};
         }
 
-        inline std::string normalize_history_symbol(std::string symbol) {
-            symbol = utils::trim_copy(symbol);
-            symbol.erase(std::remove(symbol.begin(), symbol.end(), '/'), symbol.end());
-            symbol.erase(std::remove(symbol.begin(), symbol.end(), ' '), symbol.end());
-            if (symbol == "BTCUSD") return "BTCUSDT";
-            return symbol;
-        }
-
         inline void replace_all_inplace(
                 std::string& value,
                 const std::string& from,
@@ -619,7 +611,7 @@ namespace optionx::platforms::intrade_bar {
             TradeRecord record;
             record.option_id = *option_id;
             if (auto symbol = utils::extract_html_attr(row, "data-option")) {
-                record.symbol = normalize_history_symbol(*symbol);
+                record.symbol = normalize_symbol_name(*symbol);
             }
             if (auto open_price = utils::parse_double_attr(row, "data-rate")) {
                 record.open_price = *open_price;
@@ -679,7 +671,7 @@ namespace optionx::platforms::intrade_bar {
 
             TradeRecord record;
             record.option_id = *option_id;
-            record.symbol = normalize_history_symbol(price_lines[0]);
+            record.symbol = normalize_symbol_name(price_lines[0]);
             record.open_date = *open_time;
             record.close_date = *close_time;
             if (record.close_date >= record.open_date) {
@@ -859,7 +851,7 @@ namespace optionx::platforms::intrade_bar {
                 record.option_id = *option_id;
             }
             record.option_type = detail::parse_history_option_type(fields[1]);
-            record.symbol = detail::normalize_history_symbol(fields[2]);
+            record.symbol = normalize_symbol_name(fields[2]);
             record.order_type = detail::parse_history_order_type(fields[3]);
 
             auto open_time = detail::parse_history_datetime_ms(fields[4]);

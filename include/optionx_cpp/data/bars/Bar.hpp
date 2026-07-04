@@ -17,14 +17,14 @@ namespace optionx {
         double low;        ///< Lowest price
         double close;      ///< Closing price
         double volume;        ///< Volume traded
-        uint64_t time_ms;     ///< Bar start timestamp in milliseconds
+        std::uint64_t time_ms; ///< Bar start timestamp in milliseconds.
         std::uint32_t flags;  ///< Market-data flags and encoded price type.
 
         /// \brief Default constructor that initializes all fields to zero
         Bar() : open(0.0), high(0.0), low(0.0), close(0.0), volume(0.0), time_ms(0), flags(0) {}
 
         /// \brief Constructor to initialize all fields
-        Bar(double o, double h, double l, double c, double v, uint64_t ts, std::uint32_t f = 0)
+        Bar(double o, double h, double l, double c, double v, std::uint64_t ts, std::uint32_t f = 0)
             : open(o), high(h), low(l), close(c), volume(v), time_ms(ts), flags(f) {}
 
         /// \brief Sets or clears a market-data payload flag.

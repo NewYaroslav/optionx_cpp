@@ -99,93 +99,6 @@ std::vector<std::string> split_csv_symbols(const std::string& value) {
     return symbols;
 }
 
-optionx::market_data::MarketDataTransport parse_market_data_transport(
-        const std::string& value,
-        optionx::market_data::MarketDataTransport fallback) {
-    const std::string normalized = upper_ascii(value);
-    if (normalized.empty()) return fallback;
-    if (normalized == "AUTO") return optionx::market_data::MarketDataTransport::AUTO;
-    if (normalized == "WEBSOCKET" || normalized == "WS") {
-        return optionx::market_data::MarketDataTransport::WEBSOCKET;
-    }
-    if (normalized == "POLLING" || normalized == "POLL") {
-        return optionx::market_data::MarketDataTransport::POLLING;
-    }
-    if (normalized == "HYBRID") return optionx::market_data::MarketDataTransport::HYBRID;
-    return fallback;
-}
-
-optionx::BarPriceSource parse_bar_price_source(
-        const std::string& value,
-        optionx::BarPriceSource fallback) {
-    const std::string normalized = upper_ascii(value);
-    if (normalized.empty()) return fallback;
-    if (normalized == "BID") return optionx::BarPriceSource::BID;
-    if (normalized == "ASK") return optionx::BarPriceSource::ASK;
-    if (normalized == "MID" || normalized == "AVG") return optionx::BarPriceSource::MID;
-    if (normalized == "LAST") return optionx::BarPriceSource::LAST;
-    return fallback;
-}
-
-const char* bar_price_source_to_string(optionx::BarPriceSource value) noexcept {
-    switch (value) {
-    case optionx::BarPriceSource::BID:
-        return "BID";
-    case optionx::BarPriceSource::ASK:
-        return "ASK";
-    case optionx::BarPriceSource::MID:
-        return "MID";
-    case optionx::BarPriceSource::LAST:
-        return "LAST";
-    case optionx::BarPriceSource::UNKNOWN:
-    default:
-        return "UNKNOWN";
-    }
-}
-
-const char* market_price_type_to_string(optionx::MarketPriceType value) noexcept {
-    switch (value) {
-    case optionx::MarketPriceType::BID:
-        return "BID";
-    case optionx::MarketPriceType::ASK:
-        return "ASK";
-    case optionx::MarketPriceType::MID:
-        return "MID";
-    case optionx::MarketPriceType::LAST:
-        return "LAST";
-    case optionx::MarketPriceType::UNKNOWN:
-    default:
-        return "UNKNOWN";
-    }
-}
-
-std::string market_data_flags_to_string(std::uint32_t flags) {
-    std::vector<std::string> names;
-    if (optionx::has_flag(flags, optionx::MarketDataFlags::REALTIME)) {
-        names.push_back("REALTIME");
-    }
-    if (optionx::has_flag(flags, optionx::MarketDataFlags::HISTORICAL)) {
-        names.push_back("HISTORICAL");
-    }
-    if (optionx::has_flag(flags, optionx::MarketDataFlags::BACKFILL)) {
-        names.push_back("BACKFILL");
-    }
-    if (optionx::has_flag(flags, optionx::MarketDataFlags::INCOMPLETE)) {
-        names.push_back("INCOMPLETE");
-    }
-    if (optionx::has_flag(flags, optionx::MarketDataFlags::FINALIZED)) {
-        names.push_back("FINALIZED");
-    }
-    if (names.empty()) return "NONE";
-
-    std::ostringstream out;
-    for (std::size_t i = 0; i < names.size(); ++i) {
-        if (i > 0) out << '|';
-        out << names[i];
-    }
-    return out.str();
-}
-
 double price_from_tick(
         const optionx::Tick& tick,
         optionx::BarPriceSource price_source) {
@@ -460,18 +373,22 @@ void print_bar_line(
         const char* prefix,
         const std::string& symbol,
         optionx::BarTimeframe timeframe,
-        const optionx::Bar& bar) {
+        const optionx::Bar& bar,
+        std::uint32_t price_digits,
+        std::uint32_t volume_digits) {
     out << prefix
         << " symbol=" << symbol
         << " timeframe=" << timeframe
+        << " price_digits=" << price_digits
+        << " volume_digits=" << volume_digits
         << " time_ms=" << bar.time_ms
         << " open=" << std::setprecision(12) << bar.open
         << " high=" << std::setprecision(12) << bar.high
         << " low=" << std::setprecision(12) << bar.low
         << " close=" << std::setprecision(12) << bar.close
         << " volume=" << std::setprecision(12) << bar.volume
-        << " price_type=" << market_price_type_to_string(bar.price_type())
-        << " flags=" << market_data_flags_to_string(bar.flags)
+        << " price_type=" << optionx::to_str(bar.price_type())
+        << " flags=" << optionx::market_data_flags_to_string(bar.flags)
         << '\n';
 }
 
@@ -507,7 +424,7 @@ int run_market_stream(smoke::IntradeBarSmokeConfig config, const CliOptions& opt
         wants_ticks = true;
     }
 
-    const auto transport = parse_market_data_transport(
+    const auto transport = optionx::market_data::market_data_transport_from_string(
         smoke::option_value_or(options.values, "transport", "WEBSOCKET"),
         optionx::market_data::MarketDataTransport::WEBSOCKET);
     const auto timeframe_i64 = smoke::option_i64_or(options.values, "timeframe", 60);
@@ -517,7 +434,7 @@ int run_market_stream(smoke::IntradeBarSmokeConfig config, const CliOptions& opt
         return 2;
     }
     const auto timeframe = static_cast<optionx::BarTimeframe>(timeframe_i64);
-    const auto price_source = parse_bar_price_source(
+    const auto price_source = optionx::bar_price_source_from_string(
         smoke::option_value_or(options.values, "price", "MID"),
         optionx::BarPriceSource::MID);
     const int64_t run_seconds = smoke::option_i64_or(options.values, "seconds", 30);
@@ -573,12 +490,14 @@ int run_market_stream(smoke::IntradeBarSmokeConfig config, const CliOptions& opt
                     std::lock_guard<std::mutex> lock(out_mutex);
                     std::cout << "[tick]"
                               << " symbol=" << batch->symbol
+                              << " price_digits=" << batch->price_digits
+                              << " volume_digits=" << batch->volume_digits
                               << " time_ms=" << tick.time_ms
                               << " bid=" << std::setprecision(12) << tick.bid
                               << " ask=" << std::setprecision(12) << tick.ask
                               << " volume=" << std::setprecision(12) << tick.volume
-                              << " price_type=" << market_price_type_to_string(tick.price_type())
-                              << " flags=" << market_data_flags_to_string(tick.flags)
+                              << " price_type=" << optionx::to_str(tick.price_type())
+                              << " flags=" << optionx::market_data_flags_to_string(tick.flags)
                               << " subscription=" << batch->subscription.id
                               << '\n';
                 }
@@ -592,7 +511,9 @@ int run_market_stream(smoke::IntradeBarSmokeConfig config, const CliOptions& opt
                             "[bar-update]",
                             batch->symbol,
                             timeframe,
-                            *bar);
+                            *bar,
+                            batch->price_digits,
+                            batch->volume_digits);
                     }
                 }
             }
@@ -606,11 +527,20 @@ int run_market_stream(smoke::IntradeBarSmokeConfig config, const CliOptions& opt
             std::cout << "[bar-batch]"
                       << " symbol=" << batch->symbol
                       << " timeframe=" << batch->timeframe
+                      << " price_digits=" << batch->price_digits
+                      << " volume_digits=" << batch->volume_digits
                       << " items=" << batch->items.size()
                       << " subscription=" << batch->subscription.id
                       << '\n';
             for (const auto& bar : batch->items) {
-                print_bar_line(std::cout, "  [bar]", batch->symbol, batch->timeframe, bar);
+                print_bar_line(
+                    std::cout,
+                    "  [bar]",
+                    batch->symbol,
+                    batch->timeframe,
+                    bar,
+                    batch->price_digits,
+                    batch->volume_digits);
             }
         };
 
@@ -693,7 +623,7 @@ int run_market_stream(smoke::IntradeBarSmokeConfig config, const CliOptions& opt
               << " bars=" << wants_bars
               << " transport=" << optionx::market_data::to_str(transport)
               << " timeframe=" << timeframe
-              << " price=" << bar_price_source_to_string(price_source)
+              << " price=" << optionx::to_str(price_source)
               << " seconds=" << run_seconds
               << " backfill=" << backfill
               << '\n';

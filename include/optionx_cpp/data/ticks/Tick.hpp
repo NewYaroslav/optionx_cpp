@@ -15,8 +15,8 @@ namespace optionx {
         double ask;              ///< Ask price
         double bid;              ///< Bid price
         double volume;           ///< Trade volume (can store both whole units and high precision)
-        uint64_t time_ms;        ///< Tick timestamp in milliseconds
-        uint64_t received_ms;    ///< Time when tick was received from the server
+        std::uint64_t time_ms;   ///< Tick timestamp in milliseconds.
+        std::uint64_t received_ms; ///< Time when tick was received from the server.
         std::uint32_t flags;     ///< Tick update and market-data flags.
 
         /// \brief Default constructor that initializes all fields to zero or equivalent values
@@ -32,7 +32,7 @@ namespace optionx {
         /// \param rt Time when tick was received from the server
         /// \param f Flags representing tick characteristics
         Tick(double a, double b, double v,
-             uint64_t ts, uint64_t rt, std::uint32_t f)
+             std::uint64_t ts, std::uint64_t rt, std::uint32_t f)
             : ask(a), bid(b), volume(v),
               time_ms(ts), received_ms(rt), flags(f) {}
 

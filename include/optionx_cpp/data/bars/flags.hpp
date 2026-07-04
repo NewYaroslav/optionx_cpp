@@ -5,10 +5,12 @@
 /// \file BarFlags.hpp
 /// \brief Defines flags for bar data status and update events
 
+#include <cstdint>
+
 namespace dfh {
 
     /// \brief Flags indicating the status of bar data (real-time, historical, etc.)
-    enum class BarStatusFlags : uint64_t {
+    enum class BarStatusFlags : std::uint64_t {
         NONE        = 0,        ///< No flags set
         REALTIME    = 1 << 0,   ///< Data received in real-time
         HISTORICAL  = 1 << 1,   ///< Data has been initialized from history

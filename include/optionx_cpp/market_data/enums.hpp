@@ -5,6 +5,11 @@
 /// \file enums.hpp
 /// \brief Defines market-data subscription enums.
 
+#include <algorithm>
+#include <cctype>
+#include <string>
+#include <vector>
+
 namespace optionx::market_data {
 
     /// \enum MarketDataType
@@ -69,6 +74,31 @@ namespace optionx::market_data {
             "HYBRID"
         };
         return utils::enum_string_or_unknown(names, static_cast<std::size_t>(value));
+    }
+
+    /// \brief Parses a market-data transport token.
+    /// \param value Input token such as AUTO, WEBSOCKET, WS, POLLING, POLL, or HYBRID.
+    /// \param fallback Value returned for empty or unknown input.
+    /// \return Parsed transport, or fallback.
+    inline MarketDataTransport market_data_transport_from_string(
+            std::string value,
+            MarketDataTransport fallback = MarketDataTransport::AUTO) {
+        value.erase(std::remove_if(
+            value.begin(),
+            value.end(),
+            [](unsigned char ch) {
+                return std::isspace(ch) != 0;
+            }), value.end());
+        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::toupper(ch));
+        });
+
+        if (value.empty()) return fallback;
+        if (value == "AUTO") return MarketDataTransport::AUTO;
+        if (value == "WEBSOCKET" || value == "WS") return MarketDataTransport::WEBSOCKET;
+        if (value == "POLLING" || value == "POLL") return MarketDataTransport::POLLING;
+        if (value == "HYBRID") return MarketDataTransport::HYBRID;
+        return fallback;
     }
 
     /// \brief Converts MarketDataSubscriptionStatus to its string representation.

@@ -17,9 +17,9 @@ namespace optionx {
         Tick tick;              ///< Tick data of the specified type.
         std::string symbol;     ///< Symbol associated with the tick.
         std::string provider;   ///< Data provider associated with the tick.
-        uint32_t price_digits;  ///< Number of decimal places for price.
-        uint32_t volume_digits; ///< Number of decimal places for volume.
-        uint32_t flags;         ///< Tick data flags (bitmask of UpdateFlags).
+        std::uint32_t price_digits;  ///< Number of decimal places for price.
+        std::uint32_t volume_digits; ///< Number of decimal places for volume.
+        std::uint32_t flags;         ///< Tick data flags (bitmask of UpdateFlags).
 
         /// \brief Default constructor initializing all fields to default values.
         SingleTick() : price_digits(0), volume_digits(0), flags(0) {}
@@ -31,7 +31,13 @@ namespace optionx {
         /// \param d Number of decimal places for price.
         /// \param vd Number of decimal places for volume.
         /// \param f Tick data flags.
-        SingleTick(Tick t, std::string s, std::string p, uint32_t d, uint32_t vd, uint32_t f)
+        SingleTick(
+                Tick t,
+                std::string s,
+                std::string p,
+                std::uint32_t d,
+                std::uint32_t vd,
+                std::uint32_t f)
             : tick(std::move(t)), symbol(std::move(s)), provider(std::move(p)), price_digits(d), volume_digits(vd), flags(f) {}
 
         /// \brief Calculates the average price based on bid and ask.
@@ -43,18 +49,23 @@ namespace optionx {
         /// \brief Sets a specific flag in the tick's flags.
         /// \param flag The flag to set (from TickStatusFlags).
         void set_flag(TickStatusFlags flag) {
-            flags |= static_cast<uint64_t>(flag);
+            flags |= static_cast<std::uint32_t>(flag);
         }
 
+        /// \brief Sets or clears a tick status flag.
+        /// \param flag The flag to update.
+        /// \param value Whether the flag should be set.
         void set_flag(TickStatusFlags flag, bool value) {
-            flags |= value ? static_cast<uint64_t>(flag) : 0x00;
+            flags = value
+                ? flags | static_cast<std::uint32_t>(flag)
+                : flags & ~static_cast<std::uint32_t>(flag);
         }
 
         /// \brief Checks if a specific flag is set in the tick's flags.
         /// \param flag The flag to check (from TickStatusFlags).
         /// \return True if the flag is set, otherwise false.
         bool has_flag(TickStatusFlags flag) const {
-            return (flags & static_cast<uint64_t>(flag)) != 0;
+            return (flags & static_cast<std::uint32_t>(flag)) != 0;
         }
     };
 
