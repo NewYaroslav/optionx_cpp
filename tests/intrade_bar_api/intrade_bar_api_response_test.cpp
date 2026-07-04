@@ -76,6 +76,19 @@ SingleTick make_market_data_tick(const std::string& symbol, double bid, double a
     return tick;
 }
 
+events::TickUpdateBatch make_market_data_batch(
+        const std::string& symbol,
+        double bid,
+        double ask) {
+    const auto tick = make_market_data_tick(symbol, bid, ask);
+    return events::PriceUpdateEvent::make_tick_batch(
+        tick.tick,
+        tick.symbol,
+        tick.provider,
+        tick.price_digits,
+        tick.volume_digits);
+}
+
 void publish_account_status(
         IntradeBarPlatform& platform,
         AccountUpdateStatus status) {
@@ -686,10 +699,10 @@ TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionRoutesMatchingPriceEvents
     EXPECT_EQ(subscription_result.subscription.symbol, "EURUSD");
     EXPECT_EQ(subscription_result.subscription.stream_type, market_data::MarketDataType::TICKS);
 
-    std::vector<SingleTick> event_ticks = {
-        make_market_data_tick("EURUSD", 1.0, 1.1),
-        make_market_data_tick("EUR/USD", 1.2, 1.3),
-        make_market_data_tick("BTCUSDT", 60000.0, 60001.0)
+    std::vector<events::TickUpdateBatch> event_ticks = {
+        make_market_data_batch("EURUSD", 1.0, 1.1),
+        make_market_data_batch("EUR/USD", 1.2, 1.3),
+        make_market_data_batch("BTCUSDT", 60000.0, 60001.0)
     };
 
     platform.event_bus().notify_async(
@@ -734,8 +747,8 @@ TEST(IntradeBarApiResponses, IntradeBarTickSubscriptionStopsAfterUnsubscribe) {
     EXPECT_TRUE(unsubscribe_result);
     EXPECT_EQ(unsubscribe_result.status, market_data::MarketDataSubscriptionStatus::UNSUBSCRIBED);
 
-    std::vector<SingleTick> event_ticks = {
-        make_market_data_tick("BTCUSDT", 60000.0, 60001.0)
+    std::vector<events::TickUpdateBatch> event_ticks = {
+        make_market_data_batch("BTCUSDT", 60000.0, 60001.0)
     };
 
     platform.event_bus().notify_async(
@@ -780,9 +793,9 @@ TEST(IntradeBarApiResponses, IntradeBarAppliesTickSubscriptionBatchAtomically) {
     EXPECT_EQ(apply_result.results[0].subscription.symbol, "EURUSD");
     EXPECT_EQ(apply_result.results[1].subscription.symbol, "BTCUSDT");
 
-    std::vector<SingleTick> event_ticks = {
-        make_market_data_tick("EURUSD", 1.0, 1.1),
-        make_market_data_tick("BTCUSDT", 60000.0, 60001.0)
+    std::vector<events::TickUpdateBatch> event_ticks = {
+        make_market_data_batch("EURUSD", 1.0, 1.1),
+        make_market_data_batch("BTCUSDT", 60000.0, 60001.0)
     };
 
     platform.event_bus().notify_async(
@@ -830,8 +843,8 @@ TEST(IntradeBarApiResponses, IntradeBarRejectedSubscriptionBatchDoesNotPartially
     EXPECT_FALSE(result);
     EXPECT_EQ(result.status, market_data::MarketDataSubscriptionStatus::UNSUPPORTED);
 
-    std::vector<SingleTick> event_ticks = {
-        make_market_data_tick("EURUSD", 1.0, 1.1)
+    std::vector<events::TickUpdateBatch> event_ticks = {
+        make_market_data_batch("EURUSD", 1.0, 1.1)
     };
     platform.event_bus().notify_async(
         std::make_unique<events::PriceUpdateEvent>(std::move(event_ticks)));
@@ -1196,8 +1209,8 @@ TEST(IntradeBarApiResponses, WebsocketSubscriptionIgnoresPollingSnapshotForSameS
         }));
     ASSERT_TRUE(subscription_result);
 
-    std::vector<SingleTick> polling_ticks;
-    polling_ticks.push_back(make_market_data_tick("EURUSD", 1.10001, 1.10002));
+    std::vector<events::TickUpdateBatch> polling_ticks;
+    polling_ticks.push_back(make_market_data_batch("EURUSD", 1.10001, 1.10002));
     platform.event_bus().notify_async(
         std::make_unique<events::PriceUpdateEvent>(std::move(polling_ticks)));
     platform.event_bus().drain();
@@ -1205,8 +1218,8 @@ TEST(IntradeBarApiResponses, WebsocketSubscriptionIgnoresPollingSnapshotForSameS
     EXPECT_EQ(callback_count, 0);
     EXPECT_TRUE(delivered_batch.items.empty());
 
-    std::vector<SingleTick> websocket_ticks;
-    websocket_ticks.push_back(make_market_data_tick("EURUSD", 1.10003, 1.10004));
+    std::vector<events::TickUpdateBatch> websocket_ticks;
+    websocket_ticks.push_back(make_market_data_batch("EURUSD", 1.10003, 1.10004));
     platform.event_bus().notify_async(
         std::make_unique<events::PriceUpdateEvent>(
             std::move(websocket_ticks),

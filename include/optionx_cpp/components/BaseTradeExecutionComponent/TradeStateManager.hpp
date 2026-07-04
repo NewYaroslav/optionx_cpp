@@ -35,7 +35,7 @@ namespace optionx::components {
         TradeState determine_trade_state(
                 const std::shared_ptr<TradeResult>& result,
                 const std::shared_ptr<TradeRequest>& request,
-                const SingleTick& tick) const;
+                const Tick& tick) const;
 
         /// \brief Checks if the given trade state allows closing.
         /// \param state The current trade state.
@@ -103,7 +103,7 @@ namespace optionx::components {
     inline TradeState TradeStateManager::determine_trade_state(
             const std::shared_ptr<TradeResult>& result,
             const std::shared_ptr<TradeRequest>& request,
-            const SingleTick& tick) const {
+            const Tick& tick) const {
         if (!result->open_price) {
             return TradeState::STANDOFF;
         }

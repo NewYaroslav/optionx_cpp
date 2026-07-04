@@ -524,8 +524,8 @@ namespace optionx::platforms::intrade_bar {
             std::lock_guard<std::mutex> lock(m_mutex);
             if (m_tick_subscriptions.empty()) return;
 
-            for (const auto& tick : event.get_ticks()) {
-                const auto normalized_symbol = normalize_symbol_name(tick.symbol);
+            for (const auto& source_batch : event.get_tick_batches()) {
+                const auto normalized_symbol = normalize_symbol_name(source_batch.symbol);
                 for (const auto& [id, subscription] : m_tick_subscriptions) {
                     (void)id;
                     if (subscription.symbol != normalized_symbol) continue;
@@ -545,14 +545,16 @@ namespace optionx::platforms::intrade_bar {
                         created.type = market_data::MarketDataType::TICKS;
                         created.symbol = subscription.symbol;
                         created.timeframe = 0;
-                        created.price_digits = tick.price_digits;
-                        created.volume_digits = tick.volume_digits;
+                        created.price_digits = source_batch.price_digits;
+                        created.volume_digits = source_batch.volume_digits;
                         batches.push_back(std::move(created));
                         batch = &batches.back();
                     }
 
-                    batch->items.push_back(tick.tick);
-                    batch->items.back().set_flag(MarketDataFlags::REALTIME);
+                    for (const auto& tick : source_batch.items) {
+                        batch->items.push_back(tick);
+                        batch->items.back().set_flag(MarketDataFlags::REALTIME);
+                    }
                 }
             }
         }

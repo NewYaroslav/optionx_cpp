@@ -353,10 +353,15 @@ namespace optionx::platforms::intrade_bar {
             if (!parse_fxconnect_tick(message, tick)) return;
             if (tick.symbol != stream->symbol) return;
 
-            std::vector<SingleTick> ticks;
-            ticks.push_back(std::move(tick));
+            std::vector<events::TickUpdateBatch> batches;
+            batches.push_back(events::PriceUpdateEvent::make_tick_batch(
+                tick.tick,
+                tick.symbol,
+                tick.provider,
+                tick.price_digits,
+                tick.volume_digits));
             notify_async(std::make_unique<events::PriceUpdateEvent>(
-                std::move(ticks),
+                std::move(batches),
                 MarketDataUpdateSource::WEBSOCKET));
         } catch (const std::exception& ex) {
             LOGIT_WARN("Intrade Bar FX websocket: failed to parse tick for ",
