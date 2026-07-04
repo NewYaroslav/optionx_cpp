@@ -10,10 +10,11 @@
 namespace optionx {
 
     /// \struct Tick
-    /// \brief Represents a market tick with bid, ask, volume, and derived average price.
+    /// \brief Represents a market tick with quote and trade-price fields.
     struct Tick {
         double ask;              ///< Ask price
         double bid;              ///< Bid price
+        double last;             ///< Last traded price, when the feed provides trade ticks.
         double volume;           ///< Trade volume (can store both whole units and high precision)
         std::uint64_t time_ms;   ///< Tick timestamp in milliseconds.
         std::uint64_t received_ms; ///< Time when tick was received from the server.
@@ -21,7 +22,7 @@ namespace optionx {
 
         /// \brief Default constructor that initializes all fields to zero or equivalent values
         Tick()
-            : ask(0.0), bid(0.0), volume(0.0),
+            : ask(0.0), bid(0.0), last(0.0), volume(0.0),
               time_ms(0), received_ms(0), flags(0) {}
 
         /// \brief Constructor to initialize all fields
@@ -33,13 +34,28 @@ namespace optionx {
         /// \param f Flags representing tick characteristics
         Tick(double a, double b, double v,
              std::uint64_t ts, std::uint64_t rt, std::uint32_t f)
-            : ask(a), bid(b), volume(v),
+            : ask(a), bid(b), last(0.0), volume(v),
+              time_ms(ts), received_ms(rt), flags(f) {}
+
+        /// \brief Constructor to initialize quote, trade, and metadata fields.
+        /// \param a Ask price.
+        /// \param b Bid price.
+        /// \param l Last traded price.
+        /// \param v Trade volume in whole units.
+        /// \param ts Tick timestamp in milliseconds.
+        /// \param rt Time when tick was received from the server.
+        /// \param f Flags representing tick characteristics.
+        Tick(double a, double b, double l, double v,
+             std::uint64_t ts, std::uint64_t rt, std::uint32_t f)
+            : ask(a), bid(b), last(l), volume(v),
               time_ms(ts), received_ms(rt), flags(f) {}
 
         /// \brief Calculates the average price based on bid and ask.
-        /// \return The mid-price (average of bid and ask).
+        /// \return The mid-price for quote ticks, or last price for trade ticks.
         double mid_price() const {
-            return (ask + bid) / 2.0;
+            if (ask != 0.0 && bid != 0.0) return (ask + bid) / 2.0;
+            if (last != 0.0) return last;
+            return ask != 0.0 ? ask : bid;
         }
 
         /// \brief Sets a specific flag in the tick's flags.
@@ -78,15 +94,6 @@ namespace optionx {
             return optionx::has_flag(flags, flag);
         }
 
-        /// \brief Returns the price type encoded in the tick flags.
-        [[nodiscard]] MarketPriceType price_type() const noexcept {
-            return market_price_type(flags);
-        }
-
-        /// \brief Encodes the tick price type in the flags.
-        void set_price_type(MarketPriceType type) noexcept {
-            set_market_price_type_in_place(flags, type);
-        }
     };
 
 } // namespace optionx

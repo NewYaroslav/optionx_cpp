@@ -18,7 +18,8 @@ namespace optionx {
         HISTORICAL = 1u << 17,///< Payload came from a history request.
         BACKFILL   = 1u << 18,///< Payload was loaded to fill a stream gap.
         INCOMPLETE = 1u << 19,///< Bar payload is still forming.
-        FINALIZED  = 1u << 20 ///< Payload is complete and will not be updated.
+        FINALIZED  = 1u << 20,///< Payload is complete and will not be updated.
+        INITIALIZED = 1u << 21 ///< Payload has enough fields to be consumed.
     };
 
     /// \enum MarketPriceType
@@ -137,6 +138,7 @@ namespace optionx {
         if (has_flag(flags, MarketDataFlags::BACKFILL)) append("BACKFILL");
         if (has_flag(flags, MarketDataFlags::INCOMPLETE)) append("INCOMPLETE");
         if (has_flag(flags, MarketDataFlags::FINALIZED)) append("FINALIZED");
+        if (has_flag(flags, MarketDataFlags::INITIALIZED)) append("INITIALIZED");
 
         return result.empty() ? std::string("NONE") : result;
     }

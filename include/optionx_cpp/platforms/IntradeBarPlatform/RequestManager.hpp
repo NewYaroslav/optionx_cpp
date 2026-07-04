@@ -974,12 +974,13 @@ namespace optionx::platforms::intrade_bar {
 
                     tick.tick.ask = el.value()["ask"];
                     tick.tick.bid = el.value()["bid"];
+                    tick.tick.last = 0.0;
                     tick.tick.time_ms = el.value()["Updates"];
                     tick.tick.time_ms = time_shield::sec_to_ms(tick.tick.time_ms);
                     tick.tick.received_ms = received_ms;
                     tick.tick.set_flag(TickUpdateFlags::NONE);
-                    tick.set_flag(TickStatusFlags::INITIALIZED);
-                    tick.set_flag(TickStatusFlags::REALTIME);
+                    tick.tick.set_flag(MarketDataFlags::INITIALIZED);
+                    tick.tick.set_flag(MarketDataFlags::REALTIME);
                     ticks.push_back(std::move(tick));
                 }
 
@@ -1858,9 +1859,6 @@ namespace optionx::platforms::intrade_bar {
             sequence.symbol = normalize_symbol_name(req.symbol);
             sequence.provider = to_str(PlatformType::INTRADE_BAR);
             sequence.timeframe = req.timeframe;
-            sequence.flags =
-                static_cast<std::uint16_t>(dfh::BarStatusFlags::HISTORICAL) |
-                static_cast<std::uint16_t>(dfh::BarStatusFlags::FINALIZED);
             sequence.price_digits = price_digits_for_symbol(sequence.symbol);
             sequence.volume_digits = 0;
             sequence.price_source = source;

@@ -39,7 +39,6 @@ namespace optionx::platforms::intrade_bar {
                 case kurlyk::WebSocketEventType::WS_OPEN:
                     LOGIT_INFO(event->status_code, event->error_code);
                     m_tick_data[0].tick.flags = 0;
-                    m_tick_data[0].flags = 0;
                     m_is_error = false;
                     break;
                 case kurlyk::WebSocketEventType::WS_MESSAGE:
@@ -48,14 +47,12 @@ namespace optionx::platforms::intrade_bar {
                 case kurlyk::WebSocketEventType::WS_CLOSE:
                     LOGIT_INFO(event->status_code, event->error_code);
                     m_tick_data[0].tick.flags = 0;
-                    m_tick_data[0].flags = 0;
                     m_is_error = false;
                     break;
                 case kurlyk::WebSocketEventType::WS_ERROR:
                     if (m_is_error) return;
                     LOGIT_ERROR(event->status_code, event->error_code);
                     m_tick_data[0].tick.flags = 0;
-                    m_tick_data[0].flags = 0;
                     m_is_error = true;
                     break;
                 default:
@@ -199,7 +196,6 @@ namespace optionx::platforms::intrade_bar {
     inline void BtcPriceManager::shutdown() {
         m_websocket_client.disconnect_and_wait();
         m_tick_data[0].tick.flags = 0;
-        m_tick_data[0].flags = 0;
     }
 
 } // namespace optionx::platforms::intrade_bar

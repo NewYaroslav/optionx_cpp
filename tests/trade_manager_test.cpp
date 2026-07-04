@@ -1074,7 +1074,8 @@ TEST_F(TradeManagerTestFixture, ValidTradeTest) {
     tick.tick         = { 1.12350, 1.12340, 0.1, 1695483030000, 1695483031000, 0 };
     tick.symbol       = "EURUSD";
     tick.price_digits = 5;
-    tick.flags        = optionx::TickStatusFlags::REALTIME | optionx::TickStatusFlags::INITIALIZED;
+    tick.tick.set_flag(optionx::MarketDataFlags::REALTIME);
+    tick.tick.set_flag(optionx::MarketDataFlags::INITIALIZED);
     std::vector<SingleTick> ticks = { tick };
 
     bus.notify_async(std::make_unique<events::PriceUpdateEvent>(ticks));
@@ -1169,7 +1170,8 @@ TEST_F(TradeManagerTestFixture, InvalidTradeTest) {
     tick.tick         = { 1.12350, 1.12340, 0.1, 1695483030000, 1695483031000, 0 };
     tick.symbol       = "EURUSD";
     tick.price_digits = 5;
-    tick.flags        = optionx::TickStatusFlags::REALTIME | optionx::TickStatusFlags::INITIALIZED;
+    tick.tick.set_flag(optionx::MarketDataFlags::REALTIME);
+    tick.tick.set_flag(optionx::MarketDataFlags::INITIALIZED);
     std::vector<SingleTick> ticks = { tick };
 
     bus.notify_async(std::make_unique<events::PriceUpdateEvent>(ticks));
@@ -1266,7 +1268,8 @@ TEST_F(TradeManagerTestFixture, ShutdownTest) {
     tick.tick         = { 1.12350, 1.12340, 0.1, 1695483030000, 1695483031000, 0 };
     tick.symbol       = "EURUSD";
     tick.price_digits = 5;
-    tick.flags        = optionx::TickStatusFlags::REALTIME | optionx::TickStatusFlags::INITIALIZED;
+    tick.tick.set_flag(optionx::MarketDataFlags::REALTIME);
+    tick.tick.set_flag(optionx::MarketDataFlags::INITIALIZED);
     std::vector<SingleTick> ticks = { tick };
 
     bus.notify_async(std::make_unique<events::PriceUpdateEvent>(ticks));

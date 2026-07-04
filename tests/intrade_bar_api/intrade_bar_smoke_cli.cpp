@@ -493,8 +493,8 @@ int run_market_stream(smoke::IntradeBarSmokeConfig config, const CliOptions& opt
                               << " time_ms=" << tick.time_ms
                               << " bid=" << std::setprecision(12) << tick.bid
                               << " ask=" << std::setprecision(12) << tick.ask
+                              << " last=" << std::setprecision(12) << tick.last
                               << " volume=" << std::setprecision(12) << tick.volume
-                              << " price_type=" << optionx::to_str(tick.price_type())
                               << " flags=" << optionx::market_data_flags_to_string(tick.flags)
                               << " subscription=" << batch->subscription.id
                               << '\n';

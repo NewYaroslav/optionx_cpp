@@ -1344,9 +1344,6 @@ namespace optionx::platforms::intrade_bar {
             sequence.symbol = normalize_symbol_name(request.symbol);
             sequence.provider = to_str(PlatformType::INTRADE_BAR);
             sequence.timeframe = request.timeframe;
-            sequence.flags =
-                static_cast<std::uint16_t>(dfh::BarStatusFlags::HISTORICAL) |
-                static_cast<std::uint16_t>(dfh::BarStatusFlags::FINALIZED);
             sequence.price_digits = price_digits_for_symbol(sequence.symbol);
             sequence.volume_digits = 0;
             sequence.price_source = actual_source;
@@ -1479,19 +1476,18 @@ namespace optionx::platforms::intrade_bar {
             tick_data.provider = to_str(PlatformType::INTRADE_BAR);
             tick_data.price_digits = 2;
             tick_data.volume_digits = 5;
-            tick_data.flags = 0;
             tick_data.tick.flags = 0;
-            tick_data.tick.ask = tick_data.tick.bid = std::stod(j_data.value("p", "0.0"));
+            tick_data.tick.ask = 0.0;
+            tick_data.tick.bid = 0.0;
+            tick_data.tick.last = std::stod(j_data.value("p", "0.0"));
             tick_data.tick.volume = std::stod(j_data.value("q", "0.0"));
             tick_data.tick.time_ms = static_cast<std::uint64_t>(
                 detail::read_json_int64(j_data.at("T"), "T"));
             tick_data.tick.received_ms = OPTIONX_TIMESTAMP_MS;
-            tick_data.tick.set_flag(TickUpdateFlags::ASK_UPDATED);
-            tick_data.tick.set_flag(TickUpdateFlags::BID_UPDATED);
+            tick_data.tick.set_flag(TickUpdateFlags::LAST_UPDATED);
             tick_data.tick.set_flag(TickUpdateFlags::VOLUME_UPDATED);
-            tick_data.tick.set_price_type(MarketPriceType::LAST);
-            tick_data.set_flag(TickStatusFlags::INITIALIZED);
-            tick_data.set_flag(TickStatusFlags::REALTIME);
+            tick_data.tick.set_flag(MarketDataFlags::INITIALIZED);
+            tick_data.tick.set_flag(MarketDataFlags::REALTIME);
             return true;
         }
 
@@ -1518,10 +1514,10 @@ namespace optionx::platforms::intrade_bar {
         tick_data.provider = to_str(PlatformType::INTRADE_BAR);
         tick_data.price_digits = price_digits_for_symbol(normalized_symbol);
         tick_data.volume_digits = 0;
-        tick_data.flags = 0;
         tick_data.tick.flags = 0;
         tick_data.tick.ask = detail::read_json_double(j.at("ask"), "ask");
         tick_data.tick.bid = detail::read_json_double(j.at("bid"), "bid");
+        tick_data.tick.last = 0.0;
         tick_data.tick.volume = 0.0;
         tick_data.tick.time_ms = j.contains("Updates")
             ? static_cast<std::uint64_t>(
@@ -1530,8 +1526,8 @@ namespace optionx::platforms::intrade_bar {
         tick_data.tick.received_ms = OPTIONX_TIMESTAMP_MS;
         tick_data.tick.set_flag(TickUpdateFlags::ASK_UPDATED);
         tick_data.tick.set_flag(TickUpdateFlags::BID_UPDATED);
-        tick_data.set_flag(TickStatusFlags::INITIALIZED);
-        tick_data.set_flag(TickStatusFlags::REALTIME);
+        tick_data.tick.set_flag(MarketDataFlags::INITIALIZED);
+        tick_data.tick.set_flag(MarketDataFlags::REALTIME);
         return true;
     }
 

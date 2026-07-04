@@ -278,7 +278,6 @@ TEST(BarTimeframe, SupportsDailyTimeframeWithoutTruncation) {
         "EURUSD",
         "test",
         86400,
-        0,
         5,
         0);
 
@@ -295,10 +294,14 @@ TEST(BarTimeframe, SupportsDailyTimeframeWithoutTruncation) {
 TEST(MarketDataPayloadFlags, TickAndBarEncodeOriginAndPriceType) {
     Tick tick;
     tick.set_flag(MarketDataFlags::REALTIME);
-    tick.set_price_type(MarketPriceType::BID);
+    tick.set_flag(TickUpdateFlags::BID_UPDATED);
     EXPECT_TRUE(tick.has_flag(MarketDataFlags::REALTIME));
     EXPECT_FALSE(tick.has_flag(MarketDataFlags::HISTORICAL));
-    EXPECT_EQ(tick.price_type(), MarketPriceType::BID);
+    EXPECT_TRUE(tick.has_flag(TickUpdateFlags::BID_UPDATED));
+
+    Tick trade_tick;
+    trade_tick.last = 61521.34;
+    EXPECT_DOUBLE_EQ(trade_tick.mid_price(), 61521.34);
 
     Bar bar;
     bar.set_flag(MarketDataFlags::HISTORICAL);
@@ -343,13 +346,13 @@ TEST(MarketDataPayloadFlags, ParsesPriceSourcesAndTransports) {
         market_data::MarketDataTransport::POLLING);
 }
 
-TEST(MarketDataPayloadFlags, SingleTickCanClearStatusFlag) {
-    SingleTick tick;
-    tick.set_flag(TickStatusFlags::REALTIME);
-    ASSERT_TRUE(tick.has_flag(TickStatusFlags::REALTIME));
+TEST(MarketDataPayloadFlags, TickCanClearMarketDataFlag) {
+    Tick tick;
+    tick.set_flag(MarketDataFlags::REALTIME);
+    ASSERT_TRUE(tick.has_flag(MarketDataFlags::REALTIME));
 
-    tick.set_flag(TickStatusFlags::REALTIME, false);
-    EXPECT_FALSE(tick.has_flag(TickStatusFlags::REALTIME));
+    tick.set_flag(MarketDataFlags::REALTIME, false);
+    EXPECT_FALSE(tick.has_flag(MarketDataFlags::REALTIME));
 }
 
 TEST(MarketDataBatch, CarriesSharedStreamMetadata) {

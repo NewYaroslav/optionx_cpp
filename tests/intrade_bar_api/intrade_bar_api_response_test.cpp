@@ -71,8 +71,8 @@ SingleTick make_market_data_tick(const std::string& symbol, double bid, double a
     tick.tick.ask = ask;
     tick.tick.time_ms = 1000;
     tick.tick.received_ms = 1001;
-    tick.set_flag(TickStatusFlags::INITIALIZED);
-    tick.set_flag(TickStatusFlags::REALTIME);
+    tick.tick.set_flag(MarketDataFlags::INITIALIZED);
+    tick.tick.set_flag(MarketDataFlags::REALTIME);
     return tick;
 }
 
@@ -908,8 +908,8 @@ TEST(IntradeBarApiResponses, ParsesFxConnectTickMessage) {
     EXPECT_TRUE(tick.tick.has_flag(TickUpdateFlags::ASK_UPDATED));
     EXPECT_TRUE(tick.tick.has_flag(TickUpdateFlags::BID_UPDATED));
     EXPECT_FALSE(tick.tick.has_flag(TickUpdateFlags::VOLUME_UPDATED));
-    EXPECT_TRUE(tick.has_flag(TickStatusFlags::INITIALIZED));
-    EXPECT_TRUE(tick.has_flag(TickStatusFlags::REALTIME));
+    EXPECT_TRUE(tick.tick.has_flag(MarketDataFlags::INITIALIZED));
+    EXPECT_TRUE(tick.tick.has_flag(MarketDataFlags::REALTIME));
 }
 
 TEST(IntradeBarApiResponses, RejectsFxConnectBtcTickMessage) {
@@ -939,16 +939,17 @@ TEST(IntradeBarApiResponses, ParsesBtcusdtWebSocketTickWithEpochMilliseconds) {
     EXPECT_EQ(tick.provider, to_str(PlatformType::INTRADE_BAR));
     EXPECT_EQ(tick.price_digits, 2u);
     EXPECT_EQ(tick.volume_digits, 5u);
-    EXPECT_DOUBLE_EQ(tick.tick.ask, 61521.34);
-    EXPECT_DOUBLE_EQ(tick.tick.bid, 61521.34);
+    EXPECT_DOUBLE_EQ(tick.tick.ask, 0.0);
+    EXPECT_DOUBLE_EQ(tick.tick.bid, 0.0);
+    EXPECT_DOUBLE_EQ(tick.tick.last, 61521.34);
     EXPECT_DOUBLE_EQ(tick.tick.volume, 0.00017);
     EXPECT_EQ(tick.tick.time_ms, 1783028778697ULL);
-    EXPECT_TRUE(tick.tick.has_flag(TickUpdateFlags::ASK_UPDATED));
-    EXPECT_TRUE(tick.tick.has_flag(TickUpdateFlags::BID_UPDATED));
+    EXPECT_TRUE(tick.tick.has_flag(TickUpdateFlags::LAST_UPDATED));
+    EXPECT_FALSE(tick.tick.has_flag(TickUpdateFlags::ASK_UPDATED));
+    EXPECT_FALSE(tick.tick.has_flag(TickUpdateFlags::BID_UPDATED));
     EXPECT_TRUE(tick.tick.has_flag(TickUpdateFlags::VOLUME_UPDATED));
-    EXPECT_EQ(tick.tick.price_type(), MarketPriceType::LAST);
-    EXPECT_TRUE(tick.has_flag(TickStatusFlags::INITIALIZED));
-    EXPECT_TRUE(tick.has_flag(TickStatusFlags::REALTIME));
+    EXPECT_TRUE(tick.tick.has_flag(MarketDataFlags::INITIALIZED));
+    EXPECT_TRUE(tick.tick.has_flag(MarketDataFlags::REALTIME));
 }
 
 TEST(IntradeBarApiResponses, FxWebSocketSubscriptionReceivesLocalTick) {

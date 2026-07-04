@@ -9,17 +9,6 @@
 
 namespace optionx {
 
-    /// \brief Flags indicating the status of tick data
-    enum class TickStatusFlags : std::uint32_t {
-        NONE = 0,               ///< No flags set
-        REALTIME = 1 << 0,      ///< Data received in real-time
-        INITIALIZED = 1 << 1    ///< Data has been initialized
-    };
-
-    constexpr std::uint32_t operator|(TickStatusFlags lhs, TickStatusFlags rhs) {
-        return static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs);
-    }
-
     /// \brief Flags describing updates in tick data
     enum class TickUpdateFlags : std::uint32_t {
         NONE = 0,                   ///< No updates
