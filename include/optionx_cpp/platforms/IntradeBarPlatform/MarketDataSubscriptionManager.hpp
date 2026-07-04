@@ -175,6 +175,8 @@ namespace optionx::platforms::intrade_bar {
         std::vector<market_data::MarketDataSubscriptionHandle> removed_subscriptions;
         std::vector<market_data::MarketDataSubscriptionResult> results;
         market_data::MarketDataSubscriptionBatchResult failure_result;
+        market_data::SubscriptionId previous_next_subscription_id =
+            market_data::kInvalidSubscriptionId;
         bool failed = false;
         results.reserve(batch.changes.size());
 
@@ -192,6 +194,7 @@ namespace optionx::platforms::intrade_bar {
         {
             std::lock_guard<std::mutex> lock(m_mutex);
 
+            previous_next_subscription_id = m_next_subscription_id;
             auto next_id = m_next_subscription_id;
             for (auto& change : batch.changes) {
                 switch (change.action) {
@@ -336,12 +339,25 @@ namespace optionx::platforms::intrade_bar {
                     for (const auto& activated : activated_fx_subscriptions) {
                         m_fx_websocket_source->remove_symbol_subscription(activated.symbol);
                     }
+                    for (const auto& removed : removed_subscriptions) {
+                        if (uses_fx_websocket_source(removed) &&
+                            !m_fx_websocket_source->add_symbol_subscription(removed.symbol)) {
+                            LOGIT_WARN(
+                                "Failed to restore Intrade Bar FX websocket tick source for ",
+                                removed.symbol,
+                                " after subscription batch rollback.");
+                        }
+                    }
 
                     {
                         std::lock_guard<std::mutex> lock(m_mutex);
                         for (const auto& added : added_subscriptions) {
                             m_tick_subscriptions.erase(added.id);
                         }
+                        for (const auto& removed : removed_subscriptions) {
+                            m_tick_subscriptions[removed.id] = removed;
+                        }
+                        m_next_subscription_id = previous_next_subscription_id;
                     }
 
                     dispatch_subscription_batch_result(

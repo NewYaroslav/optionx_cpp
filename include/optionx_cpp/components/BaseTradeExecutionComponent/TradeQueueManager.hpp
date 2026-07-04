@@ -654,11 +654,11 @@ namespace optionx::components {
                 result->trade_state = TradeState::IN_PROGRESS;
             }
 
-            auto tick = event.get_tick_by_symbol(request->symbol);
-            if (!tick.tick.has_flag(MarketDataFlags::INITIALIZED)) continue;
+            const auto* quote = event.find_tick_by_symbol(request->symbol);
+            if (!quote || !quote->has_flag(MarketDataFlags::INITIALIZED)) continue;
 
-            result->close_price = tick.mid_price();
-            result->live_state = m_trade_state_manager.determine_trade_state(result, request, tick);
+            result->close_price = quote->mid_price();
+            result->live_state = m_trade_state_manager.determine_trade_state(result, request, *quote);
             dispatch_trade_event(transaction);
         }
     }

@@ -35,11 +35,14 @@ namespace optionx::platforms::intrade_bar {
             m_tick_data[0].provider = to_str(PlatformType::INTRADE_BAR);
 
             m_websocket_client.on_event([this](std::unique_ptr<kurlyk::WebSocketEventData> event) {
+                if (!event) return;
                 switch (event->event_type) {
                 case kurlyk::WebSocketEventType::WS_OPEN:
                     LOGIT_INFO(event->status_code, event->error_code);
                     m_tick_data[0].tick.flags = 0;
                     m_is_error = false;
+                    emit_status(market_data::MarketDataStreamStatus::CONNECTED);
+                    emit_status(market_data::MarketDataStreamStatus::READY);
                     break;
                 case kurlyk::WebSocketEventType::WS_MESSAGE:
                     handle_message(event->message);
@@ -48,12 +51,16 @@ namespace optionx::platforms::intrade_bar {
                     LOGIT_INFO(event->status_code, event->error_code);
                     m_tick_data[0].tick.flags = 0;
                     m_is_error = false;
+                    emit_status(market_data::MarketDataStreamStatus::DISCONNECTED);
                     break;
                 case kurlyk::WebSocketEventType::WS_ERROR:
                     if (m_is_error) return;
                     LOGIT_ERROR(event->status_code, event->error_code);
                     m_tick_data[0].tick.flags = 0;
                     m_is_error = true;
+                    emit_status(
+                        market_data::MarketDataStreamStatus::FAILED,
+                        event->error_code.message());
                     break;
                 default:
                     break;
@@ -80,14 +87,33 @@ namespace optionx::platforms::intrade_bar {
             m_websocket_client.set_max_send_queue_size(max);
         }
 
+        /// \brief Sets the optional status callback sink used by the public market-data API.
+        /// \param provider_id Runtime market-data provider ID.
+        /// \param callback Callback reference owned by the provider facade.
+        void set_status_sink(
+                market_data::ProviderInstanceId provider_id,
+                market_data::BaseMarketDataProvider::status_callback_t* callback);
+
     private:
         kurlyk::WebSocketClient m_websocket_client; ///< WebSocket client for BTCUSDT.
         std::vector<SingleTick>   m_tick_data;        ///< Container for tick data.
         bool                    m_is_error = false; ///< Flag indicating if an error has occurred.
+        std::mutex m_status_mutex; ///< Protects status sink metadata.
+        market_data::ProviderInstanceId m_provider_id =
+            market_data::kInvalidProviderInstanceId; ///< Optional status provider ID.
+        market_data::BaseMarketDataProvider::status_callback_t* m_status_callback = nullptr; ///< Optional status sink.
 
         /// \brief Handles incoming WebSocket messages.
         /// \param message The received message as a JSON string.
         void handle_message(const std::string& message);
+
+        /// \brief Converts an HTTP(S) or WS(S) host setting to a websocket host.
+        static std::string make_websocket_host(const std::string& host);
+
+        /// \brief Emits a public BTCUSDT stream status update when a callback is configured.
+        void emit_status(
+                market_data::MarketDataStreamStatus status,
+                std::string message = {});
 
         /// \brief Handles an authentication event.
         /// \param event The received authentication data event.
@@ -105,10 +131,18 @@ namespace optionx::platforms::intrade_bar {
         /// \param event The account info update event.
         void handle_event(const events::AccountInfoUpdateEvent& event);
         
-        /// \brief 
-        /// \param event
+        /// \brief Applies the selected auto-domain host to the BTC websocket.
+        /// \param event Auto-domain selection result.
         void handle_event(const events::AutoDomainSelectedEvent& event);
     };
+
+    inline void BtcPriceManager::set_status_sink(
+            market_data::ProviderInstanceId provider_id,
+            market_data::BaseMarketDataProvider::status_callback_t* callback) {
+        std::lock_guard<std::mutex> lock(m_status_mutex);
+        m_provider_id = provider_id;
+        m_status_callback = callback;
+    }
 
     inline void BtcPriceManager::on_event(const utils::Event* const event) {
         if (const auto* msg = dynamic_cast<const events::AuthDataEvent*>(event)) {
@@ -135,9 +169,8 @@ namespace optionx::platforms::intrade_bar {
             auto [success, message] = auth_data->validate();
             if (!success) return;
             
-            if (!auth_data->auto_find_domain) {
-                std::string host = "wss://" + utils::remove_http_prefix(auth_data->host);
-                m_websocket_client.set_url(host, "/bapi");
+            if (!auth_data->auto_find_domain && !auth_data->host.empty()) {
+                m_websocket_client.set_url(make_websocket_host(auth_data->host), "/bapi");
             }
 
             m_websocket_client.set_user_agent(auth_data->user_agent);
@@ -175,9 +208,8 @@ namespace optionx::platforms::intrade_bar {
     
     inline void BtcPriceManager::handle_event(const events::AutoDomainSelectedEvent& event) {
         LOGIT_0TRACE();
-        if (event.success) {
-            std::string host = "wss://" + utils::remove_http_prefix(event.selected_host);
-            m_websocket_client.set_url(host, "/bapi");
+        if (event.success && !event.selected_host.empty()) {
+            m_websocket_client.set_url(make_websocket_host(event.selected_host), "/bapi");
         }
     }
 
@@ -187,6 +219,47 @@ namespace optionx::platforms::intrade_bar {
                 m_tick_data,
                 MarketDataUpdateSource::WEBSOCKET));
         }
+    }
+
+    inline std::string BtcPriceManager::make_websocket_host(
+            const std::string& host) {
+        const std::string wss_prefix = "wss://";
+        const std::string ws_prefix = "ws://";
+        const std::string https_prefix = "https://";
+        const std::string http_prefix = "http://";
+
+        if (host.rfind(wss_prefix, 0) == 0 || host.rfind(ws_prefix, 0) == 0) {
+            return host;
+        }
+        if (host.rfind(https_prefix, 0) == 0) {
+            return wss_prefix + host.substr(https_prefix.size());
+        }
+        if (host.rfind(http_prefix, 0) == 0) {
+            return ws_prefix + host.substr(http_prefix.size());
+        }
+        return wss_prefix + host;
+    }
+
+    inline void BtcPriceManager::emit_status(
+            market_data::MarketDataStreamStatus status,
+            std::string message) {
+        market_data::BaseMarketDataProvider::status_callback_t* callback = nullptr;
+        market_data::ProviderInstanceId provider_id = market_data::kInvalidProviderInstanceId;
+        {
+            std::lock_guard<std::mutex> lock(m_status_mutex);
+            callback = m_status_callback;
+            provider_id = m_provider_id;
+        }
+        if (!callback || !*callback) return;
+
+        market_data::MarketDataStatusUpdate update;
+        update.provider_id = provider_id;
+        update.type = market_data::MarketDataType::TICKS;
+        update.symbol = "BTCUSDT";
+        update.transport = market_data::MarketDataTransport::WEBSOCKET;
+        update.status = status;
+        update.message = std::move(message);
+        (*callback)(std::move(update));
     }
 
     inline void BtcPriceManager::process() {

@@ -29,6 +29,18 @@ namespace optionx::events {
             return m_ticks;
         }
 
+        /// \brief Finds a tick wrapper by its normalized symbol name.
+        /// \param symbol Symbol to find.
+        /// \return Pointer to the matching tick wrapper, or nullptr when absent.
+        const SingleTick* find_tick_by_symbol(const std::string& symbol) const {
+            for (const auto& tick : m_ticks) {
+                if (tick.symbol == symbol) {
+                    return &tick;
+                }
+            }
+            return nullptr;
+        }
+
         /// \brief Returns the source that produced this tick update.
         /// \return Transport-level market-data source for routing decisions.
         MarketDataUpdateSource source() const noexcept {
@@ -48,12 +60,10 @@ namespace optionx::events {
 
         /// \brief Finds a tick by its symbol name.
         /// \param symbol The name of the symbol to find.
-        /// \return An optional containing the found SingleTick.
+        /// \return Matching tick wrapper, or a default wrapper when absent.
         SingleTick get_tick_by_symbol(const std::string& symbol) const {
-            for (const auto& tick : m_ticks) {
-                if (tick.symbol == symbol) {
-                    return tick;
-                }
+            if (const auto* tick = find_tick_by_symbol(symbol)) {
+                return *tick;
             }
             return SingleTick();
         }
