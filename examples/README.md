@@ -9,6 +9,8 @@ Currently maintained examples:
   subscriptions, stream status callbacks, direct bar history, and history routed
   through `MarketDataContinuityService`. Live authenticated lifecycle reads
   `OPTIONX_INTRADE_EMAIL` and `OPTIONX_INTRADE_PASSWORD` from the environment.
+- `market_data_hub_example.cpp` demonstrates routing provider callbacks through
+  `MarketDataHub` into an `IMarketDataSubscriber` implementation.
 - `trade_record_db_example.cpp` demonstrates basic `TradeRecordDB` usage.
 
 Old exploratory broker and component probes were removed because they referenced

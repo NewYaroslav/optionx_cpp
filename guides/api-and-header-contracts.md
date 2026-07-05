@@ -97,7 +97,8 @@ Market-data APIs are split into DTO/data types and a provider role:
   `BaseMarketDataProvider`, `TickSubscriptionRequest`,
   `BarSubscriptionRequest`, `MarketDataSubscriptionBatch`,
   `MarketDataSubscriptionHandle`, `MarketDataSubscriptionResult`,
-  `MarketDataBatch<T>` and `MarketDataContinuityService`.
+  `MarketDataBatch<T>`, `MarketDataHub`, `IMarketDataSubscriber`, and
+  `MarketDataContinuityService`.
 
 Contract rules:
 
@@ -127,9 +128,27 @@ Contract rules:
 - `on_market_data_status()` is a separate stream-status callback. Data callbacks
   should carry data batches, not connection lifecycle sentinel payloads.
 - `on_market_data_status()` is a stream-level event bus, not a per-subscription
-  status API. Status updates are keyed by `provider_id`, payload type, symbol,
-  timeframe and transport; providers are not required to replay cached `READY`
+  status API. Status updates are keyed by a valid subscription handle when one
+  is present; otherwise they are keyed by `provider_id`, payload type, symbol,
+  timeframe and transport. Providers are not required to replay cached `READY`
   status to subscriptions created after the source was already ready.
+- `MarketDataStatusUpdate::subscription` carries the related subscription handle
+  when a provider or router can identify a concrete subscription. If the handle
+  is invalid, the update describes the underlying stream/source.
+- `MarketDataHub` is the optional fan-out layer for applications that need many
+  subscriber objects. It binds to the provider's single tick/bar/status
+  callbacks, forwards batches to `IMarketDataSubscriber` instances, and replays
+  cached stream statuses to late subscribers. It stores subscribers as weak
+  references, so caller code must keep subscriber objects alive while they
+  should receive callbacks.
+- `MarketDataHub` does not own provider subscriptions and does not replay tick
+  or bar payloads. Its status replay happens when a subscriber object is added;
+  it is not tied to creating a new provider subscription. Per-subscription
+  status replay belongs in a future router/RAII handle layer.
+- `MarketDataHub` protects its containers and invokes callbacks outside its
+  mutex, but strict replay/live ordering is guaranteed only when add/publish
+  calls are marshalled through one owner loop, such as platform `process()`.
+  A fully concurrent ordered dispatcher is a separate design.
 - `apply_subscriptions()` applies subscription changes atomically. The old
   single-operation helpers (`subscribe_ticks`, `subscribe_bars`, `unsubscribe`)
   are wrappers around a one-operation batch.
@@ -158,6 +177,19 @@ Contract rules:
 - `MarketDataContinuityService` is the thin helper for routing recovered history
   into the same bar batch pipeline. It marks payload bars as
   `HISTORICAL` and, for gap recovery, `BACKFILL`.
+
+Future market-data routing work:
+
+- Add a `MarketDataRouter` layer that binds provider subscriptions to concrete
+  subscribers and replays cached status for newly created subscription handles.
+- Add a move-only RAII `SubscriptionHandle` that unsubscribes automatically and
+  delegates to the router by `SubscriptionId`.
+- Have the router fill concrete subscription context in routed status/data
+  events so a subscriber can distinguish which logical subscription produced an
+  update.
+- Consider `MarketDataSubscriberBase` as convenience sugar for bots that want to
+  subscribe from inside their own methods while keeping `IMarketDataSubscriber`
+  as a pure receiving interface.
 
 ## Typed Broker Result Pattern
 

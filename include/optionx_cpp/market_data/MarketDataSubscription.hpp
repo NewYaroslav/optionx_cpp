@@ -363,6 +363,7 @@ namespace optionx::market_data {
     /// \brief Status update for a live market-data stream.
     struct MarketDataStatusUpdate {
         ProviderInstanceId provider_id = kInvalidProviderInstanceId; ///< Provider that owns the stream.
+        MarketDataSubscriptionHandle subscription; ///< Related subscription, if the provider can identify one.
         MarketDataType type = MarketDataType::UNKNOWN; ///< Stream payload type.
         std::string symbol; ///< Stream symbol.
         BarTimeframe timeframe = 0; ///< Bar timeframe in seconds, or 0 for ticks.
