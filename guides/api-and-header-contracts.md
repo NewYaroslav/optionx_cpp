@@ -126,6 +126,10 @@ Contract rules:
   separate change.
 - `on_market_data_status()` is a separate stream-status callback. Data callbacks
   should carry data batches, not connection lifecycle sentinel payloads.
+- `on_market_data_status()` is a stream-level event bus, not a per-subscription
+  status API. Status updates are keyed by `provider_id`, payload type, symbol,
+  timeframe and transport; providers are not required to replay cached `READY`
+  status to subscriptions created after the source was already ready.
 - `apply_subscriptions()` applies subscription changes atomically. The old
   single-operation helpers (`subscribe_ticks`, `subscribe_bars`, `unsubscribe`)
   are wrappers around a one-operation batch.

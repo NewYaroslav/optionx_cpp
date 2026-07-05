@@ -77,6 +77,10 @@ namespace optionx::market_data {
         }
 
         /// \brief Returns a reference to the market-data stream status callback.
+        /// \details Status updates describe stream-level lifecycle events keyed by
+        ///          symbol/type/timeframe/transport. They are not per-subscription
+        ///          callbacks and providers are not required to replay cached
+        ///          READY status to late subscribers.
         /// \return Mutable callback reference, or a null callback if status updates are unsupported.
         virtual status_callback_t& on_market_data_status() {
             static status_callback_t null_callback;
