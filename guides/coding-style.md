@@ -7,8 +7,13 @@
 
 - Header-only by default.
 - Расширение: `.hpp`.
-- Public headers используют `#pragma once` и macro guard:
-  `_OPTIONX_<AREA>_<NAME>_HPP_INCLUDED`.
+- Project-owned C/C++ headers use `#pragma once` together with a
+  non-reserved include guard. Guard names are derived from the project prefix
+  and header path and must clearly look like internal header guards, for
+  example `OPTIONX_HEADER_PLATFORMS_INTRADERBAR_PLATFORM_HPP_INCLUDED`.
+  Do not use reserved identifiers: guards must not start with an underscore,
+  must not start with an underscore followed by an uppercase letter, and must
+  not contain a double underscore anywhere.
 - Public aggregate headers лежат в `include/optionx_cpp/*.hpp`.
 - External consumers include public headers with the installed prefix, for
   example `<optionx_cpp/data.hpp>` or
@@ -28,6 +33,63 @@
   includes из facade header.
 
 Пример: `include/optionx_cpp/platforms/IntradeBarPlatform.hpp`.
+
+## Header Guards
+
+For every project-owned C/C++ header, use `#pragma once` together with a
+non-reserved include guard.
+
+Include guard names must be derived from the project prefix and the header path,
+and must clearly indicate that the macro is a header guard. Recommended form:
+
+```cpp
+<PROJECT_PREFIX>_HEADER_<PATH>_<FILE>_<EXT>_INCLUDED
+```
+
+Example:
+
+```cpp
+#pragma once
+#ifndef PROJECT_HEADER_CORE_LIBRARY_INFO_HPP_INCLUDED
+#define PROJECT_HEADER_CORE_LIBRARY_INFO_HPP_INCLUDED
+
+// header contents
+
+#endif // PROJECT_HEADER_CORE_LIBRARY_INFO_HPP_INCLUDED
+```
+
+Do not use identifiers reserved for the compiler, standard library, platform
+SDK, or other implementation internals. In particular, do not use include guard
+names that start with an underscore, start with an underscore followed by an
+uppercase letter, or contain a double underscore anywhere.
+
+Bad examples:
+
+```cpp
+_PROJECT_CORE_LIBRARY_INFO_HPP_INCLUDED
+__PROJECT_CORE_LIBRARY_INFO_HPP_INCLUDED
+PROJECT__CORE_LIBRARY_INFO_HPP_INCLUDED
+```
+
+Header guard macros are internal service macros and should be visually
+distinguishable from public configuration or feature macros. Prefer using a
+dedicated marker such as `HEADER`, `GUARD`, or `INCLUDED` in the guard name
+rather than using leading underscores.
+
+Public configuration macros may keep their normal project-prefixed names, for
+example:
+
+```cpp
+PROJECT_ENABLE_LOGGING
+PROJECT_VERSION_MAJOR
+PROJECT_HAS_BACKEND_X
+```
+
+Implementation fragments such as `.ipp`, `.inl`, or `.tpp` files should follow
+the project's chosen policy explicitly. If they are only included from already
+guarded headers and are not intended for direct inclusion, they may remain
+unguarded. If they are intended to be included directly, they must follow the
+same non-reserved guard naming rule.
 
 ## Namespace
 
