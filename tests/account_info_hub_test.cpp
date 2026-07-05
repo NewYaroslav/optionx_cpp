@@ -151,6 +151,31 @@ TEST(AccountInfoHub, RemovesSubscribersAndIgnoresDuplicateAdds) {
     EXPECT_EQ(second->statuses[0], optionx::AccountUpdateStatus::BALANCE_UPDATED);
 }
 
+TEST(AccountInfoHub, DuplicateAddDoesNotReplayLastUpdateAgain) {
+    optionx::components::AccountInfoHub hub;
+
+    const auto subscriber = std::make_shared<RecordingAccountSubscriber>();
+    hub.add_subscriber(subscriber);
+
+    hub.publish(make_update(optionx::AccountUpdateStatus::CONNECTED, "ready"));
+
+    ASSERT_EQ(subscriber->statuses.size(), 1u);
+    EXPECT_EQ(subscriber->statuses[0], optionx::AccountUpdateStatus::CONNECTED);
+
+    hub.add_subscriber(subscriber);
+
+    EXPECT_EQ(hub.subscriber_count(), 1u);
+    ASSERT_EQ(subscriber->statuses.size(), 1u);
+    EXPECT_EQ(subscriber->messages[0], "ready");
+
+    const auto late = std::make_shared<RecordingAccountSubscriber>();
+    hub.add_subscriber(late);
+
+    ASSERT_EQ(late->statuses.size(), 1u);
+    EXPECT_EQ(late->statuses[0], optionx::AccountUpdateStatus::CONNECTED);
+    EXPECT_EQ(late->messages[0], "ready");
+}
+
 TEST(AccountInfoHub, BindsToAccountInfoCallback) {
     optionx::components::AccountInfoHub hub;
     optionx::account_info_callback_t callback;

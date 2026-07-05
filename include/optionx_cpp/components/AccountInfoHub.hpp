@@ -50,10 +50,14 @@ namespace optionx::components {
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 prune_expired_no_lock();
+                bool inserted = false;
                 if (!contains_subscriber_no_lock(locked.get())) {
                     m_subscribers.push_back(std::move(subscriber));
+                    inserted = true;
                 }
-                if (m_replay_last_update_to_new_subscribers && m_last_update) {
+                if (inserted &&
+                    m_replay_last_update_to_new_subscribers &&
+                    m_last_update) {
                     replay_update = m_last_update;
                 }
             }
