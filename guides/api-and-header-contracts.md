@@ -97,7 +97,8 @@ Market-data APIs are split into DTO/data types and a provider role:
   `BaseMarketDataProvider`, `TickSubscriptionRequest`,
   `BarSubscriptionRequest`, `MarketDataSubscriptionBatch`,
   `MarketDataSubscriptionHandle`, `MarketDataSubscriptionResult`,
-  `MarketDataBatch<T>` and `MarketDataContinuityService`.
+  `MarketDataBatch<T>`, `MarketDataHub`, `IMarketDataSubscriber`, and
+  `MarketDataContinuityService`.
 
 Contract rules:
 
@@ -130,6 +131,11 @@ Contract rules:
   status API. Status updates are keyed by `provider_id`, payload type, symbol,
   timeframe and transport; providers are not required to replay cached `READY`
   status to subscriptions created after the source was already ready.
+- `MarketDataHub` is the optional fan-out layer for applications that need many
+  subscriber objects. It binds to the provider's single tick/bar/status
+  callbacks, forwards batches to `IMarketDataSubscriber` instances, and replays
+  cached stream statuses to late subscribers. It does not own provider
+  subscriptions and does not replay tick or bar payloads.
 - `apply_subscriptions()` applies subscription changes atomically. The old
   single-operation helpers (`subscribe_ticks`, `subscribe_bars`, `unsubscribe`)
   are wrappers around a one-operation batch.

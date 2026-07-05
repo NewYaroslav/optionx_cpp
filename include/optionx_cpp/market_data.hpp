@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_MARKET_DATA_HPP_INCLUDED
-#define _OPTIONX_MARKET_DATA_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_MARKET_DATA_HPP_INCLUDED
+#define OPTIONX_HEADER_MARKET_DATA_HPP_INCLUDED
 
 /// \file market_data.hpp
 /// \brief Includes public market-data provider contracts.
@@ -8,9 +8,11 @@
 /// intended to be included through this umbrella header.
 
 #include <atomic>
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -21,5 +23,6 @@
 #include "market_data/MarketDataBatch.hpp"
 #include "market_data/BaseMarketDataProvider.hpp"
 #include "market_data/MarketDataContinuityService.hpp"
+#include "market_data/MarketDataHub.hpp"
 
-#endif // _OPTIONX_MARKET_DATA_HPP_INCLUDED
+#endif // OPTIONX_HEADER_MARKET_DATA_HPP_INCLUDED
