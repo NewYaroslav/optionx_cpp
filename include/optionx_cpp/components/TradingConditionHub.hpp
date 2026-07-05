@@ -7,20 +7,8 @@
 
 namespace optionx::components {
 
-    /// \class ITradingConditionSubscriber
-    /// \brief Interface for consumers that receive broker trading-condition updates.
-    class ITradingConditionSubscriber {
-    public:
-        /// \brief Virtual destructor.
-        virtual ~ITradingConditionSubscriber() = default;
-
-        /// \brief Handles a trading-condition update.
-        /// \param update Trading-condition payload.
-        virtual void on_trading_condition(const TradingConditionUpdate& update) = 0;
-    };
-
     /// \class TradingConditionHub
-    /// \brief Routes trading-condition updates to multiple subscribers.
+    /// \brief Routes trading-condition deltas and keeps merged condition snapshots.
     class TradingConditionHub {
     public:
         /// \brief Constructs a trading-condition hub.
@@ -37,6 +25,9 @@ namespace optionx::components {
         TradingConditionHub& operator=(TradingConditionHub&&) = delete;
 
         /// \brief Adds a shared subscriber.
+        /// \details The hub stores only a weak reference; the caller must keep
+        ///          the shared subscriber alive while it should receive trading
+        ///          condition callbacks.
         /// \param subscriber Subscriber object; ignored when null.
         void add_subscriber(
                 std::shared_ptr<ITradingConditionSubscriber> subscriber) {
@@ -56,10 +47,12 @@ namespace optionx::components {
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 prune_expired_no_lock();
+                bool inserted = false;
                 if (!contains_subscriber_no_lock(locked.get())) {
                     m_subscribers.push_back(std::move(subscriber));
+                    inserted = true;
                 }
-                if (m_replay_cached_updates_to_new_subscribers) {
+                if (inserted && m_replay_cached_updates_to_new_subscribers) {
                     replay_updates = m_cached_updates;
                 }
             }
@@ -124,6 +117,9 @@ namespace optionx::components {
         }
 
         /// \brief Publishes a trading-condition update.
+        /// \details Live subscribers receive the update as-is. The internal
+        ///          cache merges optional fields by condition scope and can be
+        ///          queried as the current condition snapshot.
         /// \param update Trading-condition update payload.
         void publish(TradingConditionUpdate update) {
             std::vector<std::shared_ptr<ITradingConditionSubscriber>> subscribers;
@@ -144,11 +140,29 @@ namespace optionx::components {
             }
         }
 
-        /// \brief Returns cached latest updates by condition key.
-        /// \return Copy of cached updates.
+        /// \brief Returns cached current condition snapshots.
+        /// \return Copy of merged cached snapshots.
         std::vector<TradingConditionUpdate> cached_updates() const {
             std::lock_guard<std::mutex> lock(m_mutex);
             return m_cached_updates;
+        }
+
+        /// \brief Returns the cached current condition for an exact scope.
+        /// \param scope Identity fields describing the requested condition scope.
+        /// \return Cached merged snapshot, or `std::nullopt`.
+        std::optional<TradingConditionUpdate> current_condition(
+                const TradingConditionUpdate& scope) const {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            const auto it = std::find_if(
+                m_cached_updates.begin(),
+                m_cached_updates.end(),
+                [&scope](const TradingConditionUpdate& cached) {
+                    return cached.same_scope(scope);
+                });
+            if (it == m_cached_updates.end()) {
+                return std::nullopt;
+            }
+            return *it;
         }
 
         /// \brief Clears cached updates.
@@ -164,24 +178,13 @@ namespace optionx::components {
         trading_condition_callback_t* m_bound_callback = nullptr;
         bool m_replay_cached_updates_to_new_subscribers = true;
 
-        /// \brief Checks whether two updates describe the same condition scope.
-        static bool same_condition_key(
-                const TradingConditionUpdate& left,
-                const TradingConditionUpdate& right) {
-            return left.symbol == right.symbol &&
-                   left.platform_type == right.platform_type &&
-                   left.account_type == right.account_type &&
-                   left.currency == right.currency &&
-                   left.option_type == right.option_type;
-        }
-
-        /// \brief Inserts or replaces a cached update by condition key.
+        /// \brief Inserts or merges a cached update by condition scope.
         void upsert_cached_update_no_lock(const TradingConditionUpdate& update) {
             const auto it = std::find_if(
                 m_cached_updates.begin(),
                 m_cached_updates.end(),
                 [&update](const TradingConditionUpdate& cached) {
-                    return same_condition_key(cached, update);
+                    return cached.same_scope(update);
                 });
 
             if (it == m_cached_updates.end()) {
@@ -189,7 +192,7 @@ namespace optionx::components {
                 return;
             }
 
-            *it = update;
+            it->merge_patch(update);
         }
 
         /// \brief Removes expired weak subscribers.

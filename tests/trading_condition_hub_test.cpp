@@ -25,10 +25,22 @@ optionx::TradingConditionUpdate make_condition(
     optionx::TradingConditionUpdate update;
     update.symbol = std::move(symbol);
     update.platform_type = optionx::PlatformType::INTRADE_BAR;
+    update.account_type = optionx::AccountType::DEMO;
+    update.currency = optionx::CurrencyType::USD;
     update.option_type = optionx::OptionType::SPRINT;
     update.payout = payout;
     update.market_open = true;
     return update;
+}
+
+optionx::TradingConditionUpdate make_scope(std::string symbol) {
+    optionx::TradingConditionUpdate scope;
+    scope.symbol = std::move(symbol);
+    scope.platform_type = optionx::PlatformType::INTRADE_BAR;
+    scope.account_type = optionx::AccountType::DEMO;
+    scope.currency = optionx::CurrencyType::USD;
+    scope.option_type = optionx::OptionType::SPRINT;
+    return scope;
 }
 
 } // namespace
@@ -40,6 +52,22 @@ TEST(TradingConditionUpdate, ReportsWhetherConditionFieldsArePresent) {
 
     update.payout = 0.82;
     EXPECT_FALSE(update.empty());
+}
+
+TEST(TradingConditionUpdate, MergesIndependentOptionalFields) {
+    auto snapshot = make_condition("EUR/USD", 0.82);
+
+    auto patch = make_scope("EUR/USD");
+    patch.market_open = false;
+    patch.max_duration = 300u;
+    snapshot.merge_patch(patch);
+
+    ASSERT_TRUE(snapshot.payout.has_value());
+    EXPECT_DOUBLE_EQ(*snapshot.payout, 0.82);
+    ASSERT_TRUE(snapshot.market_open.has_value());
+    EXPECT_FALSE(*snapshot.market_open);
+    ASSERT_TRUE(snapshot.max_duration.has_value());
+    EXPECT_EQ(*snapshot.max_duration, 300u);
 }
 
 TEST(TradingConditionHub, RoutesUpdatesAndReplaysLatestCachedConditions) {
@@ -63,6 +91,64 @@ TEST(TradingConditionHub, RoutesUpdatesAndReplaysLatestCachedConditions) {
     EXPECT_DOUBLE_EQ(*late->updates[0].payout, 0.82);
     EXPECT_EQ(late->updates[1].symbol, "BTCUSDT");
     EXPECT_DOUBLE_EQ(*late->updates[1].payout, 0.70);
+}
+
+TEST(TradingConditionHub, MergesCachedConditionSnapshotsByScope) {
+    optionx::components::TradingConditionHub hub;
+
+    const auto subscriber =
+        std::make_shared<RecordingTradingConditionSubscriber>();
+    hub.add_subscriber(subscriber);
+
+    hub.publish(make_condition("EUR/USD", 0.82));
+
+    auto patch = make_scope("EUR/USD");
+    patch.market_open = false;
+    patch.min_duration = 60u;
+    patch.max_duration = 300u;
+    hub.publish(patch);
+
+    ASSERT_EQ(subscriber->updates.size(), 2u);
+    EXPECT_TRUE(subscriber->updates[0].payout.has_value());
+    EXPECT_FALSE(subscriber->updates[1].payout.has_value());
+    ASSERT_TRUE(subscriber->updates[1].market_open.has_value());
+    EXPECT_FALSE(*subscriber->updates[1].market_open);
+
+    const auto cached = hub.current_condition(make_scope("EUR/USD"));
+    ASSERT_TRUE(cached.has_value());
+    ASSERT_TRUE(cached->payout.has_value());
+    EXPECT_DOUBLE_EQ(*cached->payout, 0.82);
+    ASSERT_TRUE(cached->market_open.has_value());
+    EXPECT_FALSE(*cached->market_open);
+    ASSERT_TRUE(cached->min_duration.has_value());
+    EXPECT_EQ(*cached->min_duration, 60u);
+    ASSERT_TRUE(cached->max_duration.has_value());
+    EXPECT_EQ(*cached->max_duration, 300u);
+
+    const auto late = std::make_shared<RecordingTradingConditionSubscriber>();
+    hub.add_subscriber(late);
+
+    ASSERT_EQ(late->updates.size(), 1u);
+    ASSERT_TRUE(late->updates[0].payout.has_value());
+    EXPECT_DOUBLE_EQ(*late->updates[0].payout, 0.82);
+    ASSERT_TRUE(late->updates[0].market_open.has_value());
+    EXPECT_FALSE(*late->updates[0].market_open);
+}
+
+TEST(TradingConditionHub, DuplicateAddDoesNotReplayCachedSnapshotsAgain) {
+    optionx::components::TradingConditionHub hub;
+
+    const auto subscriber =
+        std::make_shared<RecordingTradingConditionSubscriber>();
+    hub.add_subscriber(subscriber);
+
+    hub.publish(make_condition("EUR/USD", 0.82));
+    ASSERT_EQ(subscriber->updates.size(), 1u);
+
+    hub.add_subscriber(subscriber);
+
+    EXPECT_EQ(hub.subscriber_count(), 1u);
+    EXPECT_EQ(subscriber->updates.size(), 1u);
 }
 
 TEST(TradingConditionHub, BindsToTradingConditionCallback) {

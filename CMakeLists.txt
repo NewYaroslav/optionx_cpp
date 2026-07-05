@@ -276,6 +276,41 @@ if(OPTIONX_BUILD_EXAMPLES)
         )
     endif()
 
+    add_executable(trading_condition_hub_example examples/trading_condition_hub_example.cpp)
+
+    target_include_directories(trading_condition_hub_example PRIVATE
+        ${EXAMPLE_INCLUDE_DIRS}
+        ${EXAMPLE_DEPS_INCLUDE_DIRS}
+    )
+
+    target_link_directories(trading_condition_hub_example PRIVATE ${EXAMPLE_LIBRARY_DIRS})
+    target_compile_definitions(
+        trading_condition_hub_example PRIVATE
+        ${EXAMPLE_DEFINES}
+        LOGIT_BASE_PATH="${LOGIT_BASE_PATH_FWD}"
+    )
+    target_link_libraries(trading_condition_hub_example PRIVATE ${EXAMPLE_LIBS} optionx_cpp)
+
+    if(OPTIONX_BUILD_DEPS)
+        add_dependencies(trading_condition_hub_example mdbx-static AES)
+    endif()
+
+    foreach(dll ${EXAMPLE_DLL_FILES})
+        add_custom_command(TARGET trading_condition_hub_example POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${dll}" "$<TARGET_FILE_DIR:trading_condition_hub_example>"
+        )
+    endforeach()
+
+    if(WIN32)
+        add_custom_command(TARGET trading_condition_hub_example POST_BUILD
+            COMMAND ${CMAKE_COMMAND}
+                -DOPTIONX_RUNTIME_DLL_DIR="${EXAMPLE_BUILD_LIBS_DIR}/bin"
+                -DOPTIONX_RUNTIME_TARGET_DIR="$<TARGET_FILE_DIR:trading_condition_hub_example>"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy_runtime_dlls.cmake"
+        )
+    endif()
+
     add_executable(market_data_hub_example examples/market_data_hub_example.cpp)
 
     target_include_directories(market_data_hub_example PRIVATE

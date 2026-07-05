@@ -220,23 +220,30 @@ Future market-data routing work:
 
 `TradingConditionUpdate` is the payload for broker trading conditions: payouts,
 symbol tradability, market open/closed state, amount limits, duration limits,
-refund limits and max open trades. All condition fields are optional because
-brokers can update them independently.
+refund limits and max open trades. Condition fields are optional because live
+broker messages can update them independently.
 
 `components::BaseTradingConditionHandler` bridges
 `events::TradingConditionUpdateEvent` into the platform callback exposed as
 `BaseTradingPlatform::on_trading_condition()`.
 
 `components::TradingConditionHub` is an optional fan-out adapter for that
-callback. It caches the latest update per `(platform_type, account_type,
-currency, option_type, symbol)` scope and may replay cached updates to late
-subscribers.
+callback. Live subscribers receive incoming updates as-is, while the hub cache
+merges optional fields into the current condition snapshot per
+`(platform_type, account_type, currency, option_type, symbol)` scope. Late
+subscribers may receive those merged snapshots immediately.
 
 Rules:
 
 - Use `AccountInfoUpdate` for account lifecycle and account metadata changes.
 - Use `TradingConditionUpdate` for broker trading constraints and payout/session
   changes.
+- `TradingConditionUpdate::merge_patch()` is snapshot merge logic, not event
+  history. A patch with only `market_open=false` must not erase cached payout or
+  expiration limits for the same scope.
+- `TradingConditionHub::current_condition(scope)` is the direct read path for a
+  concrete current condition state, for example the latest payout and expiration
+  limits for one symbol.
 - Do not encode trading-condition changes as fake ticks, bars or market-data
   status events. Market-data subscriptions report prices; condition subscribers
   report whether and how a trade can currently be opened.
