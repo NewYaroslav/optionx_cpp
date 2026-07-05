@@ -48,6 +48,12 @@ jobs:
       - name: Run market_data_hub_test
         run: ./build-linux/market_data_hub_test --gtest_brief=1
 
+      - name: Build account_info_hub_test
+        run: cmake --build build-linux --target account_info_hub_test -j
+
+      - name: Run account_info_hub_test
+        run: ./build-linux/account_info_hub_test --gtest_brief=1
+
       - name: Build trade_manager_test
         run: cmake --build build-linux --target trade_manager_test -j
 

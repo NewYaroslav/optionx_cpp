@@ -86,6 +86,27 @@ etc.) являются implementation detail конкретной платфор
 метод сначала должен появиться на facade/base contract, а затем делегироваться
 в manager.
 
+## Account Info Subscriber Contract
+
+`components::AccountInfoHub` is an optional fan-out adapter for the single
+platform `on_account_info()` callback. It routes immutable `AccountInfoUpdate`
+payloads to `IAccountInfoSubscriber` instances and may replay the latest cached
+update to late subscribers.
+
+Rules:
+
+- The hub does not own account storage, authorization state, platform lifecycle
+  or broker sessions.
+- `bind_to(platform.on_account_info())` replaces the platform callback with the
+  hub dispatcher. Call `unbind_from()` if the callback owner can outlive the
+  hub object.
+- Subscribers receive account lifecycle and account metadata updates such as
+  `CONNECTING`, `CONNECTED`, `DISCONNECTED`, `BALANCE_UPDATED`,
+  `ACCOUNT_TYPE_CHANGED`, `CURRENCY_CHANGED` and `OPEN_TRADES_CHANGED`.
+- Broker-specific trading-condition streams, payout changes and symbol session
+  changes should use their own DTO/subscriber contract instead of overloading
+  `AccountInfoUpdate`.
+
 ## Market Data Contract
 
 Market-data APIs are split into DTO/data types and a provider role:
