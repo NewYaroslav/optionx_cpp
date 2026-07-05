@@ -61,14 +61,15 @@ namespace optionx::platforms {
                   provider_id(),
                   m_tick_data_callback,
                   m_bar_data_callback,
+                  m_market_data_status_callback,
                   &m_fx_price_websocket_manager),
               m_trade_manager(*this, m_request_manager, m_account_info) {
             m_btc_price_manager.set_status_sink(
                 provider_id(),
-                &m_market_data_status_callback);
+                &m_market_data_subscriptions.on_source_status());
             m_fx_price_websocket_manager.set_status_sink(
                 provider_id(),
-                &m_market_data_status_callback);
+                &m_market_data_subscriptions.on_source_status());
         }
 
         /// \brief Shuts down components while platform-owned component instances are still alive.

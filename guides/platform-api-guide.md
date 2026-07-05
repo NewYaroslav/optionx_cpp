@@ -91,6 +91,9 @@ Subscription rules:
 - `SUBSCRIBED` confirms desired state and handle ownership. It does not mean
   the physical transport has already reached the source; stream readiness is
   reported separately as `READY` through `on_market_data_status()`.
+- `on_market_data_status()` is a stream-level status event bus, not a
+  per-subscription state snapshot. Late subscribers should not assume they will
+  receive a replayed `READY` event if the underlying source was already ready.
 - Data callbacks receive batches. Shared metadata (`symbol`, `timeframe`,
   digits and subscription handle) lives on the batch; compact payload flags live
   on `Tick` and `Bar`.

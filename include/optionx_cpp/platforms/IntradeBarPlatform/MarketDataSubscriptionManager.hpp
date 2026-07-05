@@ -13,6 +13,7 @@ namespace optionx::platforms::intrade_bar {
     public:
         using bars_callback_t = market_data::BaseMarketDataProvider::bars_callback_t;
         using ticks_callback_t = market_data::BaseMarketDataProvider::ticks_callback_t;
+        using status_callback_t = market_data::BaseMarketDataProvider::status_callback_t;
         using subscription_callback_t = market_data::BaseMarketDataProvider::subscription_callback_t;
         using subscription_batch_callback_t = market_data::BaseMarketDataProvider::subscription_batch_callback_t;
 
@@ -25,12 +26,18 @@ namespace optionx::platforms::intrade_bar {
                 market_data::ProviderInstanceId provider_id,
                 ticks_callback_t& ticks_callback,
                 bars_callback_t& bars_callback,
+                status_callback_t& status_callback,
                 FxPriceWebSocketManager* fx_websocket_source = nullptr)
                 : BaseComponent(platform.event_bus()),
                   m_provider_id(provider_id),
                   m_ticks_callback(ticks_callback),
                   m_bars_callback(bars_callback),
+                  m_status_callback(status_callback),
                   m_fx_websocket_source(fx_websocket_source) {
+            m_source_status_callback =
+                [this](market_data::MarketDataStatusUpdate update) {
+                    handle_status_update(std::move(update));
+                };
             subscribe<events::PriceUpdateEvent>();
             platform.register_component(this);
         }
@@ -58,6 +65,9 @@ namespace optionx::platforms::intrade_bar {
         /// \brief Stops all active market-data subscriptions.
         bool unsubscribe_all(subscription_batch_callback_t callback);
 
+        /// \brief Returns the status sink used by concrete Intrade Bar tick sources.
+        status_callback_t& on_source_status();
+
         /// \brief Routes price events to active tick subscriptions.
         void on_event(const utils::Event* const event) override;
 
@@ -80,6 +90,8 @@ namespace optionx::platforms::intrade_bar {
         market_data::ProviderInstanceId m_provider_id; ///< Owning provider instance ID.
         ticks_callback_t& m_ticks_callback; ///< Platform tick data callback.
         bars_callback_t&  m_bars_callback;  ///< Platform bar data callback.
+        status_callback_t& m_status_callback; ///< Platform stream status callback.
+        status_callback_t m_source_status_callback; ///< Internal source status callback.
         FxPriceWebSocketManager* m_fx_websocket_source = nullptr; ///< Optional FX websocket source.
         std::unordered_map<
             market_data::SubscriptionId,
@@ -160,6 +172,9 @@ namespace optionx::platforms::intrade_bar {
         /// \brief Removes queued bar data for an inactive subscription.
         /// \pre The caller holds m_mutex.
         void remove_pending_bar_batch_no_lock(market_data::SubscriptionId subscription_id);
+
+        /// \brief Fans source status updates out to public tick and bar streams.
+        void handle_status_update(market_data::MarketDataStatusUpdate update);
 
         /// \brief Extracts the configured price from a tick payload.
         static double price_from_tick(
@@ -496,6 +511,11 @@ namespace optionx::platforms::intrade_bar {
         return apply_subscriptions(std::move(batch), std::move(callback));
     }
 
+    inline MarketDataSubscriptionManager::status_callback_t&
+    MarketDataSubscriptionManager::on_source_status() {
+        return m_source_status_callback;
+    }
+
     inline void MarketDataSubscriptionManager::on_event(const utils::Event* const event) {
         if (const auto* msg = dynamic_cast<const events::PriceUpdateEvent*>(event)) {
             handle_event(*msg);
@@ -767,6 +787,39 @@ namespace optionx::platforms::intrade_bar {
             } else {
                 ++it;
             }
+        }
+    }
+
+    inline void MarketDataSubscriptionManager::handle_status_update(
+            market_data::MarketDataStatusUpdate update) {
+        if (!m_status_callback) return;
+
+        std::vector<market_data::MarketDataStatusUpdate> updates;
+        updates.push_back(update);
+
+        if (update.type == market_data::MarketDataType::TICKS) {
+            const auto normalized_symbol = normalize_symbol_name(update.symbol);
+            std::lock_guard<std::mutex> lock(m_mutex);
+            for (const auto& [id, subscription] : m_bar_subscriptions) {
+                (void)id;
+                if (subscription.symbol != normalized_symbol) continue;
+                if (subscription.transport != update.transport &&
+                    subscription.transport != market_data::MarketDataTransport::AUTO &&
+                    subscription.transport != market_data::MarketDataTransport::HYBRID) {
+                    continue;
+                }
+
+                auto bar_update = update;
+                bar_update.type = market_data::MarketDataType::BARS;
+                bar_update.symbol = subscription.symbol;
+                bar_update.timeframe = subscription.timeframe;
+                bar_update.transport = subscription.transport;
+                updates.push_back(std::move(bar_update));
+            }
+        }
+
+        for (auto& item : updates) {
+            m_status_callback(std::move(item));
         }
     }
 

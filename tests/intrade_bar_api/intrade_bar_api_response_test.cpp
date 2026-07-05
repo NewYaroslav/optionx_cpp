@@ -1389,26 +1389,60 @@ TEST(IntradeBarApiResponses, BtcWebSocketReportsReadyWhenOpenBeforeFirstPayload)
         }));
     ASSERT_TRUE(subscription_result);
 
+    market_data::MarketDataSubscriptionResult bar_subscription_result;
+    ASSERT_TRUE(platform.subscribe_bars(
+        market_data::BarSubscriptionRequest(
+            "BTCUSDT",
+            60,
+            BarPriceSource::LAST,
+            market_data::MarketDataTransport::WEBSOCKET),
+        [&bar_subscription_result](market_data::MarketDataSubscriptionResult result) {
+            bar_subscription_result = std::move(result);
+        }));
+    ASSERT_TRUE(bar_subscription_result);
+
     publish_account_status(platform, AccountUpdateStatus::CONNECTED);
     ASSERT_TRUE(wait_for_platform(
         platform,
         [&]() {
             std::lock_guard<std::mutex> lock(callback_mutex);
-            return std::any_of(
+            const bool tick_ready = std::any_of(
                 status_updates.begin(),
                 status_updates.end(),
                 [](const market_data::MarketDataStatusUpdate& update) {
                     return update.symbol == "BTCUSDT" &&
+                           update.type == market_data::MarketDataType::TICKS &&
                            update.status == market_data::MarketDataStreamStatus::READY;
                 });
+            const bool bar_ready = std::any_of(
+                status_updates.begin(),
+                status_updates.end(),
+                [](const market_data::MarketDataStatusUpdate& update) {
+                    return update.symbol == "BTCUSDT" &&
+                           update.type == market_data::MarketDataType::BARS &&
+                           update.timeframe == 60 &&
+                           update.status == market_data::MarketDataStreamStatus::READY;
+                });
+            return tick_ready && bar_ready;
         }));
 
     {
         std::lock_guard<std::mutex> lock(callback_mutex);
         EXPECT_EQ(tick_callback_count, 0);
-        ASSERT_GE(status_updates.size(), 2u);
-        EXPECT_EQ(status_updates[0].status, market_data::MarketDataStreamStatus::CONNECTED);
-        EXPECT_EQ(status_updates[1].status, market_data::MarketDataStreamStatus::READY);
+        EXPECT_TRUE(std::any_of(
+            status_updates.begin(),
+            status_updates.end(),
+            [](const market_data::MarketDataStatusUpdate& update) {
+                return update.type == market_data::MarketDataType::TICKS &&
+                       update.status == market_data::MarketDataStreamStatus::CONNECTED;
+            }));
+        EXPECT_TRUE(std::any_of(
+            status_updates.begin(),
+            status_updates.end(),
+            [](const market_data::MarketDataStatusUpdate& update) {
+                return update.type == market_data::MarketDataType::BARS &&
+                       update.status == market_data::MarketDataStreamStatus::CONNECTED;
+            }));
     }
 
     platform.shutdown();
