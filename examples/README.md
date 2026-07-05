@@ -14,6 +14,9 @@ Currently maintained examples:
   `OPTIONX_INTRADE_EMAIL` and `OPTIONX_INTRADE_PASSWORD` from the environment.
 - `market_data_hub_example.cpp` demonstrates routing provider callbacks through
   `MarketDataHub` into an `IMarketDataSubscriber` implementation.
+- `trading_condition_hub_example.cpp` demonstrates routing payout, session and
+  expiration-limit changes through `TradingConditionHub`, plus querying the
+  merged current condition snapshot for a concrete symbol.
 - `trade_record_db_example.cpp` demonstrates basic `TradeRecordDB` usage.
 
 Old exploratory broker and component probes were removed because they referenced

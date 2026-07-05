@@ -54,6 +54,12 @@ jobs:
       - name: Run account_info_hub_test
         run: ./build-linux/account_info_hub_test --gtest_brief=1
 
+      - name: Build trading_condition_hub_test
+        run: cmake --build build-linux --target trading_condition_hub_test -j
+
+      - name: Run trading_condition_hub_test
+        run: ./build-linux/trading_condition_hub_test --gtest_brief=1
+
       - name: Build trade_manager_test
         run: cmake --build build-linux --target trade_manager_test -j
 
