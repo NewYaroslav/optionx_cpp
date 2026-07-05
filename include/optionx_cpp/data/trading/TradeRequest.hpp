@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_TRADE_REQUEST_HPP_INCLUDED
-#define _OPTIONX_TRADE_REQUEST_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_TRADING_TRADE_REQUEST_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_TRADING_TRADE_REQUEST_HPP_INCLUDED
 
 /// \file TradeRequest.hpp
 /// \brief Defines the TradeRequest class, which represents a trade request for execution.
@@ -182,4 +182,4 @@ namespace optionx {
 
 } // namespace optionx
 
-#endif // _OPTIONX_TRADE_REQUEST_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_TRADING_TRADE_REQUEST_HPP_INCLUDED

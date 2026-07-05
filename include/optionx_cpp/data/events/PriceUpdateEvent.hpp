@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_EVENTS_PRICE_UPDATE_EVENT_HPP_INCLUDED
-#define _OPTIONX_EVENTS_PRICE_UPDATE_EVENT_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_EVENTS_PRICE_UPDATE_EVENT_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_EVENTS_PRICE_UPDATE_EVENT_HPP_INCLUDED
 
 /// \file PriceUpdateEvent.hpp
 /// \brief Defines the PriceUpdateEvent class for updating tick information.
@@ -109,4 +109,4 @@ namespace optionx::events {
 
 } // namespace optionx::events
 
-#endif // _OPTIONX_EVENTS_PRICE_UPDATE_EVENT_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_EVENTS_PRICE_UPDATE_EVENT_HPP_INCLUDED

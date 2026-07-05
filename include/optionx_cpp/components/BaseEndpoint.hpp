@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_COMPONENTS_BASE_ENDPOINT_HPP_INCLUDED
-#define _OPTIONX_COMPONENTS_BASE_ENDPOINT_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_COMPONENTS_BASE_ENDPOINT_HPP_INCLUDED
+#define OPTIONX_HEADER_COMPONENTS_BASE_ENDPOINT_HPP_INCLUDED
 
 /// \file BaseEndpoint.hpp
 /// \brief Declares the common runtime contract for public service endpoints.
@@ -59,4 +59,4 @@ namespace optionx {
 
 } // namespace optionx
 
-#endif // _OPTIONX_COMPONENTS_BASE_ENDPOINT_HPP_INCLUDED
+#endif // OPTIONX_HEADER_COMPONENTS_BASE_ENDPOINT_HPP_INCLUDED

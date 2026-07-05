@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_STORAGE_TRADE_RECORD_DB_DETAIL_HPP_INCLUDED
-#define _OPTIONX_STORAGE_TRADE_RECORD_DB_DETAIL_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_STORAGES_TRADE_RECORD_DB_DETAIL_HPP_INCLUDED
+#define OPTIONX_HEADER_STORAGES_TRADE_RECORD_DB_DETAIL_HPP_INCLUDED
 
 /// \file detail.hpp
 /// \brief Internal helpers used only by TradeRecordDB.
@@ -101,4 +101,4 @@ namespace optionx::storage::detail {
 
 } // namespace optionx::storage::detail
 
-#endif // _OPTIONX_STORAGE_TRADE_RECORD_DB_DETAIL_HPP_INCLUDED
+#endif // OPTIONX_HEADER_STORAGES_TRADE_RECORD_DB_DETAIL_HPP_INCLUDED

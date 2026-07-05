@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_STORAGES_HPP_INCLUDED
-#define _OPTIONX_STORAGES_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_STORAGES_HPP_INCLUDED
+#define OPTIONX_HEADER_STORAGES_HPP_INCLUDED
 
 #include "crypto.hpp"
 #include "utils.hpp"
@@ -9,4 +9,4 @@
 #include "storages/TradeRecordDB.hpp"
 #include "storages/SignalRecordDB.hpp"
 
-#endif // _OPTIONX_STORAGES_HPP_INCLUDED
+#endif // OPTIONX_HEADER_STORAGES_HPP_INCLUDED

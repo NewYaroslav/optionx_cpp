@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_UTILS_LOG_REDACTION_HPP_INCLUDED
-#define _OPTIONX_UTILS_LOG_REDACTION_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_LOG_REDACTION_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_LOG_REDACTION_HPP_INCLUDED
 
 /// \file log_redaction.hpp
 /// \brief Helpers for removing sensitive values from diagnostic logs.
@@ -110,4 +110,4 @@ namespace optionx::utils {
 
 } // namespace optionx::utils
 
-#endif // _OPTIONX_UTILS_LOG_REDACTION_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_LOG_REDACTION_HPP_INCLUDED

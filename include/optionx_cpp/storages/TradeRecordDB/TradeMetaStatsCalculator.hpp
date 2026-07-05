@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_TRADE_META_STATS_CALCULATOR_HPP_INCLUDED
-#define _OPTIONX_TRADE_META_STATS_CALCULATOR_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_STORAGES_TRADE_RECORD_DB_TRADE_META_STATS_CALCULATOR_HPP_INCLUDED
+#define OPTIONX_HEADER_STORAGES_TRADE_RECORD_DB_TRADE_META_STATS_CALCULATOR_HPP_INCLUDED
 
 /// \file TradeMetaStatsCalculator.hpp
 /// \brief Computes meta-statistics (available values + per-value breakdowns) over trade records.
@@ -128,4 +128,4 @@ namespace optionx::storage {
 
 } // namespace optionx::storage
 
-#endif // _OPTIONX_TRADE_META_STATS_CALCULATOR_HPP_INCLUDED
+#endif // OPTIONX_HEADER_STORAGES_TRADE_RECORD_DB_TRADE_META_STATS_CALCULATOR_HPP_INCLUDED

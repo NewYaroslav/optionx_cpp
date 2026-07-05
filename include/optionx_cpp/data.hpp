@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_DATA_HPP_INCLUDED
-#define _OPTIONX_DATA_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_HPP_INCLUDED
 
 /// \file data.hpp
 /// \brief Includes headers for bars, ticks, trading, accounts, 
@@ -20,4 +20,4 @@
 #include "data/symbol.hpp"
 #include "data/events.hpp"
 
-#endif // _OPTIONX_DATA_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_HPP_INCLUDED

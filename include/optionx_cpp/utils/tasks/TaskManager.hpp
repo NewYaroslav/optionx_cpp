@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_UTILS_TASK_MANAGER_HPP_INCLUDED
-#define _OPTIONX_UTILS_TASK_MANAGER_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_TASKS_TASK_MANAGER_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_TASKS_TASK_MANAGER_HPP_INCLUDED
 
 /// \file TaskManager.hpp
 /// \brief Contains the definition of the TaskManager class for managing tasks.
@@ -284,4 +284,4 @@ namespace optionx::utils {
 
 } // namespace optionx::utils
 
-#endif // _OPTIONX_UTILS_TASK_MANAGER_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_TASKS_TASK_MANAGER_HPP_INCLUDED

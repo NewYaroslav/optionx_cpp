@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_BAR_HISTORY_RESULT_HPP_INCLUDED
-#define _OPTIONX_BAR_HISTORY_RESULT_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_BARS_BAR_HISTORY_RESULT_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_BARS_BAR_HISTORY_RESULT_HPP_INCLUDED
 
 /// \file BarHistoryResult.hpp
 /// \brief Defines the result of a broker bar-history request.
@@ -60,4 +60,4 @@ namespace optionx {
 
 } // namespace optionx
 
-#endif // _OPTIONX_BAR_HISTORY_RESULT_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_BARS_BAR_HISTORY_RESULT_HPP_INCLUDED

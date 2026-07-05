@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_UTILS_PUBSUB_EVENT_MEDIATOR_HPP_INCLUDED
-#define _OPTIONX_UTILS_PUBSUB_EVENT_MEDIATOR_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_PUBSUB_EVENT_MEDIATOR_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_PUBSUB_EVENT_MEDIATOR_HPP_INCLUDED
 
 /// \file EventMediator.hpp
 /// \brief Defines the EventMediator class for managing subscriptions and notifications through EventBus.
@@ -182,4 +182,4 @@ namespace optionx::utils {
 
 }; // namespace optionx::utils
 
-#endif // _OPTIONX_UTILS_PUBSUB_EVENT_MEDIATOR_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_PUBSUB_EVENT_MEDIATOR_HPP_INCLUDED

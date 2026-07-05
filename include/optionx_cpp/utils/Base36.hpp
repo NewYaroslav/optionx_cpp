@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_UTILS_BASE36_HPP_INCLUDED
-#define _OPTIONX_UTILS_BASE36_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_BASE36_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_BASE36_HPP_INCLUDED
 
 /// \file Base36.hpp
 /// \brief Provides encoding and decoding utilities for Base36 format.
@@ -184,4 +184,4 @@ namespace optionx::utils {
 
 } // namespace optionx
 
-#endif // _OPTIONX_UTILS_BASE36_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_BASE36_HPP_INCLUDED

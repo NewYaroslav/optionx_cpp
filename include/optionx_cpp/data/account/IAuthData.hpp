@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_IAUTH_DATA_HPP_INCLUDED
-#define _OPTIONX_IAUTH_DATA_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_ACCOUNT_I_AUTH_DATA_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_ACCOUNT_I_AUTH_DATA_HPP_INCLUDED
 
 /// \file IAuthData.hpp
 /// \brief Defines the IAuthData interface for handling authorization data and authentication status.
@@ -86,4 +86,4 @@ namespace optionx {
 
 } // namespace optionx
 
-#endif // _OPTIONX_IAUTH_DATA_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_ACCOUNT_I_AUTH_DATA_HPP_INCLUDED

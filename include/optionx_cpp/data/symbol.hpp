@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_SYMBOL_INCLUDED
-#define _OPTIONX_SYMBOL_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_SYMBOL_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_SYMBOL_HPP_INCLUDED
 
 /// \file symbols.hpp
 /// \brief 
@@ -8,4 +8,4 @@
 #include "symbol/SymbolInfo.hpp"
 #include "symbol/SymbolsInfo.hpp"
 
-#endif // _OPTIONX_SYMBOL_INCLUDED
+#endif // OPTIONX_HEADER_DATA_SYMBOL_HPP_INCLUDED

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_UTILS_PUBSUB_EVENT_AWAITER_HPP_INCLUDED
-#define _OPTIONX_UTILS_PUBSUB_EVENT_AWAITER_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_PUBSUB_EVENT_AWAITER_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_PUBSUB_EVENT_AWAITER_HPP_INCLUDED
 
 /// \file EventAwaiter.hpp
 /// \brief RAII helper to wait for a single event that matches a predicate and then auto-unsubscribe.
@@ -125,4 +125,4 @@ namespace optionx::utils {
 
 } // namespace optionx::utils
 
-#endif // _OPTIONX_UTILS_PUBSUB_EVENT_AWAITER_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_PUBSUB_EVENT_AWAITER_HPP_INCLUDED

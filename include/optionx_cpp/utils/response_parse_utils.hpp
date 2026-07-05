@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_RESPONSE_PARSE_UTILS_HPP_INCLUDED
-#define _OPTIONX_RESPONSE_PARSE_UTILS_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_RESPONSE_PARSE_UTILS_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_RESPONSE_PARSE_UTILS_HPP_INCLUDED
 
 /// \file response_parse_utils.hpp
 /// \brief Lightweight helpers for parsing raw text and HTML-like responses.
@@ -178,4 +178,4 @@ namespace optionx::utils {
 
 } // namespace optionx::utils
 
-#endif // _OPTIONX_RESPONSE_PARSE_UTILS_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_RESPONSE_PARSE_UTILS_HPP_INCLUDED

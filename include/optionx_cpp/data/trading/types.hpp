@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_TRADING_TYPES_HPP_INCLUDED
-#define _OPTIONX_TRADING_TYPES_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_TRADING_TYPES_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_TRADING_TYPES_HPP_INCLUDED
 
 /// \file types.hpp
 /// \brief Defines shared trading data identifier types.
@@ -14,4 +14,4 @@ namespace optionx {
 
 } // namespace optionx
 
-#endif // _OPTIONX_TRADING_TYPES_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_TRADING_TYPES_HPP_INCLUDED

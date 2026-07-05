@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_UTILS_TRADE_ID_HPP_INCLUDED
-#define _OPTIONX_UTILS_TRADE_ID_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_TRADE_ID_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_TRADE_ID_HPP_INCLUDED
 
 /// \file TradeId.hpp
 /// \brief Thread-safe generator for unique trade identifiers.
@@ -48,4 +48,4 @@ namespace optionx::utils {
 
 } // namespace optionx::utils
 
-#endif // _OPTIONX_UTILS_TRADE_ID_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_TRADE_ID_HPP_INCLUDED

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_CRYPTO_HPP_INCLUDED
-#define _OPTIONX_CRYPTO_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_CRYPTO_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_CRYPTO_HPP_INCLUDED
 
 /// \file crypto.hpp
 /// \brief Centralized include file for cryptographic utilities.
@@ -9,4 +9,4 @@
 #include "crypto/SecureKey.hpp"
 #include "crypto/AESCrypt.hpp"
 
-#endif // _OPTIONX_CRYPTO_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_CRYPTO_HPP_INCLUDED

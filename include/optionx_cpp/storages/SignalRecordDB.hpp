@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_STORAGE_SIGNAL_RECORD_DB_HPP_INCLUDED
-#define _OPTIONX_STORAGE_SIGNAL_RECORD_DB_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_STORAGES_SIGNAL_RECORD_DB_HPP_INCLUDED
+#define OPTIONX_HEADER_STORAGES_SIGNAL_RECORD_DB_HPP_INCLUDED
 
 /// \file SignalRecordDB.hpp
 /// \brief Provides persistent storage for SignalRecord objects using MDBX containers.
@@ -278,4 +278,4 @@ namespace optionx::storage {
 
 #include "SignalRecordDB/SignalRecordDB.ipp"
 
-#endif // _OPTIONX_STORAGE_SIGNAL_RECORD_DB_HPP_INCLUDED
+#endif // OPTIONX_HEADER_STORAGES_SIGNAL_RECORD_DB_HPP_INCLUDED

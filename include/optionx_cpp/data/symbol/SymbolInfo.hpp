@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_SYMBOL_INFO_HPP_INCLUDED
-#define _OPTIONX_SYMBOL_INFO_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_SYMBOL_SYMBOL_INFO_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_SYMBOL_SYMBOL_INFO_HPP_INCLUDED
 
 /// \file SymbolInfo.hpp
 /// \brief Contains the SymbolInfo struct for storing basic information about a trading symbol.
@@ -29,4 +29,4 @@ namespace optionx {
 
 } // namespace optionx
 
-#endif // _OPTIONX_SYMBOL_INFO_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_SYMBOL_SYMBOL_INFO_HPP_INCLUDED

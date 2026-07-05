@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_MARKET_DATA_CONTINUITY_SERVICE_HPP_INCLUDED
-#define _OPTIONX_MARKET_DATA_CONTINUITY_SERVICE_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_MARKET_DATA_MARKET_DATA_CONTINUITY_SERVICE_HPP_INCLUDED
+#define OPTIONX_HEADER_MARKET_DATA_MARKET_DATA_CONTINUITY_SERVICE_HPP_INCLUDED
 
 /// \file MarketDataContinuityService.hpp
 /// \brief Defines a small helper for routing historical bars through market-data batches.
@@ -102,4 +102,4 @@ namespace optionx::market_data {
 
 } // namespace optionx::market_data
 
-#endif // _OPTIONX_MARKET_DATA_CONTINUITY_SERVICE_HPP_INCLUDED
+#endif // OPTIONX_HEADER_MARKET_DATA_MARKET_DATA_CONTINUITY_SERVICE_HPP_INCLUDED

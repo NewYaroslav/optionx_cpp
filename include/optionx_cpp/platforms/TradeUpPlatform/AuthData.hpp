@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_PLATFORMS_TRADEUP_AUTH_DATA_HPP_INCLUDED
-#define _OPTIONX_PLATFORMS_TRADEUP_AUTH_DATA_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_PLATFORMS_TRADE_UP_PLATFORM_AUTH_DATA_HPP_INCLUDED
+#define OPTIONX_HEADER_PLATFORMS_TRADE_UP_PLATFORM_AUTH_DATA_HPP_INCLUDED
 
 /// \file AuthData.hpp
 /// \brief Contains the AuthData class for TradeUp platform authorization.
@@ -129,4 +129,4 @@ namespace optionx::platforms::tradeup {
 
 } // namespace optionx::platforms::tradeup
 
-#endif // _OPTIONX_PLATFORMS_TRADEUP_AUTH_DATA_HPP_INCLUDED
+#endif // OPTIONX_HEADER_PLATFORMS_TRADE_UP_PLATFORM_AUTH_DATA_HPP_INCLUDED

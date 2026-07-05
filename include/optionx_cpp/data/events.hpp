@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_EVENTS_HPP_INCLUDED
-#define _OPTIONX_EVENTS_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_EVENTS_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_EVENTS_HPP_INCLUDED
 
 /// \file events.hpp
 /// \brief Aggregated include for all core event types used across the OptionX system.
@@ -29,4 +29,4 @@
 #include "events/OpenTradesSnapshotEvent.hpp"
 #include "events/OpenTradesSnapshotRefreshRequestEvent.hpp"
 
-#endif // _OPTIONX_EVENTS_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_EVENTS_HPP_INCLUDED

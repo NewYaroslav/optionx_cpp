@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_IENDPOINT_CONFIG_HPP_INCLUDED
-#define _OPTIONX_IENDPOINT_CONFIG_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_I_ENDPOINT_CONFIG_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_I_ENDPOINT_CONFIG_HPP_INCLUDED
 
 /// \file IEndpointConfig.hpp
 /// \brief Defines the common base interface for endpoint configuration DTOs.
@@ -19,4 +19,4 @@ namespace optionx {
 
 } // namespace optionx
 
-#endif // _OPTIONX_IENDPOINT_CONFIG_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_I_ENDPOINT_CONFIG_HPP_INCLUDED

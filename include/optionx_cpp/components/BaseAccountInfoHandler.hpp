@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_COMPONENTS_BASE_ACCOUNT_INFO_HANDLER_HPP_INCLUDED
-#define _OPTIONX_COMPONENTS_BASE_ACCOUNT_INFO_HANDLER_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_COMPONENTS_BASE_ACCOUNT_INFO_HANDLER_HPP_INCLUDED
+#define OPTIONX_HEADER_COMPONENTS_BASE_ACCOUNT_INFO_HANDLER_HPP_INCLUDED
 
 /// \file BaseAccountInfoHandler.hpp
 /// \brief Base class for handling account information updates and events.
@@ -57,4 +57,4 @@ namespace optionx::components {
 
 } // namespace optionx::components
 
-#endif // _OPTIONX_COMPONENTS_BASE_ACCOUNT_INFO_HANDLER_HPP_INCLUDED
+#endif // OPTIONX_HEADER_COMPONENTS_BASE_ACCOUNT_INFO_HANDLER_HPP_INCLUDED

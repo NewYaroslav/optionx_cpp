@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_CRYPTO_AES_UTILS_HPP_INCLUDED
-#define _OPTIONX_CRYPTO_AES_UTILS_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_CRYPTO_AES_UTILS_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_CRYPTO_AES_UTILS_HPP_INCLUDED
 
 /// \file AESUtils.hpp
 /// \brief Provides utility functions for AES encryption and decryption.
@@ -315,4 +315,4 @@ namespace crypto {
 } // namespace crypto
 } // namespace optionx
 
-#endif // _OPTIONX_CRYPTO_AES_UTILS_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_CRYPTO_AES_UTILS_HPP_INCLUDED

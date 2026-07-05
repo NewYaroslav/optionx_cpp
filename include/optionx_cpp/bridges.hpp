@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_BRIDGES_HPP_INCLUDED
-#define _OPTIONX_BRIDGES_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_BRIDGES_HPP_INCLUDED
+#define OPTIONX_HEADER_BRIDGES_HPP_INCLUDED
 
 /// \file bridges.hpp
 /// \brief Includes bridge-related headers.
@@ -11,4 +11,4 @@
 #include "bridges/BaseBridge.hpp"
 #include "bridges/NamedPipe/LegacyTradingBridge.hpp"
 
-#endif // _OPTIONX_BRIDGES_HPP_INCLUDED
+#endif // OPTIONX_HEADER_BRIDGES_HPP_INCLUDED

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_ENUM_UTILS_HPP_INCLUDED
-#define _OPTIONX_ENUM_UTILS_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_ENUM_UTILS_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_ENUM_UTILS_HPP_INCLUDED
 
 /// \file enum_utils.hpp
 /// \brief Contains utility functions for working with enums.
@@ -33,4 +33,4 @@ namespace optionx {
 
 } // namespace optionx
 
-#endif // _OPTIONX_ENUM_UTILS_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_ENUM_UTILS_HPP_INCLUDED

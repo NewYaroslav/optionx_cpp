@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_PLATFORMS_TRADEUP_ACCOUNT_INFO_DATA_HPP_INCLUDED
-#define _OPTIONX_PLATFORMS_TRADEUP_ACCOUNT_INFO_DATA_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_PLATFORMS_TRADE_UP_PLATFORM_ACCOUNT_INFO_DATA_HPP_INCLUDED
+#define OPTIONX_HEADER_PLATFORMS_TRADE_UP_PLATFORM_ACCOUNT_INFO_DATA_HPP_INCLUDED
 
 /// \file AccountInfoData.hpp
 /// \brief Contains the AccountInfoData class for TradeUp platform account information.
@@ -64,4 +64,4 @@ namespace optionx::platforms::tradeup {
 
 } // namespace optionx::platforms::tradeup
 
-#endif // _OPTIONX_PLATFORMS_TRADEUP_ACCOUNT_INFO_DATA_HPP_INCLUDED
+#endif // OPTIONX_HEADER_PLATFORMS_TRADE_UP_PLATFORM_ACCOUNT_INFO_DATA_HPP_INCLUDED

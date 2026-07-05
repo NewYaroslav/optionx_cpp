@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_HPP_INCLUDED
-#define _OPTIONX_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_OPTIONX_HPP_INCLUDED
+#define OPTIONX_HEADER_OPTIONX_HPP_INCLUDED
 
 /// \file optionx.hpp
 /// \brief Includes core headers for the OptionX library.
@@ -13,4 +13,4 @@
 #include "platforms.hpp"
 #include "bridges.hpp"
 
-#endif // _OPTIONX_HPP_INCLUDED
+#endif // OPTIONX_HEADER_OPTIONX_HPP_INCLUDED

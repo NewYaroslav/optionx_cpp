@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_STORAGE_COMMON_STORAGE_RESULT_HPP_INCLUDED
-#define _OPTIONX_STORAGE_COMMON_STORAGE_RESULT_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_STORAGES_COMMON_STORAGE_RESULT_HPP_INCLUDED
+#define OPTIONX_HEADER_STORAGES_COMMON_STORAGE_RESULT_HPP_INCLUDED
 
 /// \file StorageResult.hpp
 /// \brief Defines common storage operation result DTO templates.
@@ -72,4 +72,4 @@ namespace optionx::storage {
 
 } // namespace optionx::storage
 
-#endif // _OPTIONX_STORAGE_COMMON_STORAGE_RESULT_HPP_INCLUDED
+#endif // OPTIONX_HEADER_STORAGES_COMMON_STORAGE_RESULT_HPP_INCLUDED

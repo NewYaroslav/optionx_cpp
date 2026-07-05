@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_PLATFORMS_HPP_INCLUDED
-#define _OPTIONX_PLATFORMS_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_PLATFORMS_HPP_INCLUDED
+#define OPTIONX_HEADER_PLATFORMS_HPP_INCLUDED
 
 /// \file platforms.hpp
 /// \brief Includes platform-related headers.
@@ -28,4 +28,4 @@
 #include "platforms/IntradeBarPlatform.hpp"
 //#include "platforms/TradeUpPlatform.hpp"
 
-#endif // _OPTIONX_PLATFORMS_HPP_INCLUDED
+#endif // OPTIONX_HEADER_PLATFORMS_HPP_INCLUDED

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_PLATFORMS_INTRADERBAR_REQUEST_MANAGER_HPP_INCLUDED
-#define _OPTIONX_PLATFORMS_INTRADERBAR_REQUEST_MANAGER_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_PLATFORMS_INTRADE_BAR_PLATFORM_REQUEST_MANAGER_HPP_INCLUDED
+#define OPTIONX_HEADER_PLATFORMS_INTRADE_BAR_PLATFORM_REQUEST_MANAGER_HPP_INCLUDED
 
 /// \file RequestManager.hpp
 /// \brief Handles HTTP requests for user authentication, trade execution, balance updates, and market data retrieval.
@@ -2067,4 +2067,4 @@ namespace optionx::platforms::intrade_bar {
 
 } // namespace optionx::platforms::intrade_bar
 
-#endif // _OPTIONX_PLATFORMS_INTRADERBAR_REQUEST_MANAGER_HPP_INCLUDED
+#endif // OPTIONX_HEADER_PLATFORMS_INTRADE_BAR_PLATFORM_REQUEST_MANAGER_HPP_INCLUDED

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_UTILS_CORRELATION_ID_HPP_INCLUDED
-#define _OPTIONX_UTILS_CORRELATION_ID_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_CORRELATION_ID_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_CORRELATION_ID_HPP_INCLUDED
 
 /// \file CorrelationId.hpp
 /// \brief Thread-safe generator for correlation identifiers (strongly-typed).
@@ -39,4 +39,4 @@ namespace optionx::utils {
 
 } // namespace optionx::utils
 
-#endif // _OPTIONX_UTILS_CORRELATION_ID_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_CORRELATION_ID_HPP_INCLUDED

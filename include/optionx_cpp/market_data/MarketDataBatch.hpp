@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_MARKET_DATA_BATCH_HPP_INCLUDED
-#define _OPTIONX_MARKET_DATA_BATCH_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_MARKET_DATA_MARKET_DATA_BATCH_HPP_INCLUDED
+#define OPTIONX_HEADER_MARKET_DATA_MARKET_DATA_BATCH_HPP_INCLUDED
 
 /// \file MarketDataBatch.hpp
 /// \brief Defines market-data delivery batches.
@@ -36,4 +36,4 @@ namespace optionx::market_data {
 
 } // namespace optionx::market_data
 
-#endif // _OPTIONX_MARKET_DATA_BATCH_HPP_INCLUDED
+#endif // OPTIONX_HEADER_MARKET_DATA_MARKET_DATA_BATCH_HPP_INCLUDED

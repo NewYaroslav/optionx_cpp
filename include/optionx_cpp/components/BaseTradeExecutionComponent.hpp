@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_COMPONENTS_BASE_TRADE_EXECUTION_COMPONENT_HPP_INCLUDED
-#define _OPTIONX_COMPONENTS_BASE_TRADE_EXECUTION_COMPONENT_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_COMPONENTS_BASE_TRADE_EXECUTION_COMPONENT_HPP_INCLUDED
+#define OPTIONX_HEADER_COMPONENTS_BASE_TRADE_EXECUTION_COMPONENT_HPP_INCLUDED
 
 /// \file BaseTradeExecutionComponent.hpp
 /// \brief Defines the BaseTradeExecutionComponent class for managing trade requests and processing transactions.
@@ -119,4 +119,4 @@ namespace optionx::components {
 
 } // namespace optionx::components
 
-#endif // _OPTIONX_COMPONENTS_BASE_TRADE_EXECUTION_COMPONENT_HPP_INCLUDED
+#endif // OPTIONX_HEADER_COMPONENTS_BASE_TRADE_EXECUTION_COMPONENT_HPP_INCLUDED
