@@ -172,6 +172,30 @@ TEST(TradingConditionHub, BindsToTradingConditionCallback) {
     EXPECT_FALSE(static_cast<bool>(callback));
 }
 
+TEST(TradingConditionHub, RebindingClearsPreviousCallback) {
+    optionx::components::TradingConditionHub hub;
+    optionx::trading_condition_callback_t first_callback;
+    optionx::trading_condition_callback_t second_callback;
+
+    const auto subscriber =
+        std::make_shared<RecordingTradingConditionSubscriber>();
+    hub.add_subscriber(subscriber);
+
+    hub.bind_to(first_callback);
+    ASSERT_TRUE(static_cast<bool>(first_callback));
+
+    hub.bind_to(second_callback);
+
+    EXPECT_FALSE(static_cast<bool>(first_callback));
+    ASSERT_TRUE(static_cast<bool>(second_callback));
+
+    second_callback(make_condition("BTCUSDT", 0.71));
+
+    ASSERT_EQ(subscriber->updates.size(), 1u);
+    EXPECT_EQ(subscriber->updates[0].symbol, "BTCUSDT");
+    EXPECT_DOUBLE_EQ(*subscriber->updates[0].payout, 0.71);
+}
+
 TEST(BaseTradingConditionHandler, RoutesEventBusUpdatesToCallback) {
     optionx::utils::EventBus bus;
     optionx::components::BaseTradingConditionHandler handler(bus);

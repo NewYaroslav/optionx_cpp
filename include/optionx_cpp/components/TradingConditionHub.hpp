@@ -100,6 +100,9 @@ namespace optionx::components {
         /// \param callback Callback to replace with this hub dispatcher.
         void bind_to(trading_condition_callback_t& callback) {
             std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_bound_callback && m_bound_callback != &callback) {
+                *m_bound_callback = {};
+            }
             callback = [this](const TradingConditionUpdate& update) {
                 publish(update);
             };
