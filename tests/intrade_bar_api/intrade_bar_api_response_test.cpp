@@ -1867,7 +1867,7 @@ TEST(IntradeBarApiResponses, FxWebSocketBarSubscriptionsAreRefCountedBySymbol) {
     platform.shutdown();
 }
 
-TEST(IntradeBarApiResponses, FxWebSocketReconnectsDesiredSubscriptions) {
+TEST(IntradeBarApiResponses, FxWebSocketSubscriptionSurvivesAccountDisconnect) {
     LocalFxConnectServer server;
     ASSERT_TRUE(server.start());
 
@@ -1894,17 +1894,30 @@ TEST(IntradeBarApiResponses, FxWebSocketReconnectsDesiredSubscriptions) {
         [&]() {
             return server.subscription_count.load() >= 1;
         }));
+    const auto subscriptions_after_connect = server.subscription_count.load();
+    EXPECT_EQ(subscriptions_after_connect, 1);
 
     publish_account_status(platform, AccountUpdateStatus::DISCONNECTED);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     platform.event_bus().drain();
 
-    publish_account_status(platform, AccountUpdateStatus::CONNECTED);
-    EXPECT_TRUE(wait_for_platform(
-        platform,
-        [&]() {
-            return server.subscription_count.load() >= 2;
+    market_data::MarketDataSubscriptionResult second_result;
+    ASSERT_TRUE(platform.subscribe_ticks(
+        market_data::TickSubscriptionRequest(
+            "EURUSD",
+            market_data::MarketDataTransport::WEBSOCKET),
+        [&second_result](market_data::MarketDataSubscriptionResult result) {
+            second_result = std::move(result);
         }));
+    ASSERT_TRUE(second_result);
+
+    pump_platform(platform);
+    EXPECT_EQ(server.subscription_count.load(), subscriptions_after_connect);
+
+    publish_account_status(platform, AccountUpdateStatus::CONNECTED);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    platform.event_bus().drain();
+    EXPECT_EQ(server.subscription_count.load(), subscriptions_after_connect);
 
     platform.shutdown();
 }

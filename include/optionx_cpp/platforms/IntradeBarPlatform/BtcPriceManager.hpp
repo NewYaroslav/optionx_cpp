@@ -33,7 +33,7 @@ namespace optionx::platforms::intrade_bar {
             m_tick_data[0].volume_digits = 5;
             m_tick_data[0].symbol = "BTCUSDT";
             m_tick_data[0].provider = to_str(PlatformType::INTRADE_BAR);
-            m_websocket_client.set_url("wss://intrade.bar", "/bapi");
+            m_websocket_client.set_url(m_ws_host, "/bapi");
             m_websocket_client.set_user_agent(OPTIONX_DEFAULT_BROWSER_USER_AGENT);
             m_websocket_client.set_accept_language(OPTIONX_DEFAULT_ACCEPT_LANGUAGE);
             m_websocket_client.set_accept_encoding(true, true, true, true);
@@ -110,6 +110,7 @@ namespace optionx::platforms::intrade_bar {
 
     private:
         kurlyk::WebSocketClient m_websocket_client; ///< WebSocket client for BTCUSDT.
+        std::string m_ws_host = make_websocket_host(AuthData{}.host); ///< Websocket host.
         std::vector<SingleTick>   m_tick_data;        ///< Container for tick data.
         bool                    m_is_error = false; ///< Flag indicating if an error has occurred.
         std::mutex m_source_mutex; ///< Protects subscription-driven source state.
@@ -168,11 +169,16 @@ namespace optionx::platforms::intrade_bar {
     }
 
     inline bool BtcPriceManager::add_market_data_subscription() {
+        bool should_connect = false;
         {
             std::lock_guard<std::mutex> lock(m_source_mutex);
+            should_connect = m_market_data_ref_count == 0 ||
+                             !m_websocket_client.is_connected();
             ++m_market_data_ref_count;
         }
-        m_websocket_client.connect();
+        if (should_connect) {
+            m_websocket_client.connect();
+        }
         return true;
     }
 
@@ -212,7 +218,8 @@ namespace optionx::platforms::intrade_bar {
             if (!success) return;
             
             if (!auth_data->auto_find_domain && !auth_data->host.empty()) {
-                m_websocket_client.set_url(make_websocket_host(auth_data->host), "/bapi");
+                m_ws_host = make_websocket_host(auth_data->host);
+                m_websocket_client.set_url(m_ws_host, "/bapi");
             }
 
             m_websocket_client.set_user_agent(auth_data->user_agent);
@@ -253,7 +260,9 @@ namespace optionx::platforms::intrade_bar {
                 std::lock_guard<std::mutex> lock(m_source_mutex);
                 m_platform_connected = true;
             }
-            m_websocket_client.connect();
+            if (!m_websocket_client.is_connected()) {
+                m_websocket_client.connect();
+            }
         } else
         if (event.status == Status::DISCONNECTED) {
             LOGIT_0TRACE();
@@ -268,7 +277,8 @@ namespace optionx::platforms::intrade_bar {
     inline void BtcPriceManager::handle_event(const events::AutoDomainSelectedEvent& event) {
         LOGIT_0TRACE();
         if (event.success && !event.selected_host.empty()) {
-            m_websocket_client.set_url(make_websocket_host(event.selected_host), "/bapi");
+            m_ws_host = make_websocket_host(event.selected_host);
+            m_websocket_client.set_url(m_ws_host, "/bapi");
             reconnect_if_active();
         }
     }
