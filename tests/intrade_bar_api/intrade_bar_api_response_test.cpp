@@ -1694,6 +1694,23 @@ TEST(IntradeBarApiResponses, FxWebSocketBarSubscriptionsAreRefCountedBySymbol) {
         [&unsubscribe_result](market_data::MarketDataSubscriptionResult result) {
             unsubscribe_result = std::move(result);
         }));
+    EXPECT_TRUE(unsubscribe_result);
+
+    market_data::MarketDataSubscriptionResult reopen_result;
+    ASSERT_TRUE(platform.subscribe_ticks(
+        market_data::TickSubscriptionRequest(
+            "EUR/USD",
+            market_data::MarketDataTransport::WEBSOCKET),
+        [&reopen_result](market_data::MarketDataSubscriptionResult result) {
+            reopen_result = std::move(result);
+        }));
+    ASSERT_TRUE(reopen_result);
+
+    ASSERT_TRUE(wait_for_platform(
+        platform,
+        [&]() {
+            return server.subscription_count.load() >= 2;
+        }));
 
     platform.shutdown();
 }
