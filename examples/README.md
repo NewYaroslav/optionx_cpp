@@ -5,6 +5,9 @@ against the current public aggregate headers.
 
 Currently maintained examples:
 
+- `account_info_hub_example.cpp` demonstrates routing account information
+  updates through `AccountInfoHub` into an `IAccountInfoSubscriber`
+  implementation.
 - `intrade_market_data_example.cpp` demonstrates Intrade Bar market-data
   subscriptions, stream status callbacks, direct bar history, and history routed
   through `MarketDataContinuityService`. Live authenticated lifecycle reads

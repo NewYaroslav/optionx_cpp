@@ -8,16 +8,71 @@
 
 namespace {
 
+class TestAccountInfo final : public optionx::BaseAccountInfoData {
+public:
+    double balance = 0.0;
+
+    std::unique_ptr<optionx::BaseAccountInfoData> clone_unique() const override {
+        return std::make_unique<TestAccountInfo>(*this);
+    }
+
+    std::shared_ptr<optionx::BaseAccountInfoData> clone_shared() const override {
+        return std::make_shared<TestAccountInfo>(*this);
+    }
+
+protected:
+    bool get_info_bool(const optionx::AccountInfoRequest& request) const override {
+        (void)request;
+        return false;
+    }
+
+    std::int64_t get_info_int64(const optionx::AccountInfoRequest& request) const override {
+        if (request.type == optionx::AccountInfoType::BALANCE) {
+            return static_cast<std::int64_t>(balance);
+        }
+        return 0;
+    }
+
+    double get_info_f64(const optionx::AccountInfoRequest& request) const override {
+        if (request.type == optionx::AccountInfoType::BALANCE) {
+            return balance;
+        }
+        return 0.0;
+    }
+
+    std::string get_info_str(const optionx::AccountInfoRequest& request) const override {
+        (void)request;
+        return {};
+    }
+
+    optionx::AccountType get_info_account_type(
+            const optionx::AccountInfoRequest& request) const override {
+        (void)request;
+        return optionx::AccountType::UNKNOWN;
+    }
+
+    optionx::CurrencyType get_info_currency(
+            const optionx::AccountInfoRequest& request) const override {
+        (void)request;
+        return optionx::CurrencyType::UNKNOWN;
+    }
+};
+
 class RecordingAccountSubscriber final
         : public optionx::components::IAccountInfoSubscriber {
 public:
     void on_account_info(const optionx::AccountInfoUpdate& update) override {
         statuses.push_back(update.status);
         messages.push_back(update.message);
+        if (update.account_info) {
+            balances.push_back(update.account_info->get_info<double>(
+                optionx::AccountInfoType::BALANCE));
+        }
     }
 
     std::vector<optionx::AccountUpdateStatus> statuses;
     std::vector<std::string> messages;
+    std::vector<double> balances;
 };
 
 optionx::AccountInfoUpdate make_update(
@@ -54,6 +109,25 @@ TEST(AccountInfoHub, RoutesUpdatesAndReplaysLastUpdate) {
 
     ASSERT_EQ(late->statuses.size(), 2u);
     EXPECT_EQ(late->statuses[1], optionx::AccountUpdateStatus::CONNECTED);
+}
+
+TEST(AccountInfoHub, RoutesStatusAndCurrentAccountSnapshot) {
+    optionx::components::AccountInfoHub hub;
+
+    auto account = std::make_shared<TestAccountInfo>();
+    account->balance = 1250.75;
+
+    const auto subscriber = std::make_shared<RecordingAccountSubscriber>();
+    hub.add_subscriber(subscriber);
+
+    hub.publish(optionx::AccountInfoUpdate(
+        account,
+        optionx::AccountUpdateStatus::BALANCE_UPDATED));
+
+    ASSERT_EQ(subscriber->statuses.size(), 1u);
+    EXPECT_EQ(subscriber->statuses[0], optionx::AccountUpdateStatus::BALANCE_UPDATED);
+    ASSERT_EQ(subscriber->balances.size(), 1u);
+    EXPECT_DOUBLE_EQ(subscriber->balances[0], 1250.75);
 }
 
 TEST(AccountInfoHub, RemovesSubscribersAndIgnoresDuplicateAdds) {

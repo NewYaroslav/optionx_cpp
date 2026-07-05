@@ -24,6 +24,7 @@
 #include "components/BaseTradeExecutionComponent.hpp"
 #include "components/BaseHttpClientComponent.hpp"
 #include "components/BaseAccountInfoHandler.hpp"
+#include "components/IAccountInfoSubscriber.hpp"
 #include "components/AccountInfoHub.hpp"
 
 #endif // OPTIONX_HEADER_COMPONENTS_HPP_INCLUDED

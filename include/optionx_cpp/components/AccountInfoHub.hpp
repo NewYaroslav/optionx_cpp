@@ -7,25 +7,15 @@
 
 namespace optionx::components {
 
-    /// \class IAccountInfoSubscriber
-    /// \brief Interface for consumers that receive account information updates.
-    class IAccountInfoSubscriber {
-    public:
-        /// \brief Virtual destructor.
-        virtual ~IAccountInfoSubscriber() = default;
-
-        /// \brief Handles an account information update.
-        /// \param update Account update payload.
-        virtual void on_account_info(const AccountInfoUpdate& update) = 0;
-    };
-
     /// \class AccountInfoHub
     /// \brief Routes a single account-info callback to multiple subscribers.
     ///
     /// The hub is a lightweight adapter for platform-level `on_account_info()`.
     /// It does not own platform lifecycle or account storage; it only fans out
     /// immutable `AccountInfoUpdate` payloads and optionally replays the latest
-    /// update to late subscribers.
+    /// update to late subscribers. Subscribers are stored as weak references,
+    /// so caller code must keep subscriber objects alive while they should
+    /// receive callbacks.
     class AccountInfoHub {
     public:
         /// \brief Constructs an account-info hub.
@@ -41,6 +31,9 @@ namespace optionx::components {
         AccountInfoHub& operator=(AccountInfoHub&&) = delete;
 
         /// \brief Adds a shared subscriber.
+        /// \details The hub stores only a weak reference; the caller must keep
+        ///          the shared subscriber alive while it should receive account
+        ///          callbacks.
         /// \param subscriber Subscriber object; ignored when null.
         void add_subscriber(std::shared_ptr<IAccountInfoSubscriber> subscriber) {
             if (!subscriber) return;
