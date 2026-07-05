@@ -503,16 +503,16 @@ namespace optionx::platforms::intrade_bar {
     }
 
     inline void MarketDataSubscriptionManager::process() {
-        std::vector<market_data::TickDataBatch> batches;
+        std::vector<market_data::TickDataBatch> tick_batches;
         std::vector<market_data::BarDataBatch> bar_batches;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            batches.swap(m_pending_tick_batches);
+            tick_batches.swap(m_pending_tick_batches);
             bar_batches.swap(m_pending_bar_batches);
         }
 
         if (m_ticks_callback) {
-            for (auto& batch : batches) {
+            for (auto& batch : tick_batches) {
                 if (!batch.empty()) {
                     m_ticks_callback(
                         std::make_unique<market_data::TickDataBatch>(std::move(batch)));
