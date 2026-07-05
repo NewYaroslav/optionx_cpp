@@ -128,9 +128,13 @@ Contract rules:
 - `on_market_data_status()` is a separate stream-status callback. Data callbacks
   should carry data batches, not connection lifecycle sentinel payloads.
 - `on_market_data_status()` is a stream-level event bus, not a per-subscription
-  status API. Status updates are keyed by `provider_id`, payload type, symbol,
-  timeframe and transport; providers are not required to replay cached `READY`
+  status API. Status updates are keyed by a valid subscription handle when one
+  is present; otherwise they are keyed by `provider_id`, payload type, symbol,
+  timeframe and transport. Providers are not required to replay cached `READY`
   status to subscriptions created after the source was already ready.
+- `MarketDataStatusUpdate::subscription` carries the related subscription handle
+  when a provider or router can identify a concrete subscription. If the handle
+  is invalid, the update describes the underlying stream/source.
 - `MarketDataHub` is the optional fan-out layer for applications that need many
   subscriber objects. It binds to the provider's single tick/bar/status
   callbacks, forwards batches to `IMarketDataSubscriber` instances, and replays
@@ -180,8 +184,8 @@ Future market-data routing work:
   subscribers and replays cached status for newly created subscription handles.
 - Add a move-only RAII `SubscriptionHandle` that unsubscribes automatically and
   delegates to the router by `SubscriptionId`.
-- Add `SubscriptionId` or stream-key context to routed market-data events so a
-  subscriber can distinguish which logical subscription produced a status/data
+- Have the router fill concrete subscription context in routed status/data
+  events so a subscriber can distinguish which logical subscription produced an
   update.
 - Consider `MarketDataSubscriberBase` as convenience sugar for bots that want to
   subscribe from inside their own methods while keeping `IMarketDataSubscriber`

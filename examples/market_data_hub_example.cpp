@@ -71,17 +71,28 @@ public:
                   << " "
                   << optionx::market_data::to_str(update.type)
                   << " -> "
-                  << optionx::market_data::to_str(update.status)
-                  << '\n';
+                  << optionx::market_data::to_str(update.status);
+        if (update.subscription.valid()) {
+            std::cout << " subscription_id=" << update.subscription.id;
+        }
+        std::cout << '\n';
     }
 };
 
 optionx::market_data::MarketDataStatusUpdate make_ready_status() {
+    const optionx::market_data::TickSubscriptionRequest request(
+        "BTCUSDT",
+        optionx::market_data::MarketDataTransport::WEBSOCKET);
+
     optionx::market_data::MarketDataStatusUpdate update;
     update.provider_id = 1;
+    update.subscription = optionx::market_data::MarketDataSubscriptionHandle::from_tick_request(
+        update.provider_id,
+        42,
+        request);
     update.type = optionx::market_data::MarketDataType::TICKS;
-    update.symbol = "BTCUSDT";
-    update.transport = optionx::market_data::MarketDataTransport::WEBSOCKET;
+    update.symbol = request.symbol;
+    update.transport = request.transport;
     update.status = optionx::market_data::MarketDataStreamStatus::READY;
     return update;
 }

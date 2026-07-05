@@ -914,6 +914,7 @@ namespace optionx::platforms::intrade_bar {
                 }
 
                 auto bar_update = update;
+                bar_update.subscription = subscription;
                 bar_update.type = market_data::MarketDataType::BARS;
                 bar_update.symbol = subscription.symbol;
                 bar_update.timeframe = subscription.timeframe;

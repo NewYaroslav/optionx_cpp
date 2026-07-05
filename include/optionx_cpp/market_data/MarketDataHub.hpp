@@ -26,6 +26,10 @@ namespace optionx::market_data {
     ///          API; a future router layer should replay status for newly
     ///          created subscription handles.
     ///
+    ///          When MarketDataStatusUpdate::subscription is valid, status
+    ///          caching keeps that subscription context distinct from other
+    ///          subscriptions that may share the same physical stream.
+    ///
     ///          The hub synchronizes subscriber and status-cache containers and
     ///          never invokes subscriber callbacks while holding its mutex. For
     ///          deterministic replay/live ordering, marshal add/publish calls
@@ -242,6 +246,13 @@ namespace optionx::market_data {
     inline bool MarketDataHub::same_status_key(
             const MarketDataStatusUpdate& lhs,
             const MarketDataStatusUpdate& rhs) noexcept {
+        if (lhs.subscription.valid() || rhs.subscription.valid()) {
+            return lhs.subscription.valid() &&
+                   rhs.subscription.valid() &&
+                   lhs.subscription.provider_id == rhs.subscription.provider_id &&
+                   lhs.subscription.id == rhs.subscription.id;
+        }
+
         return lhs.provider_id == rhs.provider_id &&
                lhs.type == rhs.type &&
                lhs.symbol == rhs.symbol &&

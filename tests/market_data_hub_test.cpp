@@ -69,12 +69,20 @@ BarDataBatch make_bar_batch() {
     return batch;
 }
 
-MarketDataStatusUpdate make_ready_status() {
+MarketDataStatusUpdate make_ready_status(SubscriptionId subscription_id = 42) {
+    const TickSubscriptionRequest request(
+        "BTCUSDT",
+        MarketDataTransport::WEBSOCKET);
+
     MarketDataStatusUpdate update;
     update.provider_id = 17;
+    update.subscription = MarketDataSubscriptionHandle::from_tick_request(
+        update.provider_id,
+        subscription_id,
+        request);
     update.type = MarketDataType::TICKS;
-    update.symbol = "BTCUSDT";
-    update.transport = MarketDataTransport::WEBSOCKET;
+    update.symbol = request.symbol;
+    update.transport = request.transport;
     update.status = MarketDataStreamStatus::READY;
     return update;
 }
@@ -102,6 +110,8 @@ TEST(MarketDataHub, RoutesProviderCallbacksToSubscribers) {
     ASSERT_EQ(first->statuses.size(), 1u);
     ASSERT_EQ(second->statuses.size(), 1u);
     EXPECT_EQ(first->statuses[0].status, MarketDataStreamStatus::READY);
+    ASSERT_TRUE(first->statuses[0].subscription.valid());
+    EXPECT_EQ(first->statuses[0].subscription.id, 42u);
     EXPECT_EQ(second->statuses[0].symbol, "BTCUSDT");
 
     ASSERT_EQ(first->ticks.size(), 1u);
@@ -142,6 +152,22 @@ TEST(MarketDataHub, ReplaysCachedStatusToLateSubscribers) {
 
     ASSERT_NE(quiet_id, MarketDataHub::INVALID_SUBSCRIBER_ID);
     EXPECT_TRUE(quiet->statuses.empty());
+}
+
+TEST(MarketDataHub, ReplaysSubscriptionScopedStatusesWithoutCollapsingStreamKey) {
+    MarketDataHub hub;
+    hub.publish_status(make_ready_status(42));
+    hub.publish_status(make_ready_status(43));
+
+    auto replayed = std::make_shared<RecordingMarketDataSubscriber>();
+    const auto replayed_id = hub.add_subscriber(replayed);
+
+    ASSERT_NE(replayed_id, MarketDataHub::INVALID_SUBSCRIBER_ID);
+    ASSERT_EQ(replayed->statuses.size(), 2u);
+    EXPECT_EQ(replayed->statuses[0].subscription.id, 42u);
+    EXPECT_EQ(replayed->statuses[1].subscription.id, 43u);
+    EXPECT_EQ(replayed->statuses[0].symbol, "BTCUSDT");
+    EXPECT_EQ(replayed->statuses[1].symbol, "BTCUSDT");
 }
 
 TEST(MarketDataHub, PrunesExpiredSubscribersAndUnbindsProviderCallbacks) {
