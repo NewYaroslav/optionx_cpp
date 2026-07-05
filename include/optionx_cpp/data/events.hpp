@@ -17,6 +17,7 @@
 #include "events/WebSocketResultEvent.hpp"
 #include "events/AutoDomainSelectedEvent.hpp"
 #include "events/AccountInfoUpdateEvent.hpp"
+#include "events/TradingConditionUpdateEvent.hpp"
 #include "events/BalanceRequestEvent.hpp"
 #include "events/PriceUpdateEvent.hpp"
 #include "events/ConnectRequestEvent.hpp"

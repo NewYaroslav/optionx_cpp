@@ -1,11 +1,15 @@
 #pragma once
-#ifndef _OPTIONX_ACCOUNT_HPP_INCLUDED
-#define _OPTIONX_ACCOUNT_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_ACCOUNT_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_ACCOUNT_HPP_INCLUDED
 
 /// \file account.hpp
 /// \brief Core components for account management and data querying.
 
 #include <cstdint>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 #include <kurlyk/types.hpp>
 
@@ -16,6 +20,7 @@
 #include "account/IAuthData.hpp"
 #include "account/BaseAccountInfoData.hpp"
 #include "account/AccountInfoUpdate.hpp"
+#include "account/TradingConditionUpdate.hpp"
 #include "account/ConnectionResult.hpp"
 
-#endif // _OPTIONX_ACCOUNT_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_ACCOUNT_HPP_INCLUDED

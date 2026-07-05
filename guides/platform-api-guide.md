@@ -39,6 +39,7 @@
 | `disconnect(callback)` | Публикует `DisconnectRequestEvent` | Реальное отключение делает manager |
 | `is_connected()` | Читает `AccountInfoType::CONNECTION_STATUS` | Источник правды - account info provider |
 | `get_info<T>(...)` | Typed read из account info | Нужен корректный ожидаемый тип |
+| `on_trading_condition()` | Подписаться на изменения payout/лимитов/доступности торговли | Возвращает `TradingConditionUpdate` |
 | `run(bool start_worker_thread = true)` | Добавляет initialize и loop tasks | `run(false)` требует ручного `process()` |
 | `process()` | Один тик task manager | Используй при внешнем event loop |
 | `shutdown()` | Остановить tasks/components и drain events | Idempotent; вызывается в destructor |

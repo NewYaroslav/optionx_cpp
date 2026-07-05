@@ -216,6 +216,31 @@ Future market-data routing work:
   subscribe from inside their own methods while keeping `IMarketDataSubscriber`
   as a pure receiving interface.
 
+## Trading Condition Subscriber Contract
+
+`TradingConditionUpdate` is the payload for broker trading conditions: payouts,
+symbol tradability, market open/closed state, amount limits, duration limits,
+refund limits and max open trades. All condition fields are optional because
+brokers can update them independently.
+
+`components::BaseTradingConditionHandler` bridges
+`events::TradingConditionUpdateEvent` into the platform callback exposed as
+`BaseTradingPlatform::on_trading_condition()`.
+
+`components::TradingConditionHub` is an optional fan-out adapter for that
+callback. It caches the latest update per `(platform_type, account_type,
+currency, option_type, symbol)` scope and may replay cached updates to late
+subscribers.
+
+Rules:
+
+- Use `AccountInfoUpdate` for account lifecycle and account metadata changes.
+- Use `TradingConditionUpdate` for broker trading constraints and payout/session
+  changes.
+- Do not encode trading-condition changes as fake ticks, bars or market-data
+  status events. Market-data subscriptions report prices; condition subscribers
+  report whether and how a trade can currently be opened.
+
 ## Typed Broker Result Pattern
 
 Broker HTTP adapters используют typed result wrappers, чтобы не смешивать

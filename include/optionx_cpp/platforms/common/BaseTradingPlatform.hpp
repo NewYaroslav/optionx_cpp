@@ -15,7 +15,8 @@ namespace optionx::platforms {
             : m_account_info(std::move(account_info)),
               m_account_provider(m_account_info),
               m_event_bus(), m_task_manager(),
-              m_account_info_handler(m_event_bus) {
+              m_account_info_handler(m_event_bus),
+              m_trading_condition_handler(m_event_bus) {
         }
 
         virtual ~BaseTradingPlatform() noexcept {
@@ -25,6 +26,11 @@ namespace optionx::platforms {
         /// \brief Returns a reference to the account info callback.
         virtual account_info_callback_t& on_account_info() {
             return m_account_info_handler.on_account_info();
+        }
+
+        /// \brief Returns a reference to the trading-condition callback.
+        virtual trading_condition_callback_t& on_trading_condition() {
+            return m_trading_condition_handler.on_trading_condition();
         }
 
         /// \brief Configures the endpoint with a supported platform configuration DTO.
@@ -229,6 +235,7 @@ namespace optionx::platforms {
         utils::EventBus                      m_event_bus;
         utils::TaskManager                   m_task_manager;
         components::BaseAccountInfoHandler        m_account_info_handler;
+        components::BaseTradingConditionHandler    m_trading_condition_handler;
         std::vector<components::BaseComponent*>    m_components;
         std::mutex                           m_lifecycle_mutex;
         std::atomic<bool>                    m_running{false};
