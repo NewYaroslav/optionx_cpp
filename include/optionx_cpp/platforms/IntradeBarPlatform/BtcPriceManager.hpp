@@ -172,8 +172,7 @@ namespace optionx::platforms::intrade_bar {
         bool should_connect = false;
         {
             std::lock_guard<std::mutex> lock(m_source_mutex);
-            should_connect = m_market_data_ref_count == 0 ||
-                             !m_websocket_client.is_connected();
+            should_connect = !should_connect_no_lock();
             ++m_market_data_ref_count;
         }
         if (should_connect) {
@@ -256,11 +255,13 @@ namespace optionx::platforms::intrade_bar {
         using Status = events::AccountInfoUpdateEvent::Status;
         if (event.status == Status::CONNECTED) {
             LOGIT_0TRACE();
+            bool should_connect = false;
             {
                 std::lock_guard<std::mutex> lock(m_source_mutex);
+                should_connect = m_market_data_ref_count == 0;
                 m_platform_connected = true;
             }
-            if (!m_websocket_client.is_connected()) {
+            if (should_connect && !m_websocket_client.is_connected()) {
                 m_websocket_client.connect();
             }
         } else
