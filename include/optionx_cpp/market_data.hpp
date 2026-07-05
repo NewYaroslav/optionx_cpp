@@ -23,6 +23,7 @@
 #include "market_data/MarketDataBatch.hpp"
 #include "market_data/BaseMarketDataProvider.hpp"
 #include "market_data/MarketDataContinuityService.hpp"
+#include "market_data/IMarketDataSubscriber.hpp"
 #include "market_data/MarketDataHub.hpp"
 
 #endif // OPTIONX_HEADER_MARKET_DATA_HPP_INCLUDED

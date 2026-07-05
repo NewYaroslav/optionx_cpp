@@ -134,8 +134,17 @@ Contract rules:
 - `MarketDataHub` is the optional fan-out layer for applications that need many
   subscriber objects. It binds to the provider's single tick/bar/status
   callbacks, forwards batches to `IMarketDataSubscriber` instances, and replays
-  cached stream statuses to late subscribers. It does not own provider
-  subscriptions and does not replay tick or bar payloads.
+  cached stream statuses to late subscribers. It stores subscribers as weak
+  references, so caller code must keep subscriber objects alive while they
+  should receive callbacks.
+- `MarketDataHub` does not own provider subscriptions and does not replay tick
+  or bar payloads. Its status replay happens when a subscriber object is added;
+  it is not tied to creating a new provider subscription. Per-subscription
+  status replay belongs in a future router/RAII handle layer.
+- `MarketDataHub` protects its containers and invokes callbacks outside its
+  mutex, but strict replay/live ordering is guaranteed only when add/publish
+  calls are marshalled through one owner loop, such as platform `process()`.
+  A fully concurrent ordered dispatcher is a separate design.
 - `apply_subscriptions()` applies subscription changes atomically. The old
   single-operation helpers (`subscribe_ticks`, `subscribe_bars`, `unsubscribe`)
   are wrappers around a one-operation batch.
@@ -164,6 +173,19 @@ Contract rules:
 - `MarketDataContinuityService` is the thin helper for routing recovered history
   into the same bar batch pipeline. It marks payload bars as
   `HISTORICAL` and, for gap recovery, `BACKFILL`.
+
+Future market-data routing work:
+
+- Add a `MarketDataRouter` layer that binds provider subscriptions to concrete
+  subscribers and replays cached status for newly created subscription handles.
+- Add a move-only RAII `SubscriptionHandle` that unsubscribes automatically and
+  delegates to the router by `SubscriptionId`.
+- Add `SubscriptionId` or stream-key context to routed market-data events so a
+  subscriber can distinguish which logical subscription produced a status/data
+  update.
+- Consider `MarketDataSubscriberBase` as convenience sugar for bots that want to
+  subscribe from inside their own methods while keeping `IMarketDataSubscriber`
+  as a pure receiving interface.
 
 ## Typed Broker Result Pattern
 

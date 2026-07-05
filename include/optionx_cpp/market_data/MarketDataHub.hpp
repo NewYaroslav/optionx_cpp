@@ -7,35 +7,6 @@
 
 namespace optionx::market_data {
 
-    /// \class IMarketDataSubscriber
-    /// \brief Receives routed market-data batches and stream status updates.
-    /// \details This interface is intended for bots, strategy services, and
-    ///          time-series builders that prefer one subscriber object over
-    ///          assigning global provider callbacks directly.
-    class IMarketDataSubscriber {
-    public:
-        /// \brief Virtual destructor for subscriber implementations.
-        virtual ~IMarketDataSubscriber() = default;
-
-        /// \brief Receives a live tick-data batch.
-        /// \param batch Tick batch routed from a provider.
-        virtual void on_tick_data(const TickDataBatch& batch) {
-            (void)batch;
-        }
-
-        /// \brief Receives a live bar-data batch.
-        /// \param batch Bar batch routed from a provider.
-        virtual void on_bar_data(const BarDataBatch& batch) {
-            (void)batch;
-        }
-
-        /// \brief Receives a live market-data stream status update.
-        /// \param update Stream status routed from a provider.
-        virtual void on_market_data_status(const MarketDataStatusUpdate& update) {
-            (void)update;
-        }
-    };
-
     /// \struct MarketDataSubscriberOptions
     /// \brief Options used when adding a subscriber to MarketDataHub.
     struct MarketDataSubscriberOptions {
@@ -45,9 +16,21 @@ namespace optionx::market_data {
     /// \class MarketDataHub
     /// \brief Fan-out adapter from provider callbacks to many subscribers.
     /// \details The hub is intentionally thin: it does not own provider
-    ///          subscriptions and does not replay ticks or bars. It only routes
-    ///          live batches to current subscribers and caches the last status
-    ///          per stream key so late subscribers can learn current readiness.
+    ///          subscriptions and does not replay ticks or bars. It stores
+    ///          subscriber slots as weak references, routes live batches to
+    ///          current subscribers, and caches the last status per stream key
+    ///          so late subscriber objects can learn current stream readiness.
+    ///
+    ///          Status replay is stream-level and happens when a subscriber
+    ///          slot is added to the hub. It is not a per-subscription status
+    ///          API; a future router layer should replay status for newly
+    ///          created subscription handles.
+    ///
+    ///          The hub synchronizes subscriber and status-cache containers and
+    ///          never invokes subscriber callbacks while holding its mutex. For
+    ///          deterministic replay/live ordering, marshal add/publish calls
+    ///          through the provider owner loop, such as platform process().
+    ///          Concurrent add/publish calls may interleave callback delivery.
     class MarketDataHub {
     public:
         /// \brief Runtime identifier of a subscriber slot in the hub.
@@ -57,7 +40,7 @@ namespace optionx::market_data {
         static constexpr SubscriberId INVALID_SUBSCRIBER_ID = 0;
 
         /// \brief Adds a weak subscriber and optionally replays cached status updates.
-        /// \param subscriber Subscriber object. The hub stores the weak reference.
+        /// \param subscriber Subscriber object. The hub stores this weak reference only.
         /// \param options Subscriber delivery options.
         /// \return Non-zero subscriber ID, or INVALID_SUBSCRIBER_ID for null/expired input.
         SubscriberId add_weak_subscriber(
@@ -65,6 +48,9 @@ namespace optionx::market_data {
                 MarketDataSubscriberOptions options = {});
 
         /// \brief Adds a subscriber and optionally replays cached status updates.
+        /// \details The hub still stores only a weak reference; the caller must
+        ///          keep the shared subscriber alive while it should receive
+        ///          market-data callbacks.
         /// \param subscriber Subscriber object.
         /// \param options Subscriber delivery options.
         /// \return Non-zero subscriber ID, or INVALID_SUBSCRIBER_ID for null input.
