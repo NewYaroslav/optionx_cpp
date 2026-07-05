@@ -64,7 +64,7 @@ namespace optionx::platforms::intrade_bar {
             bool is_error = false;     ///< Suppresses repeated error logging.
         };
 
-        std::string m_ws_host = "wss://intrade.bar"; ///< Websocket host.
+        std::string m_ws_host = make_websocket_host(AuthData{}.host); ///< Websocket host.
         std::string m_user_agent = OPTIONX_DEFAULT_BROWSER_USER_AGENT; ///< User-Agent header.
         std::string m_accept_language = OPTIONX_DEFAULT_ACCEPT_LANGUAGE; ///< Accept-Language header.
         std::string m_proxy_server; ///< Proxy address in <ip:port> format.
@@ -75,7 +75,7 @@ namespace optionx::platforms::intrade_bar {
         market_data::ProviderInstanceId m_provider_id =
             market_data::kInvalidProviderInstanceId; ///< Optional status provider ID.
         market_data::BaseMarketDataProvider::status_callback_t* m_status_callback = nullptr; ///< Optional status sink.
-        bool m_platform_connected = false; ///< Whether physical sockets may be connected.
+        bool m_platform_connected = false; ///< Whether the trading account lifecycle is connected.
 
         /// \brief Configures a websocket client from current manager settings.
         void configure_client_no_lock(kurlyk::WebSocketClient& client) const;
@@ -93,6 +93,9 @@ namespace optionx::platforms::intrade_bar {
 
         /// \brief Reconnects all active streams after a host/proxy/header change.
         void reconnect_all_streams();
+
+        /// \brief Connects active streams that are not currently connected.
+        void connect_all_streams();
 
         /// \brief Disconnects all active streams without changing subscription refcounts.
         void disconnect_all_streams();
@@ -144,10 +147,11 @@ namespace optionx::platforms::intrade_bar {
                 stream = create_stream_no_lock(normalized, stream_symbol);
                 stream->ref_count = 1;
                 m_streams.emplace(normalized, stream);
-                should_connect = m_platform_connected;
+                should_connect = true;
             } else {
                 stream = it->second;
                 ++stream->ref_count;
+                should_connect = !stream->client->is_connected();
             }
         }
 
@@ -286,7 +290,7 @@ namespace optionx::platforms::intrade_bar {
         bool should_connect = false;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            should_connect = m_platform_connected;
+            should_connect = m_platform_connected || !m_streams.empty();
             for (auto& [symbol, stream] : m_streams) {
                 (void)symbol;
                 configure_client_no_lock(*stream->client);
@@ -297,6 +301,22 @@ namespace optionx::platforms::intrade_bar {
             for (auto& stream : streams) {
                 connect_stream(stream);
             }
+        }
+    }
+
+    inline void FxPriceWebSocketManager::connect_all_streams() {
+        std::vector<std::shared_ptr<FxStreamState>> streams;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            streams.reserve(m_streams.size());
+            for (auto& [symbol, stream] : m_streams) {
+                (void)symbol;
+                streams.push_back(stream);
+            }
+        }
+
+        for (auto& stream : streams) {
+            connect_stream(stream);
         }
     }
 
@@ -447,13 +467,12 @@ namespace optionx::platforms::intrade_bar {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 m_platform_connected = true;
             }
-            reconnect_all_streams();
+            connect_all_streams();
         } else if (event.status == Status::DISCONNECTED) {
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 m_platform_connected = false;
             }
-            disconnect_all_streams();
         }
     }
 

@@ -27,12 +27,14 @@ namespace optionx::platforms::intrade_bar {
                 ticks_callback_t& ticks_callback,
                 bars_callback_t& bars_callback,
                 status_callback_t& status_callback,
+                BtcPriceManager* btc_websocket_source = nullptr,
                 FxPriceWebSocketManager* fx_websocket_source = nullptr)
                 : BaseComponent(platform.event_bus()),
                   m_provider_id(provider_id),
                   m_ticks_callback(ticks_callback),
                   m_bars_callback(bars_callback),
                   m_status_callback(status_callback),
+                  m_btc_websocket_source(btc_websocket_source),
                   m_fx_websocket_source(fx_websocket_source) {
             m_source_status_callback =
                 [this](market_data::MarketDataStatusUpdate update) {
@@ -92,6 +94,7 @@ namespace optionx::platforms::intrade_bar {
         bars_callback_t&  m_bars_callback;  ///< Platform bar data callback.
         status_callback_t& m_status_callback; ///< Platform stream status callback.
         status_callback_t m_source_status_callback; ///< Internal source status callback.
+        BtcPriceManager* m_btc_websocket_source = nullptr; ///< Optional BTC websocket source.
         FxPriceWebSocketManager* m_fx_websocket_source = nullptr; ///< Optional FX websocket source.
         std::unordered_map<
             market_data::SubscriptionId,
@@ -123,6 +126,10 @@ namespace optionx::platforms::intrade_bar {
 
         /// \brief Returns true when a subscription should activate the FX websocket source.
         static bool uses_fx_websocket_source(
+                const market_data::MarketDataSubscriptionHandle& subscription);
+
+        /// \brief Returns true when a subscription should activate the BTC websocket source.
+        static bool uses_btc_websocket_source(
                 const market_data::MarketDataSubscriptionHandle& subscription);
 
         /// \brief Selects the concrete Intrade Bar tick source for a tick request.
@@ -432,6 +439,71 @@ namespace optionx::platforms::intrade_bar {
             return false;
         }
 
+        std::vector<market_data::MarketDataSubscriptionHandle> activated_btc_subscriptions;
+        if (m_btc_websocket_source) {
+            for (const auto& subscription : removed_subscriptions) {
+                if (uses_btc_websocket_source(subscription)) {
+                    m_btc_websocket_source->remove_market_data_subscription();
+                }
+            }
+
+            for (std::size_t i = 0; i < added_subscriptions.size(); ++i) {
+                const auto& subscription = added_subscriptions[i];
+                const auto source = i < added_sources.size()
+                    ? added_sources[i]
+                    : TickSource::UNKNOWN;
+                if (source != TickSource::BTC_WEBSOCKET) continue;
+
+                if (!m_btc_websocket_source->add_market_data_subscription()) {
+                    for (const auto& activated : activated_btc_subscriptions) {
+                        (void)activated;
+                        m_btc_websocket_source->remove_market_data_subscription();
+                    }
+                    for (const auto& removed : removed_subscriptions) {
+                        if (uses_btc_websocket_source(removed) &&
+                            !m_btc_websocket_source->add_market_data_subscription()) {
+                            LOGIT_WARN(
+                                "Failed to restore Intrade Bar BTC websocket tick source for ",
+                                removed.symbol,
+                                " after subscription batch rollback.");
+                        }
+                    }
+
+                    {
+                        std::lock_guard<std::mutex> lock(m_mutex);
+                        for (const auto& added : added_subscriptions) {
+                            m_tick_subscriptions.erase(added.id);
+                            m_bar_subscriptions.erase(added.id);
+                            m_bar_states.erase(added.id);
+                        }
+                        for (const auto& removed : removed_subscriptions) {
+                            if (removed.stream_type == market_data::MarketDataType::BARS) {
+                                m_bar_subscriptions[removed.id] = removed;
+                            } else {
+                                m_tick_subscriptions[removed.id] = removed;
+                            }
+                        }
+                        for (const auto& [id, state] : removed_bar_states) {
+                            m_bar_states[id] = state;
+                        }
+                        m_next_subscription_id = previous_next_subscription_id;
+                    }
+
+                    dispatch_subscription_batch_result(
+                        std::move(callback),
+                        market_data::MarketDataSubscriptionBatchResult::failed(
+                            market_data::MarketDataSubscriptionStatus::FAILED,
+                            "Failed to activate Intrade Bar BTC websocket tick source.",
+                            {market_data::MarketDataSubscriptionResult::failed(
+                                subscription,
+                                market_data::MarketDataSubscriptionStatus::FAILED,
+                                "Failed to activate Intrade Bar BTC websocket tick source.")}));
+                    return false;
+                }
+                activated_btc_subscriptions.push_back(subscription);
+            }
+        }
+
         if (m_fx_websocket_source) {
             for (const auto& subscription : removed_subscriptions) {
                 if (uses_fx_websocket_source(subscription)) {
@@ -450,6 +522,21 @@ namespace optionx::platforms::intrade_bar {
                 if (!m_fx_websocket_source->add_symbol_subscription(subscription.symbol)) {
                     for (const auto& activated : activated_fx_subscriptions) {
                         m_fx_websocket_source->remove_symbol_subscription(activated.symbol);
+                    }
+                    if (m_btc_websocket_source) {
+                        for (const auto& activated : activated_btc_subscriptions) {
+                            (void)activated;
+                            m_btc_websocket_source->remove_market_data_subscription();
+                        }
+                        for (const auto& removed : removed_subscriptions) {
+                            if (uses_btc_websocket_source(removed) &&
+                                !m_btc_websocket_source->add_market_data_subscription()) {
+                                LOGIT_WARN(
+                                    "Failed to restore Intrade Bar BTC websocket tick source for ",
+                                    removed.symbol,
+                                    " after subscription batch rollback.");
+                            }
+                        }
                     }
                     for (const auto& removed : removed_subscriptions) {
                         if (uses_fx_websocket_source(removed) &&
@@ -572,6 +659,13 @@ namespace optionx::platforms::intrade_bar {
                 }
             }
         }
+        if (m_btc_websocket_source) {
+            for (const auto& subscription : subscriptions) {
+                if (uses_btc_websocket_source(subscription)) {
+                    m_btc_websocket_source->remove_market_data_subscription();
+                }
+            }
+        }
 
         std::lock_guard<std::mutex> lock(m_mutex);
         m_tick_subscriptions.clear();
@@ -602,6 +696,16 @@ namespace optionx::platforms::intrade_bar {
         }
         return subscription.transport == market_data::MarketDataTransport::WEBSOCKET &&
                is_fxconnect_supported_symbol(subscription.symbol);
+    }
+
+    inline bool MarketDataSubscriptionManager::uses_btc_websocket_source(
+            const market_data::MarketDataSubscriptionHandle& subscription) {
+        if (subscription.stream_type != market_data::MarketDataType::TICKS &&
+            subscription.stream_type != market_data::MarketDataType::BARS) {
+            return false;
+        }
+        return subscription.transport == market_data::MarketDataTransport::WEBSOCKET &&
+               is_btc_symbol(subscription.symbol);
     }
 
     inline MarketDataSubscriptionManager::TickSource

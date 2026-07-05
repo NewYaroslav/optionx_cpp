@@ -148,6 +148,11 @@ Contract rules:
   even when no public subscription exists, because trading logic can also need
   current prices. Public subscriptions are the routing contract for external
   consumers, not necessarily the only source lifecycle.
+- Public market-data subscriptions are independent from the trading account
+  connection state. An account `DISCONNECTED` status must not tear down active
+  quote streams that were started by public subscriptions, while an explicit
+  platform disconnect or shutdown is still a full stop and should close
+  physical streams.
 - Historical bars use `BarHistoryResult` so callers can distinguish an empty
   successful range from transport, validation or parser failures.
 - `MarketDataContinuityService` is the thin helper for routing recovered history
