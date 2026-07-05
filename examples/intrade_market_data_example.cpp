@@ -109,8 +109,18 @@ int main() {
         .subscribe_ticks(market_data::TickSubscriptionRequest(
             "BTCUSDT",
             market_data::MarketDataTransport::WEBSOCKET))
+        .subscribe_bars(market_data::BarSubscriptionRequest(
+            "BTCUSDT",
+            60,
+            BarPriceSource::LAST,
+            market_data::MarketDataTransport::WEBSOCKET))
         .subscribe_ticks(market_data::TickSubscriptionRequest(
             "EUR/USD",
+            market_data::MarketDataTransport::POLLING))
+        .subscribe_bars(market_data::BarSubscriptionRequest(
+            "EUR/USD",
+            60,
+            BarPriceSource::MID,
             market_data::MarketDataTransport::POLLING))
         .subscribe_ticks(market_data::TickSubscriptionRequest(
             "EUR/USD",
