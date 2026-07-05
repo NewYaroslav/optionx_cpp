@@ -38,6 +38,9 @@
   include point вместо ручного восстановления порядка зависимостей в leaf headers.
 - Внутри `include/optionx_cpp` не подключай headers через `"optionx_cpp/..."`;
   используй локальные пути от `include/optionx_cpp`, например `"data/..."`.
+- Для project-owned C/C++ headers используй `#pragma once` и non-reserved
+  include guard без leading underscore, например
+  `OPTIONX_HEADER_<PATH>_<FILE>_<EXT>_INCLUDED`.
 - Проект ориентирован на C++17 и CMake `>= 3.18`.
 - Переиспользуй `utils::EventBus`, `utils::EventMediator`, `utils::TaskManager`
   и `Base*Module` вместо локальных аналогов pub-sub, loop и task queue.
