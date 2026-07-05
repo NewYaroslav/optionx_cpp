@@ -1636,6 +1636,68 @@ TEST(IntradeBarApiResponses, FxWebSocketSubscriptionsAreRefCountedBySymbol) {
     platform.shutdown();
 }
 
+TEST(IntradeBarApiResponses, FxWebSocketBarSubscriptionsAreRefCountedBySymbol) {
+    LocalFxConnectServer server;
+    ASSERT_TRUE(server.start());
+
+    IntradeBarPlatform platform;
+    auto auth = std::make_unique<AuthData>();
+    auth->set_email_password("user@example.test", "unused");
+    auth->host = server.host();
+    ASSERT_TRUE(platform.configure_auth(std::move(auth)));
+    platform.event_bus().drain();
+
+    market_data::MarketDataSubscriptionResult tick_result;
+    market_data::MarketDataSubscriptionResult bar_result;
+    ASSERT_TRUE(platform.subscribe_ticks(
+        market_data::TickSubscriptionRequest(
+            "EUR/USD",
+            market_data::MarketDataTransport::WEBSOCKET),
+        [&tick_result](market_data::MarketDataSubscriptionResult result) {
+            tick_result = std::move(result);
+        }));
+    ASSERT_TRUE(platform.subscribe_bars(
+        market_data::BarSubscriptionRequest(
+            "EURUSD",
+            60,
+            BarPriceSource::MID,
+            market_data::MarketDataTransport::WEBSOCKET),
+        [&bar_result](market_data::MarketDataSubscriptionResult result) {
+            bar_result = std::move(result);
+        }));
+    ASSERT_TRUE(tick_result);
+    ASSERT_TRUE(bar_result);
+
+    publish_account_status(platform, AccountUpdateStatus::CONNECTED);
+    ASSERT_TRUE(wait_for_platform(
+        platform,
+        [&]() {
+            return server.subscription_count.load() >= 1;
+        }));
+
+    EXPECT_EQ(server.subscription_count.load(), 1);
+
+    market_data::MarketDataSubscriptionResult unsubscribe_result;
+    EXPECT_TRUE(platform.unsubscribe(
+        tick_result.subscription,
+        [&unsubscribe_result](market_data::MarketDataSubscriptionResult result) {
+            unsubscribe_result = std::move(result);
+        }));
+    EXPECT_TRUE(unsubscribe_result);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    platform.event_bus().drain();
+    EXPECT_EQ(server.subscription_count.load(), 1);
+
+    EXPECT_TRUE(platform.unsubscribe(
+        bar_result.subscription,
+        [&unsubscribe_result](market_data::MarketDataSubscriptionResult result) {
+            unsubscribe_result = std::move(result);
+        }));
+
+    platform.shutdown();
+}
+
 TEST(IntradeBarApiResponses, FxWebSocketReconnectsDesiredSubscriptions) {
     LocalFxConnectServer server;
     ASSERT_TRUE(server.start());
