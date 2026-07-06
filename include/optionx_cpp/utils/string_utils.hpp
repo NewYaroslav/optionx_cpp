@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_STRING_UTILS_HPP_INCLUDED
-#define _OPTIONX_STRING_UTILS_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_STRING_UTILS_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_STRING_UTILS_HPP_INCLUDED
 
 /// \file string_utils.hpp
 /// \brief Provides utility functions for string manipulation, hex conversion, and formatting.
@@ -207,4 +207,4 @@ namespace optionx::utils {
 
 } // namespace optionx
 
-#endif // _OPTIONX_STRING_UTILS_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_STRING_UTILS_HPP_INCLUDED

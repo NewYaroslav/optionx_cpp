@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_PLATFORMS_INTRADEBAR_SYMBOL_UTILS_HPP_INCLUDED
-#define _OPTIONX_PLATFORMS_INTRADEBAR_SYMBOL_UTILS_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_PLATFORMS_INTRADE_BAR_PLATFORM_SYMBOL_UTILS_HPP_INCLUDED
+#define OPTIONX_HEADER_PLATFORMS_INTRADE_BAR_PLATFORM_SYMBOL_UTILS_HPP_INCLUDED
 
 /// \file symbol_utils.hpp
 /// \brief Broker-specific symbol normalization helpers for Intrade Bar.
@@ -69,4 +69,4 @@ namespace optionx::platforms::intrade_bar {
 
 } // namespace optionx::platforms::intrade_bar
 
-#endif // _OPTIONX_PLATFORMS_INTRADEBAR_SYMBOL_UTILS_HPP_INCLUDED
+#endif // OPTIONX_HEADER_PLATFORMS_INTRADE_BAR_PLATFORM_SYMBOL_UTILS_HPP_INCLUDED

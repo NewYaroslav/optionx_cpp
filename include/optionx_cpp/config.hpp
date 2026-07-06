@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_CONFIG_HPP_INCLUDED
-#define _OPTIONX_CONFIG_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_CONFIG_HPP_INCLUDED
+#define OPTIONX_HEADER_CONFIG_HPP_INCLUDED
 
 /// \file config.hpp
 /// \brief Defines project-wide compile-time defaults.
@@ -15,4 +15,4 @@
 #define OPTIONX_DEFAULT_ACCEPT_LANGUAGE "ru,ru-RU;q=0.9,en;q=0.8,en-US;q=0.7"
 #endif
 
-#endif // _OPTIONX_CONFIG_HPP_INCLUDED
+#endif // OPTIONX_HEADER_CONFIG_HPP_INCLUDED

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_EVENTS_WEBSOCKET_AUTH_DATA_EVENT_HPP_INCLUDED
-#define _OPTIONX_EVENTS_WEBSOCKET_AUTH_DATA_EVENT_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_EVENTS_WEB_SOCKET_AUTH_DATA_EVENT_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_EVENTS_WEB_SOCKET_AUTH_DATA_EVENT_HPP_INCLUDED
 
 /// \file WebSocketAuthDataEvent.hpp
 /// \brief Defines the WebSocketAuthDataEvent to deliver auth data, API token and cookies to WS components.
@@ -57,4 +57,4 @@ namespace optionx::events {
 
 } // namespace optionx::events
 
-#endif // _OPTIONX_EVENTS_WEBSOCKET_AUTH_DATA_EVENT_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_EVENTS_WEB_SOCKET_AUTH_DATA_EVENT_HPP_INCLUDED

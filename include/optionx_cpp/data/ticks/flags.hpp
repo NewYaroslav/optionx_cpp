@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_TICK_FLAGS_HPP_INCLUDED
-#define _OPTIONX_TICK_FLAGS_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_TICKS_FLAGS_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_TICKS_FLAGS_HPP_INCLUDED
 
 /// \file flags.hpp
 /// \brief Defines flags for tick data status and update events
@@ -62,4 +62,4 @@ namespace optionx {
 
 } // namespace optionx
 
-#endif // _OPTIONX_TICK_FLAGS_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_TICKS_FLAGS_HPP_INCLUDED

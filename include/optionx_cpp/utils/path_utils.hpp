@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_PATH_UTILS_HPP_INCLUDED
-#define _OPTIONX_PATH_UTILS_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_PATH_UTILS_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_PATH_UTILS_HPP_INCLUDED
 
 /// \file path_utils.hpp
 /// \brief Utilities for filesystem path manipulation and directory operations.
@@ -115,4 +115,4 @@ namespace optionx::utils {
 
 } // namespace optionx::utils
 
-#endif // _OPTIONX_PATH_UTILS_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_PATH_UTILS_HPP_INCLUDED

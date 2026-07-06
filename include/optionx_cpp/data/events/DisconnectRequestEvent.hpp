@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_EVENTS_DISCONNECT_REQUEST_EVENT_HPP_INCLUDED
-#define _OPTIONX_EVENTS_DISCONNECT_REQUEST_EVENT_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_EVENTS_DISCONNECT_REQUEST_EVENT_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_EVENTS_DISCONNECT_REQUEST_EVENT_HPP_INCLUDED
 
 /// \file DisconnectRequestEvent.hpp
 /// \brief Defines the DisconnectRequestEvent class for handling disconnection requests.
@@ -36,4 +36,4 @@ namespace optionx::events {
 
 } // namespace optionx::events
 
-#endif // _OPTIONX_EVENTS_DISCONNECT_REQUEST_EVENT_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_EVENTS_DISCONNECT_REQUEST_EVENT_HPP_INCLUDED

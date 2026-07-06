@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_UTILS_PUBSUB_HPP_INCLUDED
-#define _OPTIONX_UTILS_PUBSUB_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_PUBSUB_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_PUBSUB_HPP_INCLUDED
 
 /// \file pubsub.hpp
 /// \brief Main header file for the publish-subscribe system.
@@ -16,4 +16,4 @@
 #include "pubsub/EventAwaiter.hpp"
 #include "pubsub/EventMediator.hpp"
 
-#endif // _OPTIONX_UTILS_PUBSUB_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_PUBSUB_HPP_INCLUDED

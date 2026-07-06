@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_PLATFORMS_INTRADERBAR_PLATFORM_API_HPP_INCLUDED
-#define _OPTIONX_PLATFORMS_INTRADERBAR_PLATFORM_API_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_PLATFORMS_INTRADE_BAR_PLATFORM_HPP_INCLUDED
+#define OPTIONX_HEADER_PLATFORMS_INTRADE_BAR_PLATFORM_HPP_INCLUDED
 
 /// \file IntradeBarPlatform.hpp
 /// \brief Defines the IntradeBarPlatform class, which provides an implementation of the trading platform API.
@@ -245,4 +245,4 @@ namespace optionx::platforms {
 
 } // namespace optionx::platforms
 
-#endif // _OPTIONX_PLATFORMS_INTRADERBAR_PLATFORM_API_HPP_INCLUDED
+#endif // OPTIONX_HEADER_PLATFORMS_INTRADE_BAR_PLATFORM_HPP_INCLUDED

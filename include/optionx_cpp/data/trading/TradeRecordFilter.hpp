@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_TRADE_RECORD_FILTER_HPP_INCLUDED
-#define _OPTIONX_TRADE_RECORD_FILTER_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_TRADING_TRADE_RECORD_FILTER_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_TRADING_TRADE_RECORD_FILTER_HPP_INCLUDED
 
 /// \file TradeRecordFilter.hpp
 /// \brief Defines TradeRecordFilter and IncludeExcludeFilter for querying trade records.
@@ -133,4 +133,4 @@ namespace optionx {
 
 } // namespace optionx
 
-#endif // _OPTIONX_TRADE_RECORD_FILTER_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_TRADING_TRADE_RECORD_FILTER_HPP_INCLUDED

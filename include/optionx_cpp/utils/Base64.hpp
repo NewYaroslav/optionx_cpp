@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_UTILS_BASE64_HPP_INCLUDED
-#define _OPTIONX_UTILS_BASE64_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_BASE64_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_BASE64_HPP_INCLUDED
 
 /// \file Base64.hpp
 /// \brief Provides encoding and decoding utilities for Base64 format.
@@ -89,4 +89,4 @@ namespace optionx::utils {
 
 } // namespace optionx
 
-#endif // _OPTIONX_UTILS_BASE64_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_BASE64_HPP_INCLUDED

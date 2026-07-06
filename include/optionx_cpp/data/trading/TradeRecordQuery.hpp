@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_TRADE_RECORD_QUERY_HPP_INCLUDED
-#define _OPTIONX_TRADE_RECORD_QUERY_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_TRADING_TRADE_RECORD_QUERY_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_TRADING_TRADE_RECORD_QUERY_HPP_INCLUDED
 
 /// \file TradeRecordQuery.hpp
 /// \brief Defines TradeRecordQuery and related enums for historical trade lookups.
@@ -72,4 +72,4 @@ namespace optionx {
 
 } // namespace optionx
 
-#endif // _OPTIONX_TRADE_RECORD_QUERY_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_TRADING_TRADE_RECORD_QUERY_HPP_INCLUDED

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_TICK_SEQUENCE_HPP_INCLUDED
-#define _OPTIONX_TICK_SEQUENCE_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_TICKS_TICK_SEQUENCE_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_TICKS_TICK_SEQUENCE_HPP_INCLUDED
 
 /// \file TickSequence.hpp
 /// \brief Defines the TickSequence structure for storing a sequence of tick data with metadata.
@@ -45,4 +45,4 @@ namespace optionx {
 
 } // namespace optionx
 
-#endif // _OPTIONX_TICK_SEQUENCE_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_TICKS_TICK_SEQUENCE_HPP_INCLUDED

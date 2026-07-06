@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_UTILS_HPP_INCLUDED
-#define _OPTIONX_UTILS_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_HPP_INCLUDED
 
 /// \file utils.hpp
 /// \brief Master utilities header aggregating all utility components.
@@ -36,4 +36,4 @@
 // Cryptographic utilities
 #include "utils/crypto.hpp"           ///< Cryptographic functions including encryption and secure key management.
 
-#endif // _OPTIONX_UTILS_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_HPP_INCLUDED

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_PLATFORMS_INTRADERBAR_BALANCE_MANAGER_HPP_INCLUDED
-#define _OPTIONX_PLATFORMS_INTRADERBAR_BALANCE_MANAGER_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_PLATFORMS_INTRADE_BAR_PLATFORM_BALANCE_MANAGER_HPP_INCLUDED
+#define OPTIONX_HEADER_PLATFORMS_INTRADE_BAR_PLATFORM_BALANCE_MANAGER_HPP_INCLUDED
 
 /// \file BalanceManager.hpp
 /// \brief Defines the BalanceManager class responsible for handling balance updates and account-related events.
@@ -520,4 +520,4 @@ namespace optionx::platforms::intrade_bar {
 
 } // namespace optionx::platforms::intrade_bar
 
-#endif // _OPTIONX_PLATFORMS_INTRADERBAR_BALANCE_MANAGER_HPP_INCLUDED
+#endif // OPTIONX_HEADER_PLATFORMS_INTRADE_BAR_PLATFORM_BALANCE_MANAGER_HPP_INCLUDED

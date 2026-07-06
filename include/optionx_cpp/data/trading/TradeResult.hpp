@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_TRADE_RESULT_HPP_INCLUDED
-#define _OPTIONX_TRADE_RESULT_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_TRADING_TRADE_RESULT_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_TRADING_TRADE_RESULT_HPP_INCLUDED
 
 /// \file TradeResult.hpp
 /// \brief Contains the TradeResult class representing the result of a trade request.
@@ -147,4 +147,4 @@ namespace optionx {
 
 } // namespace optionx
 
-#endif // _OPTIONX_TRADE_RESULT_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_TRADING_TRADE_RESULT_HPP_INCLUDED

@@ -1,10 +1,10 @@
 #pragma once
-#ifndef _OPTIONX_DATA_MARKET_HPP_INCLUDED
-#define _OPTIONX_DATA_MARKET_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_MARKET_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_MARKET_HPP_INCLUDED
 
 /// \file market.hpp
 /// \brief Includes shared market-data payload enums and helpers.
 
 #include "market/enums.hpp"
 
-#endif // _OPTIONX_DATA_MARKET_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_MARKET_HPP_INCLUDED

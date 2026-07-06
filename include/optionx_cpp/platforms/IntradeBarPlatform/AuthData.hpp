@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_PLATFORMS_INTRADERBAR_AUTH_DATA_HPP_INCLUDED
-#define _OPTIONX_PLATFORMS_INTRADERBAR_AUTH_DATA_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_PLATFORMS_INTRADE_BAR_PLATFORM_AUTH_DATA_HPP_INCLUDED
+#define OPTIONX_HEADER_PLATFORMS_INTRADE_BAR_PLATFORM_AUTH_DATA_HPP_INCLUDED
 
 /// \file AuthData.hpp
 /// \brief Contains the AuthData class for Intrade Bar platform authorization.
@@ -273,4 +273,4 @@ namespace optionx::platforms::intrade_bar {
 
 } // namespace optionx::platforms::intrade_bar
 
-#endif // _OPTIONX_PLATFORMS_INTRADERBAR_AUTH_DATA_HPP_INCLUDED
+#endif // OPTIONX_HEADER_PLATFORMS_INTRADE_BAR_PLATFORM_AUTH_DATA_HPP_INCLUDED

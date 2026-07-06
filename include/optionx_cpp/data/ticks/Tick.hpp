@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_TICK_HPP_INCLUDED
-#define _OPTIONX_TICK_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_TICKS_TICK_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_TICKS_TICK_HPP_INCLUDED
 
 /// \file Tick.hpp
 /// \brief Defines the Tick structure used for representing market data.
@@ -105,4 +105,4 @@ namespace optionx {
 
 } // namespace optionx
 
-#endif // _OPTIONX_TICK_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_TICKS_TICK_HPP_INCLUDED

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_UTILS_PUBSUB_EVENT_HUB_HPP_INCLUDED
-#define _OPTIONX_UTILS_PUBSUB_EVENT_HUB_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_PUBSUB_EVENT_BUS_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_PUBSUB_EVENT_BUS_HPP_INCLUDED
 
 /// \file EventBus.hpp
 /// \brief Contains the EventBus class for event-based communication between components.
@@ -104,4 +104,4 @@ namespace optionx::utils {
 
 #include "EventBus.ipp"
 
-#endif // _OPTIONX_UTILS_PUBSUB_EVENT_HUB_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_PUBSUB_EVENT_BUS_HPP_INCLUDED

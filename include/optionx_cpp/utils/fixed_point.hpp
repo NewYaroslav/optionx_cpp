@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_FIXED_POINT_HPP_INCLUDED
-#define _OPTIONX_FIXED_POINT_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_FIXED_POINT_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_FIXED_POINT_HPP_INCLUDED
 
 /// \file fixed_point.hpp
 /// \brief Utilities for fixed-point arithmetic and precision control.
@@ -123,4 +123,4 @@ namespace optionx::utils {
 
 } // namespace optionx::utils
 
-#endif // _OPTIONX_FIXED_POINT_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_FIXED_POINT_HPP_INCLUDED

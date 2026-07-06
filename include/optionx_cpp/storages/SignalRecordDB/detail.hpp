@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_STORAGE_SIGNAL_RECORD_DB_DETAIL_HPP_INCLUDED
-#define _OPTIONX_STORAGE_SIGNAL_RECORD_DB_DETAIL_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_STORAGES_SIGNAL_RECORD_DB_DETAIL_HPP_INCLUDED
+#define OPTIONX_HEADER_STORAGES_SIGNAL_RECORD_DB_DETAIL_HPP_INCLUDED
 
 /// \file detail.hpp
 /// \brief Internal helpers used only by SignalRecordDB.
@@ -105,4 +105,4 @@ namespace optionx::storage::signal_detail {
 
 } // namespace optionx::storage::signal_detail
 
-#endif // _OPTIONX_STORAGE_SIGNAL_RECORD_DB_DETAIL_HPP_INCLUDED
+#endif // OPTIONX_HEADER_STORAGES_SIGNAL_RECORD_DB_DETAIL_HPP_INCLUDED

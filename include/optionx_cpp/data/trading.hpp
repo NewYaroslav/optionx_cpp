@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_TRADING_HPP_INCLUDED
-#define _OPTIONX_TRADING_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_TRADING_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_TRADING_HPP_INCLUDED
 
 /// \file trading.hpp
 /// \brief Includes core trading-related components.
@@ -52,4 +52,4 @@
 #include "trading/trade_state_traits.hpp"
 #include "trading/TradeStats.hpp"
 
-#endif // _OPTIONX_TRADING_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_TRADING_HPP_INCLUDED

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_PLATFORMS_INTRADERBAR_PRICE_MANAGER_HPP_INCLUDED
-#define _OPTIONX_PLATFORMS_INTRADERBAR_PRICE_MANAGER_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_PLATFORMS_INTRADE_BAR_PLATFORM_PRICE_MANAGER_HPP_INCLUDED
+#define OPTIONX_HEADER_PLATFORMS_INTRADE_BAR_PLATFORM_PRICE_MANAGER_HPP_INCLUDED
 
 /// \file PriceManager.hpp
 /// \brief Defines the PriceManager class responsible for handling price updates and related events.
@@ -177,4 +177,4 @@ namespace optionx::platforms::intrade_bar {
 
 } // namespace optionx::platforms::intrade_bar
 
-#endif // _OPTIONX_PLATFORMS_INTRADERBAR_PRICE_MANAGER_HPP_INCLUDED
+#endif // OPTIONX_HEADER_PLATFORMS_INTRADE_BAR_PLATFORM_PRICE_MANAGER_HPP_INCLUDED

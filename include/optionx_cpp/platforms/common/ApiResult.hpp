@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_PLATFORMS_COMMON_API_RESULT_HPP_INCLUDED
-#define _OPTIONX_PLATFORMS_COMMON_API_RESULT_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_PLATFORMS_COMMON_API_RESULT_HPP_INCLUDED
+#define OPTIONX_HEADER_PLATFORMS_COMMON_API_RESULT_HPP_INCLUDED
 
 /// \file ApiResult.hpp
 /// \brief Small typed result wrapper for broker HTTP API calls.
@@ -57,4 +57,4 @@ namespace optionx::platforms {
 
 } // namespace optionx::platforms
 
-#endif // _OPTIONX_PLATFORMS_COMMON_API_RESULT_HPP_INCLUDED
+#endif // OPTIONX_HEADER_PLATFORMS_COMMON_API_RESULT_HPP_INCLUDED

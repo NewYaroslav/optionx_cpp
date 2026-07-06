@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_STORAGE_TRADE_RECORD_DB_HPP_INCLUDED
-#define _OPTIONX_STORAGE_TRADE_RECORD_DB_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_STORAGES_TRADE_RECORD_DB_HPP_INCLUDED
+#define OPTIONX_HEADER_STORAGES_TRADE_RECORD_DB_HPP_INCLUDED
 
 /// \file TradeRecordDB.hpp
 /// \brief Provides persistent storage for TradeRecord objects using MDBX containers.
@@ -391,4 +391,4 @@ namespace optionx::storage {
 
 #include "TradeRecordDB/TradeRecordDB.ipp"
 
-#endif // _OPTIONX_STORAGE_TRADE_RECORD_DB_HPP_INCLUDED
+#endif // OPTIONX_HEADER_STORAGES_TRADE_RECORD_DB_HPP_INCLUDED

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_MARKET_DATA_SUBSCRIPTION_HPP_INCLUDED
-#define _OPTIONX_MARKET_DATA_SUBSCRIPTION_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_MARKET_DATA_MARKET_DATA_SUBSCRIPTION_HPP_INCLUDED
+#define OPTIONX_HEADER_MARKET_DATA_MARKET_DATA_SUBSCRIPTION_HPP_INCLUDED
 
 /// \file MarketDataSubscription.hpp
 /// \brief Defines market-data subscription request, handle, and result DTOs.
@@ -374,4 +374,4 @@ namespace optionx::market_data {
 
 } // namespace optionx::market_data
 
-#endif // _OPTIONX_MARKET_DATA_SUBSCRIPTION_HPP_INCLUDED
+#endif // OPTIONX_HEADER_MARKET_DATA_MARKET_DATA_SUBSCRIPTION_HPP_INCLUDED

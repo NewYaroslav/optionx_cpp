@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_CRYPTO_SECURE_KEY_HPP_INCLUDED
-#define _OPTIONX_CRYPTO_SECURE_KEY_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_CRYPTO_SECURE_KEY_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_CRYPTO_SECURE_KEY_HPP_INCLUDED
 
 /// \file SecureKey.hpp
 /// \brief Provides a class for secure storage and management of encryption keys.
@@ -79,4 +79,4 @@ namespace crypto {
 } // namespace crypto
 } // namespace optionx
 
-#endif // _OPTIONX_CRYPTO_SECURE_KEY_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_CRYPTO_SECURE_KEY_HPP_INCLUDED

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_STORAGE_SERVICE_SESSION_DB_HPP_INCLUDED
-#define _OPTIONX_STORAGE_SERVICE_SESSION_DB_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_STORAGES_SERVICE_SESSION_DB_HPP_INCLUDED
+#define OPTIONX_HEADER_STORAGES_SERVICE_SESSION_DB_HPP_INCLUDED
 
 /// \file ServiceSessionDB.hpp
 /// \brief Provides a singleton-based class for managing session data storage and retrieval.
@@ -295,4 +295,4 @@ namespace optionx::storage {
 
 } // namespace optionx::storage
 
-#endif // _OPTIONX_STORAGE_SERVICE_SESSION_DB_HPP_INCLUDED
+#endif // OPTIONX_HEADER_STORAGES_SERVICE_SESSION_DB_HPP_INCLUDED

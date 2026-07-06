@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_TRADE_SIGNAL_HPP_INCLUDED
-#define _OPTIONX_TRADE_SIGNAL_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_TRADING_TRADE_SIGNAL_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_TRADING_TRADE_SIGNAL_HPP_INCLUDED
 
 /// \file TradeSignal.hpp
 /// \brief Defines the TradeSignal class with signal intent and money-management data.
@@ -214,4 +214,4 @@ namespace nlohmann {
 
 } // namespace nlohmann
 
-#endif // _OPTIONX_TRADE_SIGNAL_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_TRADING_TRADE_SIGNAL_HPP_INCLUDED

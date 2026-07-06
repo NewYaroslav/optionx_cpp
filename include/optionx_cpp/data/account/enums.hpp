@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_ACCOUNT_ENUMS_HPP_INCLUDED
-#define _OPTIONX_ACCOUNT_ENUMS_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_DATA_ACCOUNT_ENUMS_HPP_INCLUDED
+#define OPTIONX_HEADER_DATA_ACCOUNT_ENUMS_HPP_INCLUDED
 
 /// \file enums.hpp
 /// \brief Account metadata and validation parameters enumeration.
@@ -271,4 +271,4 @@ namespace optionx {
 
 } // namespace optionx
 
-#endif // _OPTIONX_ACCOUNT_ENUMS_HPP_INCLUDED
+#endif // OPTIONX_HEADER_DATA_ACCOUNT_ENUMS_HPP_INCLUDED

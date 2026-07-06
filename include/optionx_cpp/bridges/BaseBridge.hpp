@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_BRIDGES_BASE_BRIDGE_HPP_INCLUDED
-#define _OPTIONX_BRIDGES_BASE_BRIDGE_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_BRIDGES_BASE_BRIDGE_HPP_INCLUDED
+#define OPTIONX_HEADER_BRIDGES_BASE_BRIDGE_HPP_INCLUDED
 
 /// \file BaseBridge.hpp
 /// \brief Declares the BaseBridge abstract class, serving as a foundation for bridge implementations.
@@ -70,4 +70,4 @@ namespace optionx::bridges {
 
 } // namespace optionx::bridges
 
-#endif // _OPTIONX_BRIDGES_BASE_BRIDGE_HPP_INCLUDED
+#endif // OPTIONX_HEADER_BRIDGES_BASE_BRIDGE_HPP_INCLUDED

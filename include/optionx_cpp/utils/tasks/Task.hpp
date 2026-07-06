@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_UTILS_TASK_HPP_INCLUDED
-#define _OPTIONX_UTILS_TASK_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_TASKS_TASK_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_TASKS_TASK_HPP_INCLUDED
 
 /// \file Task.hpp
 /// \brief Contains the definition of the Task class for managing scheduled tasks.
@@ -400,4 +400,4 @@ namespace optionx::utils {
 
 } // namespace optionx::utils
 
-#endif // _OPTIONX_UTILS_TASK_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_TASKS_TASK_HPP_INCLUDED

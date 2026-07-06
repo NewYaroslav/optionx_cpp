@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_CRYPTO_AES_CRYPT_HPP_INCLUDED
-#define _OPTIONX_CRYPTO_AES_CRYPT_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_CRYPTO_AES_CRYPT_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_CRYPTO_AES_CRYPT_HPP_INCLUDED
 
 /// \file AESCrypt.hpp
 /// \brief Provides a thread-safe AES encryption and decryption class.
@@ -154,4 +154,4 @@ namespace crypto {
 } // namespace crypto
 } // namespace optionx
 
-#endif // _OPTIONX_CRYPTO_AES_CRYPT_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_CRYPTO_AES_CRYPT_HPP_INCLUDED

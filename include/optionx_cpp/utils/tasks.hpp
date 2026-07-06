@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_UTILS_TASKS_HPP_INCLUDED
-#define _OPTIONX_UTILS_TASKS_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_TASKS_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_TASKS_HPP_INCLUDED
 
 /// \file tasks.hpp
 /// \brief Main header file for the task management system.
@@ -12,4 +12,4 @@
 #include "tasks/Task.hpp"
 #include "tasks/TaskManager.hpp"
 
-#endif // _OPTIONX_UTILS_TASKS_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_TASKS_HPP_INCLUDED

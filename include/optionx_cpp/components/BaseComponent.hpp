@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_COMPONENTS_BASE_COMPONENT_HPP_INCLUDED
-#define _OPTIONX_COMPONENTS_BASE_COMPONENT_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_COMPONENTS_BASE_COMPONENT_HPP_INCLUDED
+#define OPTIONX_HEADER_COMPONENTS_BASE_COMPONENT_HPP_INCLUDED
 
 /// \file BaseComponent.hpp
 /// \brief Defines the BaseComponent class for event-driven components with default lifecycle implementations.
@@ -52,4 +52,4 @@ namespace optionx::components {
 
 } // namespace optionx::components
 
-#endif // _OPTIONX_COMPONENTS_BASE_COMPONENT_HPP_INCLUDED
+#endif // OPTIONX_HEADER_COMPONENTS_BASE_COMPONENT_HPP_INCLUDED

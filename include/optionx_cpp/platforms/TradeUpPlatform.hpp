@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_PLATFORMS_TRADEUP_PLATFORM_API_HPP_INCLUDED
-#define _OPTIONX_PLATFORMS_TRADEUP_PLATFORM_API_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_PLATFORMS_TRADE_UP_PLATFORM_HPP_INCLUDED
+#define OPTIONX_HEADER_PLATFORMS_TRADE_UP_PLATFORM_HPP_INCLUDED
 
 /// \file TradeUpPlatform.hpp
 /// \brief Defines the TradeUpPlatform class implementing TradeUp broker API.
@@ -54,4 +54,4 @@ namespace optionx::platforms {
 
 } // namespace optionx::platforms
 
-#endif // _OPTIONX_PLATFORMS_TRADEUP_PLATFORM_API_HPP_INCLUDED
+#endif // OPTIONX_HEADER_PLATFORMS_TRADE_UP_PLATFORM_HPP_INCLUDED

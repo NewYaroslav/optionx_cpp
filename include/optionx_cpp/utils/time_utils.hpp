@@ -1,6 +1,6 @@
 #pragma once
-#ifndef _OPTIONX_TIME_UTILS_HPP_INCLUDED
-#define _OPTIONX_TIME_UTILS_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_UTILS_TIME_UTILS_HPP_INCLUDED
+#define OPTIONX_HEADER_UTILS_TIME_UTILS_HPP_INCLUDED
 
 /// \file time_utils.hpp
 /// \brief Utility definitions for working with time and timestamps
@@ -11,4 +11,4 @@
 #endif
 
 
-#endif // _OPTIONX_TIME_UTILS_HPP_INCLUDED
+#endif // OPTIONX_HEADER_UTILS_TIME_UTILS_HPP_INCLUDED
