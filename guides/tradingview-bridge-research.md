@@ -181,10 +181,10 @@ This is TradingView's private chart data channel. It is useful research for a
 quotes bridge, but it is not a stable public API and should be treated as an
 experimental/high-fragility integration.
 
-Important: the captured dump did not prove that alert events are delivered on
-this socket. It did show chart data, quote data and study data. A user-visible
-alert firing near a price level can coincide with ordinary `qsd`/`du` updates;
-that alone is not evidence of an alert-delivery message.
+Important: the first captured dump did not prove that alert events are
+delivered on this socket. It did show chart data, quote data and study data. A
+user-visible alert firing near a price level can coincide with ordinary
+`qsd`/`du` updates; that alone is not evidence of an alert-delivery message.
 
 Framing:
 
@@ -229,16 +229,70 @@ Observed incoming methods:
 - `study_loading`, `study_completed` - indicator/study lifecycle;
 - `quote_completed` - quote subscription completion/status.
 
+#### Study Alert Messages
+
+A later focused capture did show a useful signal-shaped payload inside a `du`
+study update. It was not a separate `m: "alert"` method. The path was:
+
+```text
+du.p[1].<study-id>.ns.d
+    -> JSON string
+    -> data.alertMessages[]
+    -> msg
+    -> JSON signal string
+```
+
+Observed shape, sanitized:
+
+```json
+{
+  "barInfo": {
+    "barIndex": 10320,
+    "close": 1.14054,
+    "high": 1.14064,
+    "low": 1.14053,
+    "open": 1.14063,
+    "time": 1783476180000,
+    "updateTime": 1783476196715,
+    "volume": 54
+  },
+  "msg": "{\"source\":\"tradingview\",\"signal_name\":\"noisy_rsi_test\",\"action\":\"sell\",\"symbol\":\"EURUSD\",\"tickerid\":\"FX:EURUSD\",\"price\":1.14054,\"time\":1783476180000}"
+}
+```
+
+This is very useful for indicator-driven signals because the inner `msg` can be
+our own JSON alert contract. The capture contained the same alert payload twice
+under two different study ids, so local code must deduplicate by at least:
+
+- parsed `msg`;
+- `barInfo.time` or parsed signal `time`;
+- `barInfo.updateTime`;
+- chart session/study id only as diagnostic metadata, not as the primary event
+  id.
+
+Interpretation:
+
+- this confirms that some indicator/study alert messages can be observed through
+  the private chart WebSocket;
+- it does not yet prove that all TradingView platform alerts, especially plain
+  price-level alerts, are delivered this way;
+- it may depend on how the Pine script emits `alert()`/`alertcondition()` and on
+  whether the study is loaded in the open chart.
+
 What this can support:
 
 - a private quotes bridge that mirrors the currently open TradingView chart;
 - diagnostic capture of symbol metadata, active timeframe and bar updates;
-- study output research when an indicator is attached to the chart.
+- study output research when an indicator is attached to the chart;
+- experimental indicator signal capture from `data.alertMessages[]` in study
+  `du` frames.
 
 What is not confirmed yet:
 
-- alert delivery over `data.tradingview.com/socket.io/websocket`;
-- a stable mapping from study output frames to semantic `buy`/`sell` signals;
+- generic alert delivery over `data.tradingview.com/socket.io/websocket` for
+  all alert types;
+- whether price-level alerts such as `EURUSD Crossing 1.14072` appear in study
+  `alertMessages`, private pushstream, DOM only or another channel;
 - whether all required messages remain available on free plans and anonymous or
   low-tier sessions.
 
@@ -475,7 +529,7 @@ Extension responsibilities:
 - support an explicit signal-source mode:
   `strategy_tester_trades`, `alert_toast_dom`, `alert_log`,
   `browser_notification`, `private_alert_stream`,
-  `private_chart_socket_probe`;
+  `private_chart_socket_probe`, `private_chart_study_alert_messages`;
 - for `strategy_tester_trades`, seed existing rows and emit only new rows;
 - for alert-based modes, parse the final alert text rather than strategy report
   rows;
@@ -598,3 +652,6 @@ server dependency intentionally.
    records method names around one manually triggered alert. Use that capture to
    confirm whether alerts arrive on `data.tradingview.com`, pushstream, DOM only
    or a different channel.
+7. Prototype extraction of `du.p[1].<study-id>.ns.d.data.alertMessages[]` from
+   captured WebSocket frames and feed the parsed inner `msg` through the same
+   local TradingView extension protocol as DOM toasts.
