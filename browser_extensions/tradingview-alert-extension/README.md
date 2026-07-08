@@ -83,12 +83,22 @@ The extension sends a `POST` with JSON:
   "title": "Alert on EURUSD",
   "message": "EURUSD Crossing 1.14072",
   "secret": "shared-token",
+  "extension": {
+    "id": "chrome-extension-id",
+    "tab_id": 123,
+    "host": "www.tradingview.com",
+    "symbol_from_url": "EURUSD",
+    "interval": "1"
+  },
   "raw": {
     "title": "Alert on EURUSD",
     "description": "EURUSD Crossing 1.14072"
   }
 }
 ```
+
+`extension.url` is included only when the popup option `Include full tab URL`
+is enabled; by default only `host`, `symbol_from_url` and `interval` are sent.
 
 Expected bridge behavior:
 
