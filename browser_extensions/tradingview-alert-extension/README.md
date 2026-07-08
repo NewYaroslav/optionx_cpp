@@ -155,7 +155,7 @@ Expected bridge behavior:
 
 - bind to loopback by default;
 - require `X-OptionX-Secret` if a secret is configured;
-- deduplicate by `fingerprint` or `event_id`;
+- deduplicate by `event_id`; use `fingerprint` only with an explicit time/window policy;
 - map `action` to `TradeSignal::order_type` only when it is `buy` or `sell`;
 - keep `amount` on the local bridge/risk-management side.
 
