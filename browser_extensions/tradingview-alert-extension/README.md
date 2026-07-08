@@ -42,6 +42,11 @@ Level alerts such as `EURUSD Crossing 1.14072` are market events, not trade
 commands. The local bridge should map these through user rules or reject them
 unless the alert message contains an explicit command.
 
+Research note: TradingView level popup alerts were later observed on the private
+pushstream WebSocket `message-pipe-ws/private_feed`, channel `pricealerts`,
+method `alert_fired`. The current extension MVP still uses visible toast DOM;
+the private WebSocket path should be added as a separate experimental mode.
+
 ## Test Indicator
 
 `examples/optionx_noisy_test_signals.pine` is a Pine Script test indicator for
