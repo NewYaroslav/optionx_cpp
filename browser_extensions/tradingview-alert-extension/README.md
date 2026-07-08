@@ -42,6 +42,19 @@ Level alerts such as `EURUSD Crossing 1.14072` are market events, not trade
 commands. The local bridge should map these through user rules or reject them
 unless the alert message contains an explicit command.
 
+## Test Indicator
+
+`examples/optionx_noisy_test_signals.pine` is a Pine Script test indicator for
+manual TradingView checks. It emits noisy RSI centerline `buy`/`sell` JSON
+alerts with `alert.freq_once_per_bar`.
+
+This is useful for:
+
+- checking visible TradingView alert toasts;
+- capturing private chart WebSocket `du` frames around a known indicator alert;
+- validating local duplicate suppression when the same signal appears in more
+  than one study update.
+
 ## Local Payload
 
 The extension sends a `POST` with JSON:
