@@ -334,6 +334,23 @@ separately before we treat it as equivalent for the private WebSocket bridge.
 The comparison fixture is saved at
 `browser_extensions/tradingview-alert-extension/examples/optionx_noisy_test_alertcondition.pine`.
 
+#### Price-Level Alert Capture
+
+A focused EURUSD-filtered capture around a manual price-level crossing alert
+showed only quote and chart/study update frames:
+
+- `qsd` quote updates for `FX:EURUSD`;
+- `du` bar updates for `sds_1`;
+- `du` numeric study output for `ZntB35`;
+- empty `ns.d` fields on all `du` frames.
+
+No `alertMessages`, `msg`, `Crossing`, notification payload or alert-like method
+was present in that chart WebSocket fragment. Because the capture was filtered
+to EURUSD, it is not conclusive for TradingView's full alert delivery path.
+However, it is another data point that plain price-level alerts may arrive via
+DOM toast, alert log, pushstream/EventSource or another channel rather than the
+chart data WebSocket.
+
 What this can support:
 
 - a private quotes bridge that mirrors the currently open TradingView chart;
