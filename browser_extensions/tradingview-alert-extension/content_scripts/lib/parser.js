@@ -112,6 +112,9 @@
   }
 
   function extractPrice(message, parsed) {
+    // TODO (follow-up): introduce trigger_value + trigger_unit for pct-based triggers.
+    // Currently extractPrice returns first numeric token regardless of direction context,
+    // which misassigns percentage values to price for "Moving Up 1.0%" type alerts.
     if (parsed && typeof parsed === "object") {
       if (typeof parsed.price === "number" && Number.isFinite(parsed.price)) return parsed.price;
       if (typeof parsed.price === "string") {
@@ -133,6 +136,40 @@
     return null;
   }
 
+  // 4-level fallback resolution for event_id:
+  //   1. parsed.event_id      - canonical, use as-is
+  //   2. parsed.fire_id       - prefix tv_fire:
+  //   3. parsed.alert_id + time - prefix tv_alert:ALERT_ID:TIME (alert_id alone is NOT unique per fire)
+  //   4. fingerprint fallback - prefix tv_toast:
+  // alert_id is the TradingView alert CONFIGURATION id, which stays the same across
+  // multiple fires of the same alert. Using alert_id alone as event_id would let the
+  // bridge treat every subsequent fire as a duplicate.
+  function makeEventId(parsed, fingerprint) {
+    if (!parsed || typeof parsed !== "object") {
+      return `tv_toast:${fingerprint}`;
+    }
+    if (typeof parsed.event_id === "string" && parsed.event_id.trim()) {
+      return parsed.event_id.trim();
+    }
+    if (parsed.fire_id !== undefined && parsed.fire_id !== null) {
+      return `tv_fire:${parsed.fire_id}`;
+    }
+    if (parsed.alert_id !== undefined && parsed.alert_id !== null) {
+      const time =
+        parsed.fire_time !== undefined && parsed.fire_time !== null
+          ? parsed.fire_time
+          : parsed.bar_time !== undefined && parsed.bar_time !== null
+          ? parsed.bar_time
+          : parsed.time !== undefined && parsed.time !== null
+          ? parsed.time
+          : parsed.timenow !== undefined && parsed.timenow !== null
+          ? parsed.timenow
+          : null;
+      if (time !== null) return `tv_alert:${parsed.alert_id}:${time}`;
+    }
+    return `tv_toast:${fingerprint}`;
+  }
+
   return {
     normalizeAction,
     normalizeSymbol,
@@ -142,6 +179,7 @@
     extractRawAction,
     extractRawDirection,
     parseJsonMessageSafe,
+    makeEventId,
     SYMBOL_BLACKLIST,
     TRIGGER_PATTERNS
   };

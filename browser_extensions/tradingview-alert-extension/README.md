@@ -174,6 +174,32 @@ Two distinct identifiers are sent in each signal:
 
 For unusual signals (same `BUY EURUSD` every hour), the bridge MUST decide its own dedup window. The extension makes no guarantees.
 
+## Event id semantics
+
+The `event_id` field follows a 4-level fallback resolution. Each level guarantees
+strictly stronger uniqueness guarantees than the next:
+
+1. **`parsed.event_id`** — canonical ID from a JSON payload. Used as-is (no prefix).
+2. **`parsed.fire_id`** — prefixed `tv_fire:<id>`. The fire ID is the per-trigger
+   identifier and remains unique across re-fires of the same alert.
+3. **`parsed.alert_id` + time** — prefixed `tv_alert:<alert_id>:<time>` where time
+   is the first available of `fire_time`, `bar_time`, `time`, `timenow`. The alert
+   id alone is **NOT sufficient** as event id — it identifies the alert configuration,
+   which is the same across all fires of that configuration.
+4. **Fingerprint fallback** — `tv_toast:<fingerprint>`. Used when no other id source is
+   available; guarantees per-toast-content uniqueness.
+
+Bridge should treat any value with the same prefix as the same kind (e.g. all
+`tv_alert:*` are per-fire). The `tv_toast:` prefix indicates toast-derived IDs that
+may collide if the alert fires repeatedly with identical text.
+
+### Future work
+
+- `extractPrice` returns the first numeric token from message text. For pct-based
+  triggers like `Moving Up 1.0%` this assigns the percentage value to `price`,
+  which is semantically incorrect. Follow-up PR will introduce `trigger_value`
+  and `trigger_unit` fields and a separate `price` resolution path.
+
 ## Tests
 
 Parser rules are unit-tested in plain Node. From the extension directory:
