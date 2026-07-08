@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const parser = require("../content_scripts/lib/parser.js");
 
-const { normalizeAction, extractSymbol, extractPrice, extractDirection, extractRawAction, extractRawDirection, parseJsonMessageSafe } = parser;
+const { normalizeAction, extractSymbol, extractPrice, extractDirection, extractRawAction, extractRawDirection, parseJsonMessageSafe, makeEventId } = parser;
 
 test("normalizeAction: BUY EURUSD -> buy", () => assert.equal(normalizeAction("BUY EURUSD", null), "buy"));
 test("normalizeAction: parsed action=buy", () => assert.equal(normalizeAction("", { action: "buy" }), "buy"));
@@ -107,4 +107,41 @@ test("parseJsonMessageSafe: handles leading whitespace", () => {
 
 test("parseJsonMessageSafe: rejects non-JSON", () => {
   assert.equal(parseJsonMessageSafe("not json"), null);
+});
+
+test("makeEventId: null parsed -> tv_toast fallback", () => {
+  assert.equal(makeEventId(null, "fp1"), "tv_toast:fp1");
+});
+
+test("makeEventId: canonical parsed.event_id used as-is", () => {
+  assert.equal(makeEventId({ event_id: "abc-123" }, "fp1"), "abc-123");
+});
+
+test("makeEventId: parsed.fire_id prefixed with tv_fire", () => {
+  assert.equal(makeEventId({ fire_id: 42 }, "fp1"), "tv_fire:42");
+});
+
+test("makeEventId: parsed.alert_id + time -> tv_alert", () => {
+  assert.equal(
+    makeEventId({ alert_id: "a1", time: "2026-07-08T12:00:00Z" }, "fp1"),
+    "tv_alert:a1:2026-07-08T12:00:00Z"
+  );
+});
+
+test("makeEventId: alert_id alone (no time) -> fallback tv_toast", () => {
+  assert.equal(makeEventId({ alert_id: "a1" }, "fp1"), "tv_toast:fp1");
+});
+
+test("makeEventId: fire_time wins over time when both present", () => {
+  assert.equal(
+    makeEventId({ alert_id: "a1", fire_time: 1234567890, time: "should-not-win" }, "fp1"),
+    "tv_alert:a1:1234567890"
+  );
+});
+
+test("makeEventId: timenow as last resort for alert_id", () => {
+  assert.equal(
+    makeEventId({ alert_id: "a1", timenow: 1234567890 }, "fp1"),
+    "tv_alert:a1:1234567890"
+  );
 });

@@ -145,8 +145,7 @@
     const fingerprintInput = `${SOURCE_KIND}|${symbol}|${title}|${message}`;
     const fingerprint = fnv1a(fingerprintInput);
     const observedAt = new Date().toISOString();
-    const stableId = parsed && (parsed.event_id || parsed.fire_id || parsed.alert_id);
-    const eventId = stableId ? String(stableId) : `tv_toast:${fingerprint}`;
+    const eventId = OptionXParser.makeEventId(parsed, fingerprint);
 
     return {
       version: 1,
