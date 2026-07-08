@@ -325,6 +325,15 @@ the center level. That is useful for stress-testing capture and deduplication.
 For a less noisy production-style script, emit only on confirmed bars or use a
 bar-close alert frequency.
 
+TradingView's Pine docs describe `alert()` as the more flexible path for dynamic
+runtime messages. `alertcondition()` remains useful for separate selectable
+conditions such as `BUY` and `SELL`, but its Pine `message` is a constant string;
+dynamic values must come from placeholders. Because our confirmed WebSocket
+captures came from `alert()` calls, `alertcondition()` must be captured
+separately before we treat it as equivalent for the private WebSocket bridge.
+The comparison fixture is saved at
+`browser_extensions/tradingview-alert-extension/examples/optionx_noisy_test_alertcondition.pine`.
+
 What this can support:
 
 - a private quotes bridge that mirrors the currently open TradingView chart;
