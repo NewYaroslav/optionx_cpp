@@ -55,6 +55,9 @@ This is useful for:
 - validating local duplicate suppression when the same signal appears in more
   than one study update.
 
+See `examples/README.md` for TradingView setup steps and the separate
+`alertcondition()` comparison fixture.
+
 ## Local Payload
 
 The extension sends a `POST` with JSON:

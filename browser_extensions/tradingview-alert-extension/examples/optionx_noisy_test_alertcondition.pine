@@ -1,0 +1,17 @@
+//@version=6
+indicator("OptionX Noisy Test Alertcondition", overlay=true)
+
+rsi_len = input.int(7, "RSI Length")
+level = input.float(50.0, "RSI Center Level")
+
+r = ta.rsi(close, rsi_len)
+
+buySignal = ta.crossover(r, level)
+sellSignal = ta.crossunder(r, level)
+
+plotshape(buySignal, title="BUY", text="BUY", style=shape.triangleup, location=location.belowbar, size=size.tiny)
+plotshape(sellSignal, title="SELL", text="SELL", style=shape.triangledown, location=location.abovebar, size=size.tiny)
+
+alertcondition(buySignal, title="OptionX BUY", message='{"source":"tradingview","signal_name":"noisy_rsi_test_alertcondition","action":"buy","symbol":"{{ticker}}","tickerid":"{{exchange}}:{{ticker}}","price":{{close}},"time":"{{time}}"}')
+
+alertcondition(sellSignal, title="OptionX SELL", message='{"source":"tradingview","signal_name":"noisy_rsi_test_alertcondition","action":"sell","symbol":"{{ticker}}","tickerid":"{{exchange}}:{{ticker}}","price":{{close}},"time":"{{time}}"}')
