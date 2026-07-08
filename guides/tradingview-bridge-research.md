@@ -270,6 +270,30 @@ under two different study ids, so local code must deduplicate by at least:
 - chart session/study id only as diagnostic metadata, not as the primary event
   id.
 
+Extraction contract for this private API mode:
+
+```text
+TradingView frame
+    -> unwrap ~m~<length>~m~ payload
+    -> JSON.m == "du"
+    -> JSON.p[0] as chart_session
+    -> each property in JSON.p[1] as study_or_series_id
+    -> property.ns.d, if non-empty
+    -> parse property.ns.d as JSON
+    -> data.alertMessages[]
+    -> parse alertMessages[].msg as the bridge signal JSON
+```
+
+Recommended normalized local fields:
+
+- `source_kind`: `private_chart_study_alert_messages`;
+- `chart_session`: `du.p[0]`;
+- `study_id`: current key from `du.p[1]`, diagnostic only;
+- `bar`: copied from `alertMessages[].barInfo`;
+- `message`: parsed `alertMessages[].msg`;
+- `dedupe_key`: hash of parsed `msg`, or
+  `tickerid|signal_name|action|time|price`.
+
 Interpretation:
 
 - this confirms that some indicator/study alert messages can be observed through
@@ -278,6 +302,28 @@ Interpretation:
   price-level alerts, are delivered this way;
 - it may depend on how the Pine script emits `alert()`/`alertcondition()` and on
   whether the study is loaded in the open chart.
+
+Confirmed Pine source for the captured `noisy_rsi_test` messages is saved at
+`browser_extensions/tradingview-alert-extension/examples/optionx_noisy_test_signals.pine`.
+It uses RSI crossing a center level and emits explicit JSON via `alert()`:
+
+```json
+{
+  "source": "tradingview",
+  "signal_name": "noisy_rsi_test",
+  "action": "buy",
+  "symbol": "EURUSD",
+  "tickerid": "FX:EURUSD",
+  "price": 1.14055,
+  "time": 1783476660000
+}
+```
+
+The test indicator intentionally reacts on the realtime bar. Its plotted signal
+can disappear and appear again as the bar updates and RSI crosses back around
+the center level. That is useful for stress-testing capture and deduplication.
+For a less noisy production-style script, emit only on confirmed bars or use a
+bar-close alert frequency.
 
 What this can support:
 
