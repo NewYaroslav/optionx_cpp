@@ -103,11 +103,12 @@
   }
 
   function parseJsonMessage(message) {
-    if (!message || message[0] !== "{") return null;
+    const trimmed = String(message || "").trimStart();
+    if (!trimmed || trimmed[0] !== "{") return null;
     try {
-      const parsed = JSON.parse(message);
+      const parsed = JSON.parse(trimmed);
       return parsed && typeof parsed === "object" ? parsed : null;
-    } catch {
+    } catch (_) {
       return null;
     }
   }
@@ -141,21 +142,23 @@
     const symbol = OptionXParser.extractSymbol(title, message, parsed);
     const action = OptionXParser.normalizeAction(message, parsed);
     const direction = OptionXParser.extractDirection(message);
-    const dedupeKey = `${SOURCE_KIND}|${symbol}|${title}|${message}`;
-    const hash = fnv1a(dedupeKey);
+    const fingerprintInput = `${SOURCE_KIND}|${symbol}|${title}|${message}`;
+    const fingerprint = fnv1a(fingerprintInput);
     const observedAt = new Date().toISOString();
     const stableId = parsed && (parsed.event_id || parsed.fire_id || parsed.alert_id);
-    const eventId = stableId ? String(stableId) : `tv_toast:${hash}`;
+    const eventId = stableId ? String(stableId) : `tv_toast:${fingerprint}`;
 
     return {
       version: 1,
       source: SOURCE,
       source_kind: SOURCE_KIND,
       event_id: eventId,
-      dedupe_key: dedupeKey,
+      fingerprint,
       symbol,
       action,
+      raw_action: OptionXParser.extractRawAction(message, parsed),
       direction,
+      raw_direction: OptionXParser.extractRawDirection(message),
       price: OptionXParser.extractPrice(message, parsed),
       observed_at: observedAt,
       time: observedAt,
@@ -196,7 +199,7 @@
     }
     const payload = buildPayload(root);
     if (!payload.message) return;
-    if (shouldSuppressDuplicate(payload.dedupe_key)) return;
+    if (shouldSuppressDuplicate(payload.fingerprint)) return;
     handledRoots.add(root);
     sendPayload(payload);
   }
@@ -228,7 +231,9 @@
     observer.observe(document.body, {
       childList: true,
       subtree: true,
-      characterData: true
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["class"]
     });
 
     inspectNodeSoon(document.body);

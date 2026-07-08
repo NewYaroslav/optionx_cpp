@@ -60,6 +60,34 @@
     return "alert";
   }
 
+  function extractRawAction(message, parsed) {
+    if (parsed && typeof parsed === "object") {
+      const rawAction = parsed.action || parsed.side || parsed.signal;
+      if (typeof rawAction === "string" && rawAction.trim()) return rawAction.trim();
+    }
+    const commandMatch = String(message || "").match(/^\s*(BUY|SELL|LONG|SHORT|CALL|PUT)\b/i);
+    return commandMatch ? commandMatch[1].toUpperCase() : null;
+  }
+
+  function extractRawDirection(message) {
+    const text = String(message || "");
+    for (const { pattern } of TRIGGER_PATTERNS) {
+      const match = text.match(pattern);
+      if (match) return match[0];
+    }
+    return null;
+  }
+
+  function parseJsonMessageSafe(text) {
+    const trimmed = String(text || "").trimStart();
+    if (!trimmed || trimmed[0] !== "{") return null;
+    try {
+      return JSON.parse(trimmed);
+    } catch (_) {
+      return null;
+    }
+  }
+
   function extractSymbol(title, message, parsed) {
     if (parsed && typeof parsed.symbol === "string" && parsed.symbol.trim()) {
       return normalizeSymbol(parsed.symbol);
@@ -111,6 +139,9 @@
     extractSymbol,
     extractPrice,
     extractDirection,
+    extractRawAction,
+    extractRawDirection,
+    parseJsonMessageSafe,
     SYMBOL_BLACKLIST,
     TRIGGER_PATTERNS
   };
