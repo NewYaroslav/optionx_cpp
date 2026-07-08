@@ -1,9 +1,10 @@
 "use strict";
 
 const DEFAULTS = {
-  enabled: true,
+  enabled: false,
   endpoint: "http://127.0.0.1:6560/api/v1/tradingview/signal",
-  secret: ""
+  secret: "",
+  include_tab_url: false
 };
 
 const MAX_LOGS = 50;
@@ -61,11 +62,24 @@ async function handleTradingViewAlert(payload, sender) {
   const body = {
     ...payload,
     secret: config.secret,
-    extension: {
-      id: chrome.runtime.id,
-      tab_id: sender && sender.tab ? sender.tab.id : null,
-      url: sender && sender.tab ? sender.tab.url : null
-    }
+    extension: (() => {
+      const tabUrl = sender && sender.tab ? sender.tab.url : null;
+      let host = null, symbolFromUrl = null, interval = null;
+      if (tabUrl) {
+        try {
+          const u = new URL(tabUrl);
+          host = u.host || null;
+          symbolFromUrl = u.searchParams.get("symbol");
+          interval = u.searchParams.get("interval");
+        } catch (_) {}
+      }
+      const ext = { id: chrome.runtime.id, tab_id: sender && sender.tab ? sender.tab.id : null };
+      if (host) ext.host = host;
+      if (symbolFromUrl) ext.symbol_from_url = symbolFromUrl;
+      if (interval) ext.interval = interval;
+      if (config.include_tab_url === true && tabUrl) ext.url = tabUrl;
+      return ext;
+    })()
   };
 
   try {
