@@ -351,20 +351,127 @@ However, it is another data point that plain price-level alerts may arrive via
 DOM toast, alert log, pushstream/EventSource or another channel rather than the
 chart data WebSocket.
 
+#### Private Price Alert Pushstream WebSocket
+
+A later capture confirmed that visible price-level popup alerts are delivered
+through a separate TradingView pushstream WebSocket, not through the chart data
+WebSocket:
+
+```text
+wss://pushstream.tradingview.com/message-pipe-ws/private_feed
+```
+
+Observed request shape:
+
+- WebSocket upgrade from the authenticated TradingView browser session;
+- `Origin: https://www.tradingview.com`;
+- no alert payload in the URL itself;
+- browser cookies/session state are still sensitive credentials and must stay
+  inside the browser boundary.
+
+Observed message wrapper:
+
+```json
+{
+  "id": 31,
+  "text": {
+    "content": {
+      "m": "alert_fired",
+      "p": {},
+      "id": "emrv-244490662",
+      "_rts": 1783478179763
+    },
+    "channel": "pricealerts"
+  }
+}
+```
+
+Confirmed methods on `channel: "pricealerts"`:
+
+- `alert_fired` - the actual event that should become a local bridge alert;
+- `alerts_updated` - alert state synchronization after fire, activation,
+  deactivation or auto-stop. Useful for diagnostics, but should not by itself
+  create a trade/signal event.
+
+Observed `alert_fired.p` fields for a level crossing:
+
+```json
+{
+  "fire_id": 53256558326,
+  "alert_id": 5099741779,
+  "symbol": "={\"symbol\":\"FX:EURUSD\",\"adjustment\":\"splits\",\"session\":\"regular\",\"currency-id\":\"USD\"}",
+  "pro_symbol": "={\"symbol\":\"FX:EURUSD\",\"adjustment\":\"splits\",\"session\":\"regular\",\"currency-id\":\"USD\"}",
+  "bar_time": "2026-07-08T02:36:00Z",
+  "message": "EURUSD Crossing 1.14110",
+  "popup": true,
+  "cross_interval": true,
+  "fire_time": "2026-07-08T02:36:22Z",
+  "kinds": ["regular"],
+  "resolution": "1"
+}
+```
+
+Observed `alerts_updated.p[]` adds alert configuration/state:
+
+- `type: "price"`;
+- `condition.type: "cross"`;
+- `condition.series[1].value`, for example `1.1411`;
+- `frequency: "on_first_fire"`;
+- `active`;
+- `auto_deactivate`;
+- `last_fire_time`;
+- `last_fire_bar_time`;
+- `last_stop_reason`, for example `auto`;
+- `web_hook`, `email`, `popup`, `mobile_push`.
+
+Extraction contract for this private API mode:
+
+```text
+TradingView pushstream frame
+    -> JSON.text.channel == "pricealerts"
+    -> JSON.text.content.m == "alert_fired"
+    -> JSON.text.content.p as price alert event
+    -> parse p.symbol/pro_symbol when they start with ="{...}"
+    -> normalize message into source_kind private_pricealerts_ws
+```
+
+Recommended normalized local fields:
+
+- `source_kind`: `private_pricealerts_ws`;
+- `event_id`: `tv_price_alert:<fire_id>`;
+- `dedupe_key`: `fire_id`, or `alert_id|fire_time|message`;
+- `symbol`: parsed `p.symbol.symbol`, for example `FX:EURUSD`;
+- `message`: `p.message`;
+- `action`: `alert` unless user rules map the level alert to `buy`/`sell`;
+- `price`: parsed from `condition.series[1].value` if a matching
+  `alerts_updated` state is available, otherwise best-effort from `message`;
+- `bar_time`, `fire_time`, `resolution`, `alert_id`, `fire_id`.
+
+Interpretation:
+
+- price-level popup alerts are confirmed on `private_feed`/`pricealerts`;
+- chart WebSocket negative captures are expected because that socket carries
+  chart/quote/study data, not this alert bus;
+- this is a strong candidate for the free level-alert bridge path, but it is
+  still a private authenticated API and should be isolated as an experimental
+  extension mode.
+
 What this can support:
 
 - a private quotes bridge that mirrors the currently open TradingView chart;
 - diagnostic capture of symbol metadata, active timeframe and bar updates;
 - study output research when an indicator is attached to the chart;
 - experimental indicator signal capture from `data.alertMessages[]` in study
-  `du` frames.
+  `du` frames;
+- experimental price-level alert capture from pushstream
+  `private_feed`/`pricealerts`.
 
 What is not confirmed yet:
 
 - generic alert delivery over `data.tradingview.com/socket.io/websocket` for
   all alert types;
-- whether price-level alerts such as `EURUSD Crossing 1.14072` appear in study
-  `alertMessages`, private pushstream, DOM only or another channel;
+- whether `alertcondition()` and all non-price alert types use the same
+  pushstream wrapper or another channel;
 - whether all required messages remain available on free plans and anonymous or
   low-tier sessions.
 
@@ -382,10 +489,11 @@ Possible browser-extension capture strategies:
 3. Chrome debugger protocol. `chrome.debugger` can observe WebSocket frames, but
    it requires a very invasive permission prompt and is better suited for a
    developer-only probe than for a user-facing bridge.
-4. Private pushstream/EventSource. Existing third-party extensions used
-   TradingView's private pushstream channel for alerts. This may be the real
-   alert path, so the probe must inspect EventSource traffic as well as
-   WebSocket traffic.
+4. Private pushstream WebSocket/EventSource. Level popup alerts were confirmed
+   on `wss://pushstream.tradingview.com/message-pipe-ws/private_feed`, channel
+   `pricealerts`. Existing third-party extensions also used TradingView private
+   pushstream channels, so the probe should inspect both WebSocket and
+   EventSource traffic.
 
 Recommended handling:
 
@@ -601,7 +709,8 @@ Extension responsibilities:
 - support an explicit signal-source mode:
   `strategy_tester_trades`, `alert_toast_dom`, `alert_log`,
   `browser_notification`, `private_alert_stream`,
-  `private_chart_socket_probe`, `private_chart_study_alert_messages`;
+  `private_chart_socket_probe`, `private_chart_study_alert_messages`,
+  `private_pricealerts_ws`;
 - for `strategy_tester_trades`, seed existing rows and emit only new rows;
 - for alert-based modes, parse the final alert text rather than strategy report
   rows;
@@ -722,8 +831,12 @@ server dependency intentionally.
 6. Add a developer-only `private_chart_socket_probe` mode to the extension that
    patches WebSocket/EventSource in the page context, redacts credentials and
    records method names around one manually triggered alert. Use that capture to
-   confirm whether alerts arrive on `data.tradingview.com`, pushstream, DOM only
-   or a different channel.
+   confirm whether non-price alerts arrive on `data.tradingview.com`,
+   pushstream, DOM only or a different channel.
 7. Prototype extraction of `du.p[1].<study-id>.ns.d.data.alertMessages[]` from
    captured WebSocket frames and feed the parsed inner `msg` through the same
    local TradingView extension protocol as DOM toasts.
+8. Prototype `private_pricealerts_ws` extraction from
+   `message-pipe-ws/private_feed`: consume only `pricealerts/alert_fired` as
+   events, treat `alerts_updated` as state/diagnostics, and deduplicate by
+   `fire_id`.
