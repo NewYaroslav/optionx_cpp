@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const parser = require("../content_scripts/lib/parser.js");
 
-const { normalizeAction, extractSymbol, extractPrice, extractDirection } = parser;
+const { normalizeAction, extractSymbol, extractPrice, extractDirection, extractRawAction, extractRawDirection, parseJsonMessageSafe } = parser;
 
 test("normalizeAction: BUY EURUSD -> buy", () => assert.equal(normalizeAction("BUY EURUSD", null), "buy"));
 test("normalizeAction: parsed action=buy", () => assert.equal(normalizeAction("", { action: "buy" }), "buy"));
@@ -60,4 +60,36 @@ test("extractDirection: no longer matches <=", () => {
 
 test("extractDirection: Greater Than still works", () => {
   assert.equal(extractDirection("EURUSD Greater Than 1.15"), "above");
+});
+
+test("extractRawAction: from parsed JSON", () => {
+  assert.equal(extractRawAction("", { action: "GOOGLY" }), "GOOGLY");
+});
+
+test("extractRawAction: from command pattern", () => {
+  assert.equal(extractRawAction("BUY EURUSD", null), "BUY");
+});
+
+test("extractRawAction: empty when no source", () => {
+  assert.equal(extractRawAction("RSI LONG zone on EURUSD", null), null);
+});
+
+test("extractRawDirection: matches 'Crossing Up'", () => {
+  assert.equal(extractRawDirection("EURUSD Crossing Up 1.14143"), "Crossing Up");
+});
+
+test("extractRawDirection: matches 'Greater Than'", () => {
+  assert.equal(extractRawDirection("EURUSD Greater Than 1.15"), "Greater Than");
+});
+
+test("extractRawDirection: null when no trigger", () => {
+  assert.equal(extractRawDirection("RSI LONG zone on EURUSD"), null);
+});
+
+test("parseJsonMessageSafe: handles leading whitespace", () => {
+  assert.deepEqual(parseJsonMessageSafe('  {"a":1}'), { a: 1 });
+});
+
+test("parseJsonMessageSafe: rejects non-JSON", () => {
+  assert.equal(parseJsonMessageSafe("not json"), null);
 });

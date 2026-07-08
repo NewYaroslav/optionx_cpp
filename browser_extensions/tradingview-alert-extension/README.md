@@ -113,9 +113,12 @@ The extension sends a `POST` with JSON:
   "source": "tradingview_extension",
   "source_kind": "alert_toast_dom",
   "event_id": "tv_toast:<fnv1a-hash>",
-  "dedupe_key": "alert_toast_dom|EURUSD|Alert on EURUSD|EURUSD Crossing 1.14072",
+  "fingerprint": "<fnv1a-hash>",
   "symbol": "EURUSD",
   "action": "alert",
+  "raw_action": "BUY",
+  "direction": "up",
+  "raw_direction": "Crossing Up",
   "price": 1.14072,
   "time": "2026-07-08T00:00:00.000Z",
   "title": "Alert on EURUSD",
@@ -152,9 +155,24 @@ Expected bridge behavior:
 
 - bind to loopback by default;
 - require `X-OptionX-Secret` if a secret is configured;
-- deduplicate by `dedupe_key` or `event_id`;
+- deduplicate by `fingerprint` or `event_id`;
 - map `action` to `TradeSignal::order_type` only when it is `buy` or `sell`;
 - keep `amount` on the local bridge/risk-management side.
+
+## Dedup semantics
+
+Two distinct identifiers are sent in each signal:
+
+- **`fingerprint`** — content hash (FNV1a of `${source_kind}|${symbol}|${title}|${message}`). The same TradingView toast produces the same fingerprint, even across page reloads. Different alert actions on the same symbol produce different fingerprints.
+- **`event_id`** — stable identifier for retry safety. Format `tv_toast:<fnv1a-hash>` by default. If TradingView alert message contains a JSON `event_id`, `fire_id` or `alert_id`, that value is used instead.
+
+**Layered responsibilities:**
+
+- **Content script** suppresses DOM-level duplicates inside a `DUPLICATE_WINDOW_MS` window (5 seconds) by `fingerprint`. This is local debouncing only — NOT a long-term dedup policy.
+- **Service worker** sends every accepted signal. It does NOT maintain a long-term dedup store.
+- **Bridge** (`127.0.0.1:6560`) is free to use `fingerprint` and `event_id` as it sees fit. Long-term dedup, idempotency keys, retry suppression — all are the bridge's responsibility, not the extension's.
+
+For unusual signals (same `BUY EURUSD` every hour), the bridge MUST decide its own dedup window. The extension makes no guarantees.
 
 ## Tests
 
