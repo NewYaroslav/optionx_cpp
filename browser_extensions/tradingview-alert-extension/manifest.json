@@ -16,6 +16,7 @@
         "https://*.tradingview.com/*"
       ],
       "js": [
+        "content_scripts/lib/parser.js",
         "content_scripts/tradingview_alerts.js"
       ],
       "run_at": "document_idle"
