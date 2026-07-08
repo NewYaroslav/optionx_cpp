@@ -46,6 +46,8 @@ Research note: TradingView level popup alerts were later observed on the private
 pushstream WebSocket `message-pipe-ws/private_feed`, channel `pricealerts`,
 method `alert_fired`. The current extension MVP still uses visible toast DOM;
 the private WebSocket path should be added as a separate experimental mode.
+Only `alert_fired` should emit a local signal; `alerts_created` and
+`alerts_updated` are lifecycle/state messages.
 
 ## Test Indicator
 

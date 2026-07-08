@@ -388,6 +388,7 @@ Observed message wrapper:
 
 Confirmed methods on `channel: "pricealerts"`:
 
+- `alerts_created` - alert creation/configuration snapshot;
 - `alert_fired` - the actual event that should become a local bridge alert;
 - `alerts_updated` - alert state synchronization after fire, activation,
   deactivation or auto-stop. Useful for diagnostics, but should not by itself
@@ -414,7 +415,7 @@ Observed `alert_fired.p` fields for a level crossing:
 Observed `alerts_updated.p[]` adds alert configuration/state:
 
 - `type: "price"`;
-- `condition.type: "cross"`;
+- `condition.type`, observed as `cross`, `cross_up` and `cross_down`;
 - `condition.series[1].value`, for example `1.1411`;
 - `frequency: "on_first_fire"`;
 - `active`;
@@ -423,6 +424,28 @@ Observed `alerts_updated.p[]` adds alert configuration/state:
 - `last_fire_bar_time`;
 - `last_stop_reason`, for example `auto`;
 - `web_hook`, `email`, `popup`, `mobile_push`.
+
+A later capture around manual crossing alerts showed why `alerts_updated` must
+not be treated as a fired signal. While the user adjusted or recreated a level,
+TradingView emitted multiple state updates for the same `alert_id` without
+`fire_id` and without `last_fire_time`:
+
+```text
+alerts_created  active=false  cross_up    1.14113
+alerts_updated  active=true   cross_up    1.14113
+alerts_updated  active=false  cross_up    1.14112
+alerts_updated  active=true   cross_up    1.14112
+alerts_updated  active=false  cross_up    1.14116
+alerts_updated  active=true   cross_up    1.14116
+alerts_updated  active=false  cross_up    1.14115
+alerts_updated  active=true   cross_up    1.14115
+alert_fired                   fire_id=53256619224
+alerts_updated  active=false  last_stop_reason=auto
+```
+
+Those active false/true flips are alert lifecycle/configuration updates, not
+market events. Treat them as diagnostics or state cache only. A local signal is
+accepted only when `content.m == "alert_fired"` and `p.fire_id` is present.
 
 Extraction contract for this private API mode:
 
