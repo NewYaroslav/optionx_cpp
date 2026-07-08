@@ -20,6 +20,9 @@
   локальные проверки, примеры и generated output.
 - [Implementation notes](guides/implementation-notes.md) - lifecycle, pub-sub,
   task scheduling, HTTP/WebSocket, trade queue, session DB и ограничения.
+- [TradingView bridge research](guides/tradingview-bridge-research.md) -
+  найденные пути TradingView -> bridge, webhook constraints, browser-extension
+  MVP и риски.
 - [Coding style](guides/coding-style.md) - naming, namespace, Doxygen,
   обработка ошибок, ownership и header-only правила.
 - [Git workflow](guides/git-workflow.md) - branch policy, PR-only workflow,
