@@ -50,6 +50,8 @@ function sendTestSignal() {
       source: "tradingview_extension",
       source_kind: "manual_test",
       event_id: `manual_test:${now.getTime()}`,
+      // manual_test fingerprints intentionally free-form (timestamp-based). FNV1a contract
+      // applies to production tv_toast payloads only; bridge must not rely on this shape.
       fingerprint: `manual_test:${now.getTime()}`,
       symbol: "EURUSD",
       action: "buy",
