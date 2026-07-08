@@ -222,8 +222,15 @@
 
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          inspectNodeSoon(node);
+        if (mutation.addedNodes && mutation.addedNodes.length) {
+          for (const node of mutation.addedNodes) {
+            inspectNodeSoon(node);
+          }
+        }
+        if (mutation.type === "characterData" && mutation.target.parentElement) {
+          inspectNodeSoon(mutation.target.parentElement);
+        } else if (mutation.type === "attributes" && mutation.target) {
+          inspectNodeSoon(mutation.target);
         }
       }
     });

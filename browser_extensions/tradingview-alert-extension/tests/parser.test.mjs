@@ -31,6 +31,21 @@ test("extractDirection: down", () => assert.equal(extractDirection("EURUSD Cross
 test("extractDirection: above (Greater Than)", () => assert.equal(extractDirection("EURUSD Greater Than 1.15"), "above"));
 test("extractDirection: below (Less Than)", () => assert.equal(extractDirection("EURUSD Less Than 1.10"), "below"));
 test("extractDirection: moving_up_pct", () => assert.equal(extractDirection("EURUSD Moving Up 1.0%"), "moving_up_pct"));
+test("extractDirection: moving_up (no percent)", () => {
+  assert.equal(extractDirection("EURUSD Moving Up"), "moving_up");
+});
+
+test("extractDirection: moving_up_pct (with number and percent)", () => {
+  assert.equal(extractDirection("EURUSD Moving Up 1.0%"), "moving_up_pct");
+});
+
+test("extractDirection: moving_down (no percent)", () => {
+  assert.equal(extractDirection("EURUSD Moving Down"), "moving_down");
+});
+
+test("extractDirection: moving_down_pct (with number and percent)", () => {
+  assert.equal(extractDirection("EURUSD Moving Down 2.5%"), "moving_down_pct");
+});
 test("extractDirection: entering_channel", () => assert.equal(extractDirection("EURUSD Entering Channel"), "entering_channel"));
 test("extractDirection: unknown -> null", () => assert.equal(extractDirection("RSI LONG zone on EURUSD"), null));
 
