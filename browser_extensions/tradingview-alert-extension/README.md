@@ -118,7 +118,6 @@ The extension sends a `POST` with JSON:
   "time": "2026-07-08T00:00:00.000Z",
   "title": "Alert on EURUSD",
   "message": "EURUSD Crossing 1.14072",
-  "secret": "shared-token",
   "extension": {
     "id": "chrome-extension-id",
     "tab_id": 123,
@@ -136,13 +135,32 @@ The extension sends a `POST` with JSON:
 `extension.url` is included only when the popup option `Include full tab URL`
 is enabled; by default only `host`, `symbol_from_url` and `interval` are sent.
 
+The shared secret, when configured, is sent as the request header
+`X-OptionX-Secret` and is **not** present in the JSON body. The bridge must
+verify the header against the configured value.
+
+Requests have a 3 second timeout; an unreachable bridge will surface as a
+`Bridge timeout` entry in the popup log.
+
 Expected bridge behavior:
 
 - bind to loopback by default;
-- require `secret` if configured;
+- require `X-OptionX-Secret` if a secret is configured;
 - deduplicate by `dedupe_key` or `event_id`;
 - map `action` to `TradeSignal::order_type` only when it is `buy` or `sell`;
 - keep `amount` on the local bridge/risk-management side.
+
+## Tests
+
+Parser rules are unit-tested in plain Node. From the extension directory:
+
+```bash
+node --test tests/parser.test.mjs
+```
+
+Fixtures of captured TradingView toast fragments live under
+`tests/fixtures/`. The service worker itself is not exercised by these tests
+because it depends on the Chrome extension API.
 
 ## Notes
 

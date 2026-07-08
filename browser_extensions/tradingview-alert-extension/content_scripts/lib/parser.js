@@ -66,7 +66,10 @@
     }
     const re = new RegExp("^([A-Z][A-Z0-9:._/-]{1,15})\\s+" + TRIGGER_PREFIX, "i");
     const triggerLike = String(message || "").match(re);
-    if (triggerLike) return normalizeSymbol(triggerLike[1]);
+    if (triggerLike) {
+      const candidate = normalizeSymbol(triggerLike[1]);
+      if (!SYMBOL_BLACKLIST.has(candidate)) return candidate;
+    }
     const fromTitle = String(title || "").match(/\bAlert\s+on\s+([A-Za-z0-9:._/-]+)/i);
     if (fromTitle) return normalizeSymbol(fromTitle[1]);
     const tokens = String(message || "").match(/\b([A-Z][A-Z0-9:._/-]{1,15})\b/g) || [];
