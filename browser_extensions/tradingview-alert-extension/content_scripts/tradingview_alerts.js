@@ -112,49 +112,6 @@
     }
   }
 
-  function normalizeAction(message, parsed) {
-    const rawAction = parsed && (parsed.action || parsed.side || parsed.signal);
-    if (rawAction) return normalizeActionWord(rawAction);
-
-    const match = String(message || "").match(/\b(BUY|SELL|LONG|SHORT|CALL|PUT)\b/i);
-    if (!match) return "alert";
-    return normalizeActionWord(match[1]);
-  }
-
-  function normalizeActionWord(value) {
-    const normalized = String(value || "").trim().toLowerCase();
-    if (normalized === "long" || normalized === "call") return "buy";
-    if (normalized === "short" || normalized === "put") return "sell";
-    if (normalized === "buy" || normalized === "sell") return normalized;
-    return normalized || "alert";
-  }
-
-  function extractSymbol(title, message, parsed) {
-    if (parsed && parsed.symbol) return normalizeSymbol(parsed.symbol);
-
-    const fromTitle = String(title || "").match(/\bAlert\s+on\s+([A-Za-z0-9:._/-]+)/i);
-    if (fromTitle) return normalizeSymbol(fromTitle[1]);
-
-    const fromMessage = String(message || "").match(/\b([A-Z]{2,12}[A-Z0-9:_/-]*)\b/);
-    return fromMessage ? normalizeSymbol(fromMessage[1]) : "";
-  }
-
-  function normalizeSymbol(value) {
-    return String(value || "").trim().replace(/[^A-Za-z0-9:._/-]/g, "").toUpperCase();
-  }
-
-  function extractPrice(message, parsed) {
-    if (parsed && parsed.price !== undefined) return toNumberOrString(parsed.price);
-    const numbers = String(message || "").match(/[-+]?\d+(?:\.\d+)?/g);
-    if (!numbers || numbers.length === 0) return null;
-    return Number(numbers[numbers.length - 1]);
-  }
-
-  function toNumberOrString(value) {
-    const numberValue = Number(value);
-    return Number.isFinite(numberValue) ? numberValue : value;
-  }
-
   function fnv1a(value) {
     let hash = 0x811c9dc5;
     for (let index = 0; index < value.length; index += 1) {
@@ -181,22 +138,27 @@
     const title = findTitle(root);
     const message = findDescription(root);
     const parsed = parseJsonMessage(message);
-    const symbol = extractSymbol(title, message, parsed);
-    const action = normalizeAction(message, parsed);
+    const symbol = OptionXParser.extractSymbol(title, message, parsed);
+    const action = OptionXParser.normalizeAction(message, parsed);
+    const direction = OptionXParser.extractDirection(message);
     const dedupeKey = `${SOURCE_KIND}|${symbol}|${title}|${message}`;
     const hash = fnv1a(dedupeKey);
-    const now = new Date();
+    const observedAt = new Date().toISOString();
+    const stableId = parsed && (parsed.event_id || parsed.fire_id || parsed.alert_id);
+    const eventId = stableId ? String(stableId) : `tv_toast:${hash}`;
 
     return {
       version: 1,
       source: SOURCE,
       source_kind: SOURCE_KIND,
-      event_id: `tv_toast:${hash}:${Math.floor(now.getTime() / 1000)}`,
+      event_id: eventId,
       dedupe_key: dedupeKey,
       symbol,
       action,
-      price: extractPrice(message, parsed),
-      time: now.toISOString(),
+      direction,
+      price: OptionXParser.extractPrice(message, parsed),
+      observed_at: observedAt,
+      time: observedAt,
       title,
       message,
       raw: {
@@ -215,8 +177,23 @@
     });
   }
 
+  function countAlertDescriptions(root) {
+    const candidates = root.querySelectorAll('[class*="description"]');
+    let count = 0;
+    for (const cand of candidates) {
+      const text = (cand.textContent || "").trim();
+      if (text && text.length > 3 && !/edit alert/i.test(text)) count++;
+    }
+    return count;
+  }
+
   function processRoot(root) {
     if (!root || handledRoots.has(root)) return;
+    if (countAlertDescriptions(root) > 1) {
+      console.warn("OptionX bridge: skipping root with multiple descriptions to avoid merged payload");
+      handledRoots.add(root);
+      return;
+    }
     const payload = buildPayload(root);
     if (!payload.message) return;
     if (shouldSuppressDuplicate(payload.dedupe_key)) return;
@@ -250,7 +227,8 @@
 
     observer.observe(document.body, {
       childList: true,
-      subtree: true
+      subtree: true,
+      characterData: true
     });
 
     inspectNodeSoon(document.body);
