@@ -27,8 +27,8 @@
     { pattern: /\b(?:exiting\s+channel)\b/i, value: "exiting_channel" },
     { pattern: /\b(?:inside\s+channel|in\s+channel)\b/i, value: "inside_channel" },
     { pattern: /\b(?:outside\s+channel|out\s+of\s+channel)\b/i, value: "outside_channel" },
-    { pattern: /\b(?:greater\s+than|above|>=)\b/i, value: "above" },
-    { pattern: /\b(?:less\s+than|below|<=)\b/i, value: "below" },
+    { pattern: /\b(?:greater\s+than|above)\b/i, value: "above" },
+    { pattern: /\b(?:less\s+than|below)\b/i, value: "below" },
     { pattern: /\b(?:crossing|crossed|crosses)\b/i, value: "cross" }
   ];
 
@@ -64,14 +64,18 @@
     if (parsed && typeof parsed.symbol === "string" && parsed.symbol.trim()) {
       return normalizeSymbol(parsed.symbol);
     }
-    const re = new RegExp("^([A-Z][A-Z0-9:._/-]{1,15})\\s+" + TRIGGER_PREFIX, "i");
+    const re = new RegExp("\\b([A-Z][A-Z0-9:._/-]{1,15})\\s+" + TRIGGER_PREFIX, "i");
     const triggerLike = String(message || "").match(re);
     if (triggerLike) {
       const candidate = normalizeSymbol(triggerLike[1]);
       if (!SYMBOL_BLACKLIST.has(candidate)) return candidate;
     }
     const fromTitle = String(title || "").match(/\bAlert\s+on\s+([A-Za-z0-9:._/-]+)/i);
-    if (fromTitle) return normalizeSymbol(fromTitle[1]);
+    if (fromTitle) {
+      const candidate = normalizeSymbol(fromTitle[1]);
+      if (!SYMBOL_BLACKLIST.has(candidate)) return candidate;
+      // fall through to token loop instead of returning blacklisted candidate
+    }
     const tokens = String(message || "").match(/\b([A-Z][A-Z0-9:._/-]{1,15})\b/g) || [];
     for (const token of tokens) {
       if (!SYMBOL_BLACKLIST.has(token)) return normalizeSymbol(token);

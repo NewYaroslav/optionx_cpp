@@ -33,3 +33,31 @@ test("extractDirection: below (Less Than)", () => assert.equal(extractDirection(
 test("extractDirection: moving_up_pct", () => assert.equal(extractDirection("EURUSD Moving Up 1.0%"), "moving_up_pct"));
 test("extractDirection: entering_channel", () => assert.equal(extractDirection("EURUSD Entering Channel"), "entering_channel"));
 test("extractDirection: unknown -> null", () => assert.equal(extractDirection("RSI LONG zone on EURUSD"), null));
+
+test("extractSymbol: fromTitle blacklist filter PRICE", () => {
+  assert.equal(extractSymbol("Alert on PRICE", "", null), "");
+});
+
+test("extractSymbol: fromTitle blacklist filter RSI", () => {
+  assert.equal(extractSymbol("Alert on RSI", "", null), "");
+});
+
+test("extractSymbol: mid-string trigger 'AAPL crosses 200' -> AAPL", () => {
+  assert.equal(extractSymbol("", "long story here AAPL crosses 200", null), "AAPL");
+});
+
+test("extractSymbol: 'TV BUY EURUSD' -> EURUSD (BUY blacklisted, EURUSD not)", () => {
+  assert.equal(extractSymbol("", "TV BUY EURUSD", null), "EURUSD");
+});
+
+test("extractDirection: no longer matches >=", () => {
+  assert.equal(extractDirection("AAPL >= 200"), null);
+});
+
+test("extractDirection: no longer matches <=", () => {
+  assert.equal(extractDirection("AAPL <= 100"), null);
+});
+
+test("extractDirection: Greater Than still works", () => {
+  assert.equal(extractDirection("EURUSD Greater Than 1.15"), "above");
+});

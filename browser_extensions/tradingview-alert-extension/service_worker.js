@@ -28,9 +28,13 @@ async function postSignal(endpoint, body, secret) {
   }
 }
 
-chrome.runtime.onInstalled.addListener(async () => {
-  const current = await chrome.storage.local.get(DEFAULTS);
-  await chrome.storage.local.set(current);
+chrome.runtime.onInstalled.addListener(async (details) => {
+  if (details.reason === "install") {
+    await chrome.storage.local.set(DEFAULTS);
+  } else {
+    const current = await chrome.storage.local.get(DEFAULTS);
+    await chrome.storage.local.set(current);
+  }
   await setBadge("idle");
 });
 

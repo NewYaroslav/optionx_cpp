@@ -76,7 +76,9 @@ as `BUY EURUSD` or `LONG BTCUSDT`; otherwise it falls back to `alert`.
 The extension ships with forwarding disabled. Users must opt in via the
 popup before any signal leaves the browser. The bridge endpoint, shared
 secret, and the `include_tab_url` flag are all stored in
-`chrome.storage.local` and can be changed at any time.
+`chrome.storage.local` and can be changed at any time. Existing users
+upgrading from v0.1.0 keep their previous `enabled` state. Only fresh
+installs start with `enabled: false`.
 
 The full chart tab URL is **not** sent by default; only `host`,
 `symbol_from_url` and `interval` extracted from the URL are attached to the
@@ -110,7 +112,7 @@ The extension sends a `POST` with JSON:
   "version": 1,
   "source": "tradingview_extension",
   "source_kind": "alert_toast_dom",
-  "event_id": "tv_toast:hash:timestamp",
+  "event_id": "tv_toast:<fnv1a-hash>",
   "dedupe_key": "alert_toast_dom|EURUSD|Alert on EURUSD|EURUSD Crossing 1.14072",
   "symbol": "EURUSD",
   "action": "alert",
@@ -131,6 +133,10 @@ The extension sends a `POST` with JSON:
   }
 }
 ```
+
+Stable `event_id`; not affected by processing time. If the TradingView alert
+message contains a JSON `event_id`, `fire_id` or `alert_id`, that value is
+used instead.
 
 `extension.url` is included only when the popup option `Include full tab URL`
 is enabled; by default only `host`, `symbol_from_url` and `interval` are sent.
