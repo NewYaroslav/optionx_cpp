@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OptionX TradingView Alert Bridge</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>OptionX Bridge</h1>
+      <span id="status" class="status">idle</span>
+    </header>
+
+    <label class="row">
+      <input id="enabled" type="checkbox">
+      <span>Forward TradingView alert toasts</span>
+    </label>
+
+    <label>
+      Endpoint
+      <input id="endpoint" type="url" spellcheck="false">
+    </label>
+
+    <label>
+      Shared secret
+      <input id="secret" type="password" spellcheck="false" autocomplete="off">
+    </label>
+
+    <div class="actions">
+      <button id="save" type="button">Save</button>
+      <button id="test" type="button">Send test</button>
+      <button id="clear" type="button">Clear log</button>
+    </div>
+
+    <section>
+      <h2>Recent events</h2>
+      <div id="logs" class="logs"></div>
+    </section>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>
