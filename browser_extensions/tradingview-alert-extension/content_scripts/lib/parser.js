@@ -111,10 +111,7 @@
     return "";
   }
 
-  function extractPrice(message, parsed) {
-    // TODO (follow-up): introduce trigger_value + trigger_unit for pct-based triggers.
-    // Currently extractPrice returns first numeric token regardless of direction context,
-    // which misassigns percentage values to price for "Moving Up 1.0%" type alerts.
+  function extractFirstNumber(message, parsed) {
     if (parsed && typeof parsed === "object") {
       if (typeof parsed.price === "number" && Number.isFinite(parsed.price)) return parsed.price;
       if (typeof parsed.price === "string") {
@@ -126,6 +123,25 @@
     if (!numbers) return null;
     const first = parseFloat(numbers[0]);
     return Number.isFinite(first) ? first : null;
+  }
+
+  function extractPrice(message, parsed) {
+    return extractFirstNumber(message, parsed);
+  }
+
+  function resolveTriggerMetadata(message, parsed, direction) {
+    const isPctTrigger = typeof direction === "string" && /_pct$/.test(direction);
+    const firstNumber = extractFirstNumber(message, parsed);
+
+    if (isPctTrigger) {
+      // For pct triggers, parsed.price carries the symbol's absolute price, not the percent.
+      // Extract the percentage value from the message text only.
+      const messageNumbers = String(message || "").match(/[-+]?\d+(?:\.\d+)?/g);
+      const pctCandidate = messageNumbers ? parseFloat(messageNumbers[0]) : null;
+      const trigger_value = Number.isFinite(pctCandidate) ? pctCandidate : null;
+      return { price: null, trigger_value, trigger_unit: "percent" };
+    }
+    return { price: firstNumber, trigger_value: null, trigger_unit: null };
   }
 
   function extractDirection(message) {
@@ -175,6 +191,8 @@
     normalizeSymbol,
     extractSymbol,
     extractPrice,
+    extractFirstNumber,
+    resolveTriggerMetadata,
     extractDirection,
     extractRawAction,
     extractRawDirection,

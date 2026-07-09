@@ -120,6 +120,8 @@ The extension sends a `POST` with JSON:
   "direction": "up",
   "raw_direction": "Crossing Up",
   "price": 1.14072,
+  "trigger_value": null,
+  "trigger_unit": null,
   "time": "2026-07-08T00:00:00.000Z",
   "title": "Alert on EURUSD",
   "message": "EURUSD Crossing 1.14072",
@@ -195,12 +197,12 @@ Bridge should treat any value with the same prefix as the same kind (e.g. all
 `tv_alert:*` are per-fire). The `tv_toast:` prefix indicates toast-derived IDs that
 may collide if the alert fires repeatedly with identical text.
 
-### Future work
+### Payload schema
 
-- `extractPrice` returns the first numeric token from message text. For pct-based
-  triggers like `Moving Up 1.0%` this assigns the percentage value to `price`,
-  which is semantically incorrect. Follow-up PR will introduce `trigger_value`
-  and `trigger_unit` fields and a separate `price` resolution path.
+- `price`: number | null. First numeric value from message (or parsed.price). Null when `direction` is pct-based.
+- `trigger_value`: number | null. Trigger value for pct-based directions (`moving_up_pct`/`moving_down_pct`).
+- `trigger_unit`: string | null. Unit of trigger_value (`"percent"` for pct, future: `"pips"`/`"points"`, null when not applicable).
+- `direction`: enum: `cross`, `up`, `down`, `moving_up`, `moving_up_pct`, `moving_down`, `moving_down_pct`, `above`, `below`, `entering_channel`, `exiting_channel`, `inside_channel`, `outside_channel`, or null.
 
 ## Tests
 
