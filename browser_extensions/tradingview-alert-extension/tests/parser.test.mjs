@@ -66,6 +66,38 @@ test("extractFirstNumber: parsing edge cases", () => {
   assert.equal(parser.extractFirstNumber("BUY EURUSD", null), null);
 });
 
+test("resolveTriggerMetadata: pct ignores digits in US100 symbol", () => {
+  const r = parser.resolveTriggerMetadata("US100 Moving Up 1.0%", null, "moving_up_pct");
+  assert.equal(r.price, null);
+  assert.equal(r.trigger_value, 1.0);
+  assert.equal(r.trigger_unit, "percent");
+});
+
+test("resolveTriggerMetadata: pct ignores digits in NAS100 symbol", () => {
+  const r = parser.resolveTriggerMetadata("NAS100 Moving Down 2.5%", null, "moving_down_pct");
+  assert.equal(r.price, null);
+  assert.equal(r.trigger_value, 2.5);
+  assert.equal(r.trigger_unit, "percent");
+});
+
+test("resolveTriggerMetadata: pct ignores digits in SPX500 symbol", () => {
+  const r = parser.resolveTriggerMetadata("SPX500 Moving Up 0.5%", null, "moving_up_pct");
+  assert.equal(r.price, null);
+  assert.equal(r.trigger_value, 0.5);
+  assert.equal(r.trigger_unit, "percent");
+});
+
+test("extractPctTriggerValue: returns null when no pct pattern", () => {
+  assert.equal(parser.extractPctTriggerValue("EURUSD Crossing 1.14145"), null);
+  assert.equal(parser.extractPctTriggerValue("BUY EURUSD"), null);
+  assert.equal(parser.extractPctTriggerValue("Moving Up без процента"), null);
+});
+
+test("extractPctTriggerValue: handles percent without decimals", () => {
+  assert.equal(parser.extractPctTriggerValue("BTC Moving Up 5%"), 5);
+  assert.equal(parser.extractPctTriggerValue("BTC Moving Down 3%"), 3);
+});
+
 test("extractPrice (back-compat): non-pct returns first number", () => {
   assert.equal(parser.extractPrice("EURUSD Crossing 1.14145", null), 1.14145);
 });

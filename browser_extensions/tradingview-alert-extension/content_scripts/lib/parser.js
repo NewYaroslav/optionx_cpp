@@ -129,14 +129,26 @@
     return extractFirstNumber(message, parsed);
   }
 
+  // Anchored extractor for pct-based triggers only. Looks for the number AFTER
+  // "Moving Up" or "Moving Down", so digits inside the symbol (e.g. US100) are
+  // never misassigned as the trigger value.
+  function extractPctTriggerValue(message) {
+    const match = String(message || "").match(
+      /\bmoving\s+(?:up|down)\s+([-+]?\d+(?:\.\d+)?)\s*%/i
+    );
+    if (!match) return null;
+    const value = parseFloat(match[1]);
+    return Number.isFinite(value) ? value : null;
+  }
+
   function resolveTriggerMetadata(message, parsed, direction) {
     const isPctTrigger = typeof direction === "string" && /_pct$/.test(direction);
 
     if (isPctTrigger) {
-      // For pct-based triggers we deliberately do NOT consult parsed.price:
-      // TradingView typically carries the symbol's absolute price there, not
-      // a percentage. The trigger value must come from message text.
-      return { price: null, trigger_value: extractFirstNumber(message, null), trigger_unit: "percent" };
+      // Anchored extraction: take the number right after "Moving Up/Down" so
+      // digits inside the symbol (e.g. US100, NAS100, SPX500) are not
+      // misassigned as the trigger value.
+      return { price: null, trigger_value: extractPctTriggerValue(message), trigger_unit: "percent" };
     }
     return { price: extractFirstNumber(message, parsed), trigger_value: null, trigger_unit: null };
   }
@@ -190,6 +202,7 @@
     extractPrice,
     extractFirstNumber,
     resolveTriggerMetadata,
+    extractPctTriggerValue,
     extractDirection,
     extractRawAction,
     extractRawDirection,
