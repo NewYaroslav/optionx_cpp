@@ -137,9 +137,11 @@ The extension sends a `POST` with JSON:
 }
 ```
 
-Stable `event_id`; not affected by processing time. If the TradingView alert
-message contains a JSON `event_id`, `fire_id` or `alert_id`, that value is
-used instead.
+Stable event_id is resolved via 4-level fallback. `event_id` and `fire_id` are used
+directly (with prefix where applicable); `alert_id` alone is NOT sufficient — it is
+the alert CONFIGURATION id, not the per-fire id. `alert_id` is composed with
+`fire_time`/`bar_time`/`time`/`timenow` to form `tv_alert:<alert_id>:<time>`.
+See [Event id semantics](#event-id-semantics) for the full resolution chain.
 
 `extension.url` is included only when the popup option `Include full tab URL`
 is enabled; by default only `host`, `symbol_from_url` and `interval` are sent.
@@ -164,7 +166,7 @@ Expected bridge behavior:
 Two distinct identifiers are sent in each signal:
 
 - **`fingerprint`** — content hash (FNV1a of `${source_kind}|${symbol}|${title}|${message}`). The same TradingView toast produces the same fingerprint, even across page reloads. Different alert actions on the same symbol produce different fingerprints.
-- **`event_id`** — stable identifier for retry safety. Format `tv_toast:<fnv1a-hash>` by default. If TradingView alert message contains a JSON `event_id`, `fire_id` or `alert_id`, that value is used instead.
+- **`event_id`** — stable identifier for retry safety. Default format `tv_toast:<fingerprint>`. `event_id` and `fire_id` are used directly (with prefix where applicable); `alert_id` alone is NOT sufficient — it is the alert CONFIGURATION id, not the per-fire id, and is composed with `fire_time`/`bar_time`/`time`/`timenow` to form `tv_alert:<alert_id>:<time>`. See [Event id semantics](#event-id-semantics) for the full resolution chain.
 
 **Layered responsibilities:**
 
