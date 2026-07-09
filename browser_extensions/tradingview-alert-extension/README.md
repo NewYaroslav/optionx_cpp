@@ -206,15 +206,24 @@ may collide if the alert fires repeatedly with identical text.
 
 ## Tests
 
-Parser rules are unit-tested in plain Node. From the extension directory:
+Two test suites:
 
+- **Unit tests** (`tests/parser.test.mjs`): pure-function parser tests via `node --test`. 65+ cases covering action/symbol/price/direction parsing, raw_action/raw_direction, makeEventId 4-level resolution, resolveTriggerMetadata, DEFAULTS.
+- **Integration tests** (`tests/integration.test.mjs`): jsdom-based tests against real HTML fixture. Loads `tests/fixtures/toast-sample.html` (captured 2026-07) and verifies end-to-end parser behavior on real TradingView toast DOM structure.
+
+Running tests:
+```bash
+cd browser_extensions/tradingview-alert-extension
+npm install              # one-time, installs jsdom
+npm test                 # both suites
+npm run test:unit        # unit only
+npm run test:integration # integration only
+```
+
+Standalone (no jsdom):
 ```bash
 node --test tests/parser.test.mjs
 ```
-
-Fixtures of captured TradingView toast fragments live under
-`tests/fixtures/`. The service worker itself is not exercised by these tests
-because it depends on the Chrome extension API.
 
 ## Notes
 

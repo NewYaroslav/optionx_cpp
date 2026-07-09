@@ -1,0 +1,14 @@
+{
+  "name": "tradingview-alert-extension-tests",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Test tooling for TradingView alert bridge extension",
+  "scripts": {
+    "test": "node --test tests/parser.test.mjs tests/integration.test.mjs",
+    "test:unit": "node --test tests/parser.test.mjs",
+    "test:integration": "node --test tests/integration.test.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.0"
+  }
+}
