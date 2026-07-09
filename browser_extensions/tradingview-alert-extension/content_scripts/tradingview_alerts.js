@@ -146,6 +146,8 @@
     const fingerprint = fnv1a(fingerprintInput);
     const observedAt = new Date().toISOString();
     const eventId = OptionXParser.makeEventId(parsed, fingerprint);
+    const { price, trigger_value, trigger_unit } =
+      OptionXParser.resolveTriggerMetadata(message, parsed, direction);
 
     return {
       version: 1,
@@ -158,7 +160,9 @@
       raw_action: OptionXParser.extractRawAction(message, parsed),
       direction,
       raw_direction: OptionXParser.extractRawDirection(message),
-      price: OptionXParser.extractPrice(message, parsed),
+      price,
+      trigger_value,
+      trigger_unit,
       observed_at: observedAt,
       time: observedAt,
       title,

@@ -26,6 +26,50 @@ test("extractPrice: first number not last", () => assert.equal(extractPrice("BUY
 test("extractPrice: parsed JSON price", () => assert.equal(extractPrice("anything", { price: 1.14 }), 1.14));
 test("extractPrice: no number -> null", () => assert.equal(extractPrice("BUY EURUSD", null), null));
 
+test("resolveTriggerMetadata: pct direction -> price null, trigger_value + percent", () => {
+  const r = parser.resolveTriggerMetadata("EURUSD Moving Up 1.0%", null, "moving_up_pct");
+  assert.equal(r.price, null);
+  assert.equal(r.trigger_value, 1.0);
+  assert.equal(r.trigger_unit, "percent");
+});
+
+test("resolveTriggerMetadata: non-pct direction -> price, no trigger", () => {
+  const r = parser.resolveTriggerMetadata("EURUSD Crossing 1.14145", null, "cross");
+  assert.equal(r.price, 1.14145);
+  assert.equal(r.trigger_value, null);
+  assert.equal(r.trigger_unit, null);
+});
+
+test("resolveTriggerMetadata: parsed.price priority (non-pct)", () => {
+  const r = parser.resolveTriggerMetadata("anything", { price: 1.14 }, "cross");
+  assert.equal(r.price, 1.14);
+  assert.equal(r.trigger_value, null);
+  assert.equal(r.trigger_unit, null);
+});
+
+test("resolveTriggerMetadata: pct wins over parsed.price", () => {
+  const r = parser.resolveTriggerMetadata("Moving Up 1.0%", { price: 999 }, "moving_up_pct");
+  assert.equal(r.price, null);
+  assert.equal(r.trigger_value, 1.0);
+  assert.equal(r.trigger_unit, "percent");
+});
+
+test("resolveTriggerMetadata: no numbers -> null fields", () => {
+  const r = parser.resolveTriggerMetadata("BUY EURUSD", null, null);
+  assert.equal(r.price, null);
+  assert.equal(r.trigger_value, null);
+  assert.equal(r.trigger_unit, null);
+});
+
+test("extractFirstNumber: parsing edge cases", () => {
+  assert.equal(parser.extractFirstNumber("Moving Down 2.5%", null), 2.5);
+  assert.equal(parser.extractFirstNumber("BUY EURUSD", null), null);
+});
+
+test("extractPrice (back-compat): non-pct returns first number", () => {
+  assert.equal(parser.extractPrice("EURUSD Crossing 1.14145", null), 1.14145);
+});
+
 test("extractDirection: cross", () => assert.equal(extractDirection("EURUSD Crossing 1.14145"), "cross"));
 test("extractDirection: up", () => assert.equal(extractDirection("EURUSD Crossing Up 1.14143"), "up"));
 test("extractDirection: down", () => assert.equal(extractDirection("EURUSD Crossing Down 1.14142"), "down"));
