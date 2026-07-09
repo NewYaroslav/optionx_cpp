@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const parser = require("../content_scripts/lib/parser.js");
+const defaults = require("../content_scripts/lib/defaults.js");
 
 const { normalizeAction, extractSymbol, extractPrice, extractDirection, extractRawAction, extractRawDirection, parseJsonMessageSafe, makeEventId } = parser;
 
@@ -144,4 +145,20 @@ test("makeEventId: timenow as last resort for alert_id", () => {
     makeEventId({ alert_id: "a1", timenow: 1234567890 }, "fp1"),
     "tv_alert:a1:1234567890"
   );
+});
+
+test("DEFAULTS.enabled is false by default (safety)", () => {
+  assert.equal(defaults.DEFAULTS.enabled, false);
+});
+
+test("DEFAULTS.endpoint points to local bridge", () => {
+  assert.equal(defaults.DEFAULTS.endpoint, "http://127.0.0.1:6560/api/v1/tradingview/signal");
+});
+
+test("DEFAULTS.include_tab_url is false by default (privacy)", () => {
+  assert.equal(defaults.DEFAULTS.include_tab_url, false);
+});
+
+test("DEFAULTS.secret is empty", () => {
+  assert.equal(defaults.DEFAULTS.secret, "");
 });
