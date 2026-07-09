@@ -131,17 +131,14 @@
 
   function resolveTriggerMetadata(message, parsed, direction) {
     const isPctTrigger = typeof direction === "string" && /_pct$/.test(direction);
-    const firstNumber = extractFirstNumber(message, parsed);
 
     if (isPctTrigger) {
-      // For pct triggers, parsed.price carries the symbol's absolute price, not the percent.
-      // Extract the percentage value from the message text only.
-      const messageNumbers = String(message || "").match(/[-+]?\d+(?:\.\d+)?/g);
-      const pctCandidate = messageNumbers ? parseFloat(messageNumbers[0]) : null;
-      const trigger_value = Number.isFinite(pctCandidate) ? pctCandidate : null;
-      return { price: null, trigger_value, trigger_unit: "percent" };
+      // For pct-based triggers we deliberately do NOT consult parsed.price:
+      // TradingView typically carries the symbol's absolute price there, not
+      // a percentage. The trigger value must come from message text.
+      return { price: null, trigger_value: extractFirstNumber(message, null), trigger_unit: "percent" };
     }
-    return { price: firstNumber, trigger_value: null, trigger_unit: null };
+    return { price: extractFirstNumber(message, parsed), trigger_value: null, trigger_unit: null };
   }
 
   function extractDirection(message) {

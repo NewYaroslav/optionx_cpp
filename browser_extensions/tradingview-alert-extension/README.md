@@ -199,7 +199,7 @@ may collide if the alert fires repeatedly with identical text.
 
 ### Payload schema
 
-- `price`: number | null. First numeric value from message (or parsed.price). Null when `direction` is pct-based.
+- `price`: number | null. First numeric value from message (or parsed.price). Null when `direction` is pct-based because `parsed.price` in pct triggers typically carries the symbol's absolute price (e.g. 1.14145) rather than a percentage value, which would mislead consumers.
 - `trigger_value`: number | null. Trigger value for pct-based directions (`moving_up_pct`/`moving_down_pct`).
 - `trigger_unit`: string | null. Unit of trigger_value (`"percent"` for pct, future: `"pips"`/`"points"`, null when not applicable).
 - `direction`: enum: `cross`, `up`, `down`, `moving_up`, `moving_up_pct`, `moving_down`, `moving_down_pct`, `above`, `below`, `entering_channel`, `exiting_channel`, `inside_channel`, `outside_channel`, or null.
