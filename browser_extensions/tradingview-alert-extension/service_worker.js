@@ -1,11 +1,6 @@
 "use strict";
 
-const DEFAULTS = {
-  enabled: false,
-  endpoint: "http://127.0.0.1:6560/api/v1/tradingview/signal",
-  secret: "",
-  include_tab_url: false
-};
+importScripts("content_scripts/lib/defaults.js");
 
 const MAX_LOGS = 50;
 const FETCH_TIMEOUT_MS = 3000;
@@ -30,9 +25,9 @@ async function postSignal(endpoint, body, secret) {
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === "install") {
-    await chrome.storage.local.set(DEFAULTS);
+    await chrome.storage.local.set(OptionXDefaults.DEFAULTS);
   } else {
-    const current = await chrome.storage.local.get(DEFAULTS);
+    const current = await chrome.storage.local.get(OptionXDefaults.DEFAULTS);
     await chrome.storage.local.set(current);
   }
   await setBadge("idle");
@@ -70,7 +65,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function handleTradingViewAlert(payload, sender) {
-  const config = await chrome.storage.local.get(DEFAULTS);
+  const config = await chrome.storage.local.get(OptionXDefaults.DEFAULTS);
   if (!config.enabled) {
     await writeLog("info", "Signal ignored because extension is disabled.");
     return { ok: true, accepted: false, disabled: true };

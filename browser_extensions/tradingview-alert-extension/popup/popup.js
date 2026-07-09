@@ -1,12 +1,5 @@
 "use strict";
 
-const DEFAULTS = {
-  enabled: false,
-  endpoint: "http://127.0.0.1:6560/api/v1/tradingview/signal",
-  secret: "",
-  include_tab_url: false
-};
-
 const enabledEl = document.getElementById("enabled");
 const includeTabUrlEl = document.getElementById("include-tab-url");
 const endpointEl = document.getElementById("endpoint");
@@ -23,7 +16,7 @@ testEl.addEventListener("click", sendTestSignal);
 clearEl.addEventListener("click", clearLogs);
 
 async function init() {
-  const config = await chrome.storage.local.get(DEFAULTS);
+  const config = await chrome.storage.local.get(OptionXDefaults.DEFAULTS);
   enabledEl.checked = Boolean(config.enabled);
   includeTabUrlEl.checked = Boolean(config.include_tab_url);
   endpointEl.value = config.endpoint;
@@ -35,7 +28,7 @@ async function saveConfig() {
   await chrome.storage.local.set({
     enabled: enabledEl.checked,
     include_tab_url: includeTabUrlEl.checked,
-    endpoint: endpointEl.value.trim() || DEFAULTS.endpoint,
+    endpoint: endpointEl.value.trim() || OptionXDefaults.DEFAULTS.endpoint,
     secret: secretEl.value
   });
   setStatus("ok", "saved");
