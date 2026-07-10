@@ -74,7 +74,7 @@ test("integration: real DOM pipeline extracts EURUSD Crossing payload", async ()
   const { document, sentPayloads } = buildTestEnv();
   document.body.insertAdjacentHTML(
     "beforeend",
-    `<div class="tv-alert-toast"><span class="description-ULNSeceN">EURUSD Crossing 1.14145</span></div>`
+    `<div class="tv-alert-toast">Alert on EURUSD<span class="description-ULNSeceN">EURUSD Crossing 1.14145</span></div>`
   );
   await flushMicrotasks();
 
@@ -96,7 +96,7 @@ test("integration: EURUSD Crossing Up extracts direction=up", async () => {
   const { document, sentPayloads } = buildTestEnv();
   document.body.insertAdjacentHTML(
     "beforeend",
-    `<div class="tv-alert-toast"><span class="description-ULNSeceN">EURUSD Crossing Up 1.14143</span></div>`
+    `<div class="tv-alert-toast">Alert on EURUSD<span class="description-ULNSeceN">EURUSD Crossing Up 1.14143</span></div>`
   );
   await flushMicrotasks();
   const payloads = getPayloadsFor(sentPayloads);
@@ -108,7 +108,7 @@ test("integration: EURUSD Crossing Down extracts direction=down", async () => {
   const { document, sentPayloads } = buildTestEnv();
   document.body.insertAdjacentHTML(
     "beforeend",
-    `<div class="tv-alert-toast"><span class="description-ULNSeceN">EURUSD Crossing Down 1.14142</span></div>`
+    `<div class="tv-alert-toast">Alert on EURUSD<span class="description-ULNSeceN">EURUSD Crossing Down 1.14142</span></div>`
   );
   await flushMicrotasks();
   const payloads = getPayloadsFor(sentPayloads);
@@ -119,7 +119,7 @@ test("integration: pct trigger yields price=null, trigger_value, trigger_unit", 
   const { document, sentPayloads } = buildTestEnv();
   document.body.insertAdjacentHTML(
     "beforeend",
-    `<div class="tv-alert-toast"><span class="description-ULNSeceN">EURUSD Moving Up 1.0%</span></div>`
+    `<div class="tv-alert-toast">Alert on EURUSD<span class="description-ULNSeceN">EURUSD Moving Up 1.0%</span></div>`
   );
   await flushMicrotasks();
   const payloads = getPayloadsFor(sentPayloads);
@@ -135,7 +135,7 @@ test("integration: pct trigger with digits in symbol (US100) extracts correct tr
   const { document, sentPayloads } = buildTestEnv();
   document.body.insertAdjacentHTML(
     "beforeend",
-    `<div class="tv-alert-toast"><span class="description-ULNSeceN">US100 Moving Up 1.0%</span></div>`
+    `<div class="tv-alert-toast">Alert on US100<span class="description-ULNSeceN">US100 Moving Up 1.0%</span></div>`
   );
   await flushMicrotasks();
   const payloads = getPayloadsFor(sentPayloads);
@@ -149,7 +149,8 @@ test("integration: explicit BUY command sets action=buy", async () => {
   const { document, sentPayloads } = buildTestEnv();
   document.body.insertAdjacentHTML(
     "beforeend",
-    `<div class="tv-alert-toast"><span class="description-ULNSeceN">BUY EURUSD</span></div>`
+    `<div class="tv-alert-toast">Alert on EURUSD
+<span class="description-ULNSeceN">BUY EURUSD</span></div>`
   );
   await flushMicrotasks();
   const payloads = getPayloadsFor(sentPayloads);
@@ -160,7 +161,7 @@ test("integration: explicit BUY command sets action=buy", async () => {
 
 test("integration: same toast inserted twice is deduped (5s window)", async () => {
   const { document, sentPayloads } = buildTestEnv();
-  const html = `<div class="tv-alert-toast"><span class="description-ULNSeceN">EURUSD Crossing 1.14145</span></div>`;
+  const html = `<div class="tv-alert-toast">Alert on EURUSD<span class="description-ULNSeceN">EURUSD Crossing 1.14145</span></div>`;
 
   document.body.insertAdjacentHTML("beforeend", html);
   await flushMicrotasks();
@@ -195,7 +196,7 @@ test("integration: dynamic MutationObserver insertion (addedNodes)", async () =>
 
   document.body.insertAdjacentHTML(
     "beforeend",
-    `<div class="tv-alert-toast-new"><span class="description-ULNSeceN">BTCUSDT Crossing 50000</span></div>`
+    `<div class="tv-alert-toast-new">Alert on BTCUSDT<span class="description-ULNSeceN">BTCUSDT Crossing 50000</span></div>`
   );
   await flushMicrotasks();
   const payloads = getPayloadsFor(sentPayloads);
@@ -211,7 +212,7 @@ test("integration: characterData mutation triggers re-inspection", async () => {
 
   document.body.insertAdjacentHTML(
     "beforeend",
-    `<div class="tv-alert-toast-cd"><span class="description-ULNSeceN">placeholder</span></div>`
+    `<div class="tv-alert-toast-cd">Alert on ETHUSD<span class="description-ULNSeceN">placeholder</span></div>`
   );
   await flushMicrotasks();
   sentPayloads.length = 0;
@@ -228,7 +229,7 @@ test("integration: parsed JSON action overrides text message", async () => {
   const { document, sentPayloads } = buildTestEnv();
   document.body.insertAdjacentHTML(
     "beforeend",
-    `<div class="tv-alert-toast"><span class="description-ULNSeceN">{"action":"buy","symbol":"XAUUSD","price":2000}</span></div>`
+    `<div class="tv-alert-toast">Alert on XAUUSD<span class="description-ULNSeceN">{"action":"buy","symbol":"XAUUSD","price":2000}</span></div>`
   );
   await flushMicrotasks();
   const payloads = getPayloadsFor(sentPayloads);
@@ -242,7 +243,7 @@ test("integration: extension metadata populated from sender URL", async () => {
   const { document, sentPayloads } = buildTestEnv();
   document.body.insertAdjacentHTML(
     "beforeend",
-    `<div class="tv-alert-toast"><span class="description-ULNSeceN">EURUSD Crossing 1.14145</span></div>`
+    `<div class="tv-alert-toast">Alert on EURUSD<span class="description-ULNSeceN">EURUSD Crossing 1.14145</span></div>`
   );
   await flushMicrotasks();
   const payloads = getPayloadsFor(sentPayloads);
