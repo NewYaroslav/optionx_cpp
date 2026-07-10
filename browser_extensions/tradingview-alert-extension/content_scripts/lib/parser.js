@@ -98,13 +98,12 @@
       const candidate = normalizeSymbol(triggerLike[1]);
       if (!SYMBOL_BLACKLIST.has(candidate)) return candidate;
     }
-    // "Alert on <X>" from title. Defense-in-depth anchor: \S+ stops at the
-    // first whitespace, and ^\s* prevents mid-text matches like
-    // "...prefix Alert on EURUSD..." from extracting a symbol. TradingView
-    // tickers never contain whitespace, so \S+ is sufficient — we do not
-    // try to split glued tickers (e.g. "EURUSDBUY EURUSD") because the
-    // title/description DOM is separated by <br>/nodes, never concatenated.
-    const fromTitle = String(title || "").match(/^\s*Alert\s+on\s+(\S+)/i);
+    // "Alert on <X>" from title. Anchored on start-of-line (\s*) to prevent
+    // mid-text matches in cases like "TradingView Alert on EURUSD fired at..."
+    // where the substring "Alert on EURUSD" would otherwise be a false positive.
+    // Character class is limited to symbol-like characters only — avoids
+    // capturing punctuation like trailing commas or parens.
+    const fromTitle = String(title || "").match(/^\s*Alert\s+on\s+([A-Za-z0-9:._/-]+)/i);
     if (fromTitle) {
       const candidate = normalizeSymbol(fromTitle[1]);
       if (!SYMBOL_BLACKLIST.has(candidate)) return candidate;
