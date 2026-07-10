@@ -142,6 +142,22 @@ test("extractSymbol: 'TV BUY EURUSD' -> EURUSD (BUY blacklisted, EURUSD not)", (
   assert.equal(extractSymbol("", "TV BUY EURUSD", null), "EURUSD");
 });
 
+test("extractSymbol: Alert on BINANCE:BTCUSDT keeps colon in symbol", () => {
+  // Colon is part of the ticker (e.g. "BINANCE:BTCUSDT"). \S+ captures up
+  // to the first whitespace, so colons and dots stay in the match.
+  assert.equal(extractSymbol("Alert on BINANCE:BTCUSDT", "", null), "BINANCE:BTCUSDT");
+});
+
+test("extractSymbol: Alert on EURUSD\n12:34\nEdit alert yields EURUSD", () => {
+  // findTitle may return multi-line strings with timestamps and "Edit alert".
+  // Anchored regex captures only "EURUSD" (up to first whitespace/newline).
+  assert.equal(extractSymbol("Alert on EURUSD\n12:34\nEdit alert", "", null), "EURUSD");
+});
+
+test("extractSymbol: Alert on with no symbol returns empty", () => {
+  assert.equal(extractSymbol("Alert on", "", null), "");
+});
+
 test("extractDirection: no longer matches >=", () => {
   assert.equal(extractDirection("AAPL >= 200"), null);
 });
