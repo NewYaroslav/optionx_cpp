@@ -158,6 +158,19 @@ test("extractSymbol: Alert on with no symbol returns empty", () => {
   assert.equal(extractSymbol("Alert on", "", null), "");
 });
 
+test("extractSymbol: does not parse Alert on from middle of title (defense-in-depth)", () => {
+  // Without the ^\s* anchor, "Alert on EURUSD fired" would match the
+  // substring and return "EURUSD" — wrong. Anchor rejects mid-text matches.
+  assert.equal(extractSymbol("TradingView Alert on EURUSD fired", "", null), "");
+});
+
+test("extractSymbol: anchored regex does not capture trailing punctuation", () => {
+  // Character class limits capture to symbol chars; trailing comma/parens
+  // excluded. Without the class limit (\S+), "EURUSD," would be returned.
+  assert.equal(extractSymbol("Alert on EURUSD,", "", null), "EURUSD");
+  assert.equal(extractSymbol("Alert on EURUSD)", "", null), "EURUSD");
+});
+
 test("extractDirection: no longer matches >=", () => {
   assert.equal(extractDirection("AAPL >= 200"), null);
 });
