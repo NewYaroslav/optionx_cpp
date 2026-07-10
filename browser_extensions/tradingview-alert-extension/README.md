@@ -206,17 +206,17 @@ may collide if the alert fires repeatedly with identical text.
 
 ## Tests
 
-Two test suites:
+Two suites, both via `node --test`:
 
-- **Unit tests** (`tests/parser.test.mjs`): pure-function parser tests via `node --test`. 65+ cases covering action/symbol/price/direction parsing, raw_action/raw_direction, makeEventId 4-level resolution, resolveTriggerMetadata, DEFAULTS.
-- **Integration tests** (`tests/integration.test.mjs`): jsdom-based tests against real HTML fixture. Loads `tests/fixtures/toast-sample.html` (captured 2026-07) and verifies end-to-end parser behavior on real TradingView toast DOM structure.
+- **Unit** (`tests/parser.test.mjs`): pure-function parser tests, 65+ cases (action/symbol/price/direction parsing, raw_action/raw_direction, makeEventId 4-level resolution, resolveTriggerMetadata, DEFAULTS).
+- **Integration** (`tests/integration.test.mjs`): jsdom + real DOM pipeline. Loads `content_scripts/lib/parser.js` and `content_scripts/tradingview_alerts.js` into a jsdom environment with mocked `chrome.runtime.sendMessage`. Verifies the actual production DOM-to-payload path on real TradingView toast HTML, including: dynamic insertion, characterData mutations, multi-description guard, 5s dedup window, pct triggers, parsed JSON overrides, and BUY command parsing.
 
-Running tests:
+Running:
 ```bash
 cd browser_extensions/tradingview-alert-extension
-npm install              # one-time, installs jsdom
-npm test                 # both suites
-npm run test:unit        # unit only
+npm ci                  # reproducible install from package-lock.json
+npm test                # both suites
+npm run test:unit       # unit only
 npm run test:integration # integration only
 ```
 
