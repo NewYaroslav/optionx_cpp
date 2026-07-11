@@ -17,6 +17,8 @@
 #include <utility>
 #include <vector>
 
+#include "utils/unicode_case.hpp"
+
 namespace optionx::bridges::tradingview::detail {
 
     /// \struct TradingViewParseResult
@@ -65,47 +67,6 @@ namespace optionx::bridges::tradingview::detail {
                     return static_cast<char>(std::tolower(ch));
                 });
             return value;
-        }
-
-        inline std::string fold_action_keyword_text(const std::string& value) {
-            std::string folded;
-            folded.reserve(value.size());
-
-            for (std::size_t index = 0; index < value.size();) {
-                const auto ch = static_cast<unsigned char>(value[index]);
-                if (ch < 0x80) {
-                    folded.push_back(static_cast<char>(std::tolower(ch)));
-                    ++index;
-                    continue;
-                }
-
-                if (index + 1 < value.size()) {
-                    const auto next = static_cast<unsigned char>(value[index + 1]);
-                    if (ch == 0xD0 && next >= 0x90 && next <= 0x9F) {
-                        folded.push_back(static_cast<char>(0xD0));
-                        folded.push_back(static_cast<char>(next + 0x20));
-                        index += 2;
-                        continue;
-                    }
-                    if (ch == 0xD0 && next >= 0xA0 && next <= 0xAF) {
-                        folded.push_back(static_cast<char>(0xD1));
-                        folded.push_back(static_cast<char>(next - 0x20));
-                        index += 2;
-                        continue;
-                    }
-                    if (ch == 0xD0 && next == 0x81) {
-                        folded.push_back(static_cast<char>(0xD1));
-                        folded.push_back(static_cast<char>(0x91));
-                        index += 2;
-                        continue;
-                    }
-                }
-
-                folded.push_back(value[index]);
-                ++index;
-            }
-
-            return folded;
         }
 
         inline std::string trim_copy(const std::string& value) {
@@ -244,7 +205,7 @@ namespace optionx::bridges::tradingview::detail {
         inline bool folded_text_contains_keyword(
                 const std::string& folded_text,
                 const std::string& keyword) {
-            const auto folded_keyword = fold_action_keyword_text(trim_copy(keyword));
+            const auto folded_keyword = utils::unicode_case_fold(trim_copy(keyword));
             if (folded_keyword.empty()) {
                 return false;
             }
@@ -304,7 +265,7 @@ namespace optionx::bridges::tradingview::detail {
         inline bool contains_any_action_keyword(
                 const std::string& text,
                 const std::vector<std::string>& keywords) {
-            const auto folded_text = fold_action_keyword_text(text);
+            const auto folded_text = utils::unicode_case_fold(text);
             return std::any_of(
                 keywords.begin(),
                 keywords.end(),

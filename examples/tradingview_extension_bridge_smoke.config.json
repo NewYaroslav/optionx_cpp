@@ -29,6 +29,8 @@
   "action_keywords": {
     // Built-ins include common English and Russian buy/sell words:
     // buy/call/long, sell/put/short, бай/селл, покуп/прода, лонг/шорт.
+    // Keyword matching is Unicode case-folded, so uppercase/lowercase variants
+    // of non-ASCII words match too.
     // Directional market words such as up/down/bull/bear are intentionally
     // not defaults; map them explicitly through level_alert_rules when needed.
     // Leave true to extend them with the lists below; set false to fully override.

@@ -85,6 +85,7 @@ install_headers_to_include("."             ${CMAKE_CURRENT_LIST_DIR}/Simple-WebS
 install_headers_to_include("."             ${CMAKE_CURRENT_LIST_DIR}/kurlyk/include)
 install_headers_to_include("."             ${CMAKE_CURRENT_LIST_DIR}/mdbx-containers/include)
 install_headers_to_include("."             ${CMAKE_CURRENT_LIST_DIR}/SimpleNamedPipe/include)
+install_headers_to_include("."             ${CMAKE_CURRENT_LIST_DIR}/uni-algo/include)
 
 add_custom_target(all_libs_built ALL
     COMMENT "All libraries and headers have been prepared."

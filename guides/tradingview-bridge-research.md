@@ -677,6 +677,11 @@ Set `use_defaults` to `false` to make the lists a full override. Keyword
 mapping is a fallback after matching level-alert rules, so explicit user rules
 can still define or reject specific alert shapes.
 
+Action keyword matching uses Unicode Default Case Folding via `uni-algo`, so
+non-ASCII command words are compared case-insensitively as UTF-8 text. This is
+important for user-supplied Russian words such as `БАЙ`/`бай` and for general
+Unicode cases such as `Straße`/`strasse`.
+
 The config also contains ordered user rules. Rules without a `symbol` matcher
 apply to every pair, for example:
 

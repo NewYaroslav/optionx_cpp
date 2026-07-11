@@ -111,6 +111,7 @@ set(OPTIONX_INCLUDE_DIRS
 set(OPTIONX_COMPILE_DEFINITIONS
     ASIO_STANDALONE
     KURLYK_OAUTH_SUPPORT=0
+    UNI_ALGO_STATIC_DATA
 )
 
 set(OPTIONX_WINDOWS_SYSTEM_LIBS
@@ -129,6 +130,7 @@ target_include_directories(optionx_cpp INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/optionx_cpp>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/SimpleNamedPipe/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/Simple-Web-Server>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/uni-algo/include>
     $<INSTALL_INTERFACE:include>
     $<INSTALL_INTERFACE:include/optionx_cpp>
 )

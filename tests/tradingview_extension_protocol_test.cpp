@@ -349,6 +349,27 @@ TEST(TradingViewExtensionProtocol, MatchesDefaultRussianKeywordsCaseInsensitivel
     EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
 }
 
+TEST(TradingViewExtensionProtocol, MatchesCustomKeywordsWithUnicodeCaseFolding) {
+    auto config = base_config();
+    config.use_default_action_keywords = false;
+    config.buy_action_keywords = {"strasse"};
+
+    const nlohmann::json payload = {
+        {"source_kind", "alert_toast_dom"},
+        {"event_id", "toast:btcusd:german-fold"},
+        {"action", "alert"},
+        {"symbol", "BTCUSD"},
+        {"message", u8"BTCUSD Crossing Stra\u00DFe 64,143.35"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
+}
+
 TEST(TradingViewExtensionProtocol, ParsesCommaPriceAndIsoTimeFromToastPayload) {
     auto config = base_config();
 
