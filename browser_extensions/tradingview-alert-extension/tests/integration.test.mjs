@@ -179,6 +179,7 @@ test("integration: toast-like alert without Alert on title is captured", async (
   assert.equal(payloads.length, 1);
   assert.equal(payloads[0].symbol, "BTCUSD");
   assert.equal(payloads[0].message, "BTCUSD Crossing BUY 64,114.82");
+  assert.equal(payloads[0].price, 64114.82);
 });
 
 test("integration: alert name is preserved and can drive action", async () => {

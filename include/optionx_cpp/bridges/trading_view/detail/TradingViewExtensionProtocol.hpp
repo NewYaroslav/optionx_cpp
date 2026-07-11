@@ -7,7 +7,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <ctime>
 #include <cstdint>
+#include <iomanip>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -113,6 +115,116 @@ namespace optionx::bridges::tradingview::detail {
             }
             const auto last = value.find_last_not_of(" \t\r\n");
             return value.substr(first, last - first + 1);
+        }
+
+        inline bool strict_number_string_to_double(
+                const std::string& value,
+                double& output) {
+            auto text = trim_copy(value);
+            if (text.empty()) {
+                return false;
+            }
+            text.erase(
+                std::remove(text.begin(), text.end(), ','),
+                text.end());
+
+            std::size_t position = 0;
+            try {
+                output = std::stod(text, &position);
+            } catch (const std::exception&) {
+                return false;
+            }
+            return position == text.size();
+        }
+
+        inline bool strict_integer_string_to_i64(
+                const std::string& value,
+                std::int64_t& output) {
+            auto text = trim_copy(value);
+            if (text.empty()) {
+                return false;
+            }
+            text.erase(
+                std::remove(text.begin(), text.end(), ','),
+                text.end());
+
+            const auto first_digit =
+                (!text.empty() && (text.front() == '-' || text.front() == '+')) ? 1u : 0u;
+            if (first_digit >= text.size()) {
+                return false;
+            }
+            for (std::size_t index = first_digit; index < text.size(); ++index) {
+                if (!std::isdigit(static_cast<unsigned char>(text[index]))) {
+                    return false;
+                }
+            }
+
+            std::size_t position = 0;
+            try {
+                output = std::stoll(text, &position);
+            } catch (const std::exception&) {
+                return false;
+            }
+            return position == text.size();
+        }
+
+        inline std::int64_t utc_timegm(std::tm& tm) {
+#if defined(_WIN32)
+            return static_cast<std::int64_t>(_mkgmtime(&tm));
+#else
+            return static_cast<std::int64_t>(timegm(&tm));
+#endif
+        }
+
+        inline bool iso8601_utc_string_to_ms(
+                const std::string& value,
+                std::int64_t& output) {
+            auto text = trim_copy(value);
+            if (text.empty()) {
+                return false;
+            }
+            if (!text.empty() && text.back() == 'Z') {
+                text.pop_back();
+            }
+
+            std::int64_t millis = 0;
+            const auto dot = text.find('.');
+            if (dot != std::string::npos) {
+                auto fraction = text.substr(dot + 1);
+                text.erase(dot);
+                if (fraction.size() > 3) {
+                    fraction.resize(3);
+                }
+                while (fraction.size() < 3) {
+                    fraction.push_back('0');
+                }
+                if (!fraction.empty()) {
+                    std::int64_t parsed_fraction = 0;
+                    if (!strict_integer_string_to_i64(fraction, parsed_fraction)) {
+                        return false;
+                    }
+                    millis = parsed_fraction;
+                }
+            }
+
+            std::tm tm{};
+            std::istringstream input(text);
+            input >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
+            if (input.fail()) {
+                input.clear();
+                input.str(text);
+                input >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+            }
+            if (input.fail()) {
+                return false;
+            }
+
+            const auto seconds = utc_timegm(tm);
+            if (seconds < 0) {
+                return false;
+            }
+            output = seconds * 1000 + millis;
+            return true;
         }
 
         inline bool is_ascii_word_char(char ch) {
@@ -257,9 +369,9 @@ namespace optionx::bridges::tradingview::detail {
                     return value.get<double>();
                 }
                 if (value.is_string()) {
-                    try {
-                        return std::stod(value.get<std::string>());
-                    } catch (const std::exception&) {
+                    double parsed = 0.0;
+                    if (strict_number_string_to_double(value.get<std::string>(), parsed)) {
+                        return parsed;
                     }
                 }
             }
@@ -288,9 +400,11 @@ namespace optionx::bridges::tradingview::detail {
                     return static_cast<std::int64_t>(value.get<double>());
                 }
                 if (value.is_string()) {
-                    try {
-                        return std::stoll(value.get<std::string>());
-                    } catch (const std::exception&) {
+                    std::int64_t parsed = 0;
+                    const auto text = value.get<std::string>();
+                    if (strict_integer_string_to_i64(text, parsed) ||
+                        iso8601_utc_string_to_ms(text, parsed)) {
+                        return parsed;
                     }
                 }
             }

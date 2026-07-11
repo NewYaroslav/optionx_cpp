@@ -311,6 +311,34 @@ TEST(TradingViewExtensionProtocol, MapsLevelAlertActionFromDefaultKeyword) {
     EXPECT_EQ(result.signal->signal_name, "tradingview_level_alert");
 }
 
+TEST(TradingViewExtensionProtocol, ParsesCommaPriceAndIsoTimeFromToastPayload) {
+    auto config = base_config();
+
+    const nlohmann::json payload = {
+        {"source_kind", "alert_toast_dom"},
+        {"event_id", "tv_toast:d8b7589f"},
+        {"fingerprint", "d8b7589f"},
+        {"action", "alert"},
+        {"symbol", "BTCUSD"},
+        {"message", "BTCUSD Crossing BUY 64,143.35"},
+        {"price", "64,143.35"},
+        {"time", "2026-07-11T08:09:45.650Z"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
+    EXPECT_DOUBLE_EQ(result.parsed_payload.at("price").get<double>(), 64143.35);
+    EXPECT_EQ(result.parsed_payload.at("time").get<std::int64_t>(), 1783757385650LL);
+
+    const auto user_data = nlohmann::json::parse(result.signal->user_data);
+    EXPECT_DOUBLE_EQ(user_data.at("price").get<double>(), 64143.35);
+    EXPECT_EQ(user_data.at("time").get<std::int64_t>(), 1783757385650LL);
+}
+
 TEST(TradingViewExtensionProtocol, PreservesAlertNameAndUsesItForKeywords) {
     auto config = base_config();
 
