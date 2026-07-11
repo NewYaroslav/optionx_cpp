@@ -12,8 +12,10 @@ const statusEl = document.getElementById("status");
 let healthTimer = null;
 
 document.addEventListener("DOMContentLoaded", init);
+chrome.storage.onChanged.addListener(handleStorageChanged);
 window.addEventListener("beforeunload", () => {
   if (healthTimer !== null) clearInterval(healthTimer);
+  chrome.storage.onChanged.removeListener(handleStorageChanged);
 });
 saveEl.addEventListener("click", saveConfig);
 testEl.addEventListener("click", sendTestSignal);
@@ -109,6 +111,11 @@ async function renderLogs() {
     item.appendChild(text);
     logsEl.appendChild(item);
   }
+}
+
+function handleStorageChanged(changes, areaName) {
+  if (areaName !== "local" || !changes || !changes.logs) return;
+  void renderLogs();
 }
 
 function setStatus(kind, text) {

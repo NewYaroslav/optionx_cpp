@@ -1,5 +1,5 @@
 //@version=6
-indicator("OptionX Noisy Test Signals", overlay=true)
+indicator("optionx_cpp Noisy Test Signals", overlay=true)
 
 rsi_len = input.int(7, "RSI Length")
 level = input.float(50.0, "RSI Center Level")

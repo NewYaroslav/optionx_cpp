@@ -31,7 +31,7 @@
       activeObserver.disconnect();
       activeObserver = null;
     }
-    console.debug("OptionX bridge: content script context invalidated; reload the TradingView tab.");
+    console.debug("optionx_cpp bridge: content script context invalidated; reload the TradingView tab.");
     return true;
   }
 
@@ -244,7 +244,7 @@
     try {
       chrome.runtime.sendMessage({ type: "tradingview_alert", payload }, () => {
         if (chrome.runtime.lastError) {
-          console.debug("OptionX TradingView bridge send failed:", chrome.runtime.lastError.message);
+          console.debug("optionx_cpp TradingView bridge send failed:", chrome.runtime.lastError.message);
         }
       });
     } catch (error) {
@@ -257,7 +257,7 @@
     try {
       chrome.runtime.sendMessage({ type: "content_status", status, details }, () => {
         if (chrome.runtime.lastError) {
-          console.debug("OptionX TradingView bridge status failed:", chrome.runtime.lastError.message);
+          console.debug("optionx_cpp TradingView bridge status failed:", chrome.runtime.lastError.message);
         }
       });
     } catch (error) {
@@ -279,7 +279,7 @@
     if (extensionContextInvalidated) return;
     if (!root || handledRoots.has(root)) return;
     if (countAlertDescriptions(root) > 1) {
-      console.debug("OptionX bridge: skipping root with multiple descriptions to avoid merged payload");
+      console.debug("optionx_cpp bridge: skipping root with multiple descriptions to avoid merged payload");
       handledRoots.add(root);
       return;
     }
@@ -337,7 +337,7 @@
 
     inspectNodeSoon(document.body);
     sendStatus("observer_active", { url: location.href });
-    console.info("OptionX TradingView Alert Bridge observer active.");
+    console.info("optionx_cpp TradingView Alert Bridge observer active.");
   }
 
   startObserver();

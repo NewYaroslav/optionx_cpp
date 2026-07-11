@@ -1,4 +1,4 @@
-# OptionX TradingView Alert Extension
+# optionx_cpp TradingView Alert Bridge
 
 Small Chrome/Edge MV3 extension that watches visible TradingView alert toasts
 and forwards them to a local bridge.
@@ -174,8 +174,9 @@ http://127.0.0.1:6560/health
 ```
 
 The check runs when the popup opens, after saving settings, and then every 5
-seconds while the popup remains open. This status check does not send the
-shared secret or any TradingView payload.
+seconds while the popup remains open. Recent events are also refreshed live
+while the popup is open whenever the background worker writes a new log entry.
+This status check does not send the shared secret or any TradingView payload.
 
 The content script also writes `TradingView observer active (...)` to the popup
 log when it attaches to a TradingView tab. If the bridge shows `online` but
@@ -235,10 +236,11 @@ may collide if the alert fires repeatedly with identical text.
 
 ## Tests
 
-Two suites, both via `node --test`:
+Three suites, all via `node --test`:
 
 - **Unit** (`tests/parser.test.mjs`): pure-function parser tests, 65+ cases (action/symbol/price/direction parsing, raw_action/raw_direction, makeEventId 4-level resolution, resolveTriggerMetadata, DEFAULTS).
 - **Integration** (`tests/integration.test.mjs`): jsdom + real DOM pipeline. Loads `content_scripts/lib/parser.js` and `content_scripts/tradingview_alerts.js` into a jsdom environment with mocked `chrome.runtime.sendMessage`. Verifies the actual production DOM-to-payload path on real TradingView toast HTML, including: dynamic insertion, characterData mutations, multi-description guard, 5s dedup window, pct triggers, parsed JSON overrides, and BUY command parsing.
+- **Popup** (`tests/popup.test.mjs`): jsdom popup checks for live log refresh from `chrome.storage.onChanged`.
 
 Running:
 ```bash
