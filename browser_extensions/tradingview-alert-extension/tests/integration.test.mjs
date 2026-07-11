@@ -68,6 +68,10 @@ function getPayloadsFor(sentPayloads) {
     .map((m) => m.payload);
 }
 
+function getStatusMessagesFor(sentPayloads) {
+  return sentPayloads.filter((m) => m && m.type === "content_status");
+}
+
 // tests -----------------------------------------------------------------
 
 test("integration: real DOM pipeline extracts EURUSD Crossing payload", async () => {
@@ -159,6 +163,21 @@ test("integration: explicit BUY command sets action=buy", async () => {
   assert.equal(payloads[0].raw_action, "BUY");
 });
 
+test("integration: toast-like alert without Alert on title is captured", async () => {
+  const { document, sentPayloads } = buildTestEnv();
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="tv-alert-toast" role="alert">
+       <span class="description-ULNSeceN">BTCUSD Crossing BUY 64,114.82</span>
+     </div>`
+  );
+  await flushMicrotasks();
+  const payloads = getPayloadsFor(sentPayloads);
+  assert.equal(payloads.length, 1);
+  assert.equal(payloads[0].symbol, "BTCUSD");
+  assert.equal(payloads[0].message, "BTCUSD Crossing BUY 64,114.82");
+});
+
 test("integration: same toast inserted twice is deduped (5s window)", async () => {
   const { document, sentPayloads } = buildTestEnv();
   const html = `<div class="tv-alert-toast">Alert on EURUSD<span class="description-ULNSeceN">EURUSD Crossing 1.14145</span></div>`;
@@ -247,6 +266,15 @@ test("integration: extension metadata populated from sender URL", async () => {
   );
   await flushMicrotasks();
   const payloads = getPayloadsFor(sentPayloads);
-  assert.equal(sentPayloads[0].type, "tradingview_alert");
-  assert.ok(sentPayloads[0].payload);
+  const tradingViewMessage = sentPayloads.find((m) => m.type === "tradingview_alert");
+  assert.ok(tradingViewMessage);
+  assert.ok(tradingViewMessage.payload);
+  assert.ok(payloads.length >= 1);
+});
+
+test("integration: content script emits observer status", async () => {
+  const { sentPayloads } = buildTestEnv();
+  await flushMicrotasks();
+  const statuses = getStatusMessagesFor(sentPayloads);
+  assert.ok(statuses.some((m) => m.status === "observer_active"));
 });

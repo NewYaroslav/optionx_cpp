@@ -87,6 +87,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === "content_status") {
+    handleContentStatus(message, sender)
+      .then(sendResponse)
+      .catch((error) => {
+        const text = error && error.message ? error.message : String(error);
+        sendResponse({ ok: false, error: text });
+      });
+    return true;
+  }
+
   if (message.type === "check_bridge") {
     handleBridgeHealth()
       .then(sendResponse)
@@ -113,6 +123,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   return false;
 });
+
+async function handleContentStatus(message, sender) {
+  if (message.status === "observer_active") {
+    await writeLog("info", `TradingView observer active${tabSuffix(sender)}`);
+    return { ok: true };
+  }
+  await writeLog("info", `TradingView content status: ${message.status || "unknown"}${tabSuffix(sender)}`);
+  return { ok: true };
+}
+
+function tabSuffix(sender) {
+  const tab = sender && sender.tab ? sender.tab : null;
+  if (!tab || !tab.url) return "";
+  try {
+    const url = new URL(tab.url);
+    const symbol = url.searchParams.get("symbol");
+    return symbol ? ` (${symbol})` : ` (${url.host})`;
+  } catch (_) {
+    return "";
+  }
+}
 
 async function handleBridgeHealth() {
   const config = await chrome.storage.local.get(OptionXDefaults.DEFAULTS);

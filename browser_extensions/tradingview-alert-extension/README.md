@@ -17,6 +17,11 @@ break when TradingView changes that UI.
 6. Open the extension popup and set the local bridge endpoint and optional
    shared secret.
 
+After reloading the TradingView tab, the popup log should show
+`TradingView observer active (...)`. If the bridge status is `online` but that
+observer-active line is missing, the popup can reach the local bridge but the
+content script is not attached to the TradingView page yet.
+
 Default endpoint:
 
 ```text
@@ -166,6 +171,13 @@ http://127.0.0.1:6560/health
 The check runs when the popup opens, after saving settings, and then every 5
 seconds while the popup remains open. This status check does not send the
 shared secret or any TradingView payload.
+
+The content script also writes `TradingView observer active (...)` to the popup
+log when it attaches to a TradingView tab. If the bridge shows `online` but
+real TradingView alerts do not appear in **Recent events**, first reload the
+TradingView chart tab and look for that observer-active log entry. If it is
+present but no alert events appear, verify that the TradingView alert has popup
+notifications enabled and that a visible toast is shown in the chart page.
 
 Expected bridge behavior:
 

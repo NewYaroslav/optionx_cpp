@@ -29,6 +29,23 @@
     return /\bAlert\s+on\b/i.test(nodeText(node));
   }
 
+  function isLikelyToastContainer(node) {
+    if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+    const className = String(node.className || "");
+    return /\balert\b/i.test(String(node.getAttribute("role") || "")) ||
+      Boolean(node.getAttribute("aria-live")) ||
+      /toast|notification|notice|popup|alert/i.test(className);
+  }
+
+  function messageLooksLikeAlert(message) {
+    const parsed = parseJsonMessage(message);
+    if (parsed && typeof parsed === "object") return true;
+    const symbol = OptionXParser.extractSymbol("", message, parsed);
+    const direction = OptionXParser.extractDirection(message);
+    const action = OptionXParser.normalizeAction(message, parsed);
+    return Boolean(symbol && (direction || action === "buy" || action === "sell"));
+  }
+
   function findDescription(root) {
     const selectors = [
       'span[class*="description"]',
@@ -64,8 +81,10 @@
 
   function looksLikeAlertToast(root) {
     if (!root || root.nodeType !== Node.ELEMENT_NODE) return false;
-    if (!hasAlertTitle(root)) return false;
-    return Boolean(findDescription(root));
+    const description = findDescription(root);
+    if (!description) return false;
+    if (hasAlertTitle(root)) return true;
+    return isLikelyToastContainer(root) && messageLooksLikeAlert(description);
   }
 
   function climbToAlertToast(element) {
@@ -183,6 +202,14 @@
     });
   }
 
+  function sendStatus(status, details = {}) {
+    chrome.runtime.sendMessage({ type: "content_status", status, details }, () => {
+      if (chrome.runtime.lastError) {
+        console.debug("OptionX TradingView bridge status failed:", chrome.runtime.lastError.message);
+      }
+    });
+  }
+
   function countAlertDescriptions(root) {
     const candidates = root.querySelectorAll('[class*="description"]');
     let count = 0;
@@ -247,6 +274,7 @@
     });
 
     inspectNodeSoon(document.body);
+    sendStatus("observer_active", { url: location.href });
     console.info("OptionX TradingView Alert Bridge observer active.");
   }
 
