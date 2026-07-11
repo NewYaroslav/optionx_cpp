@@ -93,6 +93,16 @@ button:hover {
   color: #0b6b48;
 }
 
+.status.checking {
+  background: #fff0c7;
+  color: #735000;
+}
+
+.status.idle {
+  background: #dfe7ef;
+  color: #324150;
+}
+
 .status.error {
   background: #fde0df;
   color: #a42e2b;

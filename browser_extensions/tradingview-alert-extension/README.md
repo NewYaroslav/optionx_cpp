@@ -155,6 +155,18 @@ verify the header against the configured value.
 Requests have a 3 second timeout; an unreachable bridge will surface as a
 `Bridge timeout` entry in the popup log.
 
+The popup checks bridge availability with `GET /health` on the same origin as
+the signal endpoint. For the default endpoint
+`http://127.0.0.1:6560/api/v1/tradingview/signal`, the health probe is:
+
+```text
+http://127.0.0.1:6560/health
+```
+
+The check runs when the popup opens, after saving settings, and then every 5
+seconds while the popup remains open. This status check does not send the
+shared secret or any TradingView payload.
+
 Expected bridge behavior:
 
 - bind to loopback by default;
@@ -233,13 +245,17 @@ The extension classifies fetch errors into 3 honest categories:
 - **`network_or_cors`** — `TypeError` "Failed to fetch". Cannot distinguish between bridge offline / connection refused / CORS preflight rejected from a single error object. To diagnose: send a manual `OPTIONS` request from the bridge host (see "Bridge requirements" below).
 - **`other`** — Any other error. Inspect the popup log for full message.
 
-The "Failed to fetch" message is identical for both `network` and `cors` failures because the browser hides the underlying reason for security. A separate health-check endpoint (without custom headers) would let us distinguish them, but it's out of scope for this PR.
+The popup status uses the separate `/health` endpoint to detect a reachable
+bridge before any signal fires. A green `online` status means the bridge origin
+is reachable and returns a successful health response. If signal sending still
+fails after that, inspect the POST/CORS/secret path.
 
 `fetch` uses `mode: "cors"` and `credentials: "omit"` explicitly. Cookies from the extension are never sent to the bridge.
 
 ## Bridge requirements
 
 The local bridge at `http://127.0.0.1:6560` must:
+- Accept `GET /health` and return `200 OK` with CORS headers
 - Accept `POST /api/v1/tradingview/signal` with `Content-Type: application/json` and `X-OptionX-Secret` header
 - Answer `OPTIONS` (CORS preflight) with `Access-Control-Allow-Origin: chrome-extension://<extension-id>` (or `*` for dev)
 - Include `Access-Control-Allow-Headers: Content-Type, X-OptionX-Secret`
