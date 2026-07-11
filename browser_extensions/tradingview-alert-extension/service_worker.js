@@ -5,24 +5,24 @@ importScripts("content_scripts/lib/defaults.js");
 const MAX_LOGS = 50;
 const FETCH_TIMEOUT_MS = 3000;
 
-// Classifies fetch errors so popup can show actionable diagnostics.
-// "timeout"      -> AbortError after FETCH_TIMEOUT_MS (bridge hung)
-// "cors"         -> TypeError from preflight rejection (bridge missing CORS headers)
-// "network"      -> DNS/firewall/connection refused (bridge not running)
-// "other"        -> anything else (still a failure but root cause unknown)
+// Classifies fetch errors into honest categories. Browser's opaque
+// TypeError "Failed to fetch" cannot distinguish between network failures
+// (bridge offline, DNS, port closed) and CORS preflight rejection from
+// a single error object. Until the extension has a separate health-check
+// endpoint, both look identical here.
 function classifyFetchError(error) {
   if (error && error.name === "AbortError") return "timeout";
-  if (error && /Failed to fetch/i.test(error.message || "")) return "cors";
-  return "network";
+  if (error instanceof TypeError) return "network_or_cors";
+  return "other";
 }
 
 async function postSignal(endpoint, body, secret) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    // Explicit mode:"cors" so the browser does not silently fall back to
-    // no-cors (which would hide the response). credentials:"omit" because
-    // chrome-extension -> 127.0.0.1 should not carry any cookies.
+    // mode: "cors" makes the preflight requirements explicit (any 4xx/5xx
+    // or missing CORS headers will surface as a real error). credentials:
+    // "omit" prevents extension cookies from reaching the local bridge.
     return await fetch(endpoint, {
       method: "POST",
       mode: "cors",
