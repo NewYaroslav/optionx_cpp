@@ -165,6 +165,7 @@ Direct leaf includes допустимы для white-box tests, но они не
 | `external/cmake/*.cmake` | Сборка/подключение зависимостей |
 | `external/mdbx-containers` | Storage dependency для `ServiceSessionDB` |
 | `external/libmdbx` | MDBX dependency |
+| `external/uni-algo` | Unicode Default Case Folding helpers used by text/keyword matching |
 
 Не меняй subcomponents или dependency scripts при обычных правках API/доков.
 

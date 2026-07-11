@@ -8,6 +8,8 @@
 
   const recentSignals = new Map();
   const handledRoots = new WeakSet();
+  let activeObserver = null;
+  let extensionContextInvalidated = false;
 
   function normalizeText(value) {
     return String(value || "").replace(/\s+/g, " ").trim();
@@ -15,6 +17,22 @@
 
   function nodeText(node) {
     return normalizeText(node && node.textContent ? node.textContent : "");
+  }
+
+  function isExtensionContextInvalidated(error) {
+    const message = error && error.message ? error.message : String(error || "");
+    return /extension context invalidated/i.test(message);
+  }
+
+  function deactivateInvalidatedContext(error) {
+    if (!isExtensionContextInvalidated(error)) return false;
+    extensionContextInvalidated = true;
+    if (activeObserver) {
+      activeObserver.disconnect();
+      activeObserver = null;
+    }
+    console.debug("OptionX bridge: content script context invalidated; reload the TradingView tab.");
+    return true;
   }
 
   function visibleInnerLines(node) {
@@ -27,6 +45,23 @@
 
   function hasAlertTitle(node) {
     return /\bAlert\s+on\b/i.test(nodeText(node));
+  }
+
+  function isLikelyToastContainer(node) {
+    if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+    const className = String(node.className || "");
+    return /\balert\b/i.test(String(node.getAttribute("role") || "")) ||
+      Boolean(node.getAttribute("aria-live")) ||
+      /toast|notification|notice|popup|alert/i.test(className);
+  }
+
+  function messageLooksLikeAlert(message) {
+    const parsed = parseJsonMessage(message);
+    if (parsed && typeof parsed === "object") return true;
+    const symbol = OptionXParser.extractSymbol("", message, parsed);
+    const direction = OptionXParser.extractDirection(message);
+    const action = OptionXParser.normalizeAction(message, parsed);
+    return Boolean(symbol && (direction || action === "buy" || action === "sell"));
   }
 
   function findDescription(root) {
@@ -62,10 +97,36 @@
     return lines.find((line) => /^Alert\s+on\b/i.test(line)) || "";
   }
 
+  function findAlertName(root) {
+    const selectors = [
+      'span[class^="name-"]',
+      'span[class*=" name-"]',
+      'div[class^="name-"]',
+      'div[class*=" name-"]'
+    ];
+    const description = findDescription(root);
+
+    for (const selector of selectors) {
+      for (const element of root.querySelectorAll(selector)) {
+        const value = nodeText(element);
+        if (!value) continue;
+        if (value === description) continue;
+        if (/^Alert\s+on\b/i.test(value)) continue;
+        if (/^Edit alert$/i.test(value)) continue;
+        if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(value)) continue;
+        return value;
+      }
+    }
+
+    return "";
+  }
+
   function looksLikeAlertToast(root) {
     if (!root || root.nodeType !== Node.ELEMENT_NODE) return false;
-    if (!hasAlertTitle(root)) return false;
-    return Boolean(findDescription(root));
+    const description = findDescription(root);
+    if (!description) return false;
+    if (hasAlertTitle(root)) return true;
+    return isLikelyToastContainer(root) && messageLooksLikeAlert(description);
   }
 
   function climbToAlertToast(element) {
@@ -137,12 +198,14 @@
 
   function buildPayload(root) {
     const title = findTitle(root);
+    const alertName = findAlertName(root);
     const message = findDescription(root);
     const parsed = parseJsonMessage(message);
     const symbol = OptionXParser.extractSymbol(title, message, parsed);
-    const action = OptionXParser.normalizeAction(message, parsed);
+    const actionText = alertName ? `${alertName} ${message}` : message;
+    const action = OptionXParser.normalizeAction(actionText, parsed);
     const direction = OptionXParser.extractDirection(message);
-    const fingerprintInput = `${SOURCE_KIND}|${symbol}|${title}|${message}`;
+    const fingerprintInput = `${SOURCE_KIND}|${symbol}|${title}|${alertName}|${message}`;
     const fingerprint = fnv1a(fingerprintInput);
     const observedAt = new Date().toISOString();
     const eventId = OptionXParser.makeEventId(parsed, fingerprint);
@@ -157,7 +220,7 @@
       fingerprint,
       symbol,
       action,
-      raw_action: OptionXParser.extractRawAction(message, parsed),
+      raw_action: OptionXParser.extractRawAction(actionText, parsed),
       direction,
       raw_direction: OptionXParser.extractRawDirection(message),
       price,
@@ -166,9 +229,11 @@
       observed_at: observedAt,
       time: observedAt,
       title,
+      alert_name: alertName,
       message,
       raw: {
         title,
+        alert_name: alertName,
         description: message,
         parsed_message: parsed
       }
@@ -176,11 +241,29 @@
   }
 
   function sendPayload(payload) {
-    chrome.runtime.sendMessage({ type: "tradingview_alert", payload }, () => {
-      if (chrome.runtime.lastError) {
-        console.debug("OptionX TradingView bridge send failed:", chrome.runtime.lastError.message);
-      }
-    });
+    if (extensionContextInvalidated) return;
+    try {
+      chrome.runtime.sendMessage({ type: "tradingview_alert", payload }, () => {
+        if (chrome.runtime.lastError) {
+          console.debug("OptionX TradingView bridge send failed:", chrome.runtime.lastError.message);
+        }
+      });
+    } catch (error) {
+      if (!deactivateInvalidatedContext(error)) throw error;
+    }
+  }
+
+  function sendStatus(status, details = {}) {
+    if (extensionContextInvalidated) return;
+    try {
+      chrome.runtime.sendMessage({ type: "content_status", status, details }, () => {
+        if (chrome.runtime.lastError) {
+          console.debug("OptionX TradingView bridge status failed:", chrome.runtime.lastError.message);
+        }
+      });
+    } catch (error) {
+      if (!deactivateInvalidatedContext(error)) throw error;
+    }
   }
 
   function countAlertDescriptions(root) {
@@ -194,17 +277,22 @@
   }
 
   function processRoot(root) {
+    if (extensionContextInvalidated) return;
     if (!root || handledRoots.has(root)) return;
     if (countAlertDescriptions(root) > 1) {
-      console.warn("OptionX bridge: skipping root with multiple descriptions to avoid merged payload");
+      console.debug("OptionX bridge: skipping root with multiple descriptions to avoid merged payload");
       handledRoots.add(root);
       return;
     }
-    const payload = buildPayload(root);
-    if (!payload.message) return;
-    if (shouldSuppressDuplicate(payload.fingerprint)) return;
-    handledRoots.add(root);
-    sendPayload(payload);
+    try {
+      const payload = buildPayload(root);
+      if (!payload.message) return;
+      if (shouldSuppressDuplicate(payload.fingerprint)) return;
+      handledRoots.add(root);
+      sendPayload(payload);
+    } catch (error) {
+      if (!deactivateInvalidatedContext(error)) throw error;
+    }
   }
 
   function inspectNode(node) {
@@ -224,6 +312,7 @@
     }
 
     const observer = new MutationObserver((mutations) => {
+      if (extensionContextInvalidated) return;
       for (const mutation of mutations) {
         if (mutation.addedNodes && mutation.addedNodes.length) {
           for (const node of mutation.addedNodes) {
@@ -245,8 +334,10 @@
       attributes: true,
       attributeFilter: ["class"]
     });
+    activeObserver = observer;
 
     inspectNodeSoon(document.body);
+    sendStatus("observer_active", { url: location.href });
     console.info("OptionX TradingView Alert Bridge observer active.");
   }
 

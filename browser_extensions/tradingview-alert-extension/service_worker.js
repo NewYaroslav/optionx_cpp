@@ -4,12 +4,13 @@ importScripts("content_scripts/lib/defaults.js");
 
 const MAX_LOGS = 50;
 const FETCH_TIMEOUT_MS = 3000;
+const HEALTH_PATH = "/health";
 
 // Classifies fetch errors into honest categories. Browser's opaque
 // TypeError "Failed to fetch" cannot distinguish between network failures
 // (bridge offline, DNS, port closed) and CORS preflight rejection from
-// a single error object. Until the extension has a separate health-check
-// endpoint, both look identical here.
+// a single signal-send error object. The popup uses /health as a separate
+// reachability check.
 function classifyFetchError(error) {
   if (error && error.name === "AbortError") return "timeout";
   if (error instanceof TypeError) return "network_or_cors";
@@ -32,6 +33,29 @@ async function postSignal(endpoint, body, secret) {
         "X-OptionX-Secret": secret || ""
       },
       body: JSON.stringify(body),
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function healthEndpointFromSignalEndpoint(endpoint) {
+  const url = new URL(endpoint || OptionXDefaults.DEFAULTS.endpoint);
+  url.pathname = HEALTH_PATH;
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+async function getHealth(endpoint) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(endpoint, {
+      method: "GET",
+      mode: "cors",
+      credentials: "omit",
       signal: controller.signal
     });
   } finally {
@@ -63,6 +87,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === "content_status") {
+    handleContentStatus(message, sender)
+      .then(sendResponse)
+      .catch((error) => {
+        const text = error && error.message ? error.message : String(error);
+        sendResponse({ ok: false, error: text });
+      });
+    return true;
+  }
+
+  if (message.type === "check_bridge") {
+    handleBridgeHealth()
+      .then(sendResponse)
+      .catch((error) => {
+        const text = error && error.message ? error.message : String(error);
+        sendResponse({ ok: false, error: text, error_kind: classifyFetchError(error) });
+      });
+    return true;
+  }
+
   if (message.type === "get_logs") {
     chrome.storage.local.get({ logs: [] }).then(({ logs }) => {
       sendResponse({ ok: true, logs });
@@ -79,6 +123,69 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   return false;
 });
+
+async function handleContentStatus(message, sender) {
+  if (message.status === "observer_active") {
+    await writeLog("info", `TradingView observer active${tabSuffix(sender)}`);
+    return { ok: true };
+  }
+  await writeLog("info", `TradingView content status: ${message.status || "unknown"}${tabSuffix(sender)}`);
+  return { ok: true };
+}
+
+function tabSuffix(sender) {
+  const tab = sender && sender.tab ? sender.tab : null;
+  if (!tab || !tab.url) return "";
+  try {
+    const url = new URL(tab.url);
+    const symbol = url.searchParams.get("symbol");
+    return symbol ? ` (${symbol})` : ` (${url.host})`;
+  } catch (_) {
+    return "";
+  }
+}
+
+async function handleBridgeHealth() {
+  const config = await chrome.storage.local.get(OptionXDefaults.DEFAULTS);
+  if (!config.enabled) {
+    await setBadge("idle");
+    return { ok: true, disabled: true };
+  }
+
+  let healthEndpoint;
+  try {
+    healthEndpoint = healthEndpointFromSignalEndpoint(config.endpoint);
+  } catch (error) {
+    await setBadge("error");
+    return {
+      ok: false,
+      error: error && error.message ? error.message : String(error),
+      error_kind: "invalid_endpoint"
+    };
+  }
+
+  try {
+    const response = await getHealth(healthEndpoint);
+    const responseText = await response.text();
+    const body = parseResponse(responseText);
+    const ok = response.ok && (!body || body.ok !== false);
+    await setBadge(ok ? "ok" : "error");
+    return {
+      ok,
+      status: response.status,
+      endpoint: healthEndpoint,
+      response: body
+    };
+  } catch (error) {
+    await setBadge("error");
+    return {
+      ok: false,
+      endpoint: healthEndpoint,
+      error: error && error.message ? error.message : String(error),
+      error_kind: classifyFetchError(error)
+    };
+  }
+}
 
 async function handleTradingViewAlert(payload, sender) {
   const config = await chrome.storage.local.get(OptionXDefaults.DEFAULTS);

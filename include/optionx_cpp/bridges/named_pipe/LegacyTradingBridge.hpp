@@ -5,14 +5,13 @@
 /// \file LegacyTradingBridge.hpp
 /// \brief Defines the legacy named-pipe trading bridge.
 
-#include "utils.hpp"
-#include "data.hpp"
-#include "bridges/BaseBridge.hpp"
 #include "LegacyTradingBridgeConfig.hpp"
-#include "bridges/NamedPipe/detail/LegacyTradingProtocol.hpp"
 
+#include <logit_cpp/logit.hpp>
+#include <chrono>
 #include <memory>
 #include <mutex>
+#include <nlohmann/json.hpp>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -39,6 +38,7 @@ namespace optionx::bridges::named_pipe {
             std::shared_ptr<BaseAccountInfoData> account_info;
             bridge_status_callback_t status_callback;
             BaseBridge::trade_signal_callback_t trade_signal_callback;
+            BaseBridge::signal_report_callback_t signal_report_callback;
             BaseBridge::signal_id_allocator_t signal_id_allocator;
             bool running = false;
 
@@ -91,6 +91,11 @@ namespace optionx::bridges::named_pipe {
         /// \brief Returns the trade signal callback slot.
         trade_signal_callback_t& on_trade_signal() override {
             return m_state->trade_signal_callback;
+        }
+
+        /// \brief Returns the signal diagnostic report callback slot.
+        signal_report_callback_t& on_signal_report() override {
+            return m_state->signal_report_callback;
         }
 
         /// \brief Returns the signal ID allocator slot.
@@ -262,6 +267,62 @@ namespace optionx::bridges::named_pipe {
             }
         }
 
+        static std::int64_t unix_time_ms_now() {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+        }
+
+        static std::shared_ptr<const TradeSignal> clone_candidate_signal(
+                const std::unique_ptr<TradeSignal>& signal) {
+            if (!signal) {
+                return {};
+            }
+            return std::shared_ptr<const TradeSignal>(signal->clone());
+        }
+
+        static BridgeSignalReport make_signal_report(
+                const LegacyTradingBridgeConfig& config,
+                BridgeSignalReportStatus status,
+                std::string reason_code,
+                std::string message,
+                std::string connection_id = {},
+                nlohmann::json raw_payload = nlohmann::json(),
+                nlohmann::json parsed_payload = nlohmann::json(),
+                std::shared_ptr<const TradeSignal> candidate_signal = {},
+                nlohmann::json context = nlohmann::json::object()) {
+            BridgeSignalReport report;
+            report.bridge_id = config.bridge_id;
+            report.bridge_type = config.bridge_type();
+            report.status = status;
+            report.reason_code = std::move(reason_code);
+            report.message = std::move(message);
+            report.connection_id = std::move(connection_id);
+            report.raw_payload = std::move(raw_payload);
+            report.parsed_payload = std::move(parsed_payload);
+            report.candidate_signal = std::move(candidate_signal);
+            report.context = std::move(context);
+            report.received_time_ms = unix_time_ms_now();
+            if (report.candidate_signal) {
+                report.symbol = report.candidate_signal->symbol;
+                report.signal_name = report.candidate_signal->signal_name;
+                report.dedupe_key = report.candidate_signal->unique_hash;
+            }
+            return report;
+        }
+
+        static void notify_signal_report(
+                const std::shared_ptr<RuntimeState>& state,
+                const BridgeSignalReport& report) {
+            signal_report_callback_t callback;
+            {
+                std::lock_guard<std::mutex> lock(state->mutex);
+                callback = state->signal_report_callback;
+            }
+            if (callback) {
+                callback(report);
+            }
+        }
+
         void broadcast(const std::string& message) {
             broadcast(m_state, message);
         }
@@ -367,50 +428,119 @@ namespace optionx::bridges::named_pipe {
         }
 
         void handle_message(int client_id, const std::string& message) {
+            auto config = get_config_or_throw();
+            const auto conn_id = connection_id(client_id);
+            nlohmann::json payload;
+
             try {
-                const auto payload = nlohmann::json::parse(message);
-                if (payload.contains("pong") || payload.contains("ping")) {
-                    return;
-                }
-                if (!payload.contains("contract")) {
-                    return;
-                }
-
-                auto config = get_config_or_throw();
-                auto signal = detail::parse_contract(payload.at("contract"), config->min_payout);
-                signal->bridge_id = config->bridge_id;
-
-                auto signal_id_allocator = get_signal_id_allocator();
-                if (!signal_id_allocator) {
-                    notify_status(
-                        BridgeStatus::CONNECTION_ERROR,
-                        connection_id(client_id),
-                        "Legacy trading bridge signal ID allocator is not configured.");
-                    return;
-                }
-                signal->signal_id = signal_id_allocator();
-                if (signal->signal_id == 0) {
-                    notify_status(
-                        BridgeStatus::CONNECTION_ERROR,
-                        connection_id(client_id),
-                        "Legacy trading bridge could not allocate signal ID.");
-                    return;
-                }
-
-                trade_signal_callback_t callback;
-                {
-                    std::lock_guard<std::mutex> lock(m_state->mutex);
-                    callback = m_state->trade_signal_callback;
-                }
-                if (callback) {
-                    callback(std::move(signal));
-                }
+                payload = nlohmann::json::parse(message);
             } catch (const std::exception& ex) {
                 LOGIT_PRINT_ERROR("Parsing legacy bridge message failed: ", ex.what());
+                notify_signal_report(
+                    m_state,
+                    make_signal_report(
+                        *config,
+                        BridgeSignalReportStatus::INVALID,
+                        "invalid_json",
+                        ex.what(),
+                        conn_id,
+                        nlohmann::json(),
+                        nlohmann::json(),
+                        {},
+                        nlohmann::json{{"body_size", message.size()}}));
                 notify_status(
                     BridgeStatus::CONNECTION_ERROR,
-                    connection_id(client_id),
+                    conn_id,
                     ex.what());
+                return;
+            }
+
+            if (payload.contains("pong") || payload.contains("ping")) {
+                return;
+            }
+            if (!payload.contains("contract")) {
+                notify_signal_report(
+                    m_state,
+                    make_signal_report(
+                        *config,
+                        BridgeSignalReportStatus::IGNORED,
+                        "missing_contract",
+                        "Legacy named-pipe message does not contain a contract.",
+                        conn_id,
+                        payload));
+                return;
+            }
+
+            std::unique_ptr<TradeSignal> signal;
+            try {
+                signal = detail::parse_contract(payload.at("contract"), config->min_payout);
+            } catch (const std::exception& ex) {
+                LOGIT_PRINT_ERROR("Parsing legacy bridge contract failed: ", ex.what());
+                notify_signal_report(
+                    m_state,
+                    make_signal_report(
+                        *config,
+                        BridgeSignalReportStatus::INVALID,
+                        "invalid_contract",
+                        ex.what(),
+                        conn_id,
+                        payload,
+                        payload.at("contract")));
+                notify_status(
+                    BridgeStatus::CONNECTION_ERROR,
+                    conn_id,
+                    ex.what());
+                return;
+            }
+
+            signal->bridge_id = config->bridge_id;
+
+            auto signal_id_allocator = get_signal_id_allocator();
+            if (!signal_id_allocator) {
+                notify_signal_report(
+                    m_state,
+                    make_signal_report(
+                        *config,
+                        BridgeSignalReportStatus::INTAKE_ERROR,
+                        "missing_signal_id_allocator",
+                        "Legacy trading bridge signal ID allocator is not configured.",
+                        conn_id,
+                        payload,
+                        payload.at("contract"),
+                        clone_candidate_signal(signal)));
+                notify_status(
+                    BridgeStatus::CONNECTION_ERROR,
+                    conn_id,
+                    "Legacy trading bridge signal ID allocator is not configured.");
+                return;
+            }
+            signal->signal_id = signal_id_allocator();
+            if (signal->signal_id == 0) {
+                notify_signal_report(
+                    m_state,
+                    make_signal_report(
+                        *config,
+                        BridgeSignalReportStatus::INTAKE_ERROR,
+                        "signal_id_allocation_failed",
+                        "Legacy trading bridge could not allocate signal ID.",
+                        conn_id,
+                        payload,
+                        payload.at("contract"),
+                        clone_candidate_signal(signal)));
+                notify_status(
+                    BridgeStatus::CONNECTION_ERROR,
+                    conn_id,
+                    "Legacy trading bridge could not allocate signal ID.");
+                return;
+            }
+
+            trade_signal_callback_t callback;
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                callback = m_state->trade_signal_callback;
+            }
+            if (callback) {
+                callback(std::move(signal));
             }
         }
     };

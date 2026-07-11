@@ -17,6 +17,11 @@ break when TradingView changes that UI.
 6. Open the extension popup and set the local bridge endpoint and optional
    shared secret.
 
+After reloading the TradingView tab, the popup log should show
+`TradingView observer active (...)`. If the bridge status is `online` but that
+observer-active line is missing, the popup can reach the local bridge but the
+content script is not attached to the TradingView page yet.
+
 Default endpoint:
 
 ```text
@@ -37,6 +42,12 @@ It extracts the toast title, description, symbol and a best-effort action:
 - `BUY`, `LONG`, `CALL` -> `buy`;
 - `SELL`, `SHORT`, `PUT` -> `sell`;
 - anything else -> `alert`.
+
+TradingView's configurable alert title/name is sent separately as
+`alert_name` when the toast exposes it through the observed TradingView
+`name-*` element. It also participates in action detection, so a title such as
+`BUY Test99` can produce `action=buy` while the main alert text remains in
+`message`. Generic DOM names such as `username` are intentionally ignored.
 
 Level alerts such as `EURUSD Crossing 1.14072` are market events, not trade
 commands. The local bridge should map these through user rules or reject them
@@ -155,6 +166,26 @@ verify the header against the configured value.
 Requests have a 3 second timeout; an unreachable bridge will surface as a
 `Bridge timeout` entry in the popup log.
 
+The popup checks bridge availability with fixed `GET /health` on the same origin
+as the signal endpoint. For the default endpoint
+`http://127.0.0.1:6560/api/v1/tradingview/signal`, the health probe is:
+
+```text
+http://127.0.0.1:6560/health
+```
+
+The check runs when the popup opens, after saving settings, and then every 5
+seconds while the popup remains open. Recent events are also refreshed live
+while the popup is open whenever the background worker writes a new log entry.
+This status check does not send the shared secret or any TradingView payload.
+
+The content script also writes `TradingView observer active (...)` to the popup
+log when it attaches to a TradingView tab. If the bridge shows `online` but
+real TradingView alerts do not appear in **Recent events**, first reload the
+TradingView chart tab and look for that observer-active log entry. If it is
+present but no alert events appear, verify that the TradingView alert has popup
+notifications enabled and that a visible toast is shown in the chart page.
+
 Expected bridge behavior:
 
 - bind to loopback by default;
@@ -206,10 +237,11 @@ may collide if the alert fires repeatedly with identical text.
 
 ## Tests
 
-Two suites, both via `node --test`:
+Three suites, all via `node --test`:
 
 - **Unit** (`tests/parser.test.mjs`): pure-function parser tests, 65+ cases (action/symbol/price/direction parsing, raw_action/raw_direction, makeEventId 4-level resolution, resolveTriggerMetadata, DEFAULTS).
 - **Integration** (`tests/integration.test.mjs`): jsdom + real DOM pipeline. Loads `content_scripts/lib/parser.js` and `content_scripts/tradingview_alerts.js` into a jsdom environment with mocked `chrome.runtime.sendMessage`. Verifies the actual production DOM-to-payload path on real TradingView toast HTML, including: dynamic insertion, characterData mutations, multi-description guard, 5s dedup window, pct triggers, parsed JSON overrides, and BUY command parsing.
+- **Popup** (`tests/popup.test.mjs`): jsdom popup checks for live log refresh from `chrome.storage.onChanged`.
 
 Running:
 ```bash
@@ -233,13 +265,29 @@ The extension classifies fetch errors into 3 honest categories:
 - **`network_or_cors`** — `TypeError` "Failed to fetch". Cannot distinguish between bridge offline / connection refused / CORS preflight rejected from a single error object. To diagnose: send a manual `OPTIONS` request from the bridge host (see "Bridge requirements" below).
 - **`other`** — Any other error. Inspect the popup log for full message.
 
-The "Failed to fetch" message is identical for both `network` and `cors` failures because the browser hides the underlying reason for security. A separate health-check endpoint (without custom headers) would let us distinguish them, but it's out of scope for this PR.
+The popup status uses the separate `/health` endpoint to detect a reachable
+bridge before any signal fires. A green `online` status means the bridge origin
+is reachable and returns a successful health response. If signal sending still
+fails after that, inspect the POST/CORS/secret path.
 
 `fetch` uses `mode: "cors"` and `credentials: "omit"` explicitly. Cookies from the extension are never sent to the bridge.
+
+## Troubleshooting content script errors
+
+`Extension context invalidated` means Chrome invalidated an already-injected
+content script, usually because the extension was reloaded while the TradingView
+tab stayed open. Reloading the extension alone does not replace the old script
+inside the existing page. Reload the TradingView chart tab after reloading the
+extension.
+
+Newer extension builds catch this case and stop the old observer quietly, but
+Chrome's `chrome://extensions` error list can still show old stored errors until
+you remove them from that page.
 
 ## Bridge requirements
 
 The local bridge at `http://127.0.0.1:6560` must:
+- Accept `GET /health` and return `200 OK` with CORS headers
 - Accept `POST /api/v1/tradingview/signal` with `Content-Type: application/json` and `X-OptionX-Secret` header
 - Answer `OPTIONS` (CORS preflight) with `Access-Control-Allow-Origin: chrome-extension://<extension-id>` (or `*` for dev)
 - Include `Access-Control-Allow-Headers: Content-Type, X-OptionX-Secret`

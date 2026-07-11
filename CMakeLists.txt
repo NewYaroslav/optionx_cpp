@@ -111,6 +111,7 @@ set(OPTIONX_INCLUDE_DIRS
 set(OPTIONX_COMPILE_DEFINITIONS
     ASIO_STANDALONE
     KURLYK_OAUTH_SUPPORT=0
+    UNI_ALGO_STATIC_DATA
 )
 
 set(OPTIONX_WINDOWS_SYSTEM_LIBS
@@ -128,6 +129,8 @@ target_include_directories(optionx_cpp INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/optionx_cpp>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/SimpleNamedPipe/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/Simple-Web-Server>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/uni-algo/include>
     $<INSTALL_INTERFACE:include>
     $<INSTALL_INTERFACE:include/optionx_cpp>
 )
@@ -383,6 +386,45 @@ if(OPTIONX_BUILD_EXAMPLES)
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy_runtime_dlls.cmake"
         )
     endif()
+
+    add_executable(tradingview_extension_bridge_smoke examples/tradingview_extension_bridge_smoke.cpp)
+
+    target_include_directories(tradingview_extension_bridge_smoke PRIVATE
+        ${EXAMPLE_INCLUDE_DIRS}
+        ${EXAMPLE_DEPS_INCLUDE_DIRS}
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/Simple-Web-Server
+    )
+
+    target_link_directories(tradingview_extension_bridge_smoke PRIVATE ${EXAMPLE_LIBRARY_DIRS})
+    target_compile_definitions(
+        tradingview_extension_bridge_smoke PRIVATE
+        ${EXAMPLE_DEFINES}
+        LOGIT_BASE_PATH="${LOGIT_BASE_PATH_FWD}"
+    )
+    if(MINGW)
+        target_compile_options(tradingview_extension_bridge_smoke PRIVATE -Wa,-mbig-obj)
+    endif()
+    target_link_libraries(tradingview_extension_bridge_smoke PRIVATE ${EXAMPLE_LIBS} optionx_cpp)
+
+    if(OPTIONX_BUILD_DEPS)
+        add_dependencies(tradingview_extension_bridge_smoke mdbx-static AES)
+    endif()
+
+    foreach(dll ${EXAMPLE_DLL_FILES})
+        add_custom_command(TARGET tradingview_extension_bridge_smoke POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${dll}" "$<TARGET_FILE_DIR:tradingview_extension_bridge_smoke>"
+        )
+    endforeach()
+
+    if(WIN32)
+        add_custom_command(TARGET tradingview_extension_bridge_smoke POST_BUILD
+            COMMAND ${CMAKE_COMMAND}
+                -DOPTIONX_RUNTIME_DLL_DIR="${EXAMPLE_BUILD_LIBS_DIR}/bin"
+                -DOPTIONX_RUNTIME_TARGET_DIR="$<TARGET_FILE_DIR:tradingview_extension_bridge_smoke>"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy_runtime_dlls.cmake"
+        )
+    endif()
 endif()
 
 if(OPTIONX_BUILD_TESTS)
@@ -520,7 +562,7 @@ if(OPTIONX_BUILD_TESTS)
 
     if(TARGET intrade_bar_api_response_test)
         target_include_directories(intrade_bar_api_response_test PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/external/kurlyk/external/Simple-Web-Server
+            ${CMAKE_CURRENT_SOURCE_DIR}/external/Simple-Web-Server
         )
     endif()
 endif()

@@ -24,6 +24,9 @@ test("extractSymbol: parsed.symbol priority", () => assert.equal(extractSymbol("
 
 test("extractPrice: first number not last", () => assert.equal(extractPrice("BUY EURUSD at 1.14 target 1.20", null), 1.14));
 test("extractPrice: parsed JSON price", () => assert.equal(extractPrice("anything", { price: 1.14 }), 1.14));
+test("extractPrice: parsed string with thousands separator", () => assert.equal(extractPrice("anything", { price: "64,143.35" }), 64143.35));
+test("extractPrice: message number with thousands separator", () => assert.equal(extractPrice("BTCUSD Crossing 64,143.35", null), 64143.35));
+test("extractPrice: ignores digits embedded in symbol", () => assert.equal(extractPrice("US100 Crossing 19,900.50", null), 19900.5));
 test("extractPrice: no number -> null", () => assert.equal(extractPrice("BUY EURUSD", null), null));
 
 test("resolveTriggerMetadata: pct direction -> price null, trigger_value + percent", () => {

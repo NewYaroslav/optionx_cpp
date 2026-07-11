@@ -5,10 +5,8 @@
 /// \file bridges.hpp
 /// \brief Includes bridge-related headers.
 
-#include "utils.hpp"
-#include "data.hpp"
-#include "storages.hpp"
 #include "bridges/BaseBridge.hpp"
-#include "bridges/NamedPipe/LegacyTradingBridge.hpp"
+#include "bridges/named_pipe.hpp"
+#include "bridges/trading_view.hpp"
 
 #endif // OPTIONX_HEADER_BRIDGES_HPP_INCLUDED

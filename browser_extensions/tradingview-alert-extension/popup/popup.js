@@ -9,8 +9,14 @@ const testEl = document.getElementById("test");
 const clearEl = document.getElementById("clear");
 const logsEl = document.getElementById("logs");
 const statusEl = document.getElementById("status");
+let healthTimer = null;
 
 document.addEventListener("DOMContentLoaded", init);
+chrome.storage.onChanged.addListener(handleStorageChanged);
+window.addEventListener("beforeunload", () => {
+  if (healthTimer !== null) clearInterval(healthTimer);
+  chrome.storage.onChanged.removeListener(handleStorageChanged);
+});
 saveEl.addEventListener("click", saveConfig);
 testEl.addEventListener("click", sendTestSignal);
 clearEl.addEventListener("click", clearLogs);
@@ -22,6 +28,8 @@ async function init() {
   endpointEl.value = config.endpoint;
   secretEl.value = config.secret;
   await renderLogs();
+  await checkBridge();
+  healthTimer = setInterval(() => checkBridge({ showChecking: false }), 5000);
 }
 
 async function saveConfig() {
@@ -31,7 +39,7 @@ async function saveConfig() {
     endpoint: endpointEl.value.trim() || OptionXDefaults.DEFAULTS.endpoint,
     secret: secretEl.value
   });
-  setStatus("ok", "saved");
+  await checkBridge();
 }
 
 function sendTestSignal() {
@@ -105,7 +113,42 @@ async function renderLogs() {
   }
 }
 
+function handleStorageChanged(changes, areaName) {
+  if (areaName !== "local" || !changes || !changes.logs) return;
+  void renderLogs();
+}
+
 function setStatus(kind, text) {
   statusEl.className = `status ${kind}`;
   statusEl.textContent = text;
+}
+
+function checkBridge({ showChecking = true } = {}) {
+  if (showChecking) setStatus("checking", "checking");
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: "check_bridge" }, (response) => {
+      if (chrome.runtime.lastError) {
+        setStatus("error", "error");
+        resolve();
+        return;
+      }
+      if (response && response.disabled) {
+        setStatus("idle", "disabled");
+        resolve();
+        return;
+      }
+      if (response && response.ok) {
+        setStatus("ok", "online");
+        resolve();
+        return;
+      }
+      if (response && response.error_kind === "invalid_endpoint") {
+        setStatus("error", "bad url");
+        resolve();
+        return;
+      }
+      setStatus("error", "offline");
+      resolve();
+    });
+  });
 }

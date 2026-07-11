@@ -5,9 +5,6 @@
 /// \file LegacyTradingProtocol.hpp
 /// \brief Defines helpers for the legacy named-pipe trading JSON protocol.
 
-#include "utils.hpp"
-#include "data.hpp"
-
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
@@ -15,6 +12,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <time_shield.hpp>
 #include <vector>
 
 namespace optionx::bridges::named_pipe::detail {

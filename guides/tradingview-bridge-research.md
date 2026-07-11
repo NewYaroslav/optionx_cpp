@@ -551,6 +551,173 @@ Source:
 Use Native Messaging later if installation packaging is already solved. For an
 MVP, localhost HTTP is simpler.
 
+## Implemented Local HTTP Bridge
+
+The first native receiver is implemented as a header-only bridge:
+
+- config: `include/optionx_cpp/bridges/trading_view/TradingViewExtensionBridgeConfig.hpp`;
+- parser/protocol: `include/optionx_cpp/bridges/trading_view/detail/TradingViewExtensionProtocol.hpp`;
+- HTTP server: `include/optionx_cpp/bridges/trading_view/TradingViewExtensionBridge.hpp`;
+- smoke executable: `examples/tradingview_extension_bridge_smoke.cpp`;
+- example config: `examples/tradingview_extension_bridge_smoke.config.json`.
+
+The smoke config is parsed as JSONC by stripping comments first. This keeps the
+committed example runnable while still documenting common rule variants inline.
+
+The full HTTP bridge intentionally is not included by `include/optionx_cpp/bridges.hpp`,
+because it includes `server_http.hpp` from Simple-Web-Server. The aggregate
+header includes only the config. Users that need the server include the bridge
+header explicitly.
+
+Default local endpoint:
+
+```text
+POST http://127.0.0.1:6560/api/v1/tradingview/signal
+GET  http://127.0.0.1:6560/health
+```
+
+When `secret` is configured, the browser extension sends it in the HTTP header
+`X-OptionX-Secret`. The shared secret is not part of the JSON body by default,
+so it does not flow into logs, `TradeSignal::user_data` or downstream storage.
+Legacy body-secret parsing exists only behind the explicit
+`allow_body_secret_fallback` config flag.
+
+Indicator signal payload:
+
+```json
+{
+  "source": "tradingview",
+  "signal_name": "noisy_rsi_test",
+  "action": "buy",
+  "symbol": "FX:EURUSD",
+  "tickerid": "FX:EURUSD",
+  "price": 1.14055,
+  "time": 1783476660000,
+  "event_id": "indicator:eurusd:1783476660000:buy"
+}
+```
+
+The parser also accepts the confirmed private `pricealerts` wrapper forwarded by
+the extension:
+
+```json
+{
+  "text": {
+    "channel": "pricealerts",
+    "content": {
+      "m": "alert_fired",
+      "p": {
+        "fire_id": 53256556946,
+        "symbol": "FX:EURUSD",
+        "message": "EURUSD Crossing 1.14072"
+      }
+    }
+  }
+}
+```
+
+Only `alert_fired` can become a local signal. `alerts_created` and
+`alerts_updated` are accepted as known TradingView lifecycle/state messages but
+are rejected by the parser with `ignored_state_message`.
+
+For visible toast capture, TradingView can show both a configurable alert
+title/name and a separate alert message/description. The extension forwards
+them as separate fields:
+
+- `alert_name` - the configurable alert title/name, for example `Test99` or
+  `BUY Test99`;
+- `message` - the alert text/description, for example
+  `BTCUSD Crossing BUY 64,119.59`.
+
+The bridge keeps `message` as `TradeSignal::comment`, stores `alert_name` in
+`TradeSignal::user_data`, and uses it as a `signal_name` fallback. The action
+keyword resolver also inspects `alert_name`, so users can put direction words
+in the TradingView title/name without mixing that title into the main comment.
+
+Sizing is configured on our side:
+
+- `fixed_amount` sets `TradeSignal::amount` and marks `mm_type = FIXED`;
+- `balance_percent` does not calculate an amount inside the bridge. It marks
+  `mm_type = PERCENT` and writes the sizing intent into `TradeSignal::user_data`
+  for a downstream money-management/postprocessing layer;
+- `none` leaves amount and money-management type unset.
+
+CORS defaults are intentionally convenient for local development:
+`allow_cors: true` and `allowed_origin: "*"`. For a packaged extension, set
+`allowed_origin` to the concrete extension origin, for example
+`chrome-extension://<extension-id>`. The preflight response allows
+`Content-Type`, `X-OptionX-Secret` and `Authorization` headers.
+
+Level alerts are accepted only when the bridge can derive a concrete direction:
+
+- explicit payload action, for example `action: "buy"`;
+- an ordered level-alert rule;
+- an action keyword in the alert text;
+- `default_level_action`, if the user explicitly sets it to `buy` or `sell`.
+
+Action keywords are configured separately from level rules:
+
+```json
+{
+  "action_keywords": {
+    "use_defaults": true,
+    "buy": ["entry long", "Покупа"],
+    "sell": ["entry short", "Селл"]
+  }
+}
+```
+
+With `use_defaults: true`, the custom lists extend built-in command words:
+`buy`, `call`, `long`, `sell`, `put`, `short`, plus common Russian buy/sell
+terms such as `бай`, `селл`, `покуп`, `прода`, `лонг` and `шорт`. Directional
+market-description words such as `up`, `down`, `higher`, `lower`, `bull` and
+`bear` are intentionally not enabled by default; map them through explicit
+level-alert rules or custom keywords only when the user wants that behavior.
+Set `use_defaults` to `false` to make the lists a full override. Keyword
+mapping is a fallback after matching level-alert rules, so explicit user rules
+can still define or reject specific alert shapes.
+
+Action keyword matching uses Unicode Default Case Folding via `uni-algo`, so
+non-ASCII command words are compared case-insensitively as UTF-8 text. This is
+important for user-supplied Russian words such as `БАЙ`/`бай` and for general
+Unicode cases such as `Straße`/`strasse`.
+
+The config also contains ordered user rules. Rules without a `symbol` matcher
+apply to every pair, for example:
+
+```json
+{
+  "level_alert_rules": {
+    "default_action": "reject",
+    "rules": [
+      {
+        "condition_type": "crossing_up",
+        "action": "buy",
+        "signal_name": "level_crossing_up"
+      },
+      {
+        "condition_type": "crossing_down",
+        "action": "sell",
+        "signal_name": "level_crossing_down"
+      }
+    ]
+  }
+}
+```
+
+This keeps the important product boundary explicit: TradingView tells us that a
+level alert fired; only explicit text or user config decides whether that event
+means buy, sell or reject. Plain `Crossing` alerts remain direction-ambiguous
+unless the alert message includes a keyword such as `BUY`/`SELL` or the user
+adds a generic `crossing` rule.
+
+Smoke test:
+
+```powershell
+cmake --build <build-dir> --target tradingview_extension_bridge_smoke
+<build-dir>\examples\tradingview_extension_bridge_smoke.exe --self-test
+```
+
 ## GitHub References
 
 These repositories are examples to study. Do not copy code blindly.
@@ -739,7 +906,8 @@ Extension responsibilities:
   rows;
 - detect list refreshes and suppress replay bursts;
 - normalize visible text into an internal alert object;
-- send the alert object to localhost with a shared secret;
+- send the alert object to localhost with a shared secret in
+  `X-OptionX-Secret`;
 - keep a small local log and health status;
 - provide an explicit enable/disable switch.
 
@@ -762,8 +930,8 @@ Suggested extension-to-local payload:
 {
   "version": 1,
   "source": "tradingview_extension",
-  "secret": "shared-token",
   "event_id": "tv:list-of-trades:strategy-name:order-id:time:action",
+  "fingerprint": "fnv1a-content-hash",
   "symbol": "OANDA:EURUSD",
   "action": "buy",
   "price": 1.08453,
@@ -805,9 +973,9 @@ Current bridge contract already matches this direction:
 
 Possible implementation split:
 
-- `include/optionx_cpp/bridges/TradingView/detail/TradingViewExtensionProtocol.hpp`
+- `include/optionx_cpp/bridges/trading_view/detail/TradingViewExtensionProtocol.hpp`
   for parser/formatter helpers;
-- `include/optionx_cpp/bridges/TradingView/TradingViewExtensionBridgeConfig.hpp`
+- `include/optionx_cpp/bridges/trading_view/TradingViewExtensionBridgeConfig.hpp`
   for config DTO;
 - optional `TradingViewExtensionBridge` only if we choose to include a local
   HTTP/WebSocket server in the library surface;

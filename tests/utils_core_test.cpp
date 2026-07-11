@@ -69,6 +69,15 @@ TEST(HttpUtilsTest, RemoveHttpPrefixOnlyRemovesLeadingScheme) {
         "prefixhttps://intrade.bar");
 }
 
+TEST(UnicodeCaseUtilsTest, FoldsUnicodeTextForCaselessMatching) {
+    EXPECT_TRUE(optionx::utils::has_unicode_case_folding());
+    EXPECT_EQ(optionx::utils::unicode_case_fold(u8"Stra\u00DFe"), "strasse");
+    EXPECT_TRUE(optionx::utils::unicode_iequals(u8"\uFB03", "FFI"));
+    EXPECT_TRUE(optionx::utils::unicode_case_contains(
+        u8"BTCUSD Crossing \u0411\u0410\u0419 64,143.35",
+        u8"\u0431\u0430\u0439"));
+}
+
 TEST(PathUtilsTest, CreatesUtf8DirectoriesFromUtf8Strings) {
     const std::string unicode_name =
         "\xD1\x82\xD0\xB5\xD1\x81\xD1\x82_\xE8\xB7\xAF\xE5\xBE\x84";

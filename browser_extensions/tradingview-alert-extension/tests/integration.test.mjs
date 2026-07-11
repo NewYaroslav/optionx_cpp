@@ -12,7 +12,7 @@ const ALERTS_SRC_PATH = join(EXT_DIR, "content_scripts", "tradingview_alerts.js"
 
 // helpers ---------------------------------------------------------------
 
-function buildTestEnv(initialHtml = "") {
+function buildTestEnv(initialHtml = "", options = {}) {
   const dom = new JSDOM(
     `<!DOCTYPE html><html><body>${initialHtml}</body></html>`,
     {
@@ -30,6 +30,9 @@ function buildTestEnv(initialHtml = "") {
       id: "test-extension-id",
       lastError: null,
       sendMessage(message, callback) {
+        if (options.sendMessageThrows) {
+          throw new Error(options.sendMessageThrows);
+        }
         sentPayloads.push(message);
         if (callback) setTimeout(() => callback({ ok: true, accepted: true }), 0);
       },
@@ -66,6 +69,10 @@ function getPayloadsFor(sentPayloads) {
   return sentPayloads
     .filter((m) => m && m.type === "tradingview_alert")
     .map((m) => m.payload);
+}
+
+function getStatusMessagesFor(sentPayloads) {
+  return sentPayloads.filter((m) => m && m.type === "content_status");
 }
 
 // tests -----------------------------------------------------------------
@@ -159,6 +166,59 @@ test("integration: explicit BUY command sets action=buy", async () => {
   assert.equal(payloads[0].raw_action, "BUY");
 });
 
+test("integration: toast-like alert without Alert on title is captured", async () => {
+  const { document, sentPayloads } = buildTestEnv();
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="tv-alert-toast" role="alert">
+       <span class="description-ULNSeceN">BTCUSD Crossing BUY 64,114.82</span>
+     </div>`
+  );
+  await flushMicrotasks();
+  const payloads = getPayloadsFor(sentPayloads);
+  assert.equal(payloads.length, 1);
+  assert.equal(payloads[0].symbol, "BTCUSD");
+  assert.equal(payloads[0].message, "BTCUSD Crossing BUY 64,114.82");
+  assert.equal(payloads[0].price, 64114.82);
+});
+
+test("integration: alert name is preserved and can drive action", async () => {
+  const { document, sentPayloads } = buildTestEnv();
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="tv-alert-toast" role="alert">
+       <span class="name-ULNSeceN">BUY Test99</span>
+       <span class="description-ULNSeceN">BTCUSD Crossing 64,119.59</span>
+     </div>`
+  );
+  await flushMicrotasks();
+  const payloads = getPayloadsFor(sentPayloads);
+  assert.equal(payloads.length, 1);
+  assert.equal(payloads[0].alert_name, "BUY Test99");
+  assert.equal(payloads[0].raw.alert_name, "BUY Test99");
+  assert.equal(payloads[0].action, "buy");
+  assert.equal(payloads[0].raw_action, "BUY");
+  assert.equal(payloads[0].message, "BTCUSD Crossing 64,119.59");
+});
+
+test("integration: unrelated username class is not treated as alert name", async () => {
+  const { document, sentPayloads } = buildTestEnv();
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="tv-alert-toast" role="alert">
+       <span class="username">BUY Bot</span>
+       <span class="description-ULNSeceN">EURUSD Crossing 1.1400</span>
+     </div>`
+  );
+  await flushMicrotasks();
+  const payloads = getPayloadsFor(sentPayloads);
+  assert.equal(payloads.length, 1);
+  assert.equal(payloads[0].alert_name, "");
+  assert.equal(payloads[0].action, "alert");
+  assert.equal(payloads[0].raw_action, null);
+  assert.equal(payloads[0].message, "EURUSD Crossing 1.1400");
+});
+
 test("integration: same toast inserted twice is deduped (5s window)", async () => {
   const { document, sentPayloads } = buildTestEnv();
   const html = `<div class="tv-alert-toast">Alert on EURUSD<span class="description-ULNSeceN">EURUSD Crossing 1.14145</span></div>`;
@@ -247,6 +307,27 @@ test("integration: extension metadata populated from sender URL", async () => {
   );
   await flushMicrotasks();
   const payloads = getPayloadsFor(sentPayloads);
-  assert.equal(sentPayloads[0].type, "tradingview_alert");
-  assert.ok(sentPayloads[0].payload);
+  const tradingViewMessage = sentPayloads.find((m) => m.type === "tradingview_alert");
+  assert.ok(tradingViewMessage);
+  assert.ok(tradingViewMessage.payload);
+  assert.ok(payloads.length >= 1);
+});
+
+test("integration: content script emits observer status", async () => {
+  const { sentPayloads } = buildTestEnv();
+  await flushMicrotasks();
+  const statuses = getStatusMessagesFor(sentPayloads);
+  assert.ok(statuses.some((m) => m.status === "observer_active"));
+});
+
+test("integration: invalidated extension context is handled without uncaught send errors", async () => {
+  const { document, sentPayloads } = buildTestEnv("", {
+    sendMessageThrows: "Extension context invalidated."
+  });
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="tv-alert-toast">Alert on BTCUSD<span class="description-ULNSeceN">BTCUSD Crossing BUY 64,114.82</span></div>`
+  );
+  await flushMicrotasks();
+  assert.equal(sentPayloads.length, 0);
 });

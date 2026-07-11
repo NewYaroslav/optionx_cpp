@@ -5,6 +5,12 @@
 /// \file BaseBridge.hpp
 /// \brief Declares the BaseBridge abstract class, serving as a foundation for bridge implementations.
 
+#include <optionx_cpp/data/account.hpp>
+#include <optionx_cpp/data/bridge.hpp>
+
+#include <functional>
+#include <memory>
+
 namespace optionx::bridges {
 
     /// \class BaseBridge
@@ -12,6 +18,7 @@ namespace optionx::bridges {
     class BaseBridge {
     public:
         using trade_signal_callback_t = std::function<void(std::unique_ptr<TradeSignal>)>;
+        using signal_report_callback_t = std::function<void(const BridgeSignalReport&)>;
         using signal_id_allocator_t = std::function<SignalId()>;
 
         /// \brief Virtual destructor for safe polymorphic destruction.
@@ -37,6 +44,13 @@ namespace optionx::bridges {
         /// \return Reference to the trade signal callback function.
         virtual trade_signal_callback_t& on_trade_signal() {
             static trade_signal_callback_t null_callback;
+            return null_callback;
+        }
+
+        /// \brief Retrieves the bridge signal diagnostic callback function.
+        /// \return Reference to the signal report callback function.
+        virtual signal_report_callback_t& on_signal_report() {
+            static signal_report_callback_t null_callback;
             return null_callback;
         }
 

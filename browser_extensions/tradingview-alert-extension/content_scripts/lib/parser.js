@@ -88,6 +88,15 @@
     }
   }
 
+  function parseNumberText(value) {
+    const text = value === null || value === undefined ? "" : String(value).trim();
+    if (!text) return null;
+    const normalized = text.replace(/,/g, "");
+    if (!/^[-+]?\d+(?:\.\d+)?$/.test(normalized)) return null;
+    const n = Number(normalized);
+    return Number.isFinite(n) ? n : null;
+  }
+
   function extractSymbol(title, message, parsed) {
     if (parsed && typeof parsed.symbol === "string" && parsed.symbol.trim()) {
       return normalizeSymbol(parsed.symbol);
@@ -120,14 +129,13 @@
     if (parsed && typeof parsed === "object") {
       if (typeof parsed.price === "number" && Number.isFinite(parsed.price)) return parsed.price;
       if (typeof parsed.price === "string") {
-        const n = parseFloat(parsed.price);
-        if (Number.isFinite(n)) return n;
+        const n = parseNumberText(parsed.price);
+        if (n !== null) return n;
       }
     }
-    const numbers = String(message || "").match(/[-+]?\d+(?:\.\d+)?/g);
-    if (!numbers) return null;
-    const first = parseFloat(numbers[0]);
-    return Number.isFinite(first) ? first : null;
+    const numberPattern = /(^|[^A-Za-z0-9_])([-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)/g;
+    const match = numberPattern.exec(String(message || ""));
+    return match ? parseNumberText(match[2]) : null;
   }
 
   function extractPrice(message, parsed) {
@@ -212,6 +220,7 @@
     extractRawAction,
     extractRawDirection,
     parseJsonMessageSafe,
+    parseNumberText,
     makeEventId,
     SYMBOL_BLACKLIST,
     TRIGGER_PATTERNS
