@@ -129,8 +129,22 @@ async function handleContentStatus(message, sender) {
     await writeLog("info", `TradingView observer active${tabSuffix(sender)}`);
     return { ok: true };
   }
-  await writeLog("info", `TradingView content status: ${message.status || "unknown"}${tabSuffix(sender)}`);
+  await writeLog(
+    "info",
+    `TradingView content status: ${message.status || "unknown"}${formatStatusDetails(message.details)}${tabSuffix(sender)}`
+  );
   return { ok: true };
+}
+
+function formatStatusDetails(details) {
+  if (!details || typeof details !== "object") return "";
+  const fields = [];
+  for (const key of ["host", "path", "type", "count", "methods", "keys", "action", "symbol"]) {
+    if (details[key] !== null && details[key] !== undefined && String(details[key]) !== "") {
+      fields.push(`${key}=${String(details[key]).slice(0, 120)}`);
+    }
+  }
+  return fields.length > 0 ? ` [${fields.join(" ")}]` : "";
 }
 
 function tabSuffix(sender) {

@@ -282,12 +282,28 @@ alert has popup notifications enabled and that a visible toast is shown in the
 chart page.
 
 For indicator signals, the popup log should show
-`TradingView content status: chart_socket_hook_attached` after the chart
-opens its `data.tradingview.com` WebSocket. If that line is missing, reload the
-TradingView tab after reloading the extension. If it is present but no signal is
-sent, verify that the Pine script emits `alert()` with a JSON message and that
-the TradingView chart WebSocket actually contains `du ... alertMessages[]`
-frames.
+`TradingView content status: chart_socket_hook_attached
+[host=data.tradingview.com path=/socket.io/websocket type=chart]` after the
+chart opens its `data.tradingview.com` WebSocket. If that line is missing,
+reload the TradingView tab after reloading the extension.
+
+Useful diagnostic lines:
+
+- `page_hook_installed` - the page-world hook executed;
+- `tradingview_ws_matched` - the hook saw a target TradingView WebSocket;
+- `chart_socket_hook_attached` - the hook wrapped the chart data socket;
+- `chart_socket_frames_seen` - chart socket frames are flowing through the hook;
+- `chart_socket_du_seen` - study/bar update frames are flowing;
+- `chart_socket_study_alerts_seen` - `data.alertMessages[]` was found;
+- `chart_socket_study_alerts_forwarded` - at least one indicator signal was
+  forwarded to the service worker.
+
+If `chart_socket_hook_attached` is present but `chart_socket_study_alerts_seen`
+is not, verify in DevTools Network that the chart socket actually contains
+`du ... alertMessages[]` frames for the current chart/script. If
+`chart_socket_study_alerts_forwarded` appears but the bridge receives nothing,
+check the following popup log line for `Bridge rejected`, `network_or_cors`,
+or `timeout`.
 
 Expected bridge behavior:
 

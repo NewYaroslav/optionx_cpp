@@ -16,6 +16,16 @@
         "https://*.tradingview.com/*"
       ],
       "js": [
+        "content_scripts/private_feed_page_hook.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://*.tradingview.com/*"
+      ],
+      "js": [
         "content_scripts/tradingview_private_feed.js"
       ],
       "run_at": "document_start"
