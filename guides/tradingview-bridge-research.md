@@ -555,9 +555,9 @@ MVP, localhost HTTP is simpler.
 
 The first native receiver is implemented as a header-only bridge:
 
-- config: `include/optionx_cpp/bridges/TradingView/TradingViewExtensionBridgeConfig.hpp`;
-- parser/protocol: `include/optionx_cpp/bridges/TradingView/detail/TradingViewExtensionProtocol.hpp`;
-- HTTP server: `include/optionx_cpp/bridges/TradingView/TradingViewExtensionBridge.hpp`;
+- config: `include/optionx_cpp/bridges/trading_view/TradingViewExtensionBridgeConfig.hpp`;
+- parser/protocol: `include/optionx_cpp/bridges/trading_view/detail/TradingViewExtensionProtocol.hpp`;
+- HTTP server: `include/optionx_cpp/bridges/trading_view/TradingViewExtensionBridge.hpp`;
 - smoke executable: `examples/tradingview_extension_bridge_smoke.cpp`;
 - example config: `examples/tradingview_extension_bridge_smoke.config.json`.
 
@@ -965,9 +965,9 @@ Current bridge contract already matches this direction:
 
 Possible implementation split:
 
-- `include/optionx_cpp/bridges/TradingView/detail/TradingViewExtensionProtocol.hpp`
+- `include/optionx_cpp/bridges/trading_view/detail/TradingViewExtensionProtocol.hpp`
   for parser/formatter helpers;
-- `include/optionx_cpp/bridges/TradingView/TradingViewExtensionBridgeConfig.hpp`
+- `include/optionx_cpp/bridges/trading_view/TradingViewExtensionBridgeConfig.hpp`
   for config DTO;
 - optional `TradingViewExtensionBridge` only if we choose to include a local
   HTTP/WebSocket server in the library surface;

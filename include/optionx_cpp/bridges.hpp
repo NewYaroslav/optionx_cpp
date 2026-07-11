@@ -6,7 +6,7 @@
 /// \brief Includes bridge-related headers.
 
 #include "bridges/BaseBridge.hpp"
-#include "bridges/NamedPipe.hpp"
-#include "bridges/TradingView.hpp"
+#include "bridges/named_pipe.hpp"
+#include "bridges/trading_view.hpp"
 
 #endif // OPTIONX_HEADER_BRIDGES_HPP_INCLUDED

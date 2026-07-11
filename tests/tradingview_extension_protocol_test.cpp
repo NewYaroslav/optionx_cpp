@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <optionx_cpp/bridges/TradingView/detail/TradingViewExtensionProtocol.hpp>
+#include <optionx_cpp/bridges/trading_view.hpp>
 #include <optionx_cpp/utils/json_comments.hpp>
 
 namespace {

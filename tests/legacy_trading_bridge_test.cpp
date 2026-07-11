@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <optionx_cpp/bridges.hpp>
-#include <optionx_cpp/bridges/NamedPipe/detail/LegacyTradingProtocol.hpp>
 
 #include <chrono>
 #include <condition_variable>

@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
 #include <optionx_cpp/bridges.hpp>
-#include <optionx_cpp/bridges/NamedPipe.hpp>
-#include <optionx_cpp/bridges/TradingView.hpp>
+#include <optionx_cpp/bridges/named_pipe.hpp>
+#include <optionx_cpp/bridges/trading_view.hpp>
 
 TEST(BridgeUmbrellaIncludeTest, ExposesNamedPipeBridgeFamily) {
     optionx::bridges::named_pipe::LegacyTradingBridgeConfig config;

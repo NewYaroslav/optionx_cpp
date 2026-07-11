@@ -18,7 +18,7 @@
 #include <optionx_cpp/market_data.hpp>
 #include <optionx_cpp/platforms.hpp>
 #include <optionx_cpp/platforms/IntradeBarPlatform.hpp>
-#include <optionx_cpp/bridges/TradingView.hpp>
+#include <optionx_cpp/bridges/trading_view.hpp>
 ```
 
 Внутри самого дерева `include/optionx_cpp` используется локальный путь от

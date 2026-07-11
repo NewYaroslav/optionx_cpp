@@ -5,8 +5,6 @@
 /// \file TradingViewExtensionProtocol.hpp
 /// \brief Parses TradingView browser-extension messages into TradeSignal objects.
 
-#include "bridges/TradingView/TradingViewExtensionBridgeConfig.hpp"
-
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
