@@ -2,7 +2,6 @@
   "address": "127.0.0.1",
   "port": 6560,
   "signal_path": "/api/v1/tradingview/signal",
-  "health_path": "/health",
   "bridge_id": 1,
   "secret": "local-secret",
 
@@ -29,19 +28,19 @@
 
   "action_keywords": {
     // Built-ins include common English and Russian buy/sell words:
-    // buy/call/long/up, sell/put/short/down, бай/селл, покуп/прода, вверх/вниз.
+    // buy/call/long, sell/put/short, бай/селл, покуп/прода, лонг/шорт.
+    // Directional market words such as up/down/bull/bear are intentionally
+    // not defaults; map them explicitly through level_alert_rules when needed.
     // Leave true to extend them with the lists below; set false to fully override.
     "use_defaults": true,
 
     "buy": [
       // "entry long",
-      // "Покупа",
-      // "Вверх"
+      // "Покупа"
     ],
     "sell": [
       // "entry short",
-      // "Селл",
-      // "Вниз"
+      // "Селл"
     ]
   },
 

@@ -201,6 +201,24 @@ test("integration: alert name is preserved and can drive action", async () => {
   assert.equal(payloads[0].message, "BTCUSD Crossing 64,119.59");
 });
 
+test("integration: unrelated username class is not treated as alert name", async () => {
+  const { document, sentPayloads } = buildTestEnv();
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="tv-alert-toast" role="alert">
+       <span class="username">BUY Bot</span>
+       <span class="description-ULNSeceN">EURUSD Crossing 1.1400</span>
+     </div>`
+  );
+  await flushMicrotasks();
+  const payloads = getPayloadsFor(sentPayloads);
+  assert.equal(payloads.length, 1);
+  assert.equal(payloads[0].alert_name, "");
+  assert.equal(payloads[0].action, "alert");
+  assert.equal(payloads[0].raw_action, null);
+  assert.equal(payloads[0].message, "EURUSD Crossing 1.1400");
+});
+
 test("integration: same toast inserted twice is deduped (5s window)", async () => {
   const { document, sentPayloads } = buildTestEnv();
   const html = `<div class="tv-alert-toast">Alert on EURUSD<span class="description-ULNSeceN">EURUSD Crossing 1.14145</span></div>`;

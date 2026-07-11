@@ -63,7 +63,6 @@ namespace optionx::bridges::tradingview {
                 {"address", address},
                 {"port", port},
                 {"signal_path", signal_path},
-                {"health_path", health_path},
                 {"bridge_id", bridge_id},
                 {"secret", secret},
                 {"option_type", option_type},
@@ -105,9 +104,6 @@ namespace optionx::bridges::tradingview {
             }
             if (j.contains("signal_path")) {
                 signal_path = j.at("signal_path").get<std::string>();
-            }
-            if (j.contains("health_path")) {
-                health_path = j.at("health_path").get<std::string>();
             }
             if (j.contains("bridge_id")) {
                 bridge_id = j.at("bridge_id").get<BridgeId>();
@@ -222,9 +218,6 @@ namespace optionx::bridges::tradingview {
             if (signal_path.empty() || signal_path.front() != '/') {
                 return {false, "TradingView bridge signal_path must start with '/'."};
             }
-            if (health_path.empty() || health_path.front() != '/') {
-                return {false, "TradingView bridge health_path must start with '/'."};
-            }
             if (bridge_id == 0) {
                 return {false, "Bridge ID is required."};
             }
@@ -327,14 +320,9 @@ namespace optionx::bridges::tradingview {
                 "buy",
                 "call",
                 "long",
-                "up",
-                "higher",
-                "bull",
-                "bullish",
                 u8"\u0431\u0430\u0439",       // buy transliterated in Russian
                 u8"\u043A\u0443\u043F\u0438\u0442\u044C",
                 u8"\u043F\u043E\u043A\u0443\u043F",
-                u8"\u0432\u0432\u0435\u0440\u0445",
                 u8"\u043B\u043E\u043D\u0433"
             };
             return keywords;
@@ -346,14 +334,9 @@ namespace optionx::bridges::tradingview {
                 "sell",
                 "put",
                 "short",
-                "down",
-                "lower",
-                "bear",
-                "bearish",
                 u8"\u0441\u0435\u043B\u043B",
                 u8"\u043F\u0440\u043E\u0434\u0430\u0442\u044C",
                 u8"\u043F\u0440\u043E\u0434\u0430",
-                u8"\u0432\u043D\u0438\u0437",
                 u8"\u0448\u043E\u0440\u0442"
             };
             return keywords;
@@ -380,7 +363,6 @@ namespace optionx::bridges::tradingview {
         std::string address = "127.0.0.1";       ///< HTTP bind address.
         std::uint16_t port = 6560;               ///< HTTP bind port; 0 allows an OS-assigned port.
         std::string signal_path = "/api/v1/tradingview/signal"; ///< Signal endpoint path.
-        std::string health_path = "/health";     ///< Health-check endpoint path.
         BridgeId bridge_id = 0;                  ///< Source bridge ID; must be non-zero.
         std::string secret;                      ///< Optional shared secret expected in X-OptionX-Secret.
 

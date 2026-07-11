@@ -44,9 +44,10 @@ It extracts the toast title, description, symbol and a best-effort action:
 - anything else -> `alert`.
 
 TradingView's configurable alert title/name is sent separately as
-`alert_name`. It also participates in action detection, so a title such as
+`alert_name` when the toast exposes it through the observed TradingView
+`name-*` element. It also participates in action detection, so a title such as
 `BUY Test99` can produce `action=buy` while the main alert text remains in
-`message`.
+`message`. Generic DOM names such as `username` are intentionally ignored.
 
 Level alerts such as `EURUSD Crossing 1.14072` are market events, not trade
 commands. The local bridge should map these through user rules or reject them
@@ -165,8 +166,8 @@ verify the header against the configured value.
 Requests have a 3 second timeout; an unreachable bridge will surface as a
 `Bridge timeout` entry in the popup log.
 
-The popup checks bridge availability with `GET /health` on the same origin as
-the signal endpoint. For the default endpoint
+The popup checks bridge availability with fixed `GET /health` on the same origin
+as the signal endpoint. For the default endpoint
 `http://127.0.0.1:6560/api/v1/tradingview/signal`, the health probe is:
 
 ```text

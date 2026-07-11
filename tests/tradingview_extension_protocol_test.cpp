@@ -81,7 +81,6 @@ TEST(TradingViewExtensionProtocol, ConfigRoundTripsJson) {
     config.address = "127.0.0.1";
     config.port = 0;
     config.signal_path = "/tv/signal";
-    config.health_path = "/tv/health";
     config.bridge_id = 9;
     config.secret = "shared";
     config.allowed_origin = "chrome-extension://abc123";
@@ -114,6 +113,7 @@ TEST(TradingViewExtensionProtocol, ConfigRoundTripsJson) {
     EXPECT_EQ(restored.bridge_type(), optionx::BridgeType::TRADING_VIEW_EXTENSION_HTTP);
     EXPECT_EQ(restored.port, 0);
     EXPECT_EQ(restored.signal_path, "/tv/signal");
+    EXPECT_FALSE(json.contains("health_path"));
     EXPECT_EQ(restored.allowed_origin, "chrome-extension://abc123");
     EXPECT_FALSE(restored.allow_body_secret_fallback);
     EXPECT_EQ(restored.sizing_mode, "balance_percent");
@@ -309,6 +309,44 @@ TEST(TradingViewExtensionProtocol, MapsLevelAlertActionFromDefaultKeyword) {
     EXPECT_EQ(result.signal->symbol, "BTCUSD");
     EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
     EXPECT_EQ(result.signal->signal_name, "tradingview_level_alert");
+}
+
+TEST(TradingViewExtensionProtocol, DoesNotMapDirectionalLevelWordsByDefault) {
+    auto config = base_config();
+
+    const nlohmann::json payload = {
+        {"source_kind", "alert_toast_dom"},
+        {"event_id", "toast:eurusd:crossing-up"},
+        {"action", "alert"},
+        {"symbol", "EURUSD"},
+        {"message", "EURUSD Crossing Up 1.1400"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    EXPECT_FALSE(result.accepted);
+    EXPECT_EQ(result.reason, "unmapped_level_alert");
+    EXPECT_FALSE(result.signal);
+}
+
+TEST(TradingViewExtensionProtocol, MatchesDefaultRussianKeywordsCaseInsensitively) {
+    auto config = base_config();
+
+    const nlohmann::json payload = {
+        {"source_kind", "alert_toast_dom"},
+        {"event_id", "toast:btcusd:russian-buy"},
+        {"action", "alert"},
+        {"symbol", "BTCUSD"},
+        {"message", u8"BTCUSD Crossing \u0411\u0410\u0419 64,143.35"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
 }
 
 TEST(TradingViewExtensionProtocol, ParsesCommaPriceAndIsoTimeFromToastPayload) {

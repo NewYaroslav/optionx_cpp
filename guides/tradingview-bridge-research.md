@@ -667,12 +667,15 @@ Action keywords are configured separately from level rules:
 }
 ```
 
-With `use_defaults: true`, the custom lists extend built-in English/Russian
-terms such as `buy`, `call`, `long`, `up`, `sell`, `put`, `short`, `down`,
-`бай`, `селл`, `покуп`, `прода`, `вверх` and `вниз`. Set it to `false` to make
-the lists a full override. Keyword mapping is a fallback after matching
-level-alert rules, so explicit user rules can still define or reject specific
-alert shapes.
+With `use_defaults: true`, the custom lists extend built-in command words:
+`buy`, `call`, `long`, `sell`, `put`, `short`, plus common Russian buy/sell
+terms such as `бай`, `селл`, `покуп`, `прода`, `лонг` and `шорт`. Directional
+market-description words such as `up`, `down`, `higher`, `lower`, `bull` and
+`bear` are intentionally not enabled by default; map them through explicit
+level-alert rules or custom keywords only when the user wants that behavior.
+Set `use_defaults` to `false` to make the lists a full override. Keyword
+mapping is a fallback after matching level-alert rules, so explicit user rules
+can still define or reject specific alert shapes.
 
 The config also contains ordered user rules. Rules without a `symbol` matcher
 apply to every pair, for example:

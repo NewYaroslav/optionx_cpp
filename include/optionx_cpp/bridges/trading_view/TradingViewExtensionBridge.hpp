@@ -449,7 +449,7 @@ namespace optionx::bridges::tradingview {
         void configure_routes(
                 const std::shared_ptr<HttpServer>& server,
                 const std::shared_ptr<TradingViewExtensionBridgeConfig>& config) {
-            server->resource[regex_path(config->health_path)]["GET"] =
+            server->resource[regex_path("/health")]["GET"] =
                 [config](
                     std::shared_ptr<HttpServer::Response> response,
                     std::shared_ptr<HttpServer::Request>) {

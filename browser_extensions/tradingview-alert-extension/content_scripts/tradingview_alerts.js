@@ -99,9 +99,10 @@
 
   function findAlertName(root) {
     const selectors = [
-      'span[class*="name"]',
-      'div[class*="name"]',
-      '[data-name*="name"]'
+      'span[class^="name-"]',
+      'span[class*=" name-"]',
+      'div[class^="name-"]',
+      'div[class*=" name-"]'
     ];
     const description = findDescription(root);
 
