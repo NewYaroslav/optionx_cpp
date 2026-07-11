@@ -227,17 +227,13 @@ node --test tests/parser.test.mjs
 
 ## Troubleshooting fetch errors
 
-The extension classifies fetch errors into 3 categories in popup logs:
+The extension classifies fetch errors into 3 honest categories:
 
 - **`timeout`** — `AbortError` after 3000ms. Bridge is hung. Check that the bridge process is responsive.
-- **`cors`** — "Failed to fetch" TypeError. The bridge did not respond to the CORS preflight. The bridge MUST answer `OPTIONS` with at minimum:
-  ```
-  Access-Control-Allow-Origin: chrome-extension://<extension-id>
-  Access-Control-Allow-Methods: POST, OPTIONS
-  Access-Control-Allow-Headers: Content-Type, X-OptionX-Secret
-  ```
-  Or accept any origin (`Access-Control-Allow-Origin: *`) for local development.
-- **`network`** — DNS failure, connection refused, or firewall. Bridge is not running or unreachable on the configured endpoint.
+- **`network_or_cors`** — `TypeError` "Failed to fetch". Cannot distinguish between bridge offline / connection refused / CORS preflight rejected from a single error object. To diagnose: send a manual `OPTIONS` request from the bridge host (see "Bridge requirements" below).
+- **`other`** — Any other error. Inspect the popup log for full message.
+
+The "Failed to fetch" message is identical for both `network` and `cors` failures because the browser hides the underlying reason for security. A separate health-check endpoint (without custom headers) would let us distinguish them, but it's out of scope for this PR.
 
 `fetch` uses `mode: "cors"` and `credentials: "omit"` explicitly. Cookies from the extension are never sent to the bridge.
 
@@ -248,6 +244,19 @@ The local bridge at `http://127.0.0.1:6560` must:
 - Answer `OPTIONS` (CORS preflight) with `Access-Control-Allow-Origin: chrome-extension://<extension-id>` (or `*` for dev)
 - Include `Access-Control-Allow-Headers: Content-Type, X-OptionX-Secret`
 - Return `200 OK` on successful signal processing
+
+**Diagnostic tip**: To distinguish `network_or_cors` failures:
+
+```bash
+curl -X OPTIONS http://127.0.0.1:6560/api/v1/tradingview/signal \
+  -H "Origin: chrome-extension://<extension-id>" \
+  -H "Access-Control-Request-Method: POST" \
+  -i
+```
+
+- Connection refused / DNS failure → `network` issue (bridge offline)
+- 200 OK without CORS headers → `cors` issue (bridge missing preflight handler)
+- Other response → check bridge logs
 
 ## Notes
 
