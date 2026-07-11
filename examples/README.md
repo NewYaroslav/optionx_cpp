@@ -17,6 +17,9 @@ Currently maintained examples:
 - `trading_condition_hub_example.cpp` demonstrates routing payout, session and
   expiration-limit changes through `TradingConditionHub`, plus querying the
   merged current condition snapshot for a concrete symbol.
+- `tradingview_extension_bridge_smoke.cpp` starts the local TradingView
+  browser-extension HTTP bridge and can run `--self-test` to POST a sample
+  indicator signal to itself.
 - `trade_record_db_example.cpp` demonstrates basic `TradeRecordDB` usage.
 
 Old exploratory broker and component probes were removed because they referenced

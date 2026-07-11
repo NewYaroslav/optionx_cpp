@@ -1,0 +1,39 @@
+{
+  "address": "127.0.0.1",
+  "port": 6560,
+  "signal_path": "/api/v1/tradingview/signal",
+  "health_path": "/health",
+  "bridge_id": 1,
+  "secret": "local-secret",
+  "option_type": "SPRINT",
+  "duration": 60,
+  "min_payout": 0.0,
+  "symbol_map": {
+    "FX:EURUSD": "EURUSD",
+    "EURUSD": "EURUSD"
+  },
+  "sizing": {
+    "mode": "fixed_amount",
+    "fixed_amount": 1.0,
+    "balance_percent": 0.0,
+    "min_amount": 0.0,
+    "max_amount": 0.0
+  },
+  "level_alert_rules": {
+    "default_action": "reject",
+    "rules": [
+      {
+        "symbol": "FX:EURUSD",
+        "condition_type": "crossing_up",
+        "action": "buy",
+        "signal_name": "eurusd_crossing_up"
+      },
+      {
+        "symbol": "FX:EURUSD",
+        "condition_type": "crossing_down",
+        "action": "sell",
+        "signal_name": "eurusd_crossing_down"
+      }
+    ]
+  }
+}

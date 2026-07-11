@@ -551,6 +551,112 @@ Source:
 Use Native Messaging later if installation packaging is already solved. For an
 MVP, localhost HTTP is simpler.
 
+## Implemented Local HTTP Bridge
+
+The first native receiver is implemented as a header-only bridge:
+
+- config: `include/optionx_cpp/bridges/TradingView/TradingViewExtensionBridgeConfig.hpp`;
+- parser/protocol: `include/optionx_cpp/bridges/TradingView/detail/TradingViewExtensionProtocol.hpp`;
+- HTTP server: `include/optionx_cpp/bridges/TradingView/TradingViewExtensionBridge.hpp`;
+- smoke executable: `examples/tradingview_extension_bridge_smoke.cpp`;
+- example config: `examples/tradingview_extension_bridge_smoke.config.json`.
+
+The full HTTP bridge intentionally is not included by `include/optionx_cpp/bridges.hpp`,
+because it includes `server_http.hpp` from Simple-Web-Server. The aggregate
+header includes only the config. Users that need the server include the bridge
+header explicitly.
+
+Default local endpoint:
+
+```text
+POST http://127.0.0.1:6560/api/v1/tradingview/signal
+GET  http://127.0.0.1:6560/health
+```
+
+Indicator signal payload:
+
+```json
+{
+  "secret": "local-secret",
+  "source": "tradingview",
+  "signal_name": "noisy_rsi_test",
+  "action": "buy",
+  "symbol": "FX:EURUSD",
+  "tickerid": "FX:EURUSD",
+  "price": 1.14055,
+  "time": 1783476660000,
+  "event_id": "indicator:eurusd:1783476660000:buy"
+}
+```
+
+The parser also accepts the confirmed private `pricealerts` wrapper forwarded by
+the extension:
+
+```json
+{
+  "secret": "local-secret",
+  "text": {
+    "channel": "pricealerts",
+    "content": {
+      "m": "alert_fired",
+      "p": {
+        "fire_id": 53256556946,
+        "symbol": "FX:EURUSD",
+        "message": "EURUSD Crossing 1.14072"
+      }
+    }
+  }
+}
+```
+
+Only `alert_fired` can become a local signal. `alerts_created` and
+`alerts_updated` are accepted as known TradingView lifecycle/state messages but
+are rejected by the parser with `ignored_state_message`.
+
+Sizing is configured on our side:
+
+- `fixed_amount` sets `TradeSignal::amount` and marks `mm_type = FIXED`;
+- `balance_percent` does not calculate an amount inside the bridge. It marks
+  `mm_type = PERCENT` and writes the sizing intent into `TradeSignal::user_data`
+  for a downstream money-management/postprocessing layer;
+- `none` leaves amount and money-management type unset.
+
+Level alerts are not assigned direction automatically. The config contains
+ordered user rules, for example:
+
+```json
+{
+  "level_alert_rules": {
+    "default_action": "reject",
+    "rules": [
+      {
+        "symbol": "FX:EURUSD",
+        "condition_type": "crossing_up",
+        "action": "buy",
+        "signal_name": "eurusd_crossing_up"
+      },
+      {
+        "symbol": "FX:EURUSD",
+        "condition_type": "crossing_down",
+        "action": "sell",
+        "signal_name": "eurusd_crossing_down"
+      }
+    ]
+  }
+}
+```
+
+This keeps the important product boundary explicit: TradingView tells us that a
+level alert fired; only the user config decides whether that event means buy,
+sell or reject.
+
+Smoke test:
+
+```powershell
+cmake --build <build-dir> --target tradingview_extension_bridge_smoke
+<build-dir>\examples\tradingview_extension_bridge_smoke.exe --self-test
+```
+
 ## GitHub References
 
 These repositories are examples to study. Do not copy code blindly.

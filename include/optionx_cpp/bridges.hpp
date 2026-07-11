@@ -10,5 +10,6 @@
 #include "storages.hpp"
 #include "bridges/BaseBridge.hpp"
 #include "bridges/NamedPipe/LegacyTradingBridge.hpp"
+#include "bridges/TradingView/TradingViewExtensionBridgeConfig.hpp"
 
 #endif // OPTIONX_HEADER_BRIDGES_HPP_INCLUDED
