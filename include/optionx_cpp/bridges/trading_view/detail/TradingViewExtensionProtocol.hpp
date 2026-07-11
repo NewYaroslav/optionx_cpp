@@ -98,6 +98,70 @@ namespace optionx::bridges::tradingview::detail {
             return position == text.size();
         }
 
+        inline bool extract_last_number_from_text(
+                const std::string& text,
+                double& output) {
+            bool found = false;
+            double last_value = 0.0;
+
+            for (std::size_t index = 0; index < text.size();) {
+                const auto ch = static_cast<unsigned char>(text[index]);
+                const bool starts_number =
+                    std::isdigit(ch) ||
+                    ((text[index] == '-' || text[index] == '+') &&
+                     index + 1 < text.size() &&
+                     std::isdigit(static_cast<unsigned char>(text[index + 1])));
+                if (!starts_number) {
+                    ++index;
+                    continue;
+                }
+
+                if (index > 0 &&
+                    std::isalnum(static_cast<unsigned char>(text[index - 1]))) {
+                    ++index;
+                    continue;
+                }
+
+                auto end = index;
+                if (text[end] == '-' || text[end] == '+') {
+                    ++end;
+                }
+                bool has_digit = false;
+                while (end < text.size()) {
+                    const auto c = static_cast<unsigned char>(text[end]);
+                    if (std::isdigit(c)) {
+                        has_digit = true;
+                        ++end;
+                        continue;
+                    }
+                    if (text[end] == '.' || text[end] == ',') {
+                        ++end;
+                        continue;
+                    }
+                    break;
+                }
+
+                const bool right_ok =
+                    end >= text.size() ||
+                    !std::isalnum(static_cast<unsigned char>(text[end]));
+                if (has_digit && right_ok) {
+                    double parsed = 0.0;
+                    if (strict_number_string_to_double(
+                            text.substr(index, end - index),
+                            parsed)) {
+                        last_value = parsed;
+                        found = true;
+                    }
+                }
+                index = end > index ? end : index + 1;
+            }
+
+            if (found) {
+                output = last_value;
+            }
+            return found;
+        }
+
         inline bool strict_integer_string_to_i64(
                 const std::string& value,
                 std::int64_t& output) {
@@ -624,7 +688,7 @@ namespace optionx::bridges::tradingview::detail {
 
         inline NormalizedEvent parse_pricealerts_private_feed(const nlohmann::json& payload) {
             NormalizedEvent event;
-            event.source_kind = "tradingview_private_pricealerts_ws";
+            event.source_kind = "private_pricealerts_ws";
             event.is_level_alert = true;
             event.raw = payload;
 
@@ -675,6 +739,9 @@ namespace optionx::bridges::tradingview::detail {
             }
             event.price =
                 json_number(data, {"price", "trigger_price", "cross_price", "alert_value"});
+            if (event.price == 0.0) {
+                extract_last_number_from_text(event.message, event.price);
+            }
             event.time =
                 json_integer(data, {"time", "timestamp", "fire_time", "fired_at", "update_time"});
             if (event.condition_type.empty()) {
@@ -720,6 +787,9 @@ namespace optionx::bridges::tradingview::detail {
             event.alert_name = first_json_string(payload, {"alert_name", "alert_title"});
             event.message = first_json_string(payload, {"message", "description", "text", "title"});
             event.price = json_number(payload, {"price", "close", "trigger_price", "alert_value"});
+            if (event.price == 0.0) {
+                extract_last_number_from_text(event.message, event.price);
+            }
             event.time = json_integer(payload, {"time", "timestamp", "bar_time", "fire_time"});
 
             if (payload.contains("barInfo") && payload.at("barInfo").is_object()) {

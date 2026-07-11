@@ -178,8 +178,8 @@ wss://data.tradingview.com/socket.io/websocket?from=chart/<layout-id>/&date=<iso
 ```
 
 This is TradingView's private chart data channel. It is useful research for a
-quotes bridge, but it is not a stable public API and should be treated as an
-experimental/high-fragility integration.
+quotes bridge and historical/study-signal replay, but it is not a stable public
+API and should be treated as an experimental/high-fragility integration.
 
 Important: the first captured dump did not prove that alert events are
 delivered on this socket. It did show chart data, quote data and study data. A
@@ -260,9 +260,10 @@ Observed shape, sanitized:
 }
 ```
 
-This is very useful for indicator-driven signals because the inner `msg` can be
-our own JSON alert contract. The capture contained the same alert payload twice
-under two different study ids, so local code must deduplicate by at least:
+This is very useful for indicator-driven signals and future strategy-history
+testing because the inner `msg` can be our own JSON alert contract. The capture
+contained the same alert payload twice under two different study ids, so local
+code must deduplicate by at least:
 
 - parsed `msg`;
 - `barInfo.time` or parsed signal `time`;
@@ -298,6 +299,9 @@ Interpretation:
 
 - this confirms that some indicator/study alert messages can be observed through
   the private chart WebSocket;
+- these messages can include historical or replayed study state, so they should
+  not be mixed into the fresh-alert bridge until the library has a clear
+  bar/tick history and replay contract;
 - it does not yet prove that all TradingView platform alerts, especially plain
   price-level alerts, are delivered this way;
 - it may depend on how the Pine script emits `alert()`/`alertcondition()` and on
@@ -867,9 +871,10 @@ There are two different free products hiding under one name:
    an internal pushstream-style integration.
 
 Current local prototype:
-`browser_extensions/tradingview-alert-extension` implements the first
+`browser_extensions/tradingview-alert-extension` implements the fresh
 alert-bridge slice. It is a Chrome/Edge MV3 extension that observes visible
-alert toast DOM and sends normalized JSON to a local HTTP bridge endpoint.
+alert toast DOM and the TradingView private `pricealerts/alert_fired`
+pushstream, then sends normalized JSON to a local HTTP bridge endpoint.
 
 Prefer local HTTP first for both modes:
 
@@ -1019,15 +1024,13 @@ server dependency intentionally.
 5. Add a manual smoke checklist: start local receiver, load unpacked extension,
    open TradingView Strategy Tester, enable bridge, trigger one demo signal,
    verify duplicate suppression.
-6. Add a developer-only `private_chart_socket_probe` mode to the extension that
-   patches WebSocket/EventSource in the page context, redacts credentials and
-   records method names around one manually triggered alert. Use that capture to
-   confirm whether non-price alerts arrive on `data.tradingview.com`,
-   pushstream, DOM only or a different channel.
-7. Prototype extraction of `du.p[1].<study-id>.ns.d.data.alertMessages[]` from
-   captured WebSocket frames and feed the parsed inner `msg` through the same
-   local TradingView extension protocol as DOM toasts.
-8. Prototype `private_pricealerts_ws` extraction from
-   `message-pipe-ws/private_feed`: consume only `pricealerts/alert_fired` as
-   events, treat `alerts_updated` as state/diagnostics, and deduplicate by
-   `fire_id`.
+6. Keep `private_pricealerts_ws` as the fresh-alert private source: consume only
+   `pricealerts/alert_fired` as events, treat `alerts_updated` as
+   state/diagnostics, and deduplicate by `fire_id`.
+7. In a later PR, design a history/replay API before implementing
+   `data.tradingview.com` study-alert extraction. That work needs at least a
+   bar/tick history boundary so historical signal messages are not mistaken for
+   fresh trading events.
+8. After the history boundary exists, prototype extraction of
+   `du.p[1].<study-id>.ns.d.data.alertMessages[]` from captured chart WebSocket
+   frames and feed the parsed inner `msg` through a replay-aware path.

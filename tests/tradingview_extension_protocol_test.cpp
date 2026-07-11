@@ -237,6 +237,7 @@ TEST(TradingViewExtensionProtocol, AppliesAlertIdRuleForLevelAlert) {
     EXPECT_EQ(result.signal->signal_name, "eurusd_level_sell");
     EXPECT_EQ(result.signal->unique_id, 53256556946LL);
     EXPECT_EQ(result.reason, "accepted");
+    EXPECT_EQ(result.parsed_payload.at("source_kind"), "private_pricealerts_ws");
 }
 
 TEST(TradingViewExtensionProtocol, AppliesConditionRuleForLevelAlert) {
@@ -266,6 +267,48 @@ TEST(TradingViewExtensionProtocol, AppliesConditionRuleForLevelAlert) {
     ASSERT_TRUE(result.signal);
     EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
     EXPECT_EQ(result.signal->signal_name, "eurusd_crossing_up");
+    EXPECT_DOUBLE_EQ(result.parsed_payload.at("price").get<double>(), 1.14072);
+}
+
+TEST(TradingViewExtensionProtocol, ParsesForwardedPrivateFeedPayload) {
+    auto config = base_config();
+    config.level_alert_rules.push_back(
+        TradingViewLevelAlertRule{
+            {},
+            "FX:EURUSD",
+            "crossing",
+            {},
+            {},
+            "buy",
+            "private_pricealert"});
+
+    auto payload = price_alert_payload(
+        "alert_fired",
+        nlohmann::json{
+            {"fire_id", 53256556946LL},
+            {"alert_id", 5099741779LL},
+            {"symbol", "={\"symbol\":\"FX:EURUSD\",\"adjustment\":\"splits\"}"},
+            {"message", "EURUSD Crossing 1.14072"},
+            {"fire_time", "2026-07-08T02:36:22Z"}
+        });
+    payload["source_kind"] = "private_pricealerts_ws";
+    payload["event_id"] = "tv_price_alert:53256556946";
+    payload["dedupe_key"] = "tv_price_alert:53256556946";
+    payload["fingerprint"] = "b9d62011";
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.event_id, "tv_price_alert:53256556946");
+    EXPECT_EQ(result.dedupe_key, "tv_price_alert:53256556946");
+    EXPECT_EQ(result.signal->unique_hash, "tv_price_alert:53256556946");
+    EXPECT_EQ(result.signal->symbol, "EURUSD");
+    EXPECT_EQ(result.signal->signal_name, "private_pricealert");
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
+    EXPECT_EQ(result.parsed_payload.at("source_kind"), "private_pricealerts_ws");
+    EXPECT_DOUBLE_EQ(result.parsed_payload.at("price").get<double>(), 1.14072);
 }
 
 TEST(TradingViewExtensionProtocol, RejectsUnmappedLevelAlert) {

@@ -11,7 +11,9 @@
       enabled: false,
       endpoint: "http://127.0.0.1:6560/api/v1/tradingview/signal",
       secret: "",
-      include_tab_url: false
+      include_tab_url: false,
+      capture_alert_toasts: true,
+      capture_private_alerts: true
     }
   };
 });

@@ -1,11 +1,12 @@
 # OptionX TradingView Alert Extension
 
-Small Chrome/Edge MV3 extension that watches visible TradingView alert toasts
-and forwards them to a local bridge.
+Small Chrome/Edge MV3 extension that watches TradingView alert events and
+forwards them to a local bridge. It supports visible alert toasts and the
+private `pricealerts/alert_fired` pushstream used by fresh popup alerts.
 
 This is an experimental free TradingView path. It does not use official
-TradingView webhooks, so it depends on TradingView's visible browser UI and can
-break when TradingView changes that UI.
+TradingView webhooks, so it depends on TradingView's browser UI and private
+browser-side alert streams. It can break when TradingView changes either one.
 
 ## Install
 
@@ -30,6 +31,21 @@ http://127.0.0.1:6560/api/v1/tradingview/signal
 
 ## What It Captures
 
+There are two independent capture modes in the popup:
+
+- **Visible alert toasts**: a DOM observer reads alert cards shown in the chart
+  page. This is useful as a low-risk fallback and for visible level alerts.
+- **Private alert feed**: a page-world WebSocket hook watches only
+  `wss://pushstream.tradingview.com/message-pipe-ws/private_feed` frames where
+  `text.channel == "pricealerts"` and `text.content.m == "alert_fired"`. It
+  ignores lifecycle messages such as `alerts_created` and `alerts_updated`.
+
+The private feed hook stays inside the browser page. It does not expose
+TradingView cookies, session tokens or full WebSocket traffic to the local
+bridge; only normalized alert events are forwarded.
+
+### Visible Alert Toasts
+
 The content script watches for alert toast cards with visible text similar to:
 
 ```html
@@ -52,6 +68,36 @@ TradingView's configurable alert title/name is sent separately as
 Level alerts such as `EURUSD Crossing 1.14072` are market events, not trade
 commands. The local bridge should map these through user rules or reject them
 unless the alert message contains an explicit command.
+
+### Private Alert Feed
+
+Fresh TradingView price alert popups have also been observed on:
+
+```text
+wss://pushstream.tradingview.com/message-pipe-ws/private_feed
+```
+
+The extension injects a page-context WebSocket wrapper at `document_start` and
+forwards only confirmed `pricealerts/alert_fired` events. Event identity comes
+from TradingView's per-fire id:
+
+```json
+{
+  "source": "tradingview_extension",
+  "source_kind": "private_pricealerts_ws",
+  "method": "alert_fired",
+  "event_id": "tv_price_alert:53256556946",
+  "fire_id": "53256556946",
+  "alert_id": "5099741779",
+  "symbol": "FX:EURUSD",
+  "action": "alert",
+  "message": "EURUSD Crossing 1.14072"
+}
+```
+
+This mode is for fresh alerts. Historical/study alert messages observed on
+`wss://data.tradingview.com/socket.io/websocket?...type=chart...` are a
+separate backtesting/research path and are intentionally not implemented here.
 
 ## Trigger vocabulary
 
@@ -116,7 +162,7 @@ See `examples/README.md` for TradingView setup steps and the separate
 
 ## Local Payload
 
-The extension sends a `POST` with JSON:
+The extension sends a `POST` with JSON. Visible toast payloads look like:
 
 ```json
 {
@@ -179,12 +225,14 @@ seconds while the popup remains open. Recent events are also refreshed live
 while the popup is open whenever the background worker writes a new log entry.
 This status check does not send the shared secret or any TradingView payload.
 
-The content script also writes `TradingView observer active (...)` to the popup
-log when it attaches to a TradingView tab. If the bridge shows `online` but
-real TradingView alerts do not appear in **Recent events**, first reload the
-TradingView chart tab and look for that observer-active log entry. If it is
-present but no alert events appear, verify that the TradingView alert has popup
-notifications enabled and that a visible toast is shown in the chart page.
+The content script also writes `TradingView observer active (...)` and
+`private_feed_hook_injected` to the popup log when it attaches to a TradingView
+tab. If the bridge shows `online` but real TradingView alerts do not appear in
+**Recent events**, first reload the TradingView chart tab. The private feed hook
+must be present before TradingView opens the private feed WebSocket. If toast
+capture is enabled but no toast events appear, verify that the TradingView
+alert has popup notifications enabled and that a visible toast is shown in the
+chart page.
 
 Expected bridge behavior:
 
@@ -237,19 +285,24 @@ may collide if the alert fires repeatedly with identical text.
 
 ## Tests
 
-Three suites, all via `node --test`:
+Four suites, all via `node --test`:
 
 - **Unit** (`tests/parser.test.mjs`): pure-function parser tests, 65+ cases (action/symbol/price/direction parsing, raw_action/raw_direction, makeEventId 4-level resolution, resolveTriggerMetadata, DEFAULTS).
 - **Integration** (`tests/integration.test.mjs`): jsdom + real DOM pipeline. Loads `content_scripts/lib/parser.js` and `content_scripts/tradingview_alerts.js` into a jsdom environment with mocked `chrome.runtime.sendMessage`. Verifies the actual production DOM-to-payload path on real TradingView toast HTML, including: dynamic insertion, characterData mutations, multi-description guard, 5s dedup window, pct triggers, parsed JSON overrides, and BUY command parsing.
+- **Private feed** (`tests/private_feed.test.mjs`): jsdom + page hook tests for
+  `pushstream.tradingview.com/message-pipe-ws/private_feed`. Verifies that
+  `pricealerts/alert_fired` becomes a normalized payload and that lifecycle or
+  non-private sockets are ignored.
 - **Popup** (`tests/popup.test.mjs`): jsdom popup checks for live log refresh from `chrome.storage.onChanged`.
 
 Running:
 ```bash
 cd browser_extensions/tradingview-alert-extension
 npm ci                  # reproducible install from package-lock.json
-npm test                # both suites
+npm test                # all suites
 npm run test:unit       # unit only
 npm run test:integration # integration only
+npm run test:private-feed # private feed hook only
 ```
 
 Standalone (no jsdom):
