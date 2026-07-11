@@ -5,12 +5,28 @@ importScripts("content_scripts/lib/defaults.js");
 const MAX_LOGS = 50;
 const FETCH_TIMEOUT_MS = 3000;
 
+// Classifies fetch errors so popup can show actionable diagnostics.
+// "timeout"      -> AbortError after FETCH_TIMEOUT_MS (bridge hung)
+// "cors"         -> TypeError from preflight rejection (bridge missing CORS headers)
+// "network"      -> DNS/firewall/connection refused (bridge not running)
+// "other"        -> anything else (still a failure but root cause unknown)
+function classifyFetchError(error) {
+  if (error && error.name === "AbortError") return "timeout";
+  if (error && /Failed to fetch/i.test(error.message || "")) return "cors";
+  return "network";
+}
+
 async function postSignal(endpoint, body, secret) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
+    // Explicit mode:"cors" so the browser does not silently fall back to
+    // no-cors (which would hide the response). credentials:"omit" because
+    // chrome-extension -> 127.0.0.1 should not carry any cookies.
     return await fetch(endpoint, {
       method: "POST",
+      mode: "cors",
+      credentials: "omit",
       headers: {
         "Content-Type": "application/json",
         "X-OptionX-Secret": secret || ""
@@ -127,13 +143,10 @@ async function handleTradingViewAlert(payload, sender) {
     };
   } catch (error) {
     const text = error && error.message ? error.message : String(error);
-    if (error && error.name === "AbortError") {
-      await writeLog("error", `Bridge timeout for ${shortSignal(payload)} after ${FETCH_TIMEOUT_MS}ms`);
-    } else {
-      await writeLog("error", `Bridge offline for ${shortSignal(payload)}: ${text}`);
-    }
+    const kind = classifyFetchError(error);
+    await writeLog("error", `Bridge ${kind} for ${shortSignal(payload)}: ${text}`);
     await setBadge("error");
-    return { ok: false, accepted: false, error: text };
+    return { ok: false, accepted: false, error: text, error_kind: kind };
   }
 }
 

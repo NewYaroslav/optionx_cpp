@@ -225,6 +225,30 @@ Standalone (no jsdom):
 node --test tests/parser.test.mjs
 ```
 
+## Troubleshooting fetch errors
+
+The extension classifies fetch errors into 3 categories in popup logs:
+
+- **`timeout`** — `AbortError` after 3000ms. Bridge is hung. Check that the bridge process is responsive.
+- **`cors`** — "Failed to fetch" TypeError. The bridge did not respond to the CORS preflight. The bridge MUST answer `OPTIONS` with at minimum:
+  ```
+  Access-Control-Allow-Origin: chrome-extension://<extension-id>
+  Access-Control-Allow-Methods: POST, OPTIONS
+  Access-Control-Allow-Headers: Content-Type, X-OptionX-Secret
+  ```
+  Or accept any origin (`Access-Control-Allow-Origin: *`) for local development.
+- **`network`** — DNS failure, connection refused, or firewall. Bridge is not running or unreachable on the configured endpoint.
+
+`fetch` uses `mode: "cors"` and `credentials: "omit"` explicitly. Cookies from the extension are never sent to the bridge.
+
+## Bridge requirements
+
+The local bridge at `http://127.0.0.1:6560` must:
+- Accept `POST /api/v1/tradingview/signal` with `Content-Type: application/json` and `X-OptionX-Secret` header
+- Answer `OPTIONS` (CORS preflight) with `Access-Control-Allow-Origin: chrome-extension://<extension-id>` (or `*` for dev)
+- Include `Access-Control-Allow-Headers: Content-Type, X-OptionX-Secret`
+- Return `200 OK` on successful signal processing
+
 ## Notes
 
 - The class name from the first observed toast looked like
