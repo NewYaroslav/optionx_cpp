@@ -37,3 +37,6 @@
 [submodule "external/libmdbx"]
 	path = external/libmdbx
 	url = https://github.com/Mithril-mine/libmdbx.git
+[submodule "external/Simple-Web-Server"]
+	path = external/Simple-Web-Server
+	url = https://gitlab.com/eidheim/Simple-Web-Server.git

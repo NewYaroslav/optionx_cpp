@@ -128,6 +128,7 @@ target_include_directories(optionx_cpp INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/optionx_cpp>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/SimpleNamedPipe/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/external/Simple-Web-Server>
     $<INSTALL_INTERFACE:include>
     $<INSTALL_INTERFACE:include/optionx_cpp>
 )
@@ -389,7 +390,7 @@ if(OPTIONX_BUILD_EXAMPLES)
     target_include_directories(tradingview_extension_bridge_smoke PRIVATE
         ${EXAMPLE_INCLUDE_DIRS}
         ${EXAMPLE_DEPS_INCLUDE_DIRS}
-        ${CMAKE_CURRENT_SOURCE_DIR}/external/kurlyk/external/Simple-Web-Server
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/Simple-Web-Server
     )
 
     target_link_directories(tradingview_extension_bridge_smoke PRIVATE ${EXAMPLE_LIBRARY_DIRS})
@@ -559,7 +560,7 @@ if(OPTIONX_BUILD_TESTS)
 
     if(TARGET intrade_bar_api_response_test)
         target_include_directories(intrade_bar_api_response_test PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/external/kurlyk/external/Simple-Web-Server
+            ${CMAKE_CURRENT_SOURCE_DIR}/external/Simple-Web-Server
         )
     endif()
 endif()

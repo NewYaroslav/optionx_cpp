@@ -80,6 +80,7 @@ install_headers_to_include("."             ${CMAKE_CURRENT_LIST_DIR}/time-shield
 install_headers_to_include(logit_cpp       ${CMAKE_CURRENT_LIST_DIR}/log-it-cpp/include/logit_cpp)
 install_headers_to_include("."             ${CMAKE_CURRENT_LIST_DIR}/asio/asio/include)
 install_headers_to_include(nlohmann        ${CMAKE_CURRENT_LIST_DIR}/json/include/nlohmann)
+install_headers_to_include("."             ${CMAKE_CURRENT_LIST_DIR}/Simple-Web-Server)
 install_headers_to_include("."             ${CMAKE_CURRENT_LIST_DIR}/Simple-WebSocket-Server)
 install_headers_to_include("."             ${CMAKE_CURRENT_LIST_DIR}/kurlyk/include)
 install_headers_to_include("."             ${CMAKE_CURRENT_LIST_DIR}/mdbx-containers/include)
