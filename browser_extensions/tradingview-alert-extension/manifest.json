@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "optionx_cpp TradingView Alert Bridge",
+  "name": "OptionX TradingView Alert Bridge",
   "version": "0.1.1",
-  "description": "Captures visible TradingView alert toasts and forwards them to a local optionx_cpp bridge.",
+  "description": "Captures visible TradingView alert toasts and forwards them to a local OptionX bridge.",
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "optionx_cpp TradingView Alert Bridge"
+    "default_title": "OptionX TradingView Alert Bridge"
   },
   "background": {
     "service_worker": "service_worker.js"

@@ -1,4 +1,4 @@
-# optionx_cpp TradingView Alert Bridge
+# OptionX TradingView Alert Extension
 
 Small Chrome/Edge MV3 extension that watches visible TradingView alert toasts
 and forwards them to a local bridge.

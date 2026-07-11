@@ -23,7 +23,7 @@ Manual setup in TradingView:
 4. Paste the contents of `optionx_noisy_test_signals.pine`.
 5. Click Add to chart.
 6. Create an alert.
-7. In Condition, choose `optionx_cpp Noisy Test Signals` and then
+7. In Condition, choose `OptionX Noisy Test Signals` and then
    `Any alert() function call`.
 
 `alert()` is the preferred fixture for the bridge because it can build a dynamic
@@ -38,10 +38,10 @@ for testing duplicate suppression.
 ## `optionx_noisy_test_alertcondition.pine`
 
 Comparison fixture for `alertcondition()`. It uses the same RSI crossing logic,
-but defines separate `optionx_cpp BUY` and `optionx_cpp SELL` alert conditions.
+but defines separate `OptionX BUY` and `OptionX SELL` alert conditions.
 
 Manual setup is the same as above, except in Condition choose either
-`optionx_cpp BUY` or `optionx_cpp SELL` instead of `Any alert() function call`.
+`OptionX BUY` or `OptionX SELL` instead of `Any alert() function call`.
 
 This variant is here to verify whether TradingView sends the same private
 WebSocket shape for `alertcondition()` alerts:
