@@ -5,14 +5,15 @@
 /// \file LegacyTradingBridge.hpp
 /// \brief Defines the legacy named-pipe trading bridge.
 
-#include "utils.hpp"
-#include "data.hpp"
 #include "bridges/BaseBridge.hpp"
 #include "LegacyTradingBridgeConfig.hpp"
 #include "bridges/NamedPipe/detail/LegacyTradingProtocol.hpp"
+#include "utils/tasks.hpp"
 
+#include <logit_cpp/logit.hpp>
 #include <memory>
 #include <mutex>
+#include <nlohmann/json.hpp>
 #include <set>
 #include <stdexcept>
 #include <string>

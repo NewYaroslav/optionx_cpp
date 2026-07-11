@@ -5,7 +5,7 @@
 /// \file TradingViewExtensionBridgeConfig.hpp
 /// \brief Defines configuration for the TradingView browser-extension HTTP bridge.
 
-#include "data.hpp"
+#include "data/bridge.hpp"
 
 #include <cstdint>
 #include <algorithm>

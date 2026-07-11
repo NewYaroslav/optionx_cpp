@@ -5,7 +5,14 @@
 /// \file LegacyTradingBridgeConfig.hpp
 /// \brief Defines configuration for the legacy named-pipe trading bridge.
 
-#include "data.hpp"
+#include "data/bridge.hpp"
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
+#include <time_shield.hpp>
 
 namespace optionx::bridges::named_pipe {
 

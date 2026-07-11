@@ -1,4 +1,4 @@
-#include <optionx_cpp/bridges/TradingView/TradingViewExtensionBridge.hpp>
+#include <optionx_cpp/bridges/TradingView.hpp>
 #include <optionx_cpp/utils/json_comments.hpp>
 
 #include <client_http.hpp>

@@ -5,7 +5,6 @@
 /// \file TradingViewExtensionBridge.hpp
 /// \brief Defines the TradingView browser-extension HTTP bridge.
 
-#include "data.hpp"
 #include "bridges/BaseBridge.hpp"
 #include "TradingViewExtensionBridgeConfig.hpp"
 #include "bridges/TradingView/detail/TradingViewExtensionProtocol.hpp"
@@ -16,6 +15,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <string>
 #include <thread>
