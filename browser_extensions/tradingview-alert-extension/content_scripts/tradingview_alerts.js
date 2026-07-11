@@ -8,6 +8,8 @@
 
   const recentSignals = new Map();
   const handledRoots = new WeakSet();
+  let activeObserver = null;
+  let extensionContextInvalidated = false;
 
   function normalizeText(value) {
     return String(value || "").replace(/\s+/g, " ").trim();
@@ -15,6 +17,22 @@
 
   function nodeText(node) {
     return normalizeText(node && node.textContent ? node.textContent : "");
+  }
+
+  function isExtensionContextInvalidated(error) {
+    const message = error && error.message ? error.message : String(error || "");
+    return /extension context invalidated/i.test(message);
+  }
+
+  function deactivateInvalidatedContext(error) {
+    if (!isExtensionContextInvalidated(error)) return false;
+    extensionContextInvalidated = true;
+    if (activeObserver) {
+      activeObserver.disconnect();
+      activeObserver = null;
+    }
+    console.debug("OptionX bridge: content script context invalidated; reload the TradingView tab.");
+    return true;
   }
 
   function visibleInnerLines(node) {
@@ -195,19 +213,29 @@
   }
 
   function sendPayload(payload) {
-    chrome.runtime.sendMessage({ type: "tradingview_alert", payload }, () => {
-      if (chrome.runtime.lastError) {
-        console.debug("OptionX TradingView bridge send failed:", chrome.runtime.lastError.message);
-      }
-    });
+    if (extensionContextInvalidated) return;
+    try {
+      chrome.runtime.sendMessage({ type: "tradingview_alert", payload }, () => {
+        if (chrome.runtime.lastError) {
+          console.debug("OptionX TradingView bridge send failed:", chrome.runtime.lastError.message);
+        }
+      });
+    } catch (error) {
+      if (!deactivateInvalidatedContext(error)) throw error;
+    }
   }
 
   function sendStatus(status, details = {}) {
-    chrome.runtime.sendMessage({ type: "content_status", status, details }, () => {
-      if (chrome.runtime.lastError) {
-        console.debug("OptionX TradingView bridge status failed:", chrome.runtime.lastError.message);
-      }
-    });
+    if (extensionContextInvalidated) return;
+    try {
+      chrome.runtime.sendMessage({ type: "content_status", status, details }, () => {
+        if (chrome.runtime.lastError) {
+          console.debug("OptionX TradingView bridge status failed:", chrome.runtime.lastError.message);
+        }
+      });
+    } catch (error) {
+      if (!deactivateInvalidatedContext(error)) throw error;
+    }
   }
 
   function countAlertDescriptions(root) {
@@ -221,17 +249,22 @@
   }
 
   function processRoot(root) {
+    if (extensionContextInvalidated) return;
     if (!root || handledRoots.has(root)) return;
     if (countAlertDescriptions(root) > 1) {
-      console.warn("OptionX bridge: skipping root with multiple descriptions to avoid merged payload");
+      console.debug("OptionX bridge: skipping root with multiple descriptions to avoid merged payload");
       handledRoots.add(root);
       return;
     }
-    const payload = buildPayload(root);
-    if (!payload.message) return;
-    if (shouldSuppressDuplicate(payload.fingerprint)) return;
-    handledRoots.add(root);
-    sendPayload(payload);
+    try {
+      const payload = buildPayload(root);
+      if (!payload.message) return;
+      if (shouldSuppressDuplicate(payload.fingerprint)) return;
+      handledRoots.add(root);
+      sendPayload(payload);
+    } catch (error) {
+      if (!deactivateInvalidatedContext(error)) throw error;
+    }
   }
 
   function inspectNode(node) {
@@ -251,6 +284,7 @@
     }
 
     const observer = new MutationObserver((mutations) => {
+      if (extensionContextInvalidated) return;
       for (const mutation of mutations) {
         if (mutation.addedNodes && mutation.addedNodes.length) {
           for (const node of mutation.addedNodes) {
@@ -272,6 +306,7 @@
       attributes: true,
       attributeFilter: ["class"]
     });
+    activeObserver = observer;
 
     inspectNodeSoon(document.body);
     sendStatus("observer_active", { url: location.href });

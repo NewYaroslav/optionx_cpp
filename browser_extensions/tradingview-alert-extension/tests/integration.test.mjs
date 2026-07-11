@@ -12,7 +12,7 @@ const ALERTS_SRC_PATH = join(EXT_DIR, "content_scripts", "tradingview_alerts.js"
 
 // helpers ---------------------------------------------------------------
 
-function buildTestEnv(initialHtml = "") {
+function buildTestEnv(initialHtml = "", options = {}) {
   const dom = new JSDOM(
     `<!DOCTYPE html><html><body>${initialHtml}</body></html>`,
     {
@@ -30,6 +30,9 @@ function buildTestEnv(initialHtml = "") {
       id: "test-extension-id",
       lastError: null,
       sendMessage(message, callback) {
+        if (options.sendMessageThrows) {
+          throw new Error(options.sendMessageThrows);
+        }
         sentPayloads.push(message);
         if (callback) setTimeout(() => callback({ ok: true, accepted: true }), 0);
       },
@@ -277,4 +280,16 @@ test("integration: content script emits observer status", async () => {
   await flushMicrotasks();
   const statuses = getStatusMessagesFor(sentPayloads);
   assert.ok(statuses.some((m) => m.status === "observer_active"));
+});
+
+test("integration: invalidated extension context is handled without uncaught send errors", async () => {
+  const { document, sentPayloads } = buildTestEnv("", {
+    sendMessageThrows: "Extension context invalidated."
+  });
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="tv-alert-toast">Alert on BTCUSD<span class="description-ULNSeceN">BTCUSD Crossing BUY 64,114.82</span></div>`
+  );
+  await flushMicrotasks();
+  assert.equal(sentPayloads.length, 0);
 });

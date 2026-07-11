@@ -264,6 +264,18 @@ fails after that, inspect the POST/CORS/secret path.
 
 `fetch` uses `mode: "cors"` and `credentials: "omit"` explicitly. Cookies from the extension are never sent to the bridge.
 
+## Troubleshooting content script errors
+
+`Extension context invalidated` means Chrome invalidated an already-injected
+content script, usually because the extension was reloaded while the TradingView
+tab stayed open. Reloading the extension alone does not replace the old script
+inside the existing page. Reload the TradingView chart tab after reloading the
+extension.
+
+Newer extension builds catch this case and stop the old observer quietly, but
+Chrome's `chrome://extensions` error list can still show old stored errors until
+you remove them from that page.
+
 ## Bridge requirements
 
 The local bridge at `http://127.0.0.1:6560` must:
