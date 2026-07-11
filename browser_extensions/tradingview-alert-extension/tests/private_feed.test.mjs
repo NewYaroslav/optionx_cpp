@@ -62,7 +62,7 @@ function tradingViewFrame(payload) {
   return `~m~${text.length}~m~${text}`;
 }
 
-function studyAlertFrame({ action, price, time, updateTime }) {
+function studyAlertFrame({ action, price, time, updateTime, barState = "RT_CONFIRMED" }) {
   const alertMessage = {
     barInfo: {
       barIndex: Math.floor(time / 60000),
@@ -87,6 +87,14 @@ function studyAlertFrame({ action, price, time, updateTime }) {
   const ns = JSON.stringify({
     data: {
       alertMessages: [alertMessage],
+      debug: [
+        {
+          idx: alertMessage.barInfo.barIndex,
+          bs: barState,
+          t: new Date(time).toISOString(),
+          c: price
+        }
+      ],
       version: 2
     },
     isUpdate: true
@@ -236,7 +244,11 @@ test("chart socket study alertMessages are forwarded once across duplicate study
   assert.equal(payload.tickerid, "CRYPTO:BTCUSD");
   assert.equal(payload.price, 64131.92);
   assert.equal(payload.time, 1783763820000);
+  assert.equal(payload.bar_state, "RT_CONFIRMED");
+  assert.equal(payload.bar_state_source, "debug_idx");
+  assert.deepEqual(Array.from(payload.bar_states), ["RT_CONFIRMED"]);
   assert.equal(payload.raw.parsed_message.action, "sell");
+  assert.equal(payload.raw.debug[0].bs, "RT_CONFIRMED");
 
   socket.emitMessage(studyAlertFrame({
     action: "sell",

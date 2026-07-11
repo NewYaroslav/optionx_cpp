@@ -86,6 +86,9 @@ namespace optionx::bridges::tradingview {
                     {"buy", buy_action_keywords},
                     {"sell", sell_action_keywords}
                 }},
+                {"study_alerts", {
+                    {"mode", study_alert_mode}
+                }},
                 {"level_alert_rules", {
                     {"default_action", default_level_action},
                     {"rules", level_alert_rules}
@@ -190,6 +193,14 @@ namespace optionx::bridges::tradingview {
                     j.at("sell_keywords").get<std::vector<std::string>>();
             }
 
+            if (j.contains("study_alerts") && j.at("study_alerts").is_object()) {
+                const auto& study_alerts = j.at("study_alerts");
+                study_alert_mode = study_alerts.value("mode", study_alert_mode);
+            }
+            if (j.contains("study_alert_mode")) {
+                study_alert_mode = j.at("study_alert_mode").get<std::string>();
+            }
+
             if (j.contains("level_alert_rules")) {
                 const auto& level_alerts = j.at("level_alert_rules");
                 if (level_alerts.is_object()) {
@@ -261,6 +272,9 @@ namespace optionx::bridges::tradingview {
             if (!is_valid_level_action(default_level_action)) {
                 return {false, "TradingView bridge default level alert action must be buy, sell, reject, or ignore."};
             }
+            if (!is_valid_study_alert_mode(study_alert_mode)) {
+                return {false, "TradingView bridge study alert mode must be realtime, fast, or confirmed_only."};
+            }
             for (const auto& rule : level_alert_rules) {
                 if (rule.action.empty()) {
                     return {false, "TradingView bridge level alert rule action is required."};
@@ -312,6 +326,14 @@ namespace optionx::bridges::tradingview {
                    normalized == "sell" ||
                    normalized == "reject" ||
                    normalized == "ignore";
+        }
+
+        /// \brief Returns true when the study alert handling mode is known.
+        static bool is_valid_study_alert_mode(const std::string& mode) {
+            const auto normalized = normalize_token(mode);
+            return normalized == "realtime" ||
+                   normalized == "fast" ||
+                   normalized == "confirmed_only";
         }
 
         /// \brief Default words that make free-form alert text a buy signal.
@@ -380,6 +402,7 @@ namespace optionx::bridges::tradingview {
         bool use_default_action_keywords = true; ///< Enable built-in buy/sell words for alert text.
         std::vector<std::string> buy_action_keywords; ///< Custom buy words; extend or replace defaults.
         std::vector<std::string> sell_action_keywords; ///< Custom sell words; extend or replace defaults.
+        std::string study_alert_mode = "realtime"; ///< `realtime`/`fast` accepts all study alerts; `confirmed_only` accepts only HIST_CONFIRMED.
         std::string default_level_action = "reject"; ///< Fallback for unmapped level alerts.
         std::vector<TradingViewLevelAlertRule> level_alert_rules; ///< User-defined level alert mappings.
 

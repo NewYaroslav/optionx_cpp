@@ -209,6 +209,33 @@
     ].join("|");
   }
 
+  function studyDebugInfo(parsedNs, barInfo) {
+    const debug =
+      parsedNs &&
+      parsedNs.data &&
+      Array.isArray(parsedNs.data.debug)
+        ? parsedNs.data.debug
+        : [];
+    const states = [];
+    for (const item of debug) {
+      const state = firstString(item, ["bs", "bar_state", "state"]);
+      if (state && !states.includes(state)) states.push(state);
+    }
+
+    const barIndex = Number(barInfo && barInfo.barIndex);
+    const exact = Number.isFinite(barIndex)
+      ? debug.find((item) => Number(item && item.idx) === barIndex)
+      : null;
+    const exactState = firstString(exact, ["bs", "bar_state", "state"]);
+    const lastState = firstString(debug.length > 0 ? debug[debug.length - 1] : null, ["bs", "bar_state", "state"]);
+    return {
+      state: exactState || lastState,
+      source: exactState ? "debug_idx" : (lastState ? "debug_last" : ""),
+      states,
+      debug
+    };
+  }
+
   function buildStudyAlertPayloads(frame, state) {
     if (!frame || frame.m !== "du" || !Array.isArray(frame.p)) return [];
     const chartSession = scalarToString(frame.p[0]);
@@ -238,6 +265,7 @@
           alertMessage && alertMessage.barInfo && typeof alertMessage.barInfo === "object"
             ? alertMessage.barInfo
             : {};
+        const debugInfo = studyDebugInfo(parsedNs, barInfo);
         const key = studyAlertKey(parsedMessage, messageText, barInfo);
         const isNew = boundedRemember(state, key);
         if (!isNew) continue;
@@ -271,6 +299,9 @@
           time: parsedMessage.time ?? barInfo.time ?? observedAt,
           bar_time: barInfo.time ?? null,
           update_time: barInfo.updateTime ?? null,
+          bar_state: debugInfo.state,
+          bar_state_source: debugInfo.source,
+          bar_states: debugInfo.states,
           message: comment,
           observed_at: observedAt,
           raw: {
@@ -279,7 +310,11 @@
             series_type: update && update.t ? update.t : "",
             barInfo,
             alert_message_text: messageText,
-            parsed_message: parsedMessage
+            parsed_message: parsedMessage,
+            debug: debugInfo.debug,
+            bar_state: debugInfo.state,
+            bar_state_source: debugInfo.source,
+            bar_states: debugInfo.states
           }
         });
       }

@@ -31,9 +31,15 @@ message while the script executes. The emitted JSON includes fields such as
 `symbol`, `tickerid`, `price` and `time` without relying on TradingView's alert
 message placeholder substitution.
 
-The script intentionally reacts on the realtime bar. Signals can appear,
-disappear and appear again while the current bar is still moving. This is useful
-for testing duplicate suppression.
+The script intentionally reacts on the realtime bar by default. Signals can
+appear, disappear and appear again while the current bar is still moving. This
+is useful for testing duplicate suppression and repaint-sensitive workflows.
+
+For production-style checks, enable the script input `Confirmed bars only`. In
+that mode the fixture requires `barstate.isconfirmed` and uses
+`alert.freq_once_per_bar_close`, so the Pine alert is emitted only after the bar
+closes. This is the recommended setup when the user wants signals that should
+not disappear before bar close.
 
 ## `optionx_noisy_test_alertcondition.pine`
 

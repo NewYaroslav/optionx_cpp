@@ -94,6 +94,7 @@ TEST(TradingViewExtensionProtocol, ConfigRoundTripsJson) {
     config.use_default_action_keywords = false;
     config.buy_action_keywords = {"entry-long"};
     config.sell_action_keywords = {"entry-short"};
+    config.study_alert_mode = "confirmed_only";
     config.level_alert_rules.push_back(
         TradingViewLevelAlertRule{
             "123",
@@ -123,6 +124,7 @@ TEST(TradingViewExtensionProtocol, ConfigRoundTripsJson) {
     EXPECT_EQ(restored.buy_action_keywords.front(), "entry-long");
     ASSERT_EQ(restored.sell_action_keywords.size(), 1u);
     EXPECT_EQ(restored.sell_action_keywords.front(), "entry-short");
+    EXPECT_EQ(restored.study_alert_mode, "confirmed_only");
     EXPECT_EQ(restored.level_alert_rules.size(), 1u);
     EXPECT_EQ(restored.level_alert_rules.front().action, "sell");
     EXPECT_TRUE(restored.validate().first);
@@ -189,7 +191,9 @@ TEST(TradingViewExtensionProtocol, ParsesChartStudyIndicatorSignal) {
         {"price", 64131.92},
         {"time", 1783763820000LL},
         {"bar_time", 1783763820000LL},
-        {"update_time", 1783763881395LL}
+        {"update_time", 1783763881395LL},
+        {"bar_state", "RT_CONFIRMED"},
+        {"bar_state_source", "debug_idx"}
     };
 
     auto result =
@@ -202,9 +206,66 @@ TEST(TradingViewExtensionProtocol, ParsesChartStudyIndicatorSignal) {
     EXPECT_EQ(result.signal->symbol, "BTCUSD");
     EXPECT_EQ(result.signal->signal_name, "noisy_rsi_test");
     EXPECT_EQ(result.signal->order_type, optionx::OrderType::SELL);
+    EXPECT_EQ(result.parsed_payload.at("bar_state"), "RT_CONFIRMED");
+    EXPECT_EQ(result.parsed_payload.at("bar_state_source"), "debug_idx");
     EXPECT_NE(
         result.signal->user_data.find("\"source_kind\":\"private_chart_study_alert_messages\""),
         std::string::npos);
+    EXPECT_NE(
+        result.signal->user_data.find("\"bar_state\":\"RT_CONFIRMED\""),
+        std::string::npos);
+}
+
+TEST(TradingViewExtensionProtocol, RejectsRealtimeStudyAlertWhenConfirmedOnly) {
+    auto config = base_config();
+    config.study_alert_mode = "confirmed_only";
+
+    const nlohmann::json payload = {
+        {"source_kind", "private_chart_study_alert_messages"},
+        {"method", "du.alertMessages"},
+        {"event_id", "tv_study_alert:rt"},
+        {"signal_name", "noisy_rsi_test"},
+        {"action", "buy"},
+        {"symbol", "BTCUSD"},
+        {"price", 64130.49},
+        {"time", 1783764000000LL},
+        {"bar_state", "RT_CONFIRMED"},
+        {"bar_state_source", "debug_idx"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    EXPECT_FALSE(result.accepted);
+    EXPECT_EQ(result.reason, "unconfirmed_study_alert");
+    EXPECT_FALSE(result.signal);
+    ASSERT_TRUE(result.parsed_payload.is_object());
+    EXPECT_EQ(result.parsed_payload.at("bar_state"), "RT_CONFIRMED");
+}
+
+TEST(TradingViewExtensionProtocol, AcceptsHistoricStudyAlertWhenConfirmedOnly) {
+    auto config = base_config();
+    config.study_alert_mode = "confirmed_only";
+
+    const nlohmann::json payload = {
+        {"source_kind", "private_chart_study_alert_messages"},
+        {"method", "du.alertMessages"},
+        {"event_id", "tv_study_alert:hist"},
+        {"signal_name", "noisy_rsi_test"},
+        {"action", "buy"},
+        {"symbol", "BTCUSD"},
+        {"price", 64131.92},
+        {"time", 1783763820000LL},
+        {"bar_state", "HIST_CONFIRMED"},
+        {"bar_state_source", "debug_last"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
 }
 
 TEST(TradingViewExtensionProtocol, RejectsBodySecretByDefault) {

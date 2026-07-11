@@ -143,6 +143,14 @@ bridge path. Duplicate copies of the same study alert, for example the same
 `msg` repeated under two study ids, are suppressed by a bounded in-page key
 cache.
 
+When TradingView includes study debug state in `ns.d.data.debug[]`, the
+extension forwards the observed state as:
+
+- `bar_state`: for example `RT_CONFIRMED` or `HIST_CONFIRMED`;
+- `bar_state_source`: `debug_idx` when matched by bar index, otherwise
+  `debug_last`;
+- `bar_states`: unique states observed in the debug array.
+
 This mode is for live indicator capture. A separate history/replay API can
 intentionally consume older chart-socket data in a future PR.
 
@@ -197,6 +205,11 @@ inside the JSON body.
 `examples/optionx_noisy_test_signals.pine` is a Pine Script test indicator for
 manual TradingView checks. It emits noisy RSI centerline `buy`/`sell` JSON
 alerts with `alert.freq_once_per_bar`.
+
+For non-repainting checks, enable the indicator's `Confirmed bars only` input.
+That variant uses `barstate.isconfirmed` and `alert.freq_once_per_bar_close`,
+which is the recommended Pine-side way to avoid alerts that disappear before
+the current bar closes.
 
 This is useful for:
 

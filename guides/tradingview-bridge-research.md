@@ -300,6 +300,14 @@ already loaded bars and emit signal-shaped alert messages with `barInfo`, but
 that path needs an explicit history boundary and should not be mixed into live
 trading.
 
+The observed study debug data contains bar-state strings such as
+`HIST_CONFIRMED` and `RT_CONFIRMED` in `ns.d.data.debug[].bs`. The extension
+forwards this as `bar_state` metadata instead of delaying signals. The bridge
+can then run in fast/realtime mode or reject non-`HIST_CONFIRMED` study alerts
+with `study_alerts.mode = "confirmed_only"`. Because this state comes from
+TradingView's private study payload, treat it as a useful diagnostic/private
+contract, not as a public API guarantee.
+
 Extraction contract for this private API mode:
 
 ```text
@@ -357,6 +365,10 @@ can disappear and appear again as the bar updates and RSI crosses back around
 the center level. That is useful for stress-testing capture and deduplication.
 For a less noisy production-style script, emit only on confirmed bars or use a
 bar-close alert frequency.
+
+The saved fixture includes a `Confirmed bars only` input that gates alerts with
+`barstate.isconfirmed` and switches to `alert.freq_once_per_bar_close`. This is
+the recommended Pine-side mode when the user wants non-repainting signals.
 
 TradingView's Pine docs describe `alert()` as the more flexible path for dynamic
 runtime messages. `alertcondition()` remains useful for separate selectable
