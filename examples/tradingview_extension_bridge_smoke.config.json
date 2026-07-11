@@ -47,8 +47,8 @@
   },
 
   "study_alerts": {
-    // realtime/fast accepts both RT_CONFIRMED and HIST_CONFIRMED study alerts.
-    // confirmed_only accepts only HIST_CONFIRMED alerts from TradingView's
+    // realtime/fast accepts all study alerts.
+    // confirmed_only accepts only HIST_CONFIRMED and RT_CONFIRMED alerts from TradingView's
     // chart-socket study debug state. For production, prefer making the Pine
     // script emit only on bar close with barstate.isconfirmed and
     // alert.freq_once_per_bar_close.

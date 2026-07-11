@@ -62,7 +62,7 @@ function tradingViewFrame(payload) {
   return `~m~${text.length}~m~${text}`;
 }
 
-function studyAlertFrame({ action, price, time, updateTime, barState = "RT_CONFIRMED" }) {
+function studyAlertFrame({ action, price, time, updateTime, barState = "RT_CONFIRMED", debugEntries = null }) {
   const alertMessage = {
     barInfo: {
       barIndex: Math.floor(time / 60000),
@@ -87,7 +87,7 @@ function studyAlertFrame({ action, price, time, updateTime, barState = "RT_CONFI
   const ns = JSON.stringify({
     data: {
       alertMessages: [alertMessage],
-      debug: [
+      debug: debugEntries || [
         {
           idx: alertMessage.barInfo.barIndex,
           bs: barState,
@@ -258,6 +258,112 @@ test("chart socket study alertMessages are forwarded once across duplicate study
   }));
   await flush();
   assert.equal(pageMessages.length, 1);
+});
+
+test("chart socket study alertMessages use the latest exact debug state", async () => {
+  const dom = createDom();
+  const { window } = dom;
+  installMockWebSocket(window);
+  const pageMessages = [];
+  window.addEventListener("message", (event) => {
+    if (event.data && event.data.type === "optionx_tradingview_private_feed" && event.data.payload) {
+      pageMessages.push(event.data.payload);
+    }
+  });
+
+  loadPageHook(window);
+  const socket = new window.WebSocket(CHART_SOCKET_URL);
+  const time = 1783763940000;
+  const barIndex = Math.floor(time / 60000);
+
+  socket.emitMessage(studyAlertFrame({
+    action: "buy",
+    price: 64135.25,
+    time,
+    updateTime: 1783763999000,
+    debugEntries: [
+      { idx: barIndex, bs: "HIST_LAST", t: new Date(time).toISOString(), c: 64135.0 },
+      { idx: barIndex, bs: "RT", t: new Date(time).toISOString(), c: 64135.1 },
+      { idx: barIndex, bs: "RT_CONFIRMED", t: new Date(time).toISOString(), c: 64135.25 }
+    ]
+  }));
+  await flush();
+
+  assert.equal(pageMessages.length, 1);
+  assert.equal(pageMessages[0].bar_state, "RT_CONFIRMED");
+  assert.equal(pageMessages[0].bar_state_source, "debug_idx");
+  assert.deepEqual(Array.from(pageMessages[0].bar_states), ["HIST_LAST", "RT", "RT_CONFIRMED"]);
+});
+
+test("chart socket study alertMessages do not borrow stale debug state", async () => {
+  const dom = createDom();
+  const { window } = dom;
+  installMockWebSocket(window);
+  const pageMessages = [];
+  window.addEventListener("message", (event) => {
+    if (event.data && event.data.type === "optionx_tradingview_private_feed" && event.data.payload) {
+      pageMessages.push(event.data.payload);
+    }
+  });
+
+  loadPageHook(window);
+  const socket = new window.WebSocket(CHART_SOCKET_URL);
+  const time = 1783764000000;
+  const staleTime = time - 120000;
+
+  socket.emitMessage(studyAlertFrame({
+    action: "buy",
+    price: 64140.0,
+    time,
+    updateTime: 1783764005000,
+    debugEntries: [
+      {
+        idx: Math.floor(staleTime / 60000),
+        bs: "RT_CONFIRMED",
+        t: new Date(staleTime).toISOString(),
+        c: 64131.92
+      }
+    ]
+  }));
+  await flush();
+
+  assert.equal(pageMessages.length, 1);
+  assert.equal(pageMessages[0].bar_state, "");
+  assert.equal(pageMessages[0].bar_state_source, "");
+  assert.deepEqual(Array.from(pageMessages[0].bar_states), ["RT_CONFIRMED"]);
+});
+
+test("chart socket study alertMessages forward bar-state transitions", async () => {
+  const dom = createDom();
+  const { window } = dom;
+  installMockWebSocket(window);
+  const pageMessages = [];
+  window.addEventListener("message", (event) => {
+    if (event.data && event.data.type === "optionx_tradingview_private_feed" && event.data.payload) {
+      pageMessages.push(event.data.payload);
+    }
+  });
+
+  loadPageHook(window);
+  const socket = new window.WebSocket(CHART_SOCKET_URL);
+  const frame = {
+    action: "sell",
+    price: 64131.92,
+    time: 1783763820000,
+    updateTime: 1783763881395
+  };
+
+  socket.emitMessage(studyAlertFrame({ ...frame, barState: "RT" }));
+  await flush();
+  socket.emitMessage(studyAlertFrame({ ...frame, barState: "RT" }));
+  await flush();
+  socket.emitMessage(studyAlertFrame({ ...frame, barState: "RT_CONFIRMED" }));
+  await flush();
+
+  assert.equal(pageMessages.length, 2);
+  assert.equal(pageMessages[0].bar_state, "RT");
+  assert.equal(pageMessages[1].bar_state, "RT_CONFIRMED");
+  assert.notEqual(pageMessages[0].event_id, pageMessages[1].event_id);
 });
 
 test("private feed content script relays page-hook payloads to service worker", async () => {

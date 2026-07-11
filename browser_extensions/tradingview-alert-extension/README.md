@@ -147,8 +147,8 @@ When TradingView includes study debug state in `ns.d.data.debug[]`, the
 extension forwards the observed state as:
 
 - `bar_state`: for example `RT_CONFIRMED` or `HIST_CONFIRMED`;
-- `bar_state_source`: `debug_idx` when matched by bar index, otherwise
-  `debug_last`;
+- `bar_state_source`: `debug_idx` or `debug_time` when matched to the alert
+  bar;
 - `bar_states`: unique states observed in the debug array.
 
 This mode is for live indicator capture. A separate history/replay API can

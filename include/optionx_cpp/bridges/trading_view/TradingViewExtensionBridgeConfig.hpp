@@ -402,7 +402,7 @@ namespace optionx::bridges::tradingview {
         bool use_default_action_keywords = true; ///< Enable built-in buy/sell words for alert text.
         std::vector<std::string> buy_action_keywords; ///< Custom buy words; extend or replace defaults.
         std::vector<std::string> sell_action_keywords; ///< Custom sell words; extend or replace defaults.
-        std::string study_alert_mode = "realtime"; ///< `realtime`/`fast` accepts all study alerts; `confirmed_only` accepts only HIST_CONFIRMED.
+        std::string study_alert_mode = "realtime"; ///< `realtime`/`fast` accepts all study alerts; `confirmed_only` accepts HIST_CONFIRMED and RT_CONFIRMED.
         std::string default_level_action = "reject"; ///< Fallback for unmapped level alerts.
         std::vector<TradingViewLevelAlertRule> level_alert_rules; ///< User-defined level alert mappings.
 

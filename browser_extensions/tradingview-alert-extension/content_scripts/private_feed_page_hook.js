@@ -194,19 +194,21 @@
     return true;
   }
 
-  function studyAlertKey(parsedMessage, messageText, barInfo) {
+  function studyAlertKey(parsedMessage, messageText, barInfo, debugInfo) {
+    const stateKey = scalarToString(debugInfo && debugInfo.state).trim();
     const explicitEventId = firstString(parsedMessage, ["event_id", "dedupe_key"]);
-    if (explicitEventId) return explicitEventId;
-    return [
-      firstString(parsedMessage, ["tickerid", "symbol", "ticker"]),
-      firstString(parsedMessage, ["signal_name", "strategy", "name"]),
-      firstString(parsedMessage, ["action", "side", "direction"]),
-      scalarToString(parsedMessage && parsedMessage.time),
-      scalarToString(parsedMessage && parsedMessage.price),
-      scalarToString(barInfo && barInfo.time),
-      scalarToString(barInfo && barInfo.updateTime),
-      messageText
-    ].join("|");
+    const baseKey = explicitEventId ||
+      [
+        firstString(parsedMessage, ["tickerid", "symbol", "ticker"]),
+        firstString(parsedMessage, ["signal_name", "strategy", "name"]),
+        firstString(parsedMessage, ["action", "side", "direction"]),
+        scalarToString(parsedMessage && parsedMessage.time),
+        scalarToString(parsedMessage && parsedMessage.price),
+        scalarToString(barInfo && barInfo.time),
+        scalarToString(barInfo && barInfo.updateTime),
+        messageText
+      ].join("|");
+    return [baseKey, stateKey].join("|");
   }
 
   function studyDebugInfo(parsedNs, barInfo) {
@@ -223,14 +225,30 @@
     }
 
     const barIndex = Number(barInfo && barInfo.barIndex);
-    const exact = Number.isFinite(barIndex)
-      ? debug.find((item) => Number(item && item.idx) === barIndex)
-      : null;
+    const barTime = Number(barInfo && barInfo.time);
+    let exact = null;
+    let exactSource = "";
+    if (Number.isFinite(barIndex)) {
+      for (const item of debug) {
+        if (Number(item && item.idx) === barIndex) {
+          exact = item;
+          exactSource = "debug_idx";
+        }
+      }
+    }
+    if (!exact && Number.isFinite(barTime)) {
+      for (const item of debug) {
+        const itemTime = Date.parse(scalarToString(item && item.t));
+        if (Number.isFinite(itemTime) && itemTime === barTime) {
+          exact = item;
+          exactSource = "debug_time";
+        }
+      }
+    }
     const exactState = firstString(exact, ["bs", "bar_state", "state"]);
-    const lastState = firstString(debug.length > 0 ? debug[debug.length - 1] : null, ["bs", "bar_state", "state"]);
     return {
-      state: exactState || lastState,
-      source: exactState ? "debug_idx" : (lastState ? "debug_last" : ""),
+      state: exactState,
+      source: exactState ? exactSource : "",
       states,
       debug
     };
@@ -266,7 +284,7 @@
             ? alertMessage.barInfo
             : {};
         const debugInfo = studyDebugInfo(parsedNs, barInfo);
-        const key = studyAlertKey(parsedMessage, messageText, barInfo);
+        const key = studyAlertKey(parsedMessage, messageText, barInfo, debugInfo);
         const isNew = boundedRemember(state, key);
         if (!isNew) continue;
 

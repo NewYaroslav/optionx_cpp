@@ -216,7 +216,7 @@ TEST(TradingViewExtensionProtocol, ParsesChartStudyIndicatorSignal) {
         std::string::npos);
 }
 
-TEST(TradingViewExtensionProtocol, RejectsRealtimeStudyAlertWhenConfirmedOnly) {
+TEST(TradingViewExtensionProtocol, RejectsUnconfirmedRealtimeStudyAlertWhenConfirmedOnly) {
     auto config = base_config();
     config.study_alert_mode = "confirmed_only";
 
@@ -229,7 +229,7 @@ TEST(TradingViewExtensionProtocol, RejectsRealtimeStudyAlertWhenConfirmedOnly) {
         {"symbol", "BTCUSD"},
         {"price", 64130.49},
         {"time", 1783764000000LL},
-        {"bar_state", "RT_CONFIRMED"},
+        {"bar_state", "RT"},
         {"bar_state_source", "debug_idx"}
     };
 
@@ -240,7 +240,59 @@ TEST(TradingViewExtensionProtocol, RejectsRealtimeStudyAlertWhenConfirmedOnly) {
     EXPECT_EQ(result.reason, "unconfirmed_study_alert");
     EXPECT_FALSE(result.signal);
     ASSERT_TRUE(result.parsed_payload.is_object());
-    EXPECT_EQ(result.parsed_payload.at("bar_state"), "RT_CONFIRMED");
+    EXPECT_EQ(result.parsed_payload.at("bar_state"), "RT");
+}
+
+TEST(TradingViewExtensionProtocol, RejectsHistoricLastStudyAlertWhenConfirmedOnly) {
+    auto config = base_config();
+    config.study_alert_mode = "confirmed_only";
+
+    const nlohmann::json payload = {
+        {"source_kind", "private_chart_study_alert_messages"},
+        {"method", "du.alertMessages"},
+        {"event_id", "tv_study_alert:hist_last"},
+        {"signal_name", "noisy_rsi_test"},
+        {"action", "buy"},
+        {"symbol", "BTCUSD"},
+        {"price", 64130.49},
+        {"time", 1783764000000LL},
+        {"bar_state", "HIST_LAST"},
+        {"bar_state_source", "debug_idx"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    EXPECT_FALSE(result.accepted);
+    EXPECT_EQ(result.reason, "unconfirmed_study_alert");
+    EXPECT_FALSE(result.signal);
+    ASSERT_TRUE(result.parsed_payload.is_object());
+    EXPECT_EQ(result.parsed_payload.at("bar_state"), "HIST_LAST");
+}
+
+TEST(TradingViewExtensionProtocol, AcceptsRealtimeConfirmedStudyAlertWhenConfirmedOnly) {
+    auto config = base_config();
+    config.study_alert_mode = "confirmed_only";
+
+    const nlohmann::json payload = {
+        {"source_kind", "private_chart_study_alert_messages"},
+        {"method", "du.alertMessages"},
+        {"event_id", "tv_study_alert:rt_confirmed"},
+        {"signal_name", "noisy_rsi_test"},
+        {"action", "sell"},
+        {"symbol", "BTCUSD"},
+        {"price", 64131.92},
+        {"time", 1783763820000LL},
+        {"bar_state", "RT_CONFIRMED"},
+        {"bar_state_source", "debug_idx"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::SELL);
 }
 
 TEST(TradingViewExtensionProtocol, AcceptsHistoricStudyAlertWhenConfirmedOnly) {

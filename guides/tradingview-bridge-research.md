@@ -302,11 +302,12 @@ trading.
 
 The observed study debug data contains bar-state strings such as
 `HIST_CONFIRMED` and `RT_CONFIRMED` in `ns.d.data.debug[].bs`. The extension
-forwards this as `bar_state` metadata instead of delaying signals. The bridge
-can then run in fast/realtime mode or reject non-`HIST_CONFIRMED` study alerts
-with `study_alerts.mode = "confirmed_only"`. Because this state comes from
-TradingView's private study payload, treat it as a useful diagnostic/private
-contract, not as a public API guarantee.
+forwards this as `bar_state` metadata when the debug entry matches the alert
+bar by index or time. The bridge can then run in fast/realtime mode or reject
+non-confirmed study alerts with `study_alerts.mode = "confirmed_only"`;
+currently confirmed means `HIST_CONFIRMED` or `RT_CONFIRMED`. Because this state
+comes from TradingView's private study payload, treat it as a useful
+diagnostic/private contract, not as a public API guarantee.
 
 Extraction contract for this private API mode:
 

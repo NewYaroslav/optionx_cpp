@@ -933,7 +933,9 @@ namespace optionx::bridges::tradingview::detail {
         }
 
         inline bool is_confirmed_study_alert(const NormalizedEvent& event) {
-            return lower_copy(trim_copy(event.bar_state)) == "hist_confirmed";
+            const auto state = lower_copy(trim_copy(event.bar_state));
+            return state == "hist_confirmed" ||
+                   state == "rt_confirmed";
         }
 
         inline std::unique_ptr<TradeSignal> build_signal(
