@@ -3,10 +3,17 @@
 #include <optionx_cpp/bridges/trading_view.hpp>
 #include <optionx_cpp/utils/json_comments.hpp>
 
+#include <client_http.hpp>
+
+#include <chrono>
+#include <mutex>
+#include <thread>
+
 namespace {
 
 using optionx::bridges::tradingview::TradingViewExtensionBridgeConfig;
 using optionx::bridges::tradingview::TradingViewLevelAlertRule;
+using HttpClient = SimpleWeb::Client<SimpleWeb::HTTP>;
 namespace tv_protocol = optionx::bridges::tradingview::detail;
 
 TradingViewExtensionBridgeConfig base_config() {
@@ -33,6 +40,21 @@ nlohmann::json price_alert_payload(
         }}
     };
 }
+
+bool wait_for_port(const optionx::bridges::tradingview::TradingViewExtensionBridge& bridge) {
+    for (int i = 0; i < 200; ++i) {
+        if (bridge.bound_port() != 0) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return false;
+}
+
+struct BridgeGuard {
+    optionx::bridges::tradingview::TradingViewExtensionBridge& bridge;
+    ~BridgeGuard() { bridge.shutdown(); }
+};
 
 } // namespace
 
@@ -179,6 +201,8 @@ TEST(TradingViewExtensionProtocol, AcceptsBodySecretOnlyWhenFallbackIsEnabled) {
     ASSERT_TRUE(result.accepted);
     ASSERT_TRUE(result.signal);
     EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
+    ASSERT_TRUE(result.raw_payload.is_object());
+    EXPECT_EQ(result.raw_payload.at("secret"), "[redacted]");
 }
 
 TEST(TradingViewExtensionProtocol, AppliesAlertIdRuleForLevelAlert) {
@@ -261,6 +285,9 @@ TEST(TradingViewExtensionProtocol, RejectsUnmappedLevelAlert) {
     EXPECT_FALSE(result.accepted);
     EXPECT_EQ(result.reason, "unmapped_level_alert");
     EXPECT_FALSE(result.signal);
+    ASSERT_TRUE(result.parsed_payload.is_object());
+    EXPECT_EQ(result.parsed_payload.at("symbol"), "EURUSD");
+    EXPECT_EQ(result.parsed_payload.at("condition_type"), "crossing");
 }
 
 TEST(TradingViewExtensionProtocol, MapsLevelAlertActionFromDefaultKeyword) {
@@ -422,6 +449,66 @@ TEST(TradingViewExtensionProtocol, PrefersEventIdOverFingerprint) {
     ASSERT_TRUE(result.accepted);
     EXPECT_EQ(result.event_id, "tv_toast:event-123");
     EXPECT_EQ(result.dedupe_key, "tv_toast:event-123");
+}
+
+TEST(TradingViewExtensionBridge, ReportsRejectedLevelAlertOverHttp) {
+    auto config = base_config();
+    config.port = 0;
+
+    optionx::bridges::tradingview::TradingViewExtensionBridge bridge;
+    BridgeGuard guard{bridge};
+    ASSERT_TRUE(bridge.configure(std::make_unique<TradingViewExtensionBridgeConfig>(config)));
+
+    bridge.on_signal_id() = [] {
+        return optionx::SignalId{100};
+    };
+
+    std::mutex reports_mutex;
+    std::vector<optionx::BridgeSignalReport> reports;
+    bridge.on_signal_report() = [&](const optionx::BridgeSignalReport& report) {
+        std::lock_guard<std::mutex> lock(reports_mutex);
+        reports.push_back(report);
+    };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_port(bridge));
+
+    HttpClient client(config.address + ":" + std::to_string(bridge.bound_port()));
+    SimpleWeb::CaseInsensitiveMultimap headers;
+    headers.emplace("Content-Type", "application/json");
+    headers.emplace("X-OptionX-Secret", config.secret);
+
+    const nlohmann::json payload = {
+        {"source_kind", "alert_toast_dom"},
+        {"event_id", "toast:btcusd:unmapped"},
+        {"action", "alert"},
+        {"symbol", "BTCUSD"},
+        {"message", "BTCUSD Crossing 64114.82"}
+    };
+
+    const auto response =
+        client.request("POST", config.signal_path, payload.dump(), headers);
+    const auto response_json = nlohmann::json::parse(response->content.string());
+    EXPECT_FALSE(response_json.at("accepted").get<bool>());
+    EXPECT_EQ(response_json.at("reason"), "unmapped_level_alert");
+
+    std::vector<optionx::BridgeSignalReport> reports_snapshot;
+    {
+        std::lock_guard<std::mutex> lock(reports_mutex);
+        reports_snapshot = reports;
+    }
+
+    ASSERT_EQ(reports_snapshot.size(), 1u);
+    const auto& report = reports_snapshot.front();
+    EXPECT_EQ(report.status, optionx::BridgeSignalReportStatus::REJECTED);
+    EXPECT_EQ(report.reason_code, "unmapped_level_alert");
+    EXPECT_EQ(report.bridge_id, config.bridge_id);
+    EXPECT_EQ(report.bridge_type, optionx::BridgeType::TRADING_VIEW_EXTENSION_HTTP);
+    EXPECT_EQ(report.event_id, "toast:btcusd:unmapped");
+    EXPECT_EQ(report.dedupe_key, "toast:btcusd:unmapped");
+    EXPECT_EQ(report.symbol, "BTCUSD");
+    EXPECT_EQ(report.parsed_payload.at("condition_type"), "crossing");
+    EXPECT_FALSE(report.candidate_signal);
 }
 
 int main(int argc, char** argv) {

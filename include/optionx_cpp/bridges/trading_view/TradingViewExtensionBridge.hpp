@@ -10,6 +10,7 @@
 #include <server_http.hpp>
 
 #include <atomic>
+#include <chrono>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -49,6 +50,7 @@ namespace optionx::bridges::tradingview {
             std::mutex mutex;
             bridge_status_callback_t status_callback;
             BaseBridge::trade_signal_callback_t trade_signal_callback;
+            BaseBridge::signal_report_callback_t signal_report_callback;
             BaseBridge::signal_id_allocator_t signal_id_allocator;
             std::shared_ptr<HttpServer> server;
             std::thread server_thread;
@@ -100,6 +102,11 @@ namespace optionx::bridges::tradingview {
         /// \brief Returns the trade signal callback slot.
         trade_signal_callback_t& on_trade_signal() override {
             return m_state->trade_signal_callback;
+        }
+
+        /// \brief Returns the signal diagnostic report callback slot.
+        signal_report_callback_t& on_signal_report() override {
+            return m_state->signal_report_callback;
         }
 
         /// \brief Returns the signal ID allocator slot.
@@ -249,6 +256,137 @@ namespace optionx::bridges::tradingview {
             }
         }
 
+        static void notify_signal_report(
+                const std::shared_ptr<RuntimeState>& state,
+                const BridgeSignalReport& report) {
+            signal_report_callback_t callback;
+            {
+                std::lock_guard<std::mutex> lock(state->mutex);
+                callback = state->signal_report_callback;
+            }
+            if (callback) {
+                callback(report);
+            }
+        }
+
+        static std::int64_t unix_time_ms_now() {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+        }
+
+        static std::string json_string_value(
+                const nlohmann::json& object,
+                const char* key) {
+            if (!object.is_object() || !object.contains(key) || !object.at(key).is_string()) {
+                return {};
+            }
+            return object.at(key).get<std::string>();
+        }
+
+        static std::int64_t json_integer_value(
+                const nlohmann::json& object,
+                const char* key) {
+            if (!object.is_object() || !object.contains(key)) {
+                return 0;
+            }
+            const auto& value = object.at(key);
+            if (value.is_number_integer()) {
+                return value.get<std::int64_t>();
+            }
+            if (value.is_number_unsigned()) {
+                return static_cast<std::int64_t>(value.get<std::uint64_t>());
+            }
+            if (value.is_number_float()) {
+                return static_cast<std::int64_t>(value.get<double>());
+            }
+            return 0;
+        }
+
+        static std::shared_ptr<const TradeSignal> clone_candidate_signal(
+                const std::unique_ptr<TradeSignal>& signal) {
+            if (!signal) {
+                return {};
+            }
+            return std::shared_ptr<const TradeSignal>(signal->clone());
+        }
+
+        static BridgeSignalReportStatus report_status_from_parse_result(
+                const detail::TradingViewParseResult& result) {
+            if (!result.authorized ||
+                result.reason == "invalid_payload" ||
+                result.reason == "missing_symbol") {
+                return BridgeSignalReportStatus::INVALID;
+            }
+            if (result.reason == "ignored_state_message") {
+                return BridgeSignalReportStatus::IGNORED;
+            }
+            return BridgeSignalReportStatus::REJECTED;
+        }
+
+        static BridgeSignalReport make_signal_report(
+                const TradingViewExtensionBridgeConfig& config,
+                BridgeSignalReportStatus status,
+                std::string reason_code,
+                std::string message,
+                nlohmann::json raw_payload = nlohmann::json(),
+                nlohmann::json parsed_payload = nlohmann::json(),
+                std::string event_id = {},
+                std::string dedupe_key = {},
+                std::shared_ptr<const TradeSignal> candidate_signal = {},
+                nlohmann::json context = nlohmann::json::object()) {
+            BridgeSignalReport report;
+            report.bridge_id = config.bridge_id;
+            report.bridge_type = config.bridge_type();
+            report.status = status;
+            report.reason_code = std::move(reason_code);
+            report.message = std::move(message);
+            report.event_id = std::move(event_id);
+            report.dedupe_key = std::move(dedupe_key);
+            report.raw_payload = std::move(raw_payload);
+            report.parsed_payload = std::move(parsed_payload);
+            report.context = std::move(context);
+            report.candidate_signal = std::move(candidate_signal);
+            report.received_time_ms = unix_time_ms_now();
+            report.source_time_ms = json_integer_value(report.parsed_payload, "time");
+
+            report.symbol = json_string_value(report.parsed_payload, "symbol");
+            if (report.symbol.empty()) {
+                report.symbol = json_string_value(report.parsed_payload, "original_symbol");
+            }
+            report.signal_name = json_string_value(report.parsed_payload, "signal_name");
+            if (report.signal_name.empty()) {
+                report.signal_name = json_string_value(report.parsed_payload, "alert_name");
+            }
+            if (report.candidate_signal) {
+                if (report.symbol.empty()) {
+                    report.symbol = report.candidate_signal->symbol;
+                }
+                if (report.signal_name.empty()) {
+                    report.signal_name = report.candidate_signal->signal_name;
+                }
+            }
+            return report;
+        }
+
+        static BridgeSignalReport make_parse_report(
+                const TradingViewExtensionBridgeConfig& config,
+                const detail::TradingViewParseResult& result) {
+            auto message = json_string_value(result.response, "message");
+            if (message.empty()) {
+                message = result.reason;
+            }
+            return make_signal_report(
+                config,
+                report_status_from_parse_result(result),
+                result.reason,
+                std::move(message),
+                result.raw_payload,
+                result.parsed_payload,
+                result.event_id,
+                result.dedupe_key,
+                clone_candidate_signal(result.signal));
+        }
+
         static std::string regex_path(const std::string& path) {
             std::string pattern = "^";
             for (const auto ch : path) {
@@ -348,6 +486,19 @@ namespace optionx::bridges::tradingview {
                 const std::shared_ptr<HttpServer::Request>& request) {
             const auto body = request->content.string();
             if (body.size() > config->request_body_limit) {
+                notify_signal_report(
+                    state,
+                    make_signal_report(
+                        *config,
+                        BridgeSignalReportStatus::INVALID,
+                        "request_body_too_large",
+                        "TradingView extension request body is too large.",
+                        nlohmann::json(),
+                        nlohmann::json(),
+                        {},
+                        {},
+                        {},
+                        nlohmann::json{{"body_size", body.size()}}));
                 write_json(
                     response,
                     SimpleWeb::StatusCode::client_error_payload_too_large,
@@ -364,6 +515,19 @@ namespace optionx::bridges::tradingview {
             try {
                 payload = nlohmann::json::parse(body);
             } catch (const std::exception& ex) {
+                notify_signal_report(
+                    state,
+                    make_signal_report(
+                        *config,
+                        BridgeSignalReportStatus::INVALID,
+                        "invalid_json",
+                        ex.what(),
+                        nlohmann::json(),
+                        nlohmann::json(),
+                        {},
+                        {},
+                        {},
+                        nlohmann::json{{"body_size", body.size()}}));
                 write_json(
                     response,
                     SimpleWeb::StatusCode::client_error_bad_request,
@@ -382,6 +546,7 @@ namespace optionx::bridges::tradingview {
             auto result =
                 detail::parse_extension_payload(payload, request_secret, *config);
             if (!result.authorized) {
+                notify_signal_report(state, make_parse_report(*config, result));
                 write_json(
                     response,
                     SimpleWeb::StatusCode::client_error_unauthorized,
@@ -391,6 +556,7 @@ namespace optionx::bridges::tradingview {
             }
 
             if (!result.accepted) {
+                notify_signal_report(state, make_parse_report(*config, result));
                 write_json(
                     response,
                     SimpleWeb::StatusCode::success_ok,
@@ -400,6 +566,18 @@ namespace optionx::bridges::tradingview {
             }
 
             if (!remember_dedupe_key(state, result.dedupe_key, config->dedupe_cache_size)) {
+                notify_signal_report(
+                    state,
+                    make_signal_report(
+                        *config,
+                        BridgeSignalReportStatus::DUPLICATE,
+                        "duplicate",
+                        "TradingView extension event duplicated a recently handled signal.",
+                        result.raw_payload,
+                        result.parsed_payload,
+                        result.event_id,
+                        result.dedupe_key,
+                        clone_candidate_signal(result.signal)));
                 write_json(
                     response,
                     SimpleWeb::StatusCode::success_ok,
@@ -424,6 +602,18 @@ namespace optionx::bridges::tradingview {
             }
             if (!allocator) {
                 forget_dedupe_key(state, result.dedupe_key);
+                notify_signal_report(
+                    state,
+                    make_signal_report(
+                        *config,
+                        BridgeSignalReportStatus::INTAKE_ERROR,
+                        "missing_signal_id_allocator",
+                        "TradingView extension bridge signal ID allocator is not configured.",
+                        result.raw_payload,
+                        result.parsed_payload,
+                        result.event_id,
+                        result.dedupe_key,
+                        clone_candidate_signal(result.signal)));
                 write_json(
                     response,
                     SimpleWeb::StatusCode::server_error_internal_server_error,
@@ -439,6 +629,18 @@ namespace optionx::bridges::tradingview {
             const auto signal_id = allocator();
             if (signal_id == 0) {
                 forget_dedupe_key(state, result.dedupe_key);
+                notify_signal_report(
+                    state,
+                    make_signal_report(
+                        *config,
+                        BridgeSignalReportStatus::INTAKE_ERROR,
+                        "signal_id_allocation_failed",
+                        "TradingView extension bridge could not allocate signal ID.",
+                        result.raw_payload,
+                        result.parsed_payload,
+                        result.event_id,
+                        result.dedupe_key,
+                        clone_candidate_signal(result.signal)));
                 write_json(
                     response,
                     SimpleWeb::StatusCode::server_error_internal_server_error,

@@ -20,6 +20,15 @@ TEST(BridgeUmbrellaIncludeTest, ExposesTradingViewBridgeFamily) {
         optionx::BridgeType::TRADING_VIEW_EXTENSION_HTTP);
 }
 
+TEST(BridgeUmbrellaIncludeTest, ExposesSignalReportApi) {
+    optionx::BridgeSignalReport report;
+    report.status = optionx::BridgeSignalReportStatus::REJECTED;
+    report.reason_code = "test_rejection";
+
+    EXPECT_EQ(std::string(optionx::to_str(report.status)), "REJECTED");
+    EXPECT_EQ(report.reason_code, "test_rejection");
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

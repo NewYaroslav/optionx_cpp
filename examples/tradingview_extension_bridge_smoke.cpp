@@ -192,6 +192,10 @@ int main(int argc, char** argv) {
         nlohmann::json json = *signal;
         std::cout << "signal:\n" << json.dump(2) << '\n';
     };
+    bridge.on_signal_report() = [](const optionx::BridgeSignalReport& report) {
+        nlohmann::json json = report;
+        std::cout << "signal_report:\n" << json.dump(2) << '\n';
+    };
 
     bridge.run();
     if (!wait_for_port(bridge)) {

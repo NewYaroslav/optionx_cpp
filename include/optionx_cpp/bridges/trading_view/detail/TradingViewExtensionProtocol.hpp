@@ -26,6 +26,8 @@ namespace optionx::bridges::tradingview::detail {
         std::string event_id;        ///< External event ID when available.
         std::string dedupe_key;      ///< Stable duplicate-detection key.
         nlohmann::json response;     ///< Compact HTTP/API response body.
+        nlohmann::json raw_payload;  ///< Sanitized original payload.
+        nlohmann::json parsed_payload; ///< Normalized parsed event fields.
         std::unique_ptr<TradeSignal> signal; ///< Parsed trade signal.
     };
 
@@ -455,6 +457,25 @@ namespace optionx::bridges::tradingview::detail {
             return diff == 0;
         }
 
+        inline nlohmann::json redact_payload_secrets(nlohmann::json value) {
+            if (value.is_object()) {
+                for (auto it = value.begin(); it != value.end(); ++it) {
+                    const auto key = lower_copy(it.key());
+                    if (key == "secret" || key == "authorization" ||
+                        key.find("secret") != std::string::npos) {
+                        it.value() = "[redacted]";
+                    } else {
+                        it.value() = redact_payload_secrets(it.value());
+                    }
+                }
+            } else if (value.is_array()) {
+                for (auto& item : value) {
+                    item = redact_payload_secrets(std::move(item));
+                }
+            }
+            return value;
+        }
+
         inline const nlohmann::json& effective_payload(const nlohmann::json& payload) {
             if (payload.is_object() &&
                 payload.contains("payload") &&
@@ -664,6 +685,28 @@ namespace optionx::bridges::tradingview::detail {
             return parse_normalized_extension_payload(effective);
         }
 
+        inline nlohmann::json normalized_event_to_json(const NormalizedEvent& event) {
+            return nlohmann::json{
+                {"source_kind", event.source_kind},
+                {"method", event.method},
+                {"fire_id", event.fire_id},
+                {"alert_id", event.alert_id},
+                {"event_id", event.event_id},
+                {"dedupe_key", event.dedupe_key},
+                {"fingerprint", event.fingerprint},
+                {"symbol", event.symbol},
+                {"original_symbol", event.original_symbol},
+                {"action", event.action},
+                {"condition_type", event.condition_type},
+                {"signal_name", event.signal_name},
+                {"alert_name", event.alert_name},
+                {"message", event.message},
+                {"price", event.price},
+                {"time", event.time},
+                {"is_level_alert", event.is_level_alert}
+            };
+        }
+
         inline nlohmann::json make_response(
                 bool accepted,
                 const std::string& reason,
@@ -783,6 +826,7 @@ namespace optionx::bridges::tradingview::detail {
             const std::string& request_secret,
             const TradingViewExtensionBridgeConfig& config) {
         TradingViewParseResult result;
+        result.raw_payload = protocol::redact_payload_secrets(payload);
 
         if (!config.secret.empty()) {
             auto actual_secret = request_secret;
@@ -823,6 +867,7 @@ namespace optionx::bridges::tradingview::detail {
         event.dedupe_key = protocol::make_event_key(event);
         result.event_id = event.event_id;
         result.dedupe_key = event.dedupe_key;
+        result.parsed_payload = protocol::normalized_event_to_json(event);
 
         auto order_type = protocol::order_type_from_action(event.action);
         std::string signal_name = event.signal_name;
