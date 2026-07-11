@@ -1,4 +1,5 @@
 #include <optionx_cpp/bridges/TradingView/TradingViewExtensionBridge.hpp>
+#include <optionx_cpp/utils/json_comments.hpp>
 
 #include <client_http.hpp>
 
@@ -7,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <thread>
 
@@ -60,8 +62,9 @@ bool load_config(
     }
 
     try {
-        nlohmann::json json;
-        input >> json;
+        std::ostringstream buffer;
+        buffer << input.rdbuf();
+        const auto json = optionx::utils::parse_json_with_comments(buffer.str());
         config.from_json(json);
     } catch (const std::exception& ex) {
         std::cerr << "Could not parse config: " << ex.what() << '\n';

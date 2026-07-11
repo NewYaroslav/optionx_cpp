@@ -5,15 +5,20 @@
   "health_path": "/health",
   "bridge_id": 1,
   "secret": "local-secret",
+
+  // For a packaged extension, prefer chrome-extension://<extension-id>.
   "allowed_origin": "*",
   "allow_body_secret_fallback": false,
+
   "option_type": "SPRINT",
   "duration": 60,
   "min_payout": 0.0,
+
   "symbol_map": {
     "FX:EURUSD": "EURUSD",
     "EURUSD": "EURUSD"
   },
+
   "sizing": {
     "mode": "fixed_amount",
     "fixed_amount": 1.0,
@@ -21,21 +26,80 @@
     "min_amount": 0.0,
     "max_amount": 0.0
   },
+
+  "action_keywords": {
+    // Built-ins include common English and Russian buy/sell words:
+    // buy/call/long/up, sell/put/short/down, бай/селл, покуп/прода, вверх/вниз.
+    // Leave true to extend them with the lists below; set false to fully override.
+    "use_defaults": true,
+
+    "buy": [
+      // "entry long",
+      // "Покупа",
+      // "Вверх"
+    ],
+    "sell": [
+      // "entry short",
+      // "Селл",
+      // "Вниз"
+    ]
+  },
+
   "level_alert_rules": {
+    // Unknown level alerts are rejected unless a rule or keyword maps them.
     "default_action": "reject",
     "rules": [
+      // Global rules: no symbol matcher means the same behavior for every pair.
       {
-        "symbol": "FX:EURUSD",
         "condition_type": "crossing_up",
         "action": "buy",
-        "signal_name": "eurusd_crossing_up"
+        "signal_name": "level_crossing_up"
       },
       {
-        "symbol": "FX:EURUSD",
         "condition_type": "crossing_down",
         "action": "sell",
-        "signal_name": "eurusd_crossing_down"
+        "signal_name": "level_crossing_down"
       }
+
+      // Plain "Crossing" is direction-ambiguous. If your workflow treats every
+      // generic Crossing as a fixed direction, uncomment exactly one rule below.
+      // ,
+      // {
+      //   "condition_type": "crossing",
+      //   "action": "buy",
+      //   "signal_name": "level_crossing_buy"
+      // }
+      // ,
+      // {
+      //   "condition_type": "crossing",
+      //   "action": "sell",
+      //   "signal_name": "level_crossing_sell"
+      // }
+
+      // More examples. Use these only when your TradingView alert type has that
+      // meaning in your strategy.
+      // ,
+      // {
+      //   "condition_type": "greater_than",
+      //   "action": "buy",
+      //   "signal_name": "level_greater_than_buy"
+      // }
+      // ,
+      // {
+      //   "condition_type": "less_than",
+      //   "action": "sell",
+      //   "signal_name": "level_less_than_sell"
+      // }
+
+      // Symbol-specific override example. Put it before broader global rules.
+      // ,
+      // {
+      //   "symbol": "FX:EURUSD",
+      //   "condition_type": "crossing",
+      //   "message_contains": "BUY",
+      //   "action": "buy",
+      //   "signal_name": "eurusd_crossing_buy_text"
+      // }
     ]
   }
 }

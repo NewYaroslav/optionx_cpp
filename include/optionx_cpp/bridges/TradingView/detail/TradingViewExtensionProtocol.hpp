@@ -15,6 +15,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace optionx::bridges::tradingview::detail {
 
@@ -63,6 +64,47 @@ namespace optionx::bridges::tradingview::detail {
             return value;
         }
 
+        inline std::string fold_action_keyword_text(const std::string& value) {
+            std::string folded;
+            folded.reserve(value.size());
+
+            for (std::size_t index = 0; index < value.size();) {
+                const auto ch = static_cast<unsigned char>(value[index]);
+                if (ch < 0x80) {
+                    folded.push_back(static_cast<char>(std::tolower(ch)));
+                    ++index;
+                    continue;
+                }
+
+                if (index + 1 < value.size()) {
+                    const auto next = static_cast<unsigned char>(value[index + 1]);
+                    if (ch == 0xD0 && next >= 0x90 && next <= 0x9F) {
+                        folded.push_back(static_cast<char>(0xD0));
+                        folded.push_back(static_cast<char>(next + 0x20));
+                        index += 2;
+                        continue;
+                    }
+                    if (ch == 0xD0 && next >= 0xA0 && next <= 0xAF) {
+                        folded.push_back(static_cast<char>(0xD1));
+                        folded.push_back(static_cast<char>(next - 0x20));
+                        index += 2;
+                        continue;
+                    }
+                    if (ch == 0xD0 && next == 0x81) {
+                        folded.push_back(static_cast<char>(0xD1));
+                        folded.push_back(static_cast<char>(0x91));
+                        index += 2;
+                        continue;
+                    }
+                }
+
+                folded.push_back(value[index]);
+                ++index;
+            }
+
+            return folded;
+        }
+
         inline std::string trim_copy(const std::string& value) {
             const auto first = value.find_first_not_of(" \t\r\n");
             if (first == std::string::npos) {
@@ -70,6 +112,92 @@ namespace optionx::bridges::tradingview::detail {
             }
             const auto last = value.find_last_not_of(" \t\r\n");
             return value.substr(first, last - first + 1);
+        }
+
+        inline bool is_ascii_word_char(char ch) {
+            const auto value = static_cast<unsigned char>(ch);
+            return std::isalnum(value) != 0 || ch == '_';
+        }
+
+        inline bool is_ascii_text(const std::string& value) {
+            return std::all_of(
+                value.begin(),
+                value.end(),
+                [](unsigned char ch) {
+                    return ch < 0x80;
+                });
+        }
+
+        inline bool folded_text_contains_keyword(
+                const std::string& folded_text,
+                const std::string& keyword) {
+            const auto folded_keyword = fold_action_keyword_text(trim_copy(keyword));
+            if (folded_keyword.empty()) {
+                return false;
+            }
+
+            const bool ascii_keyword = is_ascii_text(folded_keyword);
+            std::size_t position = 0;
+            while ((position = folded_text.find(folded_keyword, position)) != std::string::npos) {
+                if (!ascii_keyword) {
+                    return true;
+                }
+
+                const bool left_ok =
+                    position == 0 ||
+                    !is_ascii_word_char(folded_text[position - 1]);
+                const auto right_index = position + folded_keyword.size();
+                const bool right_ok =
+                    right_index >= folded_text.size() ||
+                    !is_ascii_word_char(folded_text[right_index]);
+                if (left_ok && right_ok) {
+                    return true;
+                }
+                ++position;
+            }
+            return false;
+        }
+
+        inline std::vector<std::string> effective_buy_action_keywords(
+                const TradingViewExtensionBridgeConfig& config) {
+            std::vector<std::string> keywords;
+            if (config.use_default_action_keywords) {
+                const auto& defaults =
+                    TradingViewExtensionBridgeConfig::default_buy_action_keywords();
+                keywords.insert(keywords.end(), defaults.begin(), defaults.end());
+            }
+            keywords.insert(
+                keywords.end(),
+                config.buy_action_keywords.begin(),
+                config.buy_action_keywords.end());
+            return keywords;
+        }
+
+        inline std::vector<std::string> effective_sell_action_keywords(
+                const TradingViewExtensionBridgeConfig& config) {
+            std::vector<std::string> keywords;
+            if (config.use_default_action_keywords) {
+                const auto& defaults =
+                    TradingViewExtensionBridgeConfig::default_sell_action_keywords();
+                keywords.insert(keywords.end(), defaults.begin(), defaults.end());
+            }
+            keywords.insert(
+                keywords.end(),
+                config.sell_action_keywords.begin(),
+                config.sell_action_keywords.end());
+            return keywords;
+        }
+
+        inline bool contains_any_action_keyword(
+                const std::string& text,
+                const std::vector<std::string>& keywords) {
+            const auto folded_text = fold_action_keyword_text(text);
+            return std::any_of(
+                keywords.begin(),
+                keywords.end(),
+                [&folded_text](const std::string& keyword) {
+                    return folded_text_contains_keyword(folded_text, keyword);
+                });
         }
 
         inline std::string scalar_to_string(const nlohmann::json& value) {
@@ -179,6 +307,35 @@ namespace optionx::bridges::tradingview::detail {
                 return OrderType::BUY;
             }
             if (normalized == "sell") {
+                return OrderType::SELL;
+            }
+            return OrderType::UNKNOWN;
+        }
+
+        inline OrderType order_type_from_action_keywords(
+                const TradingViewExtensionBridgeConfig& config,
+                const NormalizedEvent& event) {
+            std::string text = event.message;
+            if (!event.signal_name.empty()) {
+                text += ' ';
+                text += event.signal_name;
+            }
+            if (!event.action.empty()) {
+                text += ' ';
+                text += event.action;
+            }
+
+            const auto buy_keywords = effective_buy_action_keywords(config);
+            const auto sell_keywords = effective_sell_action_keywords(config);
+            const bool has_buy =
+                contains_any_action_keyword(text, buy_keywords);
+            const bool has_sell =
+                contains_any_action_keyword(text, sell_keywords);
+
+            if (has_buy && !has_sell) {
+                return OrderType::BUY;
+            }
+            if (has_sell && !has_buy) {
                 return OrderType::SELL;
             }
             return OrderType::UNKNOWN;
@@ -660,6 +817,9 @@ namespace optionx::bridges::tradingview::detail {
 
         auto order_type = protocol::order_type_from_action(event.action);
         std::string signal_name = event.signal_name;
+        const auto keyword_order_type = order_type == OrderType::UNKNOWN
+            ? protocol::order_type_from_action_keywords(config, event)
+            : OrderType::UNKNOWN;
 
         if (order_type == OrderType::UNKNOWN && event.is_level_alert) {
             if (const auto* rule = protocol::find_level_rule(config, event)) {
@@ -674,6 +834,8 @@ namespace optionx::bridges::tradingview::detail {
                 if (!rule->signal_name.empty()) {
                     signal_name = rule->signal_name;
                 }
+            } else if (keyword_order_type != OrderType::UNKNOWN) {
+                order_type = keyword_order_type;
             } else {
                 const auto action =
                     protocol::lower_copy(protocol::trim_copy(config.default_level_action));
@@ -685,6 +847,11 @@ namespace optionx::bridges::tradingview::detail {
                 }
                 order_type = protocol::order_type_from_action(action);
             }
+        }
+
+        if (order_type == OrderType::UNKNOWN &&
+            keyword_order_type != OrderType::UNKNOWN) {
+            order_type = keyword_order_type;
         }
 
         if (order_type == OrderType::UNKNOWN) {

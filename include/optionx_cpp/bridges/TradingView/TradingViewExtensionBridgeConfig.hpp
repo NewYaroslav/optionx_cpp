@@ -84,6 +84,11 @@ namespace optionx::bridges::tradingview {
                     {"min_amount", min_amount},
                     {"max_amount", max_amount}
                 }},
+                {"action_keywords", {
+                    {"use_defaults", use_default_action_keywords},
+                    {"buy", buy_action_keywords},
+                    {"sell", sell_action_keywords}
+                }},
                 {"level_alert_rules", {
                     {"default_action", default_level_action},
                     {"rules", level_alert_rules}
@@ -160,6 +165,37 @@ namespace optionx::bridges::tradingview {
                 }
             }
 
+            if (j.contains("action_keywords") && j.at("action_keywords").is_object()) {
+                const auto& keywords = j.at("action_keywords");
+                if (keywords.contains("use_defaults")) {
+                    use_default_action_keywords = keywords.at("use_defaults").get<bool>();
+                }
+                if (keywords.contains("buy")) {
+                    buy_action_keywords = keywords.at("buy").get<std::vector<std::string>>();
+                }
+                if (keywords.contains("sell")) {
+                    sell_action_keywords = keywords.at("sell").get<std::vector<std::string>>();
+                }
+            }
+            if (j.contains("use_default_action_keywords")) {
+                use_default_action_keywords =
+                    j.at("use_default_action_keywords").get<bool>();
+            }
+            if (j.contains("buy_action_keywords")) {
+                buy_action_keywords =
+                    j.at("buy_action_keywords").get<std::vector<std::string>>();
+            } else if (j.contains("buy_keywords")) {
+                buy_action_keywords =
+                    j.at("buy_keywords").get<std::vector<std::string>>();
+            }
+            if (j.contains("sell_action_keywords")) {
+                sell_action_keywords =
+                    j.at("sell_action_keywords").get<std::vector<std::string>>();
+            } else if (j.contains("sell_keywords")) {
+                sell_action_keywords =
+                    j.at("sell_keywords").get<std::vector<std::string>>();
+            }
+
             if (j.contains("level_alert_rules")) {
                 const auto& level_alerts = j.at("level_alert_rules");
                 if (level_alerts.is_object()) {
@@ -221,6 +257,16 @@ namespace optionx::bridges::tradingview {
             if (allow_cors && allowed_origin.empty()) {
                 return {false, "TradingView bridge allowed_origin must not be empty when CORS is enabled."};
             }
+            for (const auto& keyword : buy_action_keywords) {
+                if (normalize_token(keyword).empty()) {
+                    return {false, "TradingView bridge buy action keywords must not contain empty values."};
+                }
+            }
+            for (const auto& keyword : sell_action_keywords) {
+                if (normalize_token(keyword).empty()) {
+                    return {false, "TradingView bridge sell action keywords must not contain empty values."};
+                }
+            }
             if (!is_valid_level_action(default_level_action)) {
                 return {false, "TradingView bridge default level alert action must be buy, sell, reject, or ignore."};
             }
@@ -277,6 +323,44 @@ namespace optionx::bridges::tradingview {
                    normalized == "ignore";
         }
 
+        /// \brief Default words that make free-form alert text a buy signal.
+        static const std::vector<std::string>& default_buy_action_keywords() {
+            static const std::vector<std::string> keywords = {
+                "buy",
+                "call",
+                "long",
+                "up",
+                "higher",
+                "bull",
+                "bullish",
+                u8"\u0431\u0430\u0439",       // buy transliterated in Russian
+                u8"\u043A\u0443\u043F\u0438\u0442\u044C",
+                u8"\u043F\u043E\u043A\u0443\u043F",
+                u8"\u0432\u0432\u0435\u0440\u0445",
+                u8"\u043B\u043E\u043D\u0433"
+            };
+            return keywords;
+        }
+
+        /// \brief Default words that make free-form alert text a sell signal.
+        static const std::vector<std::string>& default_sell_action_keywords() {
+            static const std::vector<std::string> keywords = {
+                "sell",
+                "put",
+                "short",
+                "down",
+                "lower",
+                "bear",
+                "bearish",
+                u8"\u0441\u0435\u043B\u043B",
+                u8"\u043F\u0440\u043E\u0434\u0430\u0442\u044C",
+                u8"\u043F\u0440\u043E\u0434\u0430",
+                u8"\u0432\u043D\u0438\u0437",
+                u8"\u0448\u043E\u0440\u0442"
+            };
+            return keywords;
+        }
+
         /// \brief Lowercases and trims a small config token.
         static std::string normalize_token(std::string value) {
             const auto first = value.find_first_not_of(" \t\r\n");
@@ -313,6 +397,9 @@ namespace optionx::bridges::tradingview {
         double min_payout = 0.0;                     ///< Minimum accepted payout ratio.
 
         std::unordered_map<std::string, std::string> symbol_map; ///< External-to-platform symbol map.
+        bool use_default_action_keywords = true; ///< Enable built-in buy/sell words for alert text.
+        std::vector<std::string> buy_action_keywords; ///< Custom buy words; extend or replace defaults.
+        std::vector<std::string> sell_action_keywords; ///< Custom sell words; extend or replace defaults.
         std::string default_level_action = "reject"; ///< Fallback for unmapped level alerts.
         std::vector<TradingViewLevelAlertRule> level_alert_rules; ///< User-defined level alert mappings.
 

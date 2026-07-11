@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <optionx_cpp/bridges/TradingView/detail/TradingViewExtensionProtocol.hpp>
+#include <optionx_cpp/utils/json_comments.hpp>
 
 namespace {
 
@@ -35,6 +36,24 @@ nlohmann::json price_alert_payload(
 
 } // namespace
 
+TEST(JsonComments, StripsCommentsOutsideStrings) {
+    const std::string text = R"json(
+        {
+          // endpoint comment
+          "url": "http://127.0.0.1:6560/api//v1#fragment",
+          "value": 7, /* block comment */
+          # hash comment
+          "hash": "value # not a comment"
+        }
+    )json";
+
+    const auto parsed = optionx::utils::parse_json_with_comments(text);
+
+    EXPECT_EQ(parsed.at("url"), "http://127.0.0.1:6560/api//v1#fragment");
+    EXPECT_EQ(parsed.at("value"), 7);
+    EXPECT_EQ(parsed.at("hash"), "value # not a comment");
+}
+
 TEST(TradingViewExtensionProtocol, ConfigRoundTripsJson) {
     TradingViewExtensionBridgeConfig config;
     config.address = "127.0.0.1";
@@ -51,6 +70,9 @@ TEST(TradingViewExtensionProtocol, ConfigRoundTripsJson) {
     config.max_amount = 10.0;
     config.duration = 90;
     config.symbol_map["FX:EURUSD"] = "EURUSD";
+    config.use_default_action_keywords = false;
+    config.buy_action_keywords = {"entry-long"};
+    config.sell_action_keywords = {"entry-short"};
     config.level_alert_rules.push_back(
         TradingViewLevelAlertRule{
             "123",
@@ -74,6 +96,11 @@ TEST(TradingViewExtensionProtocol, ConfigRoundTripsJson) {
     EXPECT_FALSE(restored.allow_body_secret_fallback);
     EXPECT_EQ(restored.sizing_mode, "balance_percent");
     EXPECT_DOUBLE_EQ(restored.balance_percent, 2.5);
+    EXPECT_FALSE(restored.use_default_action_keywords);
+    ASSERT_EQ(restored.buy_action_keywords.size(), 1u);
+    EXPECT_EQ(restored.buy_action_keywords.front(), "entry-long");
+    ASSERT_EQ(restored.sell_action_keywords.size(), 1u);
+    EXPECT_EQ(restored.sell_action_keywords.front(), "entry-short");
     EXPECT_EQ(restored.level_alert_rules.size(), 1u);
     EXPECT_EQ(restored.level_alert_rules.front().action, "sell");
     EXPECT_TRUE(restored.validate().first);
@@ -230,6 +257,68 @@ TEST(TradingViewExtensionProtocol, RejectsUnmappedLevelAlert) {
             }),
         "test-secret",
         config);
+
+    EXPECT_FALSE(result.accepted);
+    EXPECT_EQ(result.reason, "unmapped_level_alert");
+    EXPECT_FALSE(result.signal);
+}
+
+TEST(TradingViewExtensionProtocol, MapsLevelAlertActionFromDefaultKeyword) {
+    auto config = base_config();
+
+    const nlohmann::json payload = {
+        {"source_kind", "alert_toast_dom"},
+        {"event_id", "toast:btcusd:buy"},
+        {"action", "alert"},
+        {"symbol", "BTCUSD"},
+        {"message", "BTCUSD Crossing BUY 64,114.82"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.signal->symbol, "BTCUSD");
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
+    EXPECT_EQ(result.signal->signal_name, "tradingview_level_alert");
+}
+
+TEST(TradingViewExtensionProtocol, ExtendsActionKeywordsWithCustomRussianTerm) {
+    auto config = base_config();
+    config.use_default_action_keywords = false;
+    config.buy_action_keywords = {u8"\u043F\u043E\u043A\u0443\u043F\u0430"};
+
+    const nlohmann::json payload = {
+        {"source_kind", "alert_toast_dom"},
+        {"event_id", "toast:btcusd:custom-buy"},
+        {"action", "alert"},
+        {"symbol", "BTCUSD"},
+        {"message", u8"BTCUSD Crossing \u041F\u043E\u043A\u0443\u043F\u0430 64,114.82"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
+}
+
+TEST(TradingViewExtensionProtocol, CanDisableDefaultActionKeywords) {
+    auto config = base_config();
+    config.use_default_action_keywords = false;
+
+    const nlohmann::json payload = {
+        {"source_kind", "alert_toast_dom"},
+        {"event_id", "toast:btcusd:disabled-keyword"},
+        {"action", "alert"},
+        {"symbol", "BTCUSD"},
+        {"message", "BTCUSD Crossing BUY 64,114.82"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
 
     EXPECT_FALSE(result.accepted);
     EXPECT_EQ(result.reason, "unmapped_level_alert");

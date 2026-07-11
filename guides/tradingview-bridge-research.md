@@ -561,6 +561,9 @@ The first native receiver is implemented as a header-only bridge:
 - smoke executable: `examples/tradingview_extension_bridge_smoke.cpp`;
 - example config: `examples/tradingview_extension_bridge_smoke.config.json`.
 
+The smoke config is parsed as JSONC by stripping comments first. This keeps the
+committed example runnable while still documenting common rule variants inline.
+
 The full HTTP bridge intentionally is not included by `include/optionx_cpp/bridges.hpp`,
 because it includes `server_http.hpp` from Simple-Web-Server. The aggregate
 header includes only the config. Users that need the server include the bridge
@@ -631,8 +634,34 @@ CORS defaults are intentionally convenient for local development:
 `chrome-extension://<extension-id>`. The preflight response allows
 `Content-Type`, `X-OptionX-Secret` and `Authorization` headers.
 
-Level alerts are not assigned direction automatically. The config contains
-ordered user rules, for example:
+Level alerts are accepted only when the bridge can derive a concrete direction:
+
+- explicit payload action, for example `action: "buy"`;
+- an ordered level-alert rule;
+- an action keyword in the alert text;
+- `default_level_action`, if the user explicitly sets it to `buy` or `sell`.
+
+Action keywords are configured separately from level rules:
+
+```json
+{
+  "action_keywords": {
+    "use_defaults": true,
+    "buy": ["entry long", "Покупа"],
+    "sell": ["entry short", "Селл"]
+  }
+}
+```
+
+With `use_defaults: true`, the custom lists extend built-in English/Russian
+terms such as `buy`, `call`, `long`, `up`, `sell`, `put`, `short`, `down`,
+`бай`, `селл`, `покуп`, `прода`, `вверх` and `вниз`. Set it to `false` to make
+the lists a full override. Keyword mapping is a fallback after matching
+level-alert rules, so explicit user rules can still define or reject specific
+alert shapes.
+
+The config also contains ordered user rules. Rules without a `symbol` matcher
+apply to every pair, for example:
 
 ```json
 {
@@ -640,16 +669,14 @@ ordered user rules, for example:
     "default_action": "reject",
     "rules": [
       {
-        "symbol": "FX:EURUSD",
         "condition_type": "crossing_up",
         "action": "buy",
-        "signal_name": "eurusd_crossing_up"
+        "signal_name": "level_crossing_up"
       },
       {
-        "symbol": "FX:EURUSD",
         "condition_type": "crossing_down",
         "action": "sell",
-        "signal_name": "eurusd_crossing_down"
+        "signal_name": "level_crossing_down"
       }
     ]
   }
@@ -657,8 +684,10 @@ ordered user rules, for example:
 ```
 
 This keeps the important product boundary explicit: TradingView tells us that a
-level alert fired; only the user config decides whether that event means buy,
-sell or reject.
+level alert fired; only explicit text or user config decides whether that event
+means buy, sell or reject. Plain `Crossing` alerts remain direction-ambiguous
+unless the alert message includes a keyword such as `BUY`/`SELL` or the user
+adds a generic `crossing` rule.
 
 Smoke test:
 
