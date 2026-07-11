@@ -75,6 +75,8 @@ namespace optionx::bridges::tradingview {
                 {"dedupe_cache_size", dedupe_cache_size},
                 {"request_body_limit", request_body_limit},
                 {"allow_cors", allow_cors},
+                {"allowed_origin", allowed_origin},
+                {"allow_body_secret_fallback", allow_body_secret_fallback},
                 {"sizing", {
                     {"mode", sizing_mode},
                     {"fixed_amount", fixed_amount},
@@ -130,6 +132,13 @@ namespace optionx::bridges::tradingview {
             }
             if (j.contains("allow_cors")) {
                 allow_cors = j.at("allow_cors").get<bool>();
+            }
+            if (j.contains("allowed_origin")) {
+                allowed_origin = j.at("allowed_origin").get<std::string>();
+            }
+            if (j.contains("allow_body_secret_fallback")) {
+                allow_body_secret_fallback =
+                    j.at("allow_body_secret_fallback").get<bool>();
             }
 
             if (j.contains("sizing")) {
@@ -208,6 +217,9 @@ namespace optionx::bridges::tradingview {
             }
             if (request_body_limit == 0) {
                 return {false, "TradingView bridge request_body_limit must be positive."};
+            }
+            if (allow_cors && allowed_origin.empty()) {
+                return {false, "TradingView bridge allowed_origin must not be empty when CORS is enabled."};
             }
             if (!is_valid_level_action(default_level_action)) {
                 return {false, "TradingView bridge default level alert action must be buy, sell, reject, or ignore."};
@@ -288,7 +300,7 @@ namespace optionx::bridges::tradingview {
         std::string signal_path = "/api/v1/tradingview/signal"; ///< Signal endpoint path.
         std::string health_path = "/health";     ///< Health-check endpoint path.
         BridgeId bridge_id = 0;                  ///< Source bridge ID; must be non-zero.
-        std::string secret;                      ///< Optional shared secret expected in POST payloads.
+        std::string secret;                      ///< Optional shared secret expected in X-OptionX-Secret.
 
         std::string sizing_mode = "fixed_amount"; ///< `fixed_amount`, `balance_percent`, or `none`.
         double fixed_amount = 0.0;                 ///< Amount assigned directly to TradeSignal::amount.
@@ -307,6 +319,8 @@ namespace optionx::bridges::tradingview {
         std::size_t dedupe_cache_size = 1024; ///< Recent event IDs retained to reject duplicates.
         std::size_t request_body_limit = 64 * 1024; ///< Maximum accepted request body in bytes.
         bool allow_cors = true; ///< Add permissive local CORS headers for browser-extension clients.
+        std::string allowed_origin = "*"; ///< Allowed CORS origin; use chrome-extension://<id> outside dev.
+        bool allow_body_secret_fallback = false; ///< Legacy opt-in for JSON body secret auth.
     };
 
 } // namespace optionx::bridges::tradingview

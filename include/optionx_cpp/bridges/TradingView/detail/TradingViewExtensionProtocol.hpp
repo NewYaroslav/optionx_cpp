@@ -39,6 +39,7 @@ namespace optionx::bridges::tradingview::detail {
             std::string alert_id;
             std::string event_id;
             std::string dedupe_key;
+            std::string fingerprint;
             std::string symbol;
             std::string original_symbol;
             std::string action;
@@ -290,6 +291,9 @@ namespace optionx::bridges::tradingview::detail {
             if (!event.event_id.empty()) {
                 return event.event_id;
             }
+            if (!event.fingerprint.empty()) {
+                return event.fingerprint;
+            }
             if (!event.fire_id.empty()) {
                 return event.source_kind + ":fire:" + event.fire_id;
             }
@@ -380,7 +384,8 @@ namespace optionx::bridges::tradingview::detail {
             } else if (event.event_id.empty() && !event.alert_id.empty()) {
                 event.event_id = event.source_kind + ":" + event.alert_id;
             }
-            event.dedupe_key = first_json_string(payload, {"dedupe_key"});
+            event.dedupe_key = json_string(payload, "dedupe_key");
+            event.fingerprint = json_string(payload, "fingerprint");
             event.original_symbol =
                 normalize_symbol_value(first_json_string(
                     data,
@@ -422,7 +427,8 @@ namespace optionx::bridges::tradingview::detail {
                 event.alert_id = event.fire_id;
             }
             event.event_id = first_json_string(payload, {"event_id", "dedupe_key"});
-            event.dedupe_key = first_json_string(payload, {"dedupe_key"});
+            event.dedupe_key = json_string(payload, "dedupe_key");
+            event.fingerprint = json_string(payload, "fingerprint");
             event.original_symbol =
                 normalize_symbol_value(first_json_string(
                     payload,
@@ -565,6 +571,7 @@ namespace optionx::bridges::tradingview::detail {
                 {"method", event.method},
                 {"event_id", event.event_id},
                 {"dedupe_key", signal->unique_hash},
+                {"fingerprint", event.fingerprint},
                 {"fire_id", event.fire_id},
                 {"alert_id", event.alert_id},
                 {"original_symbol", event.original_symbol},
@@ -587,16 +594,20 @@ namespace optionx::bridges::tradingview::detail {
     /// \return Parse result with signal or rejection reason.
     inline TradingViewParseResult parse_extension_payload(
             const nlohmann::json& payload,
+            const std::string& request_secret,
             const TradingViewExtensionBridgeConfig& config) {
         TradingViewParseResult result;
 
         if (!config.secret.empty()) {
-            auto actual_secret = protocol::payload_secret(payload);
-            if (actual_secret.empty() &&
-                payload.is_object() &&
-                payload.contains("payload") &&
-                payload.at("payload").is_object()) {
-                actual_secret = protocol::payload_secret(payload.at("payload"));
+            auto actual_secret = request_secret;
+            if (actual_secret.empty() && config.allow_body_secret_fallback) {
+                actual_secret = protocol::payload_secret(payload);
+                if (actual_secret.empty() &&
+                    payload.is_object() &&
+                    payload.contains("payload") &&
+                    payload.at("payload").is_object()) {
+                    actual_secret = protocol::payload_secret(payload.at("payload"));
+                }
             }
             if (actual_secret != config.secret) {
                 result.authorized = false;
@@ -675,6 +686,14 @@ namespace optionx::bridges::tradingview::detail {
         result.response =
             protocol::make_response(true, result.reason, result.event_id, result.dedupe_key);
         return result;
+    }
+
+    /// \brief Parses a payload without an HTTP header secret.
+    /// \details JSON body secret fallback is disabled unless the config opts in.
+    inline TradingViewParseResult parse_extension_payload(
+            const nlohmann::json& payload,
+            const TradingViewExtensionBridgeConfig& config) {
+        return parse_extension_payload(payload, std::string(), config);
     }
 
 } // namespace optionx::bridges::tradingview::detail

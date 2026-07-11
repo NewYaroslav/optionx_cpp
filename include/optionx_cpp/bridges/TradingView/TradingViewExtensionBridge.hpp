@@ -289,9 +289,11 @@ namespace optionx::bridges::tradingview {
             SimpleWeb::CaseInsensitiveMultimap headers;
             headers.emplace("Content-Type", "application/json");
             if (config.allow_cors) {
-                headers.emplace("Access-Control-Allow-Origin", "*");
+                headers.emplace("Access-Control-Allow-Origin", config.allowed_origin);
                 headers.emplace("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-                headers.emplace("Access-Control-Allow-Headers", "Content-Type, Authorization");
+                headers.emplace(
+                    "Access-Control-Allow-Headers",
+                    "Content-Type, X-OptionX-Secret, Authorization");
             }
             return headers;
         }
@@ -373,7 +375,10 @@ namespace optionx::bridges::tradingview {
                 return;
             }
 
-            auto result = detail::parse_extension_payload(payload, *config);
+            const auto request_secret =
+                request_header_value(request->header, "X-OptionX-Secret");
+            auto result =
+                detail::parse_extension_payload(payload, request_secret, *config);
             if (!result.authorized) {
                 write_json(
                     response,
@@ -454,6 +459,13 @@ namespace optionx::bridges::tradingview {
                 SimpleWeb::StatusCode::success_ok,
                 std::move(result.response),
                 *config);
+        }
+
+        static std::string request_header_value(
+                const SimpleWeb::CaseInsensitiveMultimap& headers,
+                const std::string& name) {
+            const auto it = headers.find(name);
+            return it == headers.end() ? std::string() : it->second;
         }
 
         static bool remember_dedupe_key(

@@ -573,11 +573,16 @@ POST http://127.0.0.1:6560/api/v1/tradingview/signal
 GET  http://127.0.0.1:6560/health
 ```
 
+When `secret` is configured, the browser extension sends it in the HTTP header
+`X-OptionX-Secret`. The shared secret is not part of the JSON body by default,
+so it does not flow into logs, `TradeSignal::user_data` or downstream storage.
+Legacy body-secret parsing exists only behind the explicit
+`allow_body_secret_fallback` config flag.
+
 Indicator signal payload:
 
 ```json
 {
-  "secret": "local-secret",
   "source": "tradingview",
   "signal_name": "noisy_rsi_test",
   "action": "buy",
@@ -594,7 +599,6 @@ the extension:
 
 ```json
 {
-  "secret": "local-secret",
   "text": {
     "channel": "pricealerts",
     "content": {
@@ -620,6 +624,12 @@ Sizing is configured on our side:
   `mm_type = PERCENT` and writes the sizing intent into `TradeSignal::user_data`
   for a downstream money-management/postprocessing layer;
 - `none` leaves amount and money-management type unset.
+
+CORS defaults are intentionally convenient for local development:
+`allow_cors: true` and `allowed_origin: "*"`. For a packaged extension, set
+`allowed_origin` to the concrete extension origin, for example
+`chrome-extension://<extension-id>`. The preflight response allows
+`Content-Type`, `X-OptionX-Secret` and `Authorization` headers.
 
 Level alerts are not assigned direction automatically. The config contains
 ordered user rules, for example:
@@ -845,7 +855,8 @@ Extension responsibilities:
   rows;
 - detect list refreshes and suppress replay bursts;
 - normalize visible text into an internal alert object;
-- send the alert object to localhost with a shared secret;
+- send the alert object to localhost with a shared secret in
+  `X-OptionX-Secret`;
 - keep a small local log and health status;
 - provide an explicit enable/disable switch.
 
@@ -868,8 +879,8 @@ Suggested extension-to-local payload:
 {
   "version": 1,
   "source": "tradingview_extension",
-  "secret": "shared-token",
   "event_id": "tv:list-of-trades:strategy-name:order-id:time:action",
+  "fingerprint": "fnv1a-content-hash",
   "symbol": "OANDA:EURUSD",
   "action": "buy",
   "price": 1.08453,

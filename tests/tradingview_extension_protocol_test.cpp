@@ -23,7 +23,6 @@ nlohmann::json price_alert_payload(
         const std::string& method,
         nlohmann::json payload) {
     return nlohmann::json{
-        {"secret", "test-secret"},
         {"text", {
             {"channel", "pricealerts"},
             {"content", {
@@ -44,6 +43,8 @@ TEST(TradingViewExtensionProtocol, ConfigRoundTripsJson) {
     config.health_path = "/tv/health";
     config.bridge_id = 9;
     config.secret = "shared";
+    config.allowed_origin = "chrome-extension://abc123";
+    config.allow_body_secret_fallback = false;
     config.sizing_mode = "balance_percent";
     config.balance_percent = 2.5;
     config.min_amount = 1.0;
@@ -69,6 +70,8 @@ TEST(TradingViewExtensionProtocol, ConfigRoundTripsJson) {
     EXPECT_EQ(restored.bridge_type(), optionx::BridgeType::TRADING_VIEW_EXTENSION_HTTP);
     EXPECT_EQ(restored.port, 0);
     EXPECT_EQ(restored.signal_path, "/tv/signal");
+    EXPECT_EQ(restored.allowed_origin, "chrome-extension://abc123");
+    EXPECT_FALSE(restored.allow_body_secret_fallback);
     EXPECT_EQ(restored.sizing_mode, "balance_percent");
     EXPECT_DOUBLE_EQ(restored.balance_percent, 2.5);
     EXPECT_EQ(restored.level_alert_rules.size(), 1u);
@@ -83,7 +86,6 @@ TEST(TradingViewExtensionProtocol, ParsesIndicatorBuySignal) {
     auto config = base_config();
 
     const nlohmann::json payload = {
-        {"secret", "test-secret"},
         {"source", "tradingview"},
         {"signal_name", "noisy_rsi_test"},
         {"action", "buy"},
@@ -94,7 +96,8 @@ TEST(TradingViewExtensionProtocol, ParsesIndicatorBuySignal) {
         {"event_id", "indicator:eurusd:1783476660000:buy"}
     };
 
-    auto result = tv_protocol::parse_extension_payload(payload, config);
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
 
     ASSERT_TRUE(result.accepted);
     ASSERT_TRUE(result.signal);
@@ -108,6 +111,40 @@ TEST(TradingViewExtensionProtocol, ParsesIndicatorBuySignal) {
     EXPECT_EQ(result.signal->duration, 120u);
     EXPECT_EQ(result.signal->min_payout, 0.65);
     EXPECT_NE(result.signal->user_data.find("\"source_kind\":\"tradingview\""), std::string::npos);
+}
+
+TEST(TradingViewExtensionProtocol, RejectsBodySecretByDefault) {
+    auto config = base_config();
+
+    const nlohmann::json payload = {
+        {"secret", "test-secret"},
+        {"action", "buy"},
+        {"symbol", "FX:EURUSD"}
+    };
+
+    auto result = tv_protocol::parse_extension_payload(payload, config);
+
+    EXPECT_FALSE(result.accepted);
+    EXPECT_FALSE(result.authorized);
+    EXPECT_EQ(result.reason, "invalid_secret");
+    EXPECT_FALSE(result.signal);
+}
+
+TEST(TradingViewExtensionProtocol, AcceptsBodySecretOnlyWhenFallbackIsEnabled) {
+    auto config = base_config();
+    config.allow_body_secret_fallback = true;
+
+    const nlohmann::json payload = {
+        {"secret", "test-secret"},
+        {"action", "buy"},
+        {"symbol", "FX:EURUSD"}
+    };
+
+    auto result = tv_protocol::parse_extension_payload(payload, config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
 }
 
 TEST(TradingViewExtensionProtocol, AppliesAlertIdRuleForLevelAlert) {
@@ -132,6 +169,7 @@ TEST(TradingViewExtensionProtocol, AppliesAlertIdRuleForLevelAlert) {
                 {"price", 1.14072},
                 {"time", 1783476705177LL}
             }),
+        "test-secret",
         config);
 
     ASSERT_TRUE(result.accepted);
@@ -163,6 +201,7 @@ TEST(TradingViewExtensionProtocol, AppliesConditionRuleForLevelAlert) {
                 {"symbol", "FX:EURUSD"},
                 {"message", "EURUSD Crossing Up 1.14072"}
             }),
+        "test-secret",
         config);
 
     ASSERT_TRUE(result.accepted);
@@ -182,6 +221,7 @@ TEST(TradingViewExtensionProtocol, RejectsUnmappedLevelAlert) {
                 {"symbol", "FX:EURUSD"},
                 {"message", "EURUSD Crossing 1.14072"}
             }),
+        "test-secret",
         config);
 
     EXPECT_FALSE(result.accepted);
@@ -202,6 +242,7 @@ TEST(TradingViewExtensionProtocol, IgnoresPriceAlertLifecycleMessages) {
                     {"message", "EURUSD Crossing 1.14072"}
                 }
             })),
+        "test-secret",
         config);
 
     EXPECT_FALSE(result.accepted);
@@ -213,17 +254,55 @@ TEST(TradingViewExtensionProtocol, RejectsInvalidSecret) {
     auto config = base_config();
 
     const nlohmann::json payload = {
-        {"secret", "wrong-secret"},
         {"action", "buy"},
         {"symbol", "FX:EURUSD"}
     };
 
-    auto result = tv_protocol::parse_extension_payload(payload, config);
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "wrong-secret", config);
 
     EXPECT_FALSE(result.accepted);
     EXPECT_FALSE(result.authorized);
     EXPECT_EQ(result.reason, "invalid_secret");
     EXPECT_FALSE(result.signal);
+}
+
+TEST(TradingViewExtensionProtocol, PreservesFingerprintAsDedupeFallback) {
+    auto config = base_config();
+
+    const nlohmann::json payload = {
+        {"source_kind", "alert_toast_dom"},
+        {"fingerprint", "fnv1a:abc123"},
+        {"action", "buy"},
+        {"symbol", "FX:EURUSD"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.dedupe_key, "fnv1a:abc123");
+    EXPECT_NE(result.signal->user_data.find("\"fingerprint\":\"fnv1a:abc123\""), std::string::npos);
+}
+
+TEST(TradingViewExtensionProtocol, PrefersEventIdOverFingerprint) {
+    auto config = base_config();
+
+    const nlohmann::json payload = {
+        {"source_kind", "alert_toast_dom"},
+        {"event_id", "tv_toast:event-123"},
+        {"fingerprint", "fnv1a:abc123"},
+        {"action", "buy"},
+        {"symbol", "FX:EURUSD"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    EXPECT_EQ(result.event_id, "tv_toast:event-123");
+    EXPECT_EQ(result.dedupe_key, "tv_toast:event-123");
 }
 
 int main(int argc, char** argv) {

@@ -81,8 +81,8 @@ bool wait_for_port(const TradingViewExtensionBridge& bridge) {
 }
 
 nlohmann::json make_self_test_payload(const TradingViewExtensionBridgeConfig& config) {
+    (void)config;
     return nlohmann::json{
-        {"secret", config.secret},
         {"source", "tradingview"},
         {"signal_name", "smoke_noisy_rsi_test"},
         {"action", "buy"},
@@ -151,8 +151,15 @@ int main(int argc, char** argv) {
     if (self_test) {
         try {
             HttpClient client(config.address + ":" + std::to_string(bridge.bound_port()));
+            SimpleWeb::CaseInsensitiveMultimap headers;
+            headers.emplace("Content-Type", "application/json");
+            headers.emplace("X-OptionX-Secret", config.secret);
             auto response =
-                client.request("POST", config.signal_path, make_self_test_payload(config).dump());
+                client.request(
+                    "POST",
+                    config.signal_path,
+                    make_self_test_payload(config).dump(),
+                    headers);
             std::cout << "self-test response: " << response->content.string() << '\n';
         } catch (const std::exception& ex) {
             std::cerr << "Self-test request failed: " << ex.what() << '\n';

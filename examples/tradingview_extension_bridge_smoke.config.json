@@ -5,6 +5,8 @@
   "health_path": "/health",
   "bridge_id": 1,
   "secret": "local-secret",
+  "allowed_origin": "*",
+  "allow_body_secret_fallback": false,
   "option_type": "SPRINT",
   "duration": 60,
   "min_payout": 0.0,
