@@ -46,6 +46,7 @@ namespace optionx::bridges::tradingview::detail {
             std::string action;
             std::string condition_type;
             std::string signal_name;
+            std::string alert_name;
             std::string message;
             double price = 0.0;
             std::int64_t time = 0;
@@ -320,6 +321,10 @@ namespace optionx::bridges::tradingview::detail {
                 text += ' ';
                 text += event.signal_name;
             }
+            if (!event.alert_name.empty()) {
+                text += ' ';
+                text += event.alert_name;
+            }
             if (!event.action.empty()) {
                 text += ' ';
                 text += event.action;
@@ -569,6 +574,7 @@ namespace optionx::bridges::tradingview::detail {
                     {"symbol", "tickerid", "ticker", "main_symbol"}));
             event.symbol = event.original_symbol;
             event.signal_name = first_json_string(data, {"signal_name", "name", "alert_name"});
+            event.alert_name = first_json_string(data, {"alert_name", "name", "title"});
             event.message = first_json_string(data, {"message", "description", "title"});
             if (event.message.empty()) {
                 event.message = first_json_string(payload, {"message", "description", "title"});
@@ -617,6 +623,7 @@ namespace optionx::bridges::tradingview::detail {
                     payload,
                     {"condition_type", "condition", "crossing_type"}));
             event.signal_name = first_json_string(payload, {"signal_name", "strategy", "name"});
+            event.alert_name = first_json_string(payload, {"alert_name", "alert_title"});
             event.message = first_json_string(payload, {"message", "description", "text", "title"});
             event.price = json_number(payload, {"price", "close", "trigger_price", "alert_value"});
             event.time = json_integer(payload, {"time", "timestamp", "bar_time", "fire_time"});
@@ -730,6 +737,9 @@ namespace optionx::bridges::tradingview::detail {
                 ? apply_symbol_map(config, event.original_symbol)
                 : event.symbol;
             signal->signal_name = signal_name.empty() ? event.signal_name : std::move(signal_name);
+            if (signal->signal_name.empty() && !event.alert_name.empty()) {
+                signal->signal_name = event.alert_name;
+            }
             if (signal->signal_name.empty()) {
                 signal->signal_name = event.is_level_alert
                     ? "tradingview_level_alert"
@@ -751,6 +761,7 @@ namespace optionx::bridges::tradingview::detail {
                 {"fingerprint", event.fingerprint},
                 {"fire_id", event.fire_id},
                 {"alert_id", event.alert_id},
+                {"alert_name", event.alert_name},
                 {"original_symbol", event.original_symbol},
                 {"normalized_symbol", event.symbol},
                 {"condition_type", event.condition_type},

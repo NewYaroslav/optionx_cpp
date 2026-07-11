@@ -284,6 +284,29 @@ TEST(TradingViewExtensionProtocol, MapsLevelAlertActionFromDefaultKeyword) {
     EXPECT_EQ(result.signal->signal_name, "tradingview_level_alert");
 }
 
+TEST(TradingViewExtensionProtocol, PreservesAlertNameAndUsesItForKeywords) {
+    auto config = base_config();
+
+    const nlohmann::json payload = {
+        {"source_kind", "alert_toast_dom"},
+        {"event_id", "toast:btcusd:title-buy"},
+        {"action", "alert"},
+        {"symbol", "BTCUSD"},
+        {"alert_name", "BUY Test99"},
+        {"message", "BTCUSD Crossing 64,119.59"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
+    EXPECT_EQ(result.signal->signal_name, "BUY Test99");
+    EXPECT_EQ(result.signal->comment, "BTCUSD Crossing 64,119.59");
+    EXPECT_NE(result.signal->user_data.find("\"alert_name\":\"BUY Test99\""), std::string::npos);
+}
+
 TEST(TradingViewExtensionProtocol, ExtendsActionKeywordsWithCustomRussianTerm) {
     auto config = base_config();
     config.use_default_action_keywords = false;

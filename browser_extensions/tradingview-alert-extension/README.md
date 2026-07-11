@@ -43,6 +43,11 @@ It extracts the toast title, description, symbol and a best-effort action:
 - `SELL`, `SHORT`, `PUT` -> `sell`;
 - anything else -> `alert`.
 
+TradingView's configurable alert title/name is sent separately as
+`alert_name`. It also participates in action detection, so a title such as
+`BUY Test99` can produce `action=buy` while the main alert text remains in
+`message`.
+
 Level alerts such as `EURUSD Crossing 1.14072` are market events, not trade
 commands. The local bridge should map these through user rules or reject them
 unless the alert message contains an explicit command.

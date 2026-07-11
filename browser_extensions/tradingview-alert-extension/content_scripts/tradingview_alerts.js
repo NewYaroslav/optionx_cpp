@@ -97,6 +97,29 @@
     return lines.find((line) => /^Alert\s+on\b/i.test(line)) || "";
   }
 
+  function findAlertName(root) {
+    const selectors = [
+      'span[class*="name"]',
+      'div[class*="name"]',
+      '[data-name*="name"]'
+    ];
+    const description = findDescription(root);
+
+    for (const selector of selectors) {
+      for (const element of root.querySelectorAll(selector)) {
+        const value = nodeText(element);
+        if (!value) continue;
+        if (value === description) continue;
+        if (/^Alert\s+on\b/i.test(value)) continue;
+        if (/^Edit alert$/i.test(value)) continue;
+        if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(value)) continue;
+        return value;
+      }
+    }
+
+    return "";
+  }
+
   function looksLikeAlertToast(root) {
     if (!root || root.nodeType !== Node.ELEMENT_NODE) return false;
     const description = findDescription(root);
@@ -174,12 +197,14 @@
 
   function buildPayload(root) {
     const title = findTitle(root);
+    const alertName = findAlertName(root);
     const message = findDescription(root);
     const parsed = parseJsonMessage(message);
     const symbol = OptionXParser.extractSymbol(title, message, parsed);
-    const action = OptionXParser.normalizeAction(message, parsed);
+    const actionText = alertName ? `${alertName} ${message}` : message;
+    const action = OptionXParser.normalizeAction(actionText, parsed);
     const direction = OptionXParser.extractDirection(message);
-    const fingerprintInput = `${SOURCE_KIND}|${symbol}|${title}|${message}`;
+    const fingerprintInput = `${SOURCE_KIND}|${symbol}|${title}|${alertName}|${message}`;
     const fingerprint = fnv1a(fingerprintInput);
     const observedAt = new Date().toISOString();
     const eventId = OptionXParser.makeEventId(parsed, fingerprint);
@@ -194,7 +219,7 @@
       fingerprint,
       symbol,
       action,
-      raw_action: OptionXParser.extractRawAction(message, parsed),
+      raw_action: OptionXParser.extractRawAction(actionText, parsed),
       direction,
       raw_direction: OptionXParser.extractRawDirection(message),
       price,
@@ -203,9 +228,11 @@
       observed_at: observedAt,
       time: observedAt,
       title,
+      alert_name: alertName,
       message,
       raw: {
         title,
+        alert_name: alertName,
         description: message,
         parsed_message: parsed
       }

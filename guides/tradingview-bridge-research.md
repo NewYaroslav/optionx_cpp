@@ -620,6 +620,20 @@ Only `alert_fired` can become a local signal. `alerts_created` and
 `alerts_updated` are accepted as known TradingView lifecycle/state messages but
 are rejected by the parser with `ignored_state_message`.
 
+For visible toast capture, TradingView can show both a configurable alert
+title/name and a separate alert message/description. The extension forwards
+them as separate fields:
+
+- `alert_name` - the configurable alert title/name, for example `Test99` or
+  `BUY Test99`;
+- `message` - the alert text/description, for example
+  `BTCUSD Crossing BUY 64,119.59`.
+
+The bridge keeps `message` as `TradeSignal::comment`, stores `alert_name` in
+`TradeSignal::user_data`, and uses it as a `signal_name` fallback. The action
+keyword resolver also inspects `alert_name`, so users can put direction words
+in the TradingView title/name without mixing that title into the main comment.
+
 Sizing is configured on our side:
 
 - `fixed_amount` sets `TradeSignal::amount` and marks `mm_type = FIXED`;

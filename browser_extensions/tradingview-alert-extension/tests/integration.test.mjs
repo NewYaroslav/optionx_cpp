@@ -181,6 +181,25 @@ test("integration: toast-like alert without Alert on title is captured", async (
   assert.equal(payloads[0].message, "BTCUSD Crossing BUY 64,114.82");
 });
 
+test("integration: alert name is preserved and can drive action", async () => {
+  const { document, sentPayloads } = buildTestEnv();
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="tv-alert-toast" role="alert">
+       <span class="name-ULNSeceN">BUY Test99</span>
+       <span class="description-ULNSeceN">BTCUSD Crossing 64,119.59</span>
+     </div>`
+  );
+  await flushMicrotasks();
+  const payloads = getPayloadsFor(sentPayloads);
+  assert.equal(payloads.length, 1);
+  assert.equal(payloads[0].alert_name, "BUY Test99");
+  assert.equal(payloads[0].raw.alert_name, "BUY Test99");
+  assert.equal(payloads[0].action, "buy");
+  assert.equal(payloads[0].raw_action, "BUY");
+  assert.equal(payloads[0].message, "BTCUSD Crossing 64,119.59");
+});
+
 test("integration: same toast inserted twice is deduped (5s window)", async () => {
   const { document, sentPayloads } = buildTestEnv();
   const html = `<div class="tv-alert-toast">Alert on EURUSD<span class="description-ULNSeceN">EURUSD Crossing 1.14145</span></div>`;
