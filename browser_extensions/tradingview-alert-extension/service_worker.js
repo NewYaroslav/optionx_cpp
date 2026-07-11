@@ -280,6 +280,10 @@ function sourceCaptureGate(payload, config) {
   ) {
     return { enabled: false, source_kind: sourceKind };
   }
+  if (sourceKind === "private_chart_study_alert_messages" &&
+      config.capture_chart_study_alerts === false) {
+    return { enabled: false, source_kind: sourceKind };
+  }
   return { enabled: true, source_kind: sourceKind };
 }
 

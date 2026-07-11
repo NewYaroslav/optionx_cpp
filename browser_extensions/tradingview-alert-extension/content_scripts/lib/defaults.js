@@ -13,7 +13,8 @@
       secret: "",
       include_tab_url: false,
       capture_alert_toasts: true,
-      capture_private_alerts: true
+      capture_private_alerts: true,
+      capture_chart_study_alerts: true
     }
   };
 });

@@ -292,12 +292,13 @@ Quick parse of the focused dump:
   ids `8x94yO` and `9S3h0E`;
 - debug rows included both `HIST_CONFIRMED` and `RT_CONFIRMED` bar states.
 
-This makes the chart socket promising for a future strategy/history evaluator:
+This makes the chart socket useful in two different ways. For live indicator
+capture, the extension seeds the first `alertMessages[]` batch from a chart
+socket and forwards only later unseen messages, avoiding an immediate replay of
+already-loaded study state. For a future strategy/history evaluator,
 TradingView can calculate the Pine indicator over already loaded bars and emit
-signal-shaped alert messages with `barInfo`. However, this path must be treated
-as replay/history input first, not as live trading input, until the bridge has
-an explicit history boundary and can classify whether a signal came from a
-historical bar, replayed recalculation or a current realtime bar.
+signal-shaped alert messages with `barInfo`, but that path needs an explicit
+history boundary and should not be mixed into live trading.
 
 Extraction contract for this private API mode:
 
@@ -901,8 +902,10 @@ There are two different free products hiding under one name:
 Current local prototype:
 `browser_extensions/tradingview-alert-extension` implements the fresh
 alert-bridge slice. It is a Chrome/Edge MV3 extension that observes visible
-alert toast DOM and the TradingView private `pricealerts/alert_fired`
-pushstream, then sends normalized JSON to a local HTTP bridge endpoint.
+alert toast DOM, the TradingView private `pricealerts/alert_fired` pushstream
+for level alerts, and chart-socket study `alertMessages[]` for indicator
+signals after an initial seed pass. It sends normalized JSON to a local HTTP
+bridge endpoint.
 
 Prefer local HTTP first for both modes:
 
@@ -1052,13 +1055,12 @@ server dependency intentionally.
 5. Add a manual smoke checklist: start local receiver, load unpacked extension,
    open TradingView Strategy Tester, enable bridge, trigger one demo signal,
    verify duplicate suppression.
-6. Keep `private_pricealerts_ws` as the fresh-alert private source: consume only
+6. Keep `private_pricealerts_ws` as the fresh level-alert source: consume only
    `pricealerts/alert_fired` as events, treat `alerts_updated` as
    state/diagnostics, and deduplicate by `fire_id`.
-7. In a later PR, design a history/replay API before implementing
-   `data.tradingview.com` study-alert extraction. That work needs at least a
+7. Keep chart-socket study `alertMessages[]` as the fresh indicator source only
+   after the extension seeds already-loaded messages from the chart socket.
+8. In a later PR, design a history/replay API for intentionally consuming the
+   seeded and historical chart-socket messages. That work needs at least a
    bar/tick history boundary so historical signal messages are not mistaken for
    fresh trading events.
-8. After the history boundary exists, prototype extraction of
-   `du.p[1].<study-id>.ns.d.data.alertMessages[]` from captured chart WebSocket
-   frames and feed the parsed inner `msg` through a replay-aware path.

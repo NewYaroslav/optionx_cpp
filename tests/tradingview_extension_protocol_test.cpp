@@ -169,6 +169,44 @@ TEST(TradingViewExtensionProtocol, ParsesIndicatorBuySignal) {
     EXPECT_NE(result.signal->user_data.find("\"source_kind\":\"tradingview\""), std::string::npos);
 }
 
+TEST(TradingViewExtensionProtocol, ParsesChartStudyIndicatorSignal) {
+    auto config = base_config();
+
+    const nlohmann::json payload = {
+        {"version", 1},
+        {"source", "tradingview_extension"},
+        {"source_kind", "private_chart_study_alert_messages"},
+        {"method", "du.alertMessages"},
+        {"event_id", "tv_study_alert:abc123"},
+        {"dedupe_key", "tv_study_alert:abc123"},
+        {"fingerprint", "abc123"},
+        {"chart_session", "cs_test"},
+        {"study_id", "8x94yO"},
+        {"signal_name", "noisy_rsi_test"},
+        {"action", "sell"},
+        {"symbol", "BTCUSD"},
+        {"tickerid", "CRYPTO:BTCUSD"},
+        {"price", 64131.92},
+        {"time", 1783763820000LL},
+        {"bar_time", 1783763820000LL},
+        {"update_time", 1783763881395LL}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.event_id, "tv_study_alert:abc123");
+    EXPECT_EQ(result.signal->unique_hash, "tv_study_alert:abc123");
+    EXPECT_EQ(result.signal->symbol, "BTCUSD");
+    EXPECT_EQ(result.signal->signal_name, "noisy_rsi_test");
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::SELL);
+    EXPECT_NE(
+        result.signal->user_data.find("\"source_kind\":\"private_chart_study_alert_messages\""),
+        std::string::npos);
+}
+
 TEST(TradingViewExtensionProtocol, RejectsBodySecretByDefault) {
     auto config = base_config();
 

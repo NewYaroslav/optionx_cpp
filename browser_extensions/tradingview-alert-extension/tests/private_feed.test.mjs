@@ -11,6 +11,7 @@ const PAGE_HOOK_SRC_PATH = join(EXT_DIR, "content_scripts", "private_feed_page_h
 const CONTENT_SRC_PATH = join(EXT_DIR, "content_scripts", "tradingview_private_feed.js");
 
 const PRIVATE_FEED_URL = "wss://pushstream.tradingview.com/message-pipe-ws/private_feed";
+const CHART_SOCKET_URL = "wss://data.tradingview.com/socket.io/websocket?from=chart%2FX9YvLQhk%2F&type=chart&auth=sessionid";
 
 function createDom() {
   return new JSDOM("<!doctype html><html><head></head><body></body></html>", {
@@ -54,6 +55,60 @@ function installMockWebSocket(window) {
 
 function loadPageHook(window) {
   window.eval(readFileSync(PAGE_HOOK_SRC_PATH, "utf8"));
+}
+
+function tradingViewFrame(payload) {
+  const text = JSON.stringify(payload);
+  return `~m~${text.length}~m~${text}`;
+}
+
+function studyAlertFrame({ action, price, time, updateTime }) {
+  const alertMessage = {
+    barInfo: {
+      barIndex: Math.floor(time / 60000),
+      close: price,
+      high: price + 1,
+      low: price - 1,
+      open: price - 0.5,
+      time,
+      updateTime,
+      volume: 0
+    },
+    msg: JSON.stringify({
+      source: "tradingview",
+      signal_name: "noisy_rsi_test",
+      action,
+      symbol: "BTCUSD",
+      tickerid: "CRYPTO:BTCUSD",
+      price,
+      time
+    })
+  };
+  const ns = JSON.stringify({
+    data: {
+      alertMessages: [alertMessage],
+      version: 2
+    },
+    isUpdate: true
+  });
+  return tradingViewFrame({
+    m: "du",
+    p: [
+      "cs_test",
+      {
+        "8x94yO": {
+          st: [],
+          ns: { d: ns, indexes: "nochange" },
+          t: "s1_st1"
+        },
+        "9S3h0E": {
+          st: [],
+          ns: { d: ns, indexes: "nochange" },
+          t: "s1_st1"
+        }
+      }
+    ]
+  });
 }
 
 async function flush() {
@@ -144,6 +199,53 @@ test("private feed page hook ignores lifecycle and non-private sockets", async (
   await flush();
 
   assert.equal(pageMessages.length, 0);
+});
+
+test("chart socket study alertMessages are seeded, then forwarded once", async () => {
+  const dom = createDom();
+  const { window } = dom;
+  installMockWebSocket(window);
+  const pageMessages = [];
+  window.addEventListener("message", (event) => {
+    if (event.data && event.data.type === "optionx_tradingview_private_feed") {
+      pageMessages.push(event.data.payload);
+    }
+  });
+
+  loadPageHook(window);
+  const socket = new window.WebSocket(CHART_SOCKET_URL);
+
+  socket.emitMessage(studyAlertFrame({
+    action: "sell",
+    price: 64131.92,
+    time: 1783763820000,
+    updateTime: 1783763881395
+  }));
+  await flush();
+  assert.equal(pageMessages.length, 0);
+
+  socket.emitMessage(studyAlertFrame({
+    action: "buy",
+    price: 64130.49,
+    time: 1783764000000,
+    updateTime: 1783764006923
+  }));
+  await flush();
+
+  assert.equal(pageMessages.length, 1);
+  const payload = pageMessages[0];
+  assert.equal(payload.source_kind, "private_chart_study_alert_messages");
+  assert.equal(payload.method, "du.alertMessages");
+  assert.match(payload.event_id, /^tv_study_alert:/);
+  assert.equal(payload.chart_session, "cs_test");
+  assert.equal(payload.study_id, "8x94yO");
+  assert.equal(payload.signal_name, "noisy_rsi_test");
+  assert.equal(payload.action, "buy");
+  assert.equal(payload.symbol, "BTCUSD");
+  assert.equal(payload.tickerid, "CRYPTO:BTCUSD");
+  assert.equal(payload.price, 64130.49);
+  assert.equal(payload.time, 1783764000000);
+  assert.equal(payload.raw.parsed_message.action, "buy");
 });
 
 test("private feed content script relays page-hook payloads to service worker", async () => {

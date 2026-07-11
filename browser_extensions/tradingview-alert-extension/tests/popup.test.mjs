@@ -17,6 +17,7 @@ function createPopupHtml() {
   <input id="enabled" type="checkbox">
   <input id="capture-alert-toasts" type="checkbox">
   <input id="capture-private-alerts" type="checkbox">
+  <input id="capture-chart-study-alerts" type="checkbox">
   <input id="include-tab-url" type="checkbox">
   <input id="endpoint" type="url">
   <input id="secret" type="password">
@@ -44,6 +45,7 @@ function buildPopupEnv() {
     enabled: true,
     capture_alert_toasts: true,
     capture_private_alerts: true,
+    capture_chart_study_alerts: true,
     endpoint: "http://127.0.0.1:6560/api/v1/tradingview/signal",
     secret: "",
     include_tab_url: false,
