@@ -271,6 +271,34 @@ code must deduplicate by at least:
 - chart session/study id only as diagnostic metadata, not as the primary event
   id.
 
+A later BTCUSD capture on 2026-07-11 clarified the source split:
+
+- `wss://pushstream.tradingview.com/message-pipe-ws/private_feed` carries
+  price/level alert lifecycle and fresh `pricealerts/alert_fired` events;
+- `wss://data.tradingview.com/socket.io/websocket?...type=chart...` carries
+  chart, quote and study data, including indicator `alertMessages[]` emitted by
+  Pine `alert()` calls.
+
+In that chart-socket capture, frames matching `create_study` were only outgoing
+study creation requests. They contained `pineFeatures` with `"alert": 1`, but
+they did not contain a fired signal. The actual indicator signals appeared
+later in `du` frames under `ns.d.data.alertMessages[]`.
+
+Quick parse of the focused dump:
+
+- 64 TradingView `~m~` frames total;
+- 2 `create_study` frames, 54 `du` frames and 8 `qsd` frames;
+- 22 `alertMessages[]` entries, 11 unique after deduplicating the two study
+  ids `8x94yO` and `9S3h0E`;
+- debug rows included both `HIST_CONFIRMED` and `RT_CONFIRMED` bar states.
+
+This makes the chart socket promising for a future strategy/history evaluator:
+TradingView can calculate the Pine indicator over already loaded bars and emit
+signal-shaped alert messages with `barInfo`. However, this path must be treated
+as replay/history input first, not as live trading input, until the bridge has
+an explicit history boundary and can classify whether a signal came from a
+historical bar, replayed recalculation or a current realtime bar.
+
 Extraction contract for this private API mode:
 
 ```text
