@@ -293,12 +293,12 @@ Quick parse of the focused dump:
 - debug rows included both `HIST_CONFIRMED` and `RT_CONFIRMED` bar states.
 
 This makes the chart socket useful in two different ways. For live indicator
-capture, the extension seeds the first `alertMessages[]` batch from a chart
-socket and forwards only later unseen messages, avoiding an immediate replay of
-already-loaded study state. For a future strategy/history evaluator,
-TradingView can calculate the Pine indicator over already loaded bars and emit
-signal-shaped alert messages with `barInfo`, but that path needs an explicit
-history boundary and should not be mixed into live trading.
+capture, the extension forwards `alertMessages[]` through the local bridge and
+deduplicates repeated copies from multiple study ids. For a future
+strategy/history evaluator, TradingView can calculate the Pine indicator over
+already loaded bars and emit signal-shaped alert messages with `barInfo`, but
+that path needs an explicit history boundary and should not be mixed into live
+trading.
 
 Extraction contract for this private API mode:
 
@@ -904,8 +904,7 @@ Current local prototype:
 alert-bridge slice. It is a Chrome/Edge MV3 extension that observes visible
 alert toast DOM, the TradingView private `pricealerts/alert_fired` pushstream
 for level alerts, and chart-socket study `alertMessages[]` for indicator
-signals after an initial seed pass. It sends normalized JSON to a local HTTP
-bridge endpoint.
+signals. It sends normalized JSON to a local HTTP bridge endpoint.
 
 Prefer local HTTP first for both modes:
 
@@ -1058,8 +1057,8 @@ server dependency intentionally.
 6. Keep `private_pricealerts_ws` as the fresh level-alert source: consume only
    `pricealerts/alert_fired` as events, treat `alerts_updated` as
    state/diagnostics, and deduplicate by `fire_id`.
-7. Keep chart-socket study `alertMessages[]` as the fresh indicator source only
-   after the extension seeds already-loaded messages from the chart socket.
+7. Keep chart-socket study `alertMessages[]` as the fresh indicator source and
+   deduplicate repeated copies from multiple study ids.
 8. In a later PR, design a history/replay API for intentionally consuming the
    seeded and historical chart-socket messages. That work needs at least a
    bar/tick history boundary so historical signal messages are not mistaken for

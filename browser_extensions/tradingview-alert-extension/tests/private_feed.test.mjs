@@ -121,7 +121,7 @@ test("private feed page hook forwards pricealerts alert_fired frames", async () 
   const MockWebSocket = installMockWebSocket(window);
   const pageMessages = [];
   window.addEventListener("message", (event) => {
-    if (event.data && event.data.type === "optionx_tradingview_private_feed") {
+    if (event.data && event.data.type === "optionx_tradingview_private_feed" && event.data.payload) {
       pageMessages.push(event.data.payload);
     }
   });
@@ -169,7 +169,7 @@ test("private feed page hook ignores lifecycle and non-private sockets", async (
   installMockWebSocket(window);
   const pageMessages = [];
   window.addEventListener("message", (event) => {
-    if (event.data && event.data.type === "optionx_tradingview_private_feed") {
+    if (event.data && event.data.type === "optionx_tradingview_private_feed" && event.data.payload) {
       pageMessages.push(event.data.payload);
     }
   });
@@ -201,13 +201,13 @@ test("private feed page hook ignores lifecycle and non-private sockets", async (
   assert.equal(pageMessages.length, 0);
 });
 
-test("chart socket study alertMessages are seeded, then forwarded once", async () => {
+test("chart socket study alertMessages are forwarded once across duplicate study ids", async () => {
   const dom = createDom();
   const { window } = dom;
   installMockWebSocket(window);
   const pageMessages = [];
   window.addEventListener("message", (event) => {
-    if (event.data && event.data.type === "optionx_tradingview_private_feed") {
+    if (event.data && event.data.type === "optionx_tradingview_private_feed" && event.data.payload) {
       pageMessages.push(event.data.payload);
     }
   });
@@ -222,15 +222,6 @@ test("chart socket study alertMessages are seeded, then forwarded once", async (
     updateTime: 1783763881395
   }));
   await flush();
-  assert.equal(pageMessages.length, 0);
-
-  socket.emitMessage(studyAlertFrame({
-    action: "buy",
-    price: 64130.49,
-    time: 1783764000000,
-    updateTime: 1783764006923
-  }));
-  await flush();
 
   assert.equal(pageMessages.length, 1);
   const payload = pageMessages[0];
@@ -240,12 +231,21 @@ test("chart socket study alertMessages are seeded, then forwarded once", async (
   assert.equal(payload.chart_session, "cs_test");
   assert.equal(payload.study_id, "8x94yO");
   assert.equal(payload.signal_name, "noisy_rsi_test");
-  assert.equal(payload.action, "buy");
+  assert.equal(payload.action, "sell");
   assert.equal(payload.symbol, "BTCUSD");
   assert.equal(payload.tickerid, "CRYPTO:BTCUSD");
-  assert.equal(payload.price, 64130.49);
-  assert.equal(payload.time, 1783764000000);
-  assert.equal(payload.raw.parsed_message.action, "buy");
+  assert.equal(payload.price, 64131.92);
+  assert.equal(payload.time, 1783763820000);
+  assert.equal(payload.raw.parsed_message.action, "sell");
+
+  socket.emitMessage(studyAlertFrame({
+    action: "sell",
+    price: 64131.92,
+    time: 1783763820000,
+    updateTime: 1783763881395
+  }));
+  await flush();
+  assert.equal(pageMessages.length, 1);
 });
 
 test("private feed content script relays page-hook payloads to service worker", async () => {

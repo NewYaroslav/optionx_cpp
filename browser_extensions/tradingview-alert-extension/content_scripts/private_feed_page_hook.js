@@ -195,8 +195,6 @@
     if (!updates || typeof updates !== "object") return [];
 
     const payloads = [];
-    let sawStudyAlert = false;
-    const seedOnly = !state.studySeeded;
 
     for (const [studyId, update] of Object.entries(updates)) {
       const nsData = update && update.ns && scalarToString(update.ns.d);
@@ -221,8 +219,7 @@
             : {};
         const key = studyAlertKey(parsedMessage, messageText, barInfo);
         const isNew = boundedRemember(state, key);
-        sawStudyAlert = true;
-        if (seedOnly || !isNew) continue;
+        if (!isNew) continue;
 
         const eventId = firstString(parsedMessage, ["event_id", "dedupe_key"]) ||
           `tv_study_alert:${fnv1a(key)}`;
@@ -266,10 +263,6 @@
         });
       }
     }
-
-    if (sawStudyAlert) {
-      state.studySeeded = true;
-    }
     return payloads;
   }
 
@@ -277,12 +270,18 @@
     window.postMessage({ type: MESSAGE_TYPE, payload }, window.location.origin || "*");
   }
 
-  function attachSocket(socket, kind) {
+  function postStatus(status, details = {}) {
+    window.postMessage({ type: MESSAGE_TYPE, status, details }, window.location.origin || "*");
+  }
+
+  function attachSocket(socket, kind, url) {
     const state = {
-      studySeeded: kind !== "chart_socket",
       studyKeys: new Set(),
       studyKeyOrder: []
     };
+    postStatus(
+      kind === "chart_socket" ? "chart_socket_hook_attached" : "private_feed_hook_attached",
+      { url: String(url || "") });
     socket.addEventListener("message", (event) => {
       const frames = parseTradingViewFrames(event.data);
       for (const frame of frames) {
@@ -306,7 +305,7 @@
       : new NativeWebSocket(url, protocols);
     const kind = socketKind(url);
     if (kind) {
-      attachSocket(socket, kind);
+      attachSocket(socket, kind, url);
     }
     return socket;
   }

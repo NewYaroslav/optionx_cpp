@@ -48,6 +48,10 @@
     if (event.source !== window) return;
     const data = event.data;
     if (!data || typeof data !== "object" || data.type !== MESSAGE_TYPE) return;
+    if (data.status) {
+      sendStatus(data.status, data.details || {});
+      return;
+    }
     if (!data.payload || typeof data.payload !== "object") return;
     sendPayload(data.payload);
   }

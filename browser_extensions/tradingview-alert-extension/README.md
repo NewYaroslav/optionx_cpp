@@ -139,13 +139,12 @@ du.p[1].<study-id>.ns.d
 
 The extension normalizes that to `source_kind:
 private_chart_study_alert_messages` and forwards it through the same local HTTP
-bridge path.
+bridge path. Duplicate copies of the same study alert, for example the same
+`msg` repeated under two study ids, are suppressed by a bounded in-page key
+cache.
 
-To avoid replaying already-loaded historical study messages as live trades, the
-page hook seeds the first `alertMessages[]` batch from each chart socket and
-does not forward it. Only later unseen study alert keys are sent. A separate
-history/replay API can intentionally consume the seeded and historical data in
-a future PR.
+This mode is for live indicator capture. A separate history/replay API can
+intentionally consume older chart-socket data in a future PR.
 
 ## Trigger vocabulary
 
@@ -282,6 +281,14 @@ toast capture is enabled but no toast events appear, verify that the TradingView
 alert has popup notifications enabled and that a visible toast is shown in the
 chart page.
 
+For indicator signals, the popup log should show
+`TradingView content status: chart_socket_hook_attached` after the chart
+opens its `data.tradingview.com` WebSocket. If that line is missing, reload the
+TradingView tab after reloading the extension. If it is present but no signal is
+sent, verify that the Pine script emits `alert()` with a JSON message and that
+the TradingView chart WebSocket actually contains `du ... alertMessages[]`
+frames.
+
 Expected bridge behavior:
 
 - bind to loopback by default;
@@ -340,8 +347,8 @@ Four suites, all via `node --test`:
 - **Private/WebSocket feed** (`tests/private_feed.test.mjs`): jsdom + page hook
   tests for `pushstream.tradingview.com/message-pipe-ws/private_feed` and the
   chart data socket. Verifies that `pricealerts/alert_fired` becomes a
-  normalized payload, indicator `alertMessages[]` are seeded then forwarded
-  once, and lifecycle/non-target events are ignored.
+  normalized payload, duplicate indicator `alertMessages[]` are forwarded once,
+  and lifecycle/non-target events are ignored.
 - **Popup** (`tests/popup.test.mjs`): jsdom popup checks for live log refresh from `chrome.storage.onChanged`.
 
 Running:
