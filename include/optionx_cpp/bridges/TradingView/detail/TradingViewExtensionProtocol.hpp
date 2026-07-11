@@ -275,6 +275,26 @@ namespace optionx::bridges::tradingview::detail {
             return {};
         }
 
+        inline bool constant_time_equals(
+                const std::string& left,
+                const std::string& right) noexcept {
+            const auto max_size = std::max(left.size(), right.size());
+            volatile std::uint8_t diff =
+                static_cast<std::uint8_t>(left.size() ^ right.size());
+
+            for (std::size_t index = 0; index < max_size; ++index) {
+                const auto left_ch = index < left.size()
+                    ? static_cast<std::uint8_t>(left[index])
+                    : std::uint8_t{0};
+                const auto right_ch = index < right.size()
+                    ? static_cast<std::uint8_t>(right[index])
+                    : std::uint8_t{0};
+                diff = static_cast<std::uint8_t>(diff | (left_ch ^ right_ch));
+            }
+
+            return diff == 0;
+        }
+
         inline const nlohmann::json& effective_payload(const nlohmann::json& payload) {
             if (payload.is_object() &&
                 payload.contains("payload") &&
@@ -609,7 +629,7 @@ namespace optionx::bridges::tradingview::detail {
                     actual_secret = protocol::payload_secret(payload.at("payload"));
                 }
             }
-            if (actual_secret != config.secret) {
+            if (!protocol::constant_time_equals(actual_secret, config.secret)) {
                 result.authorized = false;
                 result.reason = "invalid_secret";
                 result.response =

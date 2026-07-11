@@ -82,6 +82,13 @@ TEST(TradingViewExtensionProtocol, ConfigRoundTripsJson) {
     EXPECT_FALSE(restored.validate().first);
 }
 
+TEST(TradingViewExtensionProtocol, ConstantTimeSecretCompareMatchesEquality) {
+    EXPECT_TRUE(tv_protocol::protocol::constant_time_equals("secret", "secret"));
+    EXPECT_FALSE(tv_protocol::protocol::constant_time_equals("secret", "Secret"));
+    EXPECT_FALSE(tv_protocol::protocol::constant_time_equals("secret", "secret1"));
+    EXPECT_FALSE(tv_protocol::protocol::constant_time_equals("secret1", "secret"));
+}
+
 TEST(TradingViewExtensionProtocol, ParsesIndicatorBuySignal) {
     auto config = base_config();
 
