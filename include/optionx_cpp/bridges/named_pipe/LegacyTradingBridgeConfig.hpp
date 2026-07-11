@@ -5,8 +5,6 @@
 /// \file LegacyTradingBridgeConfig.hpp
 /// \brief Defines configuration for the legacy named-pipe trading bridge.
 
-#include "data/bridge.hpp"
-
 #include <cstddef>
 #include <cstdint>
 #include <memory>

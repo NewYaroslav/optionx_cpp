@@ -5,8 +5,6 @@
 /// \file LegacyTradingProtocol.hpp
 /// \brief Defines helpers for the legacy named-pipe trading JSON protocol.
 
-#include "data/account.hpp"
-
 #include <algorithm>
 #include <cctype>
 #include <cstdint>

@@ -6,7 +6,7 @@
 /// \brief Includes named-pipe bridge headers.
 
 #include "BaseBridge.hpp"
-#include "utils/tasks.hpp"
+#include <optionx_cpp/utils/tasks.hpp>
 #include "named_pipe/LegacyTradingBridgeConfig.hpp"
 #include "named_pipe/detail/LegacyTradingProtocol.hpp"
 #include "named_pipe/LegacyTradingBridge.hpp"
