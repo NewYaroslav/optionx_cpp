@@ -189,6 +189,8 @@ namespace optionx::bridges::tradingview {
             if (server_thread.joinable() &&
                 server_thread.get_id() != std::this_thread::get_id()) {
                 server_thread.join();
+            } else if (server_thread.joinable()) {
+                server_thread.detach();
             }
             if (was_running) {
                 notify_status(BridgeStatus::SERVER_STOPPED);
@@ -288,6 +290,7 @@ namespace optionx::bridges::tradingview {
                 const TradingViewExtensionBridgeConfig& config) {
             SimpleWeb::CaseInsensitiveMultimap headers;
             headers.emplace("Content-Type", "application/json");
+            headers.emplace("Connection", "close");
             if (config.allow_cors) {
                 headers.emplace("Access-Control-Allow-Origin", config.allowed_origin);
                 headers.emplace("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -303,6 +306,7 @@ namespace optionx::bridges::tradingview {
                 SimpleWeb::StatusCode status,
                 nlohmann::json body,
                 const TradingViewExtensionBridgeConfig& config) {
+            response->close_connection_after_response = true;
             response->write(status, body.dump(), json_headers(config));
         }
 

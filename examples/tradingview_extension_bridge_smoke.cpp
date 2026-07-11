@@ -5,6 +5,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <csignal>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -12,11 +14,21 @@
 #include <string>
 #include <thread>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
 namespace {
 
 using optionx::bridges::tradingview::TradingViewExtensionBridge;
 using optionx::bridges::tradingview::TradingViewExtensionBridgeConfig;
 using HttpClient = SimpleWeb::Client<SimpleWeb::HTTP>;
+
+std::atomic_bool g_stop_requested{false};
+std::atomic_int g_interrupt_count{0};
 
 bool has_arg(int argc, char** argv, const std::string& value) {
     for (int i = 1; i < argc; ++i) {
@@ -97,10 +109,51 @@ nlohmann::json make_self_test_payload(const TradingViewExtensionBridgeConfig& co
     };
 }
 
+void request_stop_from_interrupt() {
+    const auto count = g_interrupt_count.fetch_add(1) + 1;
+    if (count == 1) {
+        g_stop_requested.store(true);
+        return;
+    }
+    std::_Exit(130);
+}
+
+#ifdef _WIN32
+BOOL WINAPI console_ctrl_handler(DWORD event_type) {
+    switch (event_type) {
+    case CTRL_C_EVENT:
+    case CTRL_BREAK_EVENT:
+    case CTRL_CLOSE_EVENT:
+    case CTRL_LOGOFF_EVENT:
+    case CTRL_SHUTDOWN_EVENT:
+        request_stop_from_interrupt();
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+#else
+void signal_handler(int) {
+    request_stop_from_interrupt();
+}
+#endif
+
+void install_stop_handlers() {
+    g_stop_requested.store(false);
+    g_interrupt_count.store(0);
+#ifdef _WIN32
+    SetConsoleCtrlHandler(console_ctrl_handler, TRUE);
+#else
+    std::signal(SIGINT, signal_handler);
+    std::signal(SIGTERM, signal_handler);
+#endif
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
     const bool self_test = has_arg(argc, argv, "--self-test");
+    install_stop_handlers();
     auto config = default_config(self_test);
     if (!load_config(option_value(argc, argv, "--config"), config)) {
         return 2;
@@ -178,8 +231,25 @@ int main(int argc, char** argv) {
     }
 
     std::cout << "Press Enter to stop...\n";
-    std::string line;
-    std::getline(std::cin, line);
+    std::atomic_bool input_done{false};
+    std::thread input_thread([&input_done]() {
+        std::string line;
+        std::getline(std::cin, line);
+        input_done.store(true);
+        g_stop_requested.store(true);
+    });
+
+    while (!g_stop_requested.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    if (input_thread.joinable()) {
+        if (input_done.load()) {
+            input_thread.join();
+        } else {
+            input_thread.detach();
+        }
+    }
     bridge.shutdown();
     return 0;
 }
