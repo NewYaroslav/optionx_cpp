@@ -334,6 +334,13 @@ Observed payload facts:
 - Do not decode the payload as UTF-8 text and do not infer trade fields from it
   until controlled fixtures identify which bytes correspond to direction,
   amount, expiration, martingale mode and symbol.
+- A controlled no-martingale fixture with amount `1.0` and expiration `5m`
+  produced two 224-byte payloads, one from the `3B 30 31 D5 ...` family and one
+  from the `67 27 75 95 ...` family. Repeating the test produced the same two
+  payloads in reversed order, so the pasted sample does not yet prove that a
+  timestamp is inside the payload. The two payloads differ in every 16-byte
+  block, so this fixture identifies two stable direction templates, but not the
+  BUY/SELL mapping unless the exact button-click order is recorded.
 
 Implementation notes:
 

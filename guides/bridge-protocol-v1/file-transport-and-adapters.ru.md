@@ -333,6 +333,13 @@ Observed payload facts:
 - Payload нельзя декодировать как UTF-8 text и нельзя выводить из него trade
   fields, пока controlled fixtures не покажут, какие bytes соответствуют
   direction, amount, expiration, martingale mode и symbol.
+- Controlled fixture без martingale, со ставкой `1.0` и expiration `5m`,
+  породил два 224-byte payloads: один из family `3B 30 31 D5 ...`, второй из
+  family `67 27 75 95 ...`. Повторный тест дал те же два payloads в обратном
+  порядке, поэтому pasted sample пока не доказывает, что timestamp находится
+  внутри payload. Эти два payload отличаются в каждом 16-byte block, значит
+  fixture выделяет две стабильные direction templates, но не дает BUY/SELL
+  mapping без точной фиксации порядка нажатия кнопок.
 
 Implementation notes:
 
