@@ -30,17 +30,22 @@ Default root:
 Recommended OptionX subdirectory:
 
 ```text
-%APPDATA%\MetaQuotes\Terminal\Common\Files\OptionX\Bridge\<bridge_id>\<client_id>\
+%APPDATA%\MetaQuotes\Terminal\Common\Files\OptionX\Bridge\v1\<bridge_id>\<client_id>\
 ```
 
 Recommended layout:
 
 ```text
-requests\      client -> bridge JSON-RPC commands
-responses\     bridge -> client JSON-RPC responses
-events\        bridge -> client JSON-RPC notifications
-archive\       optional processed-file retention
-errors\        optional malformed/unprocessable-file retention
+requests\ready\          client -> bridge JSON-RPC commands ready to claim
+requests\processing\     bridge-owned claimed request files
+requests\archive\        optional processed request retention
+requests\errors\         malformed/unprocessable request retention
+responses\ready\         bridge -> client JSON-RPC responses ready to claim
+responses\processing\    client-owned claimed response files
+events\ready\            bridge -> client JSON-RPC notifications ready to claim
+events\processing\       client-owned claimed event files
+archive\                 optional shared retention area
+errors\                  optional shared malformed/unprocessable-file retention
 ```
 
 The exact root may be configured because terminals, portable installations and
@@ -102,7 +107,7 @@ trade updates, balance updates and reports:
 ```json
 {
   "jsonrpc": "2.0",
-  "method": "account.balance.updated",
+  "method": "balance.updated",
   "params": {
     "event_id": "evt-019c...",
     "source": "optionx://installation-019c/bridge/file",
@@ -131,6 +136,8 @@ The file transport should support the same business methods as other
 transports, but the MVP should prioritize the methods that make MQL integration
 useful without HTTP:
 
+- `protocol.hello`
+- `protocol.capabilities.get`
 - `signal.submit`
 - `signal.buffers.submit`
 - `trade.open`
@@ -143,19 +150,24 @@ useful without HTTP:
 - `trading.pause`
 - `trading.resume`
 - `reports.query`
+- `events.subscribe`
+- `events.unsubscribe`
+- `events.subscriptions.list`
 
 This keeps the file API useful enough for real integrations: it can submit
 signals, open trades, ask whether an operation or trade is complete, read the
-current balance and inspect active/history snapshots.
+current balance, inspect active/history snapshots and discover the exact
+methods, limits and event topics supported by a reduced file-based bridge.
 
 ### Atomicity And Cleanup
 
 Writers must avoid exposing half-written files:
 
 1. Write to a temporary name in the same directory, for example
-   `request-id.json.tmp`.
+   `<unix_ms>_<file_uuid>.json.tmp`.
 2. Flush and close the file.
-3. Atomically rename it to a ready name, for example `request-id.json`.
+3. Atomically rename it into the `ready\` directory with its final name, for
+   example `<unix_ms>_<file_uuid>.json`.
 
 Consumers should claim a ready file by atomic rename into a processing name or
 processing directory. If a file is locked, the consumer should retry later
@@ -164,18 +176,31 @@ instead of treating it as malformed.
 Recommended filename pattern:
 
 ```text
-<unix_ms>_<client_id>_<request_id>_<method>.json
+<unix_ms>_<file_uuid>.json
 ```
 
 Rules:
 
 - File names should be ASCII and path-safe.
+- `file_uuid` is a transport-level identifier only. JSON-RPC correlation still
+  uses the `id` field inside the file content.
+- `id`, `method` and client identity are read from file content and bridge
+  configuration, not from the filename.
+- Writers should create final filenames with no-overwrite semantics.
 - File content is UTF-8 JSON. A BOM should not be required.
 - Multiline JSON is allowed for file messages, but compact JSON is easier for
   simple MQL readers.
 - `context.idempotency_key` is still required for trade-affecting commands.
 - `context.valid_until_ms` is strongly recommended because file polling can
   introduce delay.
+- Claimed request files older than `processing_lease_ms` should be recovered by
+  moving them back to `requests\ready\` or by processing them again. Reprocessing
+  is safe only when idempotency records are honored: the bridge must return the
+  original or current operation result instead of creating another trade.
+- Response and event consumers should claim files into `responses\processing\`
+  or `events\processing\`, store their local checkpoint, then delete or archive
+  the claimed files. Stale client-owned processing files may be restored after a
+  lease timeout.
 - The bridge should retain processed files for a configurable window before
   deleting or archiving them.
 - The bridge must not delete foreign or unknown files immediately. Unknown
@@ -192,13 +217,18 @@ directories. It should not require API keys inside JSON-RPC `params`.
 
 Recommended model:
 
-- The bridge config maps a watched directory to an authenticated client id and
+- Directory identity is authenticated only when OS permissions isolate the
+  writer. Otherwise file transport is a trusted-local-client profile inside the
+  same OS user boundary.
+- The bridge config maps a watched directory to a configured client id and
   permission scopes.
 - If a shared API key is needed, it is configured as transport metadata for
   that directory, not as a business field.
 - On Windows, directory ACLs should be used where possible to restrict writers.
 - Each client should get a separate directory when several advisors, terminals
   or tools run on the same machine.
+- For untrusted same-user processes, prefer named pipes with ACLs or another
+  transport with credential authentication.
 
 ### Polling And Replay
 
@@ -207,6 +237,18 @@ configured interval.
 
 Recommendations:
 
+- `events.subscribe`, `events.unsubscribe` and `events.subscriptions.list` are
+  valid file-transport requests. File subscriptions are durable and
+  client-scoped because there is no live socket session.
+- File subscription idempotency is scoped as:
+
+  ```text
+  configured client + method + client_subscription_key
+  ```
+
+- `events.subscribe` defines topics, filters and `replay.mode`, exactly as in
+  the general event contract. The bridge writes only the subscribed topics into
+  the client's `events\ready\` directory.
 - MQL clients should keep the last processed event filename or event
   `stream_id + seq`.
 - Bridges may emit event files in sequence order, but clients must deduplicate
@@ -214,7 +256,8 @@ Recommendations:
 - Durable replay can be represented by writing retained event notifications
   into `events\` before new live events.
 - `replay.completed` can also be written as a JSON-RPC control notification
-  file when the client requested replay.
+  file after retained replay events and before live events when the client
+  requested replay.
 
 ## Legacy Adapter Profiles
 
@@ -276,8 +319,21 @@ Mapping draft:
 | `order_type = SELL` | `PUT` |
 | `amount` | stake token |
 | `expiry.kind = duration` | `duration=<value>=s/m/h` |
-| `expiry.kind = absolute` | `endtime=<unix_seconds>=s/m/h` |
-| `unique_hash` | unique filename suffix or generated request id |
+| `expiry.kind = absolute` | `endtime=<unix_seconds>=s` |
+| `context.idempotency_key` | persisted adapter mapping to the exact BotBinary request or filename |
+| `identity.unique_hash` | external stable signal identity only when the suffix is known to represent one |
+
+The adapter must not generate a new BotBinary filename for a retry of the same
+OptionX `context.idempotency_key`. It should persist:
+
+```text
+OptionX idempotency_key -> exact BotBinary request/filename
+```
+
+The BotBinary filename suffix may be copied to `identity.unique_hash` only when
+it is confirmed to be a stable domain identity of the signal or trade. A suffix
+that merely makes one file unique is transport identity, not domain
+deduplication.
 
 ### MT2Trading File Signals
 
@@ -319,6 +375,12 @@ contract until the encoding is understood and tested.
 `mt2trade_tester` is an observed non-broker target for MT2Trading's strategy
 tester. In OptionX terms this should map closer to `source.kind = "backtest"`
 or `PlatformType::SIMULATOR` than to a live broker account.
+
+#### Non-Normative Research Notes
+
+The following MT2Trading notes are black-box research observations, not the
+OptionX wire contract. They must not be treated as normative behavior for live
+broker dispatch.
 
 Observed payload facts:
 
@@ -373,11 +435,11 @@ Observed payload facts:
   makes DES and unencrypted binary serialization much less likely.
 - AES-128 and AES-256 cannot be distinguished from the ciphertext alone because
   both use a 16-byte block size. The difference is only the key length.
-- If repeated fixtures confirm deterministic blocks, the adapter may not need
-  to decrypt the format for a compatibility mode. It could build explicit lookup
-  tables for known parameter values, for example `expiration=5m -> block 5 value`
-  and `expiration=7m -> block 5 value`, while keeping this mode disabled unless
-  the exact connector version is known.
+- Block lookup tables, if ever built, are research/tester-only artifacts. They
+  must never be enabled for live broker dispatch unless the connector version,
+  plaintext serialization, key derivation or key material, encryption mode,
+  padding, dynamic fields, integrity behavior and BUY/SELL mapping are fully
+  confirmed.
 
 Implementation notes:
 
@@ -393,17 +455,19 @@ Implementation notes:
 - The adapter should not truncate or delete lines immediately. If cleanup is
   enabled, it should keep a retention window to avoid racing MT2Trading, which
   also appears to clean consumed signals.
-- `unique_hash` can be derived from the full line or from a stable hash of the
-  opaque payload.
+- The opaque payload hash should be stored as metadata, for example
+  `metadata.opaque_payload_sha256`. Do not populate `identity.unique_hash` from
+  the opaque payload until fixtures prove that the same logical signal retry
+  maps to the same domain identity and different logical signals map to
+  different identities.
 - Result and balance support should be reported as unsupported unless a stable
   MT2Trading-readable source is identified.
 - Decoding or generating opaque payloads is a research task and should have
   fixture-based tests from captured samples before being enabled for trading.
 - If the adapter ever needs to generate MT2Trading payloads, the practical
-  research paths are: identify the key and serialization in the connector,
-  instrument the MQL side before `CryptEncode()` to capture `plain[]`, `key[]`
-  and `encrypted[]`, or test known key/serialization hypotheses against the
-  captured parameter-to-ciphertext fixtures.
+  research paths are controlled black-box fixtures, vendor documentation, or
+  authorized source-level instrumentation of code the integrator is allowed to
+  inspect. Without that, generation remains out of scope for live trading.
 - Useful fixture labels for the next research pass: target prefix, direction,
   symbol, amount, expiration, martingale mode, terminal version and connector
   version.

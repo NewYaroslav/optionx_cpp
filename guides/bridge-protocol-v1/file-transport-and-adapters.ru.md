@@ -31,17 +31,22 @@ Default root:
 Recommended OptionX subdirectory:
 
 ```text
-%APPDATA%\MetaQuotes\Terminal\Common\Files\OptionX\Bridge\<bridge_id>\<client_id>\
+%APPDATA%\MetaQuotes\Terminal\Common\Files\OptionX\Bridge\v1\<bridge_id>\<client_id>\
 ```
 
 Recommended layout:
 
 ```text
-requests\      client -> bridge JSON-RPC commands
-responses\     bridge -> client JSON-RPC responses
-events\        bridge -> client JSON-RPC notifications
-archive\       optional processed-file retention
-errors\        optional malformed/unprocessable-file retention
+requests\ready\          client -> bridge JSON-RPC commands ready to claim
+requests\processing\     bridge-owned claimed request files
+requests\archive\        optional processed request retention
+requests\errors\         malformed/unprocessable request retention
+responses\ready\         bridge -> client JSON-RPC responses ready to claim
+responses\processing\    client-owned claimed response files
+events\ready\            bridge -> client JSON-RPC notifications ready to claim
+events\processing\       client-owned claimed event files
+archive\                 optional shared retention area
+errors\                  optional shared malformed/unprocessable-file retention
 ```
 
 Точный root должен настраиваться, потому что terminals, portable installations
@@ -103,7 +108,7 @@ Events являются обычными JSON-RPC notifications, пишутся 
 ```json
 {
   "jsonrpc": "2.0",
-  "method": "account.balance.updated",
+  "method": "balance.updated",
   "params": {
     "event_id": "evt-019c...",
     "source": "optionx://installation-019c/bridge/file",
@@ -132,6 +137,8 @@ File transport должен поддерживать те же business methods,
 transports, но MVP стоит начинать с методов, которые делают MQL-интеграцию
 полезной без HTTP:
 
+- `protocol.hello`
+- `protocol.capabilities.get`
 - `signal.submit`
 - `signal.buffers.submit`
 - `trade.open`
@@ -144,19 +151,24 @@ transports, но MVP стоит начинать с методов, которы
 - `trading.pause`
 - `trading.resume`
 - `reports.query`
+- `events.subscribe`
+- `events.unsubscribe`
+- `events.subscriptions.list`
 
 Такой набор делает file API не слишком бедным: через него можно слать signals,
 открывать trades, узнавать завершение operation или trade, читать текущий
-balance и смотреть active/history snapshots.
+balance, смотреть active/history snapshots и узнавать точный список methods,
+limits и event topics, которые поддерживает урезанный file-based bridge.
 
 ### Atomicity И Cleanup
 
 Writers не должны показывать consumers недописанные файлы:
 
 1. Писать во временное имя в той же директории, например
-   `request-id.json.tmp`.
+   `<unix_ms>_<file_uuid>.json.tmp`.
 2. Flush и close file.
-3. Atomic rename в ready name, например `request-id.json`.
+3. Atomic rename в `ready\` directory с финальным именем, например
+   `<unix_ms>_<file_uuid>.json`.
 
 Consumers должны claim ready file через atomic rename в processing name или
 processing directory. Если файл locked, consumer должен повторить позже, а не
@@ -165,18 +177,32 @@ processing directory. Если файл locked, consumer должен повто
 Recommended filename pattern:
 
 ```text
-<unix_ms>_<client_id>_<request_id>_<method>.json
+<unix_ms>_<file_uuid>.json
 ```
 
 Rules:
 
 - File names должны быть ASCII и path-safe.
+- `file_uuid` это только transport-level identifier. JSON-RPC correlation всё
+  равно делается по полю `id` внутри file content.
+- `id`, `method` и client identity берутся из file content и bridge config, а
+  не из filename.
+- Writers должны создавать final filenames с no-overwrite semantics.
 - File content это UTF-8 JSON. BOM не должен быть обязательным.
 - Multiline JSON допустим для file messages, но compact JSON проще читать в
   небольших MQL clients.
 - `context.idempotency_key` всё равно обязателен для trade-affecting commands.
 - `context.valid_until_ms` strongly recommended, потому что file polling может
   добавлять задержку.
+- Claimed request files старше `processing_lease_ms` надо восстанавливать,
+  перенося назад в `requests\ready\`, или обрабатывать повторно. Повторная
+  обработка безопасна только если соблюдаются idempotency records: bridge
+  должен вернуть исходный или текущий operation result, а не создать ещё одну
+  сделку.
+- Consumers responses и events должны claim files в `responses\processing\` или
+  `events\processing\`, сохранять локальный checkpoint, затем удалять или
+  архивировать claimed files. Stale client-owned processing files можно
+  восстанавливать после lease timeout.
 - Bridge должен хранить processed files настраиваемое время перед удалением или
   archive.
 - Bridge не должен сразу удалять чужие или unknown files. Unknown files лучше
@@ -193,7 +219,10 @@ directories. Он не должен требовать API keys внутри JSO
 
 Recommended model:
 
-- Bridge config сопоставляет watched directory с authenticated client id и
+- Directory identity аутентифицирует клиента только если OS permissions
+  изолируют writer. Иначе file transport это trusted-local-client profile в
+  границах одного OS user.
+- Bridge config сопоставляет watched directory с configured client id и
   permission scopes.
 - Если нужен shared API key, он задаётся как transport metadata для этой
   директории, а не как business field.
@@ -201,6 +230,8 @@ Recommended model:
   writers.
 - Каждый client должен получать отдельную directory, если на одной машине
   работают несколько advisors, terminals или tools.
+- Для недоверенных same-user processes лучше использовать named pipes с ACLs
+  или другой transport с credential authentication.
 
 ### Polling И Replay
 
@@ -209,6 +240,18 @@ File transport не имеет live socket. Clients опрашивают `respon
 
 Recommendations:
 
+- `events.subscribe`, `events.unsubscribe` и `events.subscriptions.list`
+  являются валидными file-transport requests. File subscriptions durable и
+  client-scoped, потому что живой socket session отсутствует.
+- File subscription idempotency scoped так:
+
+  ```text
+  configured client + method + client_subscription_key
+  ```
+
+- `events.subscribe` задаёт topics, filters и `replay.mode` так же, как в общем
+  event contract. Bridge пишет в `events\ready\` клиента только subscribed
+  topics.
 - MQL clients должны хранить последний processed event filename или event
   `stream_id + seq`.
 - Bridges могут писать event files в sequence order, но clients всё равно
@@ -216,7 +259,8 @@ Recommendations:
 - Durable replay можно представить как запись retained event notifications в
   `events\` перед новыми live events.
 - `replay.completed` тоже может быть записан как JSON-RPC control notification
-  file, если client запросил replay.
+  file после retained replay events и перед live events, если client запросил
+  replay.
 
 ## Legacy Adapter Profiles
 
@@ -276,8 +320,21 @@ Mapping draft:
 | `order_type = SELL` | `PUT` |
 | `amount` | stake token |
 | `expiry.kind = duration` | `duration=<value>=s/m/h` |
-| `expiry.kind = absolute` | `endtime=<unix_seconds>=s/m/h` |
-| `unique_hash` | unique filename suffix или generated request id |
+| `expiry.kind = absolute` | `endtime=<unix_seconds>=s` |
+| `context.idempotency_key` | persisted adapter mapping на точный BotBinary request или filename |
+| `identity.unique_hash` | external stable signal identity только если suffix действительно обозначает его |
+
+Adapter не должен генерировать новый BotBinary filename при retry того же
+OptionX `context.idempotency_key`. Он должен сохранять:
+
+```text
+OptionX idempotency_key -> exact BotBinary request/filename
+```
+
+BotBinary filename suffix можно копировать в `identity.unique_hash` только если
+подтверждено, что это stable domain identity сигнала или сделки. Suffix,
+который просто делает один файл уникальным, это transport identity, а не domain
+deduplication.
 
 ### MT2Trading File Signals
 
@@ -318,6 +375,12 @@ encoding не понят и не покрыт тестами.
 `mt2trade_tester` это observed non-broker target для MT2Trading strategy tester.
 В терминах OptionX он ближе к `source.kind = "backtest"` или
 `PlatformType::SIMULATOR`, чем к live broker account.
+
+#### Non-Normative Research Notes
+
+Следующие MT2Trading notes являются black-box research observations, а не
+OptionX wire contract. Их нельзя считать normative behavior для live broker
+dispatch.
 
 Observed payload facts:
 
@@ -372,11 +435,11 @@ Observed payload facts:
   unencrypted binary serialization намного менее вероятными.
 - AES-128 и AES-256 нельзя различить по ciphertext alone, потому что оба
   используют 16-byte block size. Отличается только key length.
-- Если повторные fixtures подтвердят deterministic blocks, adapter может не
-  нуждаться в расшифровке формата для compatibility mode. Можно собрать явные
-  lookup tables для известных значений параметров, например
-  `expiration=5m -> block 5 value` и `expiration=7m -> block 5 value`, оставляя
-  такой режим выключенным, если точная connector version неизвестна.
+- Block lookup tables, если они когда-нибудь появятся, являются только
+  research/tester-only artifacts. Их нельзя включать для live broker dispatch,
+  пока полностью не подтверждены connector version, plaintext serialization,
+  key derivation или key material, encryption mode, padding, dynamic fields,
+  integrity behavior и BUY/SELL mapping.
 
 Implementation notes:
 
@@ -392,17 +455,19 @@ Implementation notes:
 - Adapter не должен truncate или delete lines immediately. Если cleanup
   включён, надо держать retention window, чтобы не race с MT2Trading, который,
   похоже, тоже чистит consumed signals.
-- `unique_hash` можно получать из полной строки или из stable hash opaque
-  payload.
+- Hash opaque payload надо хранить как metadata, например
+  `metadata.opaque_payload_sha256`. Не надо заполнять `identity.unique_hash` из
+  opaque payload, пока fixtures не докажут, что retry одного logical signal
+  даёт ту же domain identity, а разные logical signals дают разные identities.
 - Result и balance support должны отмечаться как unsupported, пока не найден
   stable MT2Trading-readable source.
 - Decoding или generation opaque payloads это research task; перед включением
   для trading нужны fixture-based tests на captured samples.
 - Если adapter когда-нибудь должен будет генерировать MT2Trading payloads,
-  практические research paths такие: найти key и serialization в connector,
-  инструментировать MQL-сторону до `CryptEncode()` и снять `plain[]`, `key[]`,
-  `encrypted[]`, либо проверять known key/serialization hypotheses на captured
-  parameter-to-ciphertext fixtures.
+  практические research paths это controlled black-box fixtures, vendor
+  documentation или authorized source-level instrumentation кода, который
+  integrator имеет право inspect. Без этого generation остаётся out of scope
+  для live trading.
 - Полезные fixture labels для следующего research pass: target prefix,
   direction, symbol, amount, expiration, martingale mode, terminal version и
   connector version.
