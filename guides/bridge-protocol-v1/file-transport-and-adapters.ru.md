@@ -335,11 +335,11 @@ Observed payload facts:
   direction, amount, expiration, martingale mode и symbol.
 - Controlled fixture без martingale, со ставкой `1.0` и expiration `5m`,
   породил два 224-byte payloads: один из family `3B 30 31 D5 ...`, второй из
-  family `67 27 75 95 ...`. Повторный тест дал те же два payloads в обратном
-  порядке, поэтому pasted sample пока не доказывает, что timestamp находится
-  внутри payload. Эти два payload отличаются в каждом 16-byte block, значит
-  fixture выделяет две стабильные direction templates, но не дает BUY/SELL
-  mapping без точной фиксации порядка нажатия кнопок.
+  family `67 27 75 95 ...`. Повторный тест спустя время дал те же два payloads,
+  поэтому этот fixture не показывает меняющийся timestamp внутри payload. Эти
+  два payload отличаются в каждом 16-byte block, значит fixture выделяет две
+  стабильные direction templates, но не дает BUY/SELL mapping без точной
+  фиксации порядка нажатия кнопок.
 
 Implementation notes:
 
