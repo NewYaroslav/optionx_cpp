@@ -266,15 +266,21 @@ snapshot, not only a patch, unless the event explicitly declares
 `replay.completed` is a control notification, not a domain event-log entry. It
 does not consume an event stream `seq` and does not need to be persisted in the
 event log. It marks the boundary between replayed retained events and live
-events:
+events. It is a JSON-RPC notification, so it has no `id`, no `event_id` and no
+event-envelope `stream_id + seq`; it is sent immediately before the first live
+event:
 
 ```json
 {
-  "event_subscription_id": "evt-sub-1",
-  "last_replayed_seq": 1841,
-  "live_from": {
-    "stream_id": "bridge-instance-019c...",
-    "seq": 1842
+  "jsonrpc": "2.0",
+  "method": "replay.completed",
+  "params": {
+    "event_subscription_id": "evt-sub-1",
+    "last_replayed_seq": 1841,
+    "live_from": {
+      "stream_id": "bridge-instance-019c...",
+      "seq": 1842
+    }
   }
 }
 ```

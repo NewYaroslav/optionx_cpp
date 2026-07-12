@@ -266,15 +266,21 @@ clients должны дедуплицировать по `source + event_id`.
 
 `replay.completed` является control notification, а не domain event-log entry.
 Он не занимает event stream `seq` и не обязан сохраняться в event log. Он
-отмечает границу между retained replay events и live events:
+отмечает границу между retained replay events и live events. Это JSON-RPC
+notification, поэтому у него нет `id`, нет `event_id` и нет event-envelope
+`stream_id + seq`; он отправляется прямо перед первым live event:
 
 ```json
 {
-  "event_subscription_id": "evt-sub-1",
-  "last_replayed_seq": 1841,
-  "live_from": {
-    "stream_id": "bridge-instance-019c...",
-    "seq": 1842
+  "jsonrpc": "2.0",
+  "method": "replay.completed",
+  "params": {
+    "event_subscription_id": "evt-sub-1",
+    "last_replayed_seq": 1841,
+    "live_from": {
+      "stream_id": "bridge-instance-019c...",
+      "seq": 1842
+    }
   }
 }
 ```
