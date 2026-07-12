@@ -209,6 +209,8 @@ HTTP:
 - `GET /api/v1/bridge/health` возвращает transport health.
 - Будущий HTTP event stream может экспортировать Server-Sent Events, но для v1
   достаточно polling через query commands.
+- REST convenience API может дублировать частые commands для простых клиентов,
+  которым неудобно или невозможно собирать JSON-RPC envelopes.
 
 WebSocket:
 
@@ -230,6 +232,112 @@ Named Pipe:
   integrations.
 - Subscribed events можно отправлять connected pipe clients как JSON-RPC
   notifications.
+
+### REST Convenience API
+
+JSON-RPC surface является каноническим HTTP command API. Bridge также может
+экспортировать REST-style endpoints, которые one-to-one мапятся на JSON-RPC
+methods. Это нужно для простых клиентов вроде curl, MQL scripts, browser
+bookmarks, no-code tools и legacy integrations, которые умеют только вызвать URL
+с query parameters.
+
+Правила:
+
+- REST endpoints должны производить те же normalized domain payloads, что и
+  JSON-RPC.
+- REST responses должны переиспользовать тот же `result` shape, что и
+  соответствующий JSON-RPC method.
+- Query-string writes разрешены только для явно включенных local или trusted
+  deployments, потому что URLs часто логируются browsers, proxies и servers.
+- State-changing REST calls должны предпочитать `POST`. `GET` write shortcuts -
+  compatibility feature и должны быть выключены по умолчанию в production
+  profiles.
+- Decimal и ID compatibility rules такие же, как для JSON-RPC: requests могут
+  использовать простые query values, responses используют canonical strings.
+- Authentication должна использовать transport headers, bearer tokens, mTLS,
+  local-only binding или другой transport mechanism; secrets не должны быть
+  обязательными в query strings.
+
+Предлагаемые endpoints:
+
+| REST endpoint | Method | Maps to |
+| --- | --- | --- |
+| `/api/v1/bridge/health` | `GET` | transport health |
+| `/api/v1/trades/open` | `POST` | `trade.open` |
+| `/api/v1/trades/open/simple` | `GET` | `trade.open` shortcut |
+| `/api/v1/signals/submit` | `POST` | `signal.submit` |
+| `/api/v1/signals/submit/simple` | `GET` | `signal.submit` shortcut |
+| `/api/v1/operations/{operation_id}` | `GET` | `operation.get` |
+| `/api/v1/trades/{trade_id}` | `GET` | `trade.result.get` |
+| `/api/v1/trades/active` | `GET` | `trade.active.query` |
+| `/api/v1/trades/history` | `GET` | `trade.history.query` |
+| `/api/v1/accounts` | `GET` | `account.list` |
+| `/api/v1/accounts/{account_id}/balance` | `GET` | `account.balance.get` |
+| `/api/v1/trading/pause` | `POST` | `trading.pause` |
+| `/api/v1/trading/resume` | `POST` | `trading.resume` |
+| `/api/v1/reports` | `GET` | `reports.query` |
+
+Пример body для `POST /api/v1/trades/open`:
+
+```json
+{
+  "protocol_version": "draft",
+  "context": {
+    "idempotency_key": "manual:client-trade-1",
+    "valid_until_ms": 1783476725000
+  },
+  "routing": {
+    "selector": {
+      "kind": "account",
+      "account_id": "1"
+    }
+  },
+  "trade": {
+    "symbol": "EURUSD",
+    "order_type": "BUY",
+    "option_type": "SPRINT",
+    "amount": "10.00",
+    "expiry": {
+      "kind": "duration",
+      "duration_ms": 60000
+    },
+    "min_payout": "0.75"
+  }
+}
+```
+
+Пример `GET` shortcut:
+
+```text
+GET /api/v1/trades/open/simple?symbol=EURUSD&order_type=BUY&amount=10.00&duration_ms=60000&account_id=1&idempotency_key=manual%3Aclient-trade-1
+```
+
+Shortcut query mapping:
+
+- `symbol` -> `trade.symbol` или `signal.symbol`
+- `order_type` / `action` -> `BUY` или `SELL`
+- `option_type` -> `SPRINT`, `CLASSIC` и т.д.
+- `amount` -> `trade.amount` или `sizing.amount`
+- `balance_percent` -> `sizing.balance_percent`
+- `duration_ms` -> `expiry.kind = "duration"`
+- `expires_at_ms` -> `expiry.kind = "absolute"`
+- `account_id` -> `routing.selector.kind = "account"`
+- `platform_type` -> `routing.platform_type`
+- `min_payout`, `refund` -> trade/signal payout constraints
+- `signal_name`, `unique_hash`, `idempotency_key`, `comment` -> identity/context
+- Unknown query parameters should be rejected unless they use an agreed
+  `metadata.` or `extensions.` prefix.
+
+REST status mapping:
+
+- `200 OK`: completed synchronously или query succeeded.
+- `202 Accepted`: accepted for asynchronous processing.
+- `400 Bad Request`: malformed request или unsupported query shortcut.
+- `401 Unauthorized` / `403 Forbidden`: authentication или authorization failed.
+- `409 Conflict`: idempotency conflict.
+- `422 Unprocessable Content`: valid syntax, но invalid trading parameters.
+- `429 Too Many Requests`: rate limit.
+- `503 Service Unavailable`: bridge/platform temporarily unavailable.
 
 ## Общие Объекты
 

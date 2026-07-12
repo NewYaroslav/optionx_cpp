@@ -205,6 +205,8 @@ HTTP:
 - `GET /api/v1/bridge/health` returns transport health.
 - A future HTTP event stream may expose Server-Sent Events, but polling via
   query commands is enough for v1.
+- A REST convenience API may duplicate common commands for simple clients that
+  cannot or should not construct JSON-RPC envelopes.
 
 WebSocket:
 
@@ -224,6 +226,110 @@ Named Pipe:
   integrations.
 - Subscribed events can be sent to connected pipe clients as JSON-RPC
   notifications.
+
+### REST Convenience API
+
+The JSON-RPC surface is the canonical HTTP command API. A bridge may also expose
+REST-style endpoints that map one-to-one to JSON-RPC methods. This is intended
+for simple clients such as curl, MQL scripts, browser bookmarks, no-code tools
+and legacy integrations that can only call a URL with query parameters.
+
+Rules:
+
+- REST endpoints must produce the same normalized domain payloads as JSON-RPC.
+- REST responses should reuse the same `result` shape as the corresponding
+  JSON-RPC method.
+- Query-string writes are allowed only for explicitly enabled local or trusted
+  deployments, because URLs are commonly logged by browsers, proxies and
+  servers.
+- State-changing REST calls should prefer `POST`. `GET` write shortcuts are a
+  compatibility feature and must be disabled by default in production profiles.
+- Decimal and ID compatibility rules are the same as for JSON-RPC: requests may
+  use simple query values, while responses use canonical strings.
+- Authentication must use transport headers, bearer tokens, mTLS, local-only
+  binding or another transport mechanism; secrets must not be required in query
+  strings.
+
+Suggested endpoints:
+
+| REST endpoint | Method | Maps to |
+| --- | --- | --- |
+| `/api/v1/bridge/health` | `GET` | transport health |
+| `/api/v1/trades/open` | `POST` | `trade.open` |
+| `/api/v1/trades/open/simple` | `GET` | `trade.open` shortcut |
+| `/api/v1/signals/submit` | `POST` | `signal.submit` |
+| `/api/v1/signals/submit/simple` | `GET` | `signal.submit` shortcut |
+| `/api/v1/operations/{operation_id}` | `GET` | `operation.get` |
+| `/api/v1/trades/{trade_id}` | `GET` | `trade.result.get` |
+| `/api/v1/trades/active` | `GET` | `trade.active.query` |
+| `/api/v1/trades/history` | `GET` | `trade.history.query` |
+| `/api/v1/accounts` | `GET` | `account.list` |
+| `/api/v1/accounts/{account_id}/balance` | `GET` | `account.balance.get` |
+| `/api/v1/trading/pause` | `POST` | `trading.pause` |
+| `/api/v1/trading/resume` | `POST` | `trading.resume` |
+| `/api/v1/reports` | `GET` | `reports.query` |
+
+Example `POST /api/v1/trades/open` body:
+
+```json
+{
+  "protocol_version": "draft",
+  "context": {
+    "idempotency_key": "manual:client-trade-1",
+    "valid_until_ms": 1783476725000
+  },
+  "routing": {
+    "selector": {
+      "kind": "account",
+      "account_id": "1"
+    }
+  },
+  "trade": {
+    "symbol": "EURUSD",
+    "order_type": "BUY",
+    "option_type": "SPRINT",
+    "amount": "10.00",
+    "expiry": {
+      "kind": "duration",
+      "duration_ms": 60000
+    },
+    "min_payout": "0.75"
+  }
+}
+```
+
+Example `GET` shortcut:
+
+```text
+GET /api/v1/trades/open/simple?symbol=EURUSD&order_type=BUY&amount=10.00&duration_ms=60000&account_id=1&idempotency_key=manual%3Aclient-trade-1
+```
+
+Shortcut query mapping:
+
+- `symbol` -> `trade.symbol` or `signal.symbol`
+- `order_type` / `action` -> `BUY` or `SELL`
+- `option_type` -> `SPRINT`, `CLASSIC`, etc.
+- `amount` -> `trade.amount` or `sizing.amount`
+- `balance_percent` -> `sizing.balance_percent`
+- `duration_ms` -> `expiry.kind = "duration"`
+- `expires_at_ms` -> `expiry.kind = "absolute"`
+- `account_id` -> `routing.selector.kind = "account"`
+- `platform_type` -> `routing.platform_type`
+- `min_payout`, `refund` -> trade/signal payout constraints
+- `signal_name`, `unique_hash`, `idempotency_key`, `comment` -> identity/context
+- Unknown query parameters should be rejected unless they use an agreed
+  `metadata.` or `extensions.` prefix.
+
+REST status mapping:
+
+- `200 OK`: completed synchronously or query succeeded.
+- `202 Accepted`: accepted for asynchronous processing.
+- `400 Bad Request`: malformed request or unsupported query shortcut.
+- `401 Unauthorized` / `403 Forbidden`: authentication or authorization failed.
+- `409 Conflict`: idempotency conflict.
+- `422 Unprocessable Content`: valid syntax but invalid trading parameters.
+- `429 Too Many Requests`: rate limit.
+- `503 Service Unavailable`: bridge/platform temporarily unavailable.
 
 ## Shared Objects
 
