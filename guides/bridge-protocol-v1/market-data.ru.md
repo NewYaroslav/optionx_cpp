@@ -92,6 +92,16 @@ Live subscription request:
 создание subscription retry-safe. Повторный `market_data.unsubscribe` для уже
 удаленной subscription должен быть успешным no-op.
 
+`market_data.subscribe` следует тем же retry-scope rules, что и
+`events.subscribe`. Для default session-scoped subscriptions retry scope равен
+`authenticated client + session_id + method + key`, поэтому новая session
+создает новую subscription. Durable subscriptions могут не включать
+`session_id` в scope и повторно привязывать reconnecting client к существующей
+subscription. Тот же key плюс тот же normalized request возвращает существующую
+subscription в текущем scope; тот же key плюс другой request возвращает
+`idempotency_conflict`, если не используется будущий явный subscription-update
+contract.
+
 `stream.kind` values:
 
 - `ticks`: подписка на tick updates.

@@ -136,7 +136,7 @@ When replay is requested and available, the event order is:
 
 ```text
 retained replay events
--> events.replay.completed
+-> replay.completed control notification
 -> live events
 ```
 
@@ -253,7 +253,6 @@ Suggested event names:
 - `trading.status`
 - `bridge.status`
 - `report.created`
-- `events.replay.completed`
 - `market_data.tick`
 - `market_data.bar`
 - `market_data.prefill.completed`
@@ -264,13 +263,14 @@ Suggested event names:
 snapshot, not only a patch, unless the event explicitly declares
 `patch: true`.
 
-`events.replay.completed` marks the boundary between replayed retained events
-and live events:
+`replay.completed` is a control notification, not a domain event-log entry. It
+does not consume an event stream `seq` and does not need to be persisted in the
+event log. It marks the boundary between replayed retained events and live
+events:
 
 ```json
 {
   "event_subscription_id": "evt-sub-1",
-  "stream_id": "bridge-instance-019c...",
   "last_replayed_seq": 1841,
   "live_from": {
     "stream_id": "bridge-instance-019c...",

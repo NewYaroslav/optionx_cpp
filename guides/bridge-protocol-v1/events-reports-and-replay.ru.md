@@ -136,7 +136,7 @@ Known `replay.mode` values:
 
 ```text
 retained replay events
--> events.replay.completed
+-> replay.completed control notification
 -> live events
 ```
 
@@ -255,7 +255,6 @@ clients должны дедуплицировать по `source + event_id`.
 - `trading.status`
 - `bridge.status`
 - `report.created`
-- `events.replay.completed`
 - `market_data.tick`
 - `market_data.bar`
 - `market_data.prefill.completed`
@@ -265,13 +264,13 @@ clients должны дедуплицировать по `source + event_id`.
 `trade.updated` и `trade.result.updated` должны нести полный result snapshot, а
 не только patch, если event явно не объявляет `patch: true`.
 
-`events.replay.completed` отмечает границу между retained replay events и live
-events:
+`replay.completed` является control notification, а не domain event-log entry.
+Он не занимает event stream `seq` и не обязан сохраняться в event log. Он
+отмечает границу между retained replay events и live events:
 
 ```json
 {
   "event_subscription_id": "evt-sub-1",
-  "stream_id": "bridge-instance-019c...",
   "last_replayed_seq": 1841,
   "live_from": {
     "stream_id": "bridge-instance-019c...",

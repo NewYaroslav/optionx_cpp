@@ -174,6 +174,16 @@ The protocol uses three independent identifier families:
 - For fan-out commands, the key applies to the whole logical fan-out operation,
   not to each target account independently.
 
+Idempotency lookup order for trade-affecting commands:
+
+1. Validate the envelope, authentication and idempotency key shape.
+2. Look up an existing idempotency record.
+3. If an identical operation exists, return its original/current result even if
+   the new retry arrives after `valid_until_ms`.
+4. Only for a new operation, validate `valid_until_ms`.
+5. Check `valid_until_ms` again immediately before irreversible broker/platform
+   dispatch.
+
 Payload identity for idempotency is computed after protocol normalization:
 
 - enum aliases are normalized to canonical enum values;

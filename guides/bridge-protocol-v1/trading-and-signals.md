@@ -294,7 +294,8 @@ Known operation states:
 - `accepted`: command accepted for processing.
 - `processing`: bridge/application is working on it.
 - `completed`: all targets completed successfully.
-- `partially_completed`: some fan-out targets succeeded and some failed.
+- `partially_completed`: some targets succeeded and at least one other target
+  ended in a non-success terminal state.
 - `rejected`: valid command rejected by business logic.
 - `failed`: processing failed unexpectedly.
 - `cancelled`: operation was cancelled before completion.

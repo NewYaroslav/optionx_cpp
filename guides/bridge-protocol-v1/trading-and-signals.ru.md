@@ -297,7 +297,8 @@ Long-running commands возвращают `operation_id`. Это отделяе
 - `accepted`: command принята в обработку.
 - `processing`: bridge/application ее обрабатывает.
 - `completed`: все targets завершены успешно.
-- `partially_completed`: часть fan-out targets успешна, часть failed.
+- `partially_completed`: часть targets успешна, и хотя бы один другой target
+  завершился non-success terminal state.
 - `rejected`: valid command отклонена бизнес-логикой.
 - `failed`: processing неожиданно failed.
 - `cancelled`: operation отменена до completion.

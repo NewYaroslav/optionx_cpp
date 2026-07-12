@@ -176,6 +176,16 @@ encoding fields, должен быть `-32602 invalid params`.
 - Для fan-out команд ключ относится ко всей логической fan-out операции, а не
   к каждому target account отдельно.
 
+Порядок idempotency lookup для trade-affecting commands:
+
+1. Валидировать envelope, authentication и форму idempotency key.
+2. Найти существующую idempotency record.
+3. Если identical operation уже существует, вернуть ее original/current result,
+   даже если новый retry пришел после `valid_until_ms`.
+4. Только для новой operation валидировать `valid_until_ms`.
+5. Проверить `valid_until_ms` еще раз прямо перед необратимой отправкой
+   broker/platform.
+
 Payload identity для idempotency вычисляется после protocol normalization:
 
 - enum aliases нормализуются в canonical enum values;
