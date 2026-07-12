@@ -340,6 +340,16 @@ Observed payload facts:
   два payload отличаются в каждом 16-byte block, значит fixture выделяет две
   стабильные direction templates, но не дает BUY/SELL mapping без точной
   фиксации порядка нажатия кнопок.
+- Reported controlled comparison при изменении expiration с `5m` на `7m`
+  поменял ровно один 16-byte block в обеих direction families: block 5, byte
+  offset `0x50..0x5F` / decimal bytes `80..95`. Остальные 208 bytes в 224-byte
+  payload остались идентичными. Это сильно похоже на independently encoded
+  parameter blocks, а не на один CBC-like stream поверх всего payload.
+- Если повторные fixtures подтвердят deterministic blocks, adapter может не
+  нуждаться в расшифровке формата для compatibility mode. Можно собрать явные
+  lookup tables для известных значений параметров, например
+  `expiration=5m -> block 5 value` и `expiration=7m -> block 5 value`, оставляя
+  такой режим выключенным, если точная connector version неизвестна.
 
 Implementation notes:
 
@@ -364,6 +374,10 @@ Implementation notes:
 - Полезные fixture labels для следующего research pass: target prefix,
   direction, symbol, amount, expiration, martingale mode, terminal version и
   connector version.
+- Полезные следующие fixtures: повторить `5m`, `7m` и еще одну duration при
+  фиксированных остальных параметрах; повторить тот же BUY дважды и тот же SELL
+  дважды с очисткой файла между кликами; затем менять amount и martingale mode
+  по одному.
 
 ## Open Questions
 

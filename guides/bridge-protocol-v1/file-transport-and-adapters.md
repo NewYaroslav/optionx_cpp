@@ -341,6 +341,16 @@ Observed payload facts:
   payload. The two payloads differ in every 16-byte block, so this fixture
   identifies two stable direction templates, but not the BUY/SELL mapping unless
   the exact button-click order is recorded.
+- A reported controlled comparison from expiration `5m` to `7m` changed exactly
+  one 16-byte block in both direction families: block 5, byte offset
+  `0x50..0x5F` / decimal bytes `80..95`. All other 208 bytes in the 224-byte
+  payload stayed identical. This strongly suggests independently encoded
+  parameter blocks rather than one CBC-like stream over the whole payload.
+- If repeated fixtures confirm deterministic blocks, the adapter may not need
+  to decrypt the format for a compatibility mode. It could build explicit lookup
+  tables for known parameter values, for example `expiration=5m -> block 5 value`
+  and `expiration=7m -> block 5 value`, while keeping this mode disabled unless
+  the exact connector version is known.
 
 Implementation notes:
 
@@ -365,6 +375,9 @@ Implementation notes:
 - Useful fixture labels for the next research pass: target prefix, direction,
   symbol, amount, expiration, martingale mode, terminal version and connector
   version.
+- Useful next fixtures: repeat `5m`, `7m` and another duration with all other
+  parameters fixed; repeat the same BUY twice and the same SELL twice with file
+  cleanup between clicks; then change amount and martingale mode one at a time.
 
 ## Open Questions
 
