@@ -283,6 +283,14 @@ Named Pipe:
 - Subscribed events можно отправлять connected pipe clients как JSON-RPC
   notifications.
 
+File Drop:
+
+- File-drop transport привязывает те же JSON-RPC business methods к request,
+  response и event files, в первую очередь для MT4/MT5 integrations, где нельзя
+  удобно поставлять sockets или HTTP servers.
+- Подробный file layout, atomic write rules и legacy adapter profiles описаны в
+  [File Transport И Legacy Adapters](file-transport-and-adapters.ru.md).
+
 ### Auth And Permissions
 
 MVP authentication может быть статическим API key, настроенным в local bridge.
