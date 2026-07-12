@@ -1,0 +1,60 @@
+//@version=6
+indicator("OptionX Noisy Test Lifecycle", overlay=true)
+
+rsi_len = input.int(3, "RSI Length")
+level = input.float(50.0, "RSI Center Level")
+
+r = ta.rsi(close, rsi_len)
+
+rawBuy = ta.crossover(r, level)
+rawSell = ta.crossunder(r, level)
+
+makeSignalId(string side) =>
+    syminfo.tickerid + "|" + timeframe.period + "|" + str.tostring(time) + "|" + side
+
+makeMessage(string side, string stateValue, int revision) =>
+    '{"source":"tradingview","signal_name":"noisy_rsi_lifecycle_test","signal_id":"' + makeSignalId(side) + '","revision":' + str.tostring(revision) + ',"action":"' + side + '","state":"' + stateValue + '","symbol":"' + syminfo.ticker + '","tickerid":"' + syminfo.tickerid + '","timeframe":"' + timeframe.period + '","price":' + str.tostring(close, format.mintick) + ',"bar_time":' + str.tostring(time) + ',"event_time":' + str.tostring(timenow) + '}'
+
+// varip keeps state across realtime updates of the same open bar.
+varip bool buyActive = false
+varip bool sellActive = false
+varip int buyRevision = 0
+varip int sellRevision = 0
+
+if barstate.isnew
+    buyActive := false
+    sellActive := false
+    buyRevision := 0
+    sellRevision := 0
+
+if barstate.isrealtime
+    if not barstate.isconfirmed
+        if rawBuy != buyActive
+            buyActive := rawBuy
+            buyRevision += 1
+            alert(makeMessage("buy", buyActive ? "active" : "cancel", buyRevision), alert.freq_all)
+
+        if rawSell != sellActive
+            sellActive := rawSell
+            sellRevision += 1
+            alert(makeMessage("sell", sellActive ? "active" : "cancel", sellRevision), alert.freq_all)
+    else
+        if rawBuy
+            buyRevision += 1
+            alert(makeMessage("buy", "confirmed", buyRevision), alert.freq_all)
+        else if buyActive
+            buyRevision += 1
+            alert(makeMessage("buy", "cancel", buyRevision), alert.freq_all)
+
+        if rawSell
+            sellRevision += 1
+            alert(makeMessage("sell", "confirmed", sellRevision), alert.freq_all)
+        else if sellActive
+            sellRevision += 1
+            alert(makeMessage("sell", "cancel", sellRevision), alert.freq_all)
+
+        buyActive := rawBuy
+        sellActive := rawSell
+
+plotshape(rawBuy and barstate.isconfirmed, title="BUY confirmed", text="BUY", style=shape.triangleup, location=location.belowbar, size=size.tiny)
+plotshape(rawSell and barstate.isconfirmed, title="SELL confirmed", text="SELL", style=shape.triangledown, location=location.abovebar, size=size.tiny)

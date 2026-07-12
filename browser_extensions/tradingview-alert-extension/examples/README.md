@@ -66,3 +66,42 @@ Expected differences:
 
 Until this variant is captured from the private WebSocket, treat `alert()` as
 the confirmed path for indicator signal JSON.
+
+## `optionx_noisy_test_lifecycle.pine`
+
+Developer fixture for the optional signal lifecycle protocol. It uses the same
+RSI crossing idea, but sends state transitions instead of a single fire-and-
+forget command:
+
+```json
+{
+  "signal_id": "CRYPTO:BTCUSD|1|1783772160000|sell",
+  "revision": 2,
+  "action": "sell",
+  "state": "active"
+}
+```
+
+`state` values:
+
+- `active`: the condition appeared on the open realtime bar;
+- `cancel`: the condition disappeared before the bar closed;
+- `confirmed`: the condition survived until the bar close.
+
+`signal_id` is stable for one direction on one bar:
+
+```text
+tickerid|timeframe|bar_time|action
+```
+
+`revision` increments whenever that signal state changes. The bridge can use
+`signal_id + state + revision` as an idempotent event identity.
+
+Create the TradingView alert with Condition set to
+`OptionX Noisy Test Lifecycle` -> `Any alert() function call`. The script uses
+`alert.freq_all` intentionally; otherwise TradingView may suppress `cancel` or
+`confirmed` messages after an earlier `active` message on the same bar.
+
+This protocol is optional. Ordinary users can use
+`optionx_noisy_test_signals.pine`; lifecycle is for script authors who want the
+bridge to distinguish tentative, cancelled and confirmed signals explicitly.

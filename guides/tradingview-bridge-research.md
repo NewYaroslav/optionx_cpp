@@ -335,6 +335,10 @@ Custom Pine scripts can optionally implement a lifecycle protocol:
 
 This is not required for ordinary users. When present, the bridge treats
 `cancel` as non-tradeable and `confirmed` as a confirmed signal state.
+The full Pine fixture is saved at
+`browser_extensions/tradingview-alert-extension/examples/optionx_noisy_test_lifecycle.pine`.
+It uses `alert.freq_all` so TradingView can deliver multiple lifecycle events
+for the same realtime bar.
 
 Extraction contract for this private API mode:
 

@@ -170,7 +170,8 @@ early in the bar a signal can be accepted.
 
 Custom Pine scripts can optionally send lifecycle messages with `state` set to
 `active`, `cancel`, or `confirmed`. The bridge treats `cancel` as non-tradeable
-and can treat `confirmed` as a confirmed signal.
+and can treat `confirmed` as a confirmed signal. See
+`examples/optionx_noisy_test_lifecycle.pine` for a complete Pine fixture.
 
 ## Trigger vocabulary
 
@@ -235,8 +236,13 @@ This is useful for:
 - validating local duplicate suppression when the same signal appears in more
   than one study update.
 
-See `examples/README.md` for TradingView setup steps and the separate
-`alertcondition()` comparison fixture.
+`examples/optionx_noisy_test_lifecycle.pine` demonstrates the optional
+developer protocol with `signal_id`, `revision` and
+`state: active|cancel|confirmed`. It uses `alert.freq_all` so TradingView can
+deliver multiple state changes on the same realtime bar.
+
+See `examples/README.md` for TradingView setup steps, lifecycle notes and the
+separate `alertcondition()` comparison fixture.
 
 ## Local Payload
 
