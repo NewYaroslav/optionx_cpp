@@ -320,6 +320,21 @@ contract until the encoding is understood and tested.
 tester. In OptionX terms this should map closer to `source.kind = "backtest"`
 or `PlatformType::SIMULATOR` than to a live broker account.
 
+Observed payload facts:
+
+- The payload is Base16/hex text, not Base64. It uses only `0-9A-F`, has even
+  length, and each two characters decode to one byte.
+- Captured samples include decoded lengths of 224, 240 and 256 bytes.
+- The first bytes currently form two repeated payload families, for example
+  `67 27 75 95 ...` and `3B 30 31 D5 ...`. These may correspond to different
+  signal/action templates, but the mapping is not proven by the current logs.
+- Within the same family and byte length, changes tend to affect 16-byte
+  blocks. This suggests a block-oriented encoding or encryption layer rather
+  than plain text.
+- Do not decode the payload as UTF-8 text and do not infer trade fields from it
+  until controlled fixtures identify which bytes correspond to direction,
+  amount, expiration, martingale mode and symbol.
+
 Implementation notes:
 
 - Treat MT2Trading support as a separate compatibility adapter, for example
@@ -340,6 +355,9 @@ Implementation notes:
   MT2Trading-readable source is identified.
 - Decoding or generating opaque payloads is a research task and should have
   fixture-based tests from captured samples before being enabled for trading.
+- Useful fixture labels for the next research pass: target prefix, direction,
+  symbol, amount, expiration, martingale mode, terminal version and connector
+  version.
 
 ## Open Questions
 

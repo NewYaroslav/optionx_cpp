@@ -319,6 +319,21 @@ encoding не понят и не покрыт тестами.
 В терминах OptionX он ближе к `source.kind = "backtest"` или
 `PlatformType::SIMULATOR`, чем к live broker account.
 
+Observed payload facts:
+
+- Payload это Base16/hex text, а не Base64. Он использует только `0-9A-F`,
+  имеет четную длину, и каждые два символа декодируются в один byte.
+- В captured samples встречаются decoded lengths 224, 240 и 256 bytes.
+- Первые bytes сейчас образуют две повторяющиеся payload families, например
+  `67 27 75 95 ...` и `3B 30 31 D5 ...`. Возможно, они соответствуют разным
+  signal/action templates, но текущие логи этого еще не доказывают.
+- Внутри одной family и byte length изменения обычно затрагивают 16-byte
+  blocks. Это похоже на block-oriented encoding или encryption layer, а не на
+  plain text.
+- Payload нельзя декодировать как UTF-8 text и нельзя выводить из него trade
+  fields, пока controlled fixtures не покажут, какие bytes соответствуют
+  direction, amount, expiration, martingale mode и symbol.
+
 Implementation notes:
 
 - MT2Trading support должен быть отдельным compatibility adapter, например
@@ -339,6 +354,9 @@ Implementation notes:
   stable MT2Trading-readable source.
 - Decoding или generation opaque payloads это research task; перед включением
   для trading нужны fixture-based tests на captured samples.
+- Полезные fixture labels для следующего research pass: target prefix,
+  direction, symbol, amount, expiration, martingale mode, terminal version и
+  connector version.
 
 ## Open Questions
 
