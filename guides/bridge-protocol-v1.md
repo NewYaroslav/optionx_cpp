@@ -4,6 +4,10 @@ Status: domain-protocol draft. This document records the shared protocol
 direction for new OptionX bridges. It is intentionally expected to change and
 must not yet be treated as a stable wire-level v1 contract.
 
+Russian translation: [bridge-protocol-v1.ru.md](bridge-protocol-v1.ru.md).
+The English document is canonical; the Russian translation is synchronized from
+English, not the other way around.
+
 This draft describes the business commands, events and shared objects that
 HTTP, WebSocket and named-pipe bridges should expose. The recommended wire
 envelope for commands and responses is JSON-RPC 2.0, because the future

@@ -25,6 +25,9 @@
   MVP и риски.
 - [Bridge protocol v1 draft](guides/bridge-protocol-v1.md) -
   общий draft протокола для HTTP/WebSocket/named-pipe мостов.
+- [Bridge protocol v1 draft RU](guides/bridge-protocol-v1.ru.md) -
+  русский перевод draft протокола; английская версия каноническая, RU
+  синхронизируется с EN и не является источником обратных правок.
 - [Coding style](guides/coding-style.md) - naming, namespace, Doxygen,
   обработка ошибок, ownership и header-only правила.
 - [Git workflow](guides/git-workflow.md) - branch policy, PR-only workflow,
@@ -56,3 +59,7 @@
 - Для публичных headers сохраняй Doxygen `///` с `\file`, `\class`, `\brief`.
 - Для code changes запускай самые узкие релевантные tests/examples; для
   documentation-only изменений достаточно Markdown/link smoke-check.
+- Для bridge protocol draft основная версия - английская
+  `guides/bridge-protocol-v1.md`; при изменении её синхронизируй русский
+  перевод `guides/bridge-protocol-v1.ru.md`. Не вноси смысловые изменения в
+  английский документ, исходя только из русской версии.
