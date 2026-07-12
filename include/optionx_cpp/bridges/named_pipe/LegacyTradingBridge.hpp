@@ -42,10 +42,10 @@ namespace optionx::bridges::named_pipe {
             BaseBridge::signal_id_allocator_t signal_id_allocator;
             bool running = false;
 
-#if defined(_WIN32)
+#           if defined(_WIN32)
             std::shared_ptr<SimpleNamedPipe::NamedPipeServer> server;
             std::set<int> client_ids;
-#endif
+#           endif
         };
 
     public:
@@ -152,7 +152,7 @@ namespace optionx::bridges::named_pipe {
                 return;
             }
 
-#if defined(_WIN32)
+#           if defined(_WIN32)
             {
                 std::lock_guard<std::mutex> lock(m_state->mutex);
                 if (m_state->running) return;
@@ -198,20 +198,20 @@ namespace optionx::bridges::named_pipe {
             }
 
             m_task_manager.run();
-#else
+#           else
             (void)config;
             notify_status(
                 BridgeStatus::SERVER_START_FAILED,
                 {},
                 "Legacy named-pipe bridge is available only on Windows.");
-#endif
+#           endif
         }
 
         /// \brief Stops the bridge and clears connected clients.
         /// \details Drains the ping task manager and then stops the pipe server
         ///          if it was running.
         void shutdown() override {
-#if defined(_WIN32)
+#           if defined(_WIN32)
             std::shared_ptr<SimpleNamedPipe::NamedPipeServer> server;
             {
                 std::lock_guard<std::mutex> lock(m_state->mutex);
@@ -225,9 +225,9 @@ namespace optionx::bridges::named_pipe {
             if (server) {
                 server->stop();
             }
-#else
+#           else
             m_task_manager.shutdown();
-#endif
+#           endif
             notify_status(BridgeStatus::SERVER_STOPPED);
         }
 
@@ -330,7 +330,7 @@ namespace optionx::bridges::named_pipe {
         static void broadcast(
                 const std::shared_ptr<RuntimeState>& state,
                 const std::string& message) {
-#if defined(_WIN32)
+#           if defined(_WIN32)
             std::shared_ptr<SimpleNamedPipe::NamedPipeServer> server;
             std::vector<int> clients;
             {
@@ -343,17 +343,17 @@ namespace optionx::bridges::named_pipe {
             for (const int client_id : clients) {
                 server->send_to(client_id, message);
             }
-#else
+#           else
             (void)state;
             (void)message;
-#endif
+#           endif
         }
 
         static std::string connection_id(int client_id) {
             return std::to_string(client_id);
         }
 
-#if defined(_WIN32)
+#       if defined(_WIN32)
         void configure_server_callbacks(
                 const std::shared_ptr<SimpleNamedPipe::NamedPipeServer>& server) {
             server->on_connected = [state = m_state](int client_id) {
@@ -407,7 +407,7 @@ namespace optionx::bridges::named_pipe {
             m_state->client_ids.clear();
             m_state->running = false;
         }
-#endif
+#       endif
 
         static void notify_status(
                 const std::shared_ptr<RuntimeState>& state,
