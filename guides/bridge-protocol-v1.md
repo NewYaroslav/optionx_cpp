@@ -208,13 +208,16 @@ Rules:
   for example `trade.open`, `market_data.tick` and `report.created`.
 - Protocol-native enum values use `lower_snake_case`, for example `accepted`,
   `time_range`, `fixed_amount`, `append` and `pricealerts`.
-- Existing domain enum fields that already mirror C++/broker naming may keep
-  their current `UPPER_SNAKE_CASE` spelling in this draft, for example `BUY`,
-  `SELL`, `SPRINT`, `INTRADE_BAR` and `DEMO`.
+- Stable v1 canonical output should also normalize DTO/platform-style enum
+  values to `lower_snake_case`, for example `buy`, `sell`, `sprint`,
+  `intrade_bar` and `demo`.
+- During the draft and migration period, existing domain enum fields may still
+  appear in their current `UPPER_SNAKE_CASE` spelling in examples or older
+  bridges, for example `BUY`, `SELL`, `SPRINT`, `INTRADE_BAR` and `DEMO`.
 - Responses and events must use the canonical spelling shown by the protocol.
-- Requests may accept documented aliases for compatibility, including
-  case-insensitive aliases, but bridges must normalize them before storing or
-  emitting data.
+- Receivers should accept both `UPPER_SNAKE_CASE` and `lower_snake_case`
+  aliases for known enum fields, for example `BUY` and `buy`, but bridges must
+  normalize them before storing or emitting data.
 - Unknown enum values should be rejected in trade-affecting requests unless
   the field is explicitly open-ended, such as a custom money-management system
   name.
@@ -1001,6 +1004,27 @@ indexing mode, empty policy, value type, item count and bar-time meaning.
 Bridges that do not advertise the requested encoding should return a domain
 rejection such as `unsupported_buffer_encoding`.
 
+Production `binary_base64` should be optimized for MT4/MT5 and C++:
+
+- Numeric buffer values use IEEE-754 `float64` (`double`) in little-endian byte
+  order. This matches the natural MQL/C++ representation on the target Windows
+  platforms and avoids decimal parsing overhead.
+- Integer timestamps use signed little-endian `int64` milliseconds since Unix
+  epoch. MQL `datetime` values are seconds, so adapters must convert them to
+  milliseconds before encoding.
+- The default layout is `buffer_major`: each buffer is one contiguous byte block
+  for values `[0..count-1]`, preserving MT series indexing where `0` is the
+  current/latest bar.
+- Compact bars should use separate typed arrays such as
+  `open_time_ms_base64`, `open_base64`, `high_base64`, `low_base64`,
+  `close_base64`, `volume_base64` and `is_closed_bitmap_base64`. Do not depend
+  on compiler-specific C struct packing.
+- JSON transports carry these byte blocks as standard base64 strings. A future
+  binary transport or length-prefixed named-pipe frame may carry the same byte
+  blocks without base64.
+- Compression may be added later as an explicit `compression` field; the
+  uncompressed format remains the baseline interoperability format.
+
 ### Market Data Commands
 
 Market-data commands cover quotes, ticks and bars. They are intentionally
@@ -1656,6 +1680,28 @@ Default draft behavior:
   `resume_token`; the bridge replays retained events from its configured
   retention window.
 
+Durable replay across bridge restarts is a stronger guarantee. It means the
+bridge persists event envelopes and replay checkpoints to storage, so a client
+can reconnect after the bridge process crashed or was restarted and still ask
+for events after the last observed `stream_id + seq` or `resume_token`.
+Without durable storage, replay is only an in-memory convenience while the
+bridge process is alive.
+
+If a bridge advertises durable replay, the minimal storage model is an
+append-only event log:
+
+- key: `stream_id + seq`
+- identity: `source + event_id`
+- timestamps: `occurred_at_ms` and `emitted_at_ms`
+- subject: trade/signal/account/subscription reference
+- payload: full event snapshot
+- retention: time-based and/or count-based pruning
+
+Subscriber checkpoints may be stored by authenticated client, subscription or
+explicit `resume_token`. The exact production model is still open because it
+depends on whether replay should survive only reconnects, full bridge restarts,
+or application/database migrations.
+
 Future stable versions should define:
 
 - `resume_from_seq`
@@ -1725,8 +1771,9 @@ Important current mismatch:
 - `TradeRequest` should not grow `platform_type` for the public bridge protocol.
   Routing remains outside the platform request object.
 - Public JSON field names use `lower_snake_case`; protocol-native enum values
-  use `lower_snake_case`; existing DTO/platform enum fields may keep
-  `UPPER_SNAKE_CASE` canonical spelling during the draft.
+  use `lower_snake_case`; stable v1 should normalize existing DTO/platform enum
+  values to `lower_snake_case` on output while accepting both
+  `UPPER_SNAKE_CASE` and `lower_snake_case` on input.
 - `trade.open` should not skip the public operation/report/origin lifecycle.
   Direct conversion to `TradeRequest` is a lower-level execution concern.
 - One signal producing many trades is modeled by one persisted signal/intake
@@ -1735,7 +1782,9 @@ Important current mismatch:
   pagination.
 - Backtests should normally use a separate database selected by application
   config, while protocol payloads still mark `source.kind = "backtest"`.
-- Large MT4/MT5 raw buffers may use an advertised compact/binary encoding.
+- Large MT4/MT5 raw buffers may use the advertised `binary_base64` compact
+  encoding: little-endian `float64` values, little-endian `int64` timestamps
+  and explicit typed arrays.
 - Subscription reconnect is client behavior; replay is optional server behavior
   advertised through capabilities and bounded by configured retention.
 - MVP auth is an optional local API key, transported through headers or an
@@ -1746,10 +1795,6 @@ Important current mismatch:
 
 - Exact durable subscription storage model for event replay across bridge
   restarts.
-- Whether stable v1 should normalize existing `UPPER_SNAKE_CASE` DTO enum
-  fields to `lower_snake_case` or preserve the current DTO-compatible spelling.
-- Exact binary payload format once compact MT4/MT5 buffers need production
-  interoperability rather than a draft shape.
 
 ## Before Stable Wire v1
 
@@ -1763,4 +1808,4 @@ contract, but do not need to be implemented in the current documentation PR:
   and `time`.
 - Optional FIX/FIXP-inspired session details: durable sequence persistence,
   heartbeat, reconnect/resynchronization and backpressure policy.
-- Binary or compact buffer encoding for large MT4/MT5 payloads.
+- Compatibility tests for `binary_base64` compact buffer encoding.
