@@ -360,6 +360,18 @@ Observed payload facts:
   `Manual #1 -> state A`, `Manual #2 -> state B`, `Test00 #1 -> state A`
   предполагает, что tail может содержать martingale/runtime state, привязанный к
   `signal_name`, а не только static martingale settings.
+- Current high-probability implementation hypothesis: MQL-native
+  `CryptEncode(CRYPT_AES128/AES256)` с последующим `ArrayToHex`-style loop. Это
+  совпадает с uppercase output по два hex-символа на byte и объясняет, почему
+  один MT4/MT5 code path мог быть portable без custom DLL.
+- Observed behavior функционально похож на ECB: одинаковый logical plaintext
+  block, судя по fixtures, дает тот же ciphertext block, а изменение одного
+  logical field меняет только соответствующий 16-byte block. MQL `CryptEncode()`
+  не имеет IV argument, поэтому normal CBC mode с transmitted random IV через
+  этот API маловероятен. Это не доказывает точное mode name, но делает DES и
+  unencrypted binary serialization намного менее вероятными.
+- AES-128 и AES-256 нельзя различить по ciphertext alone, потому что оба
+  используют 16-byte block size. Отличается только key length.
 - Если повторные fixtures подтвердят deterministic blocks, adapter может не
   нуждаться в расшифровке формата для compatibility mode. Можно собрать явные
   lookup tables для известных значений параметров, например
@@ -386,6 +398,11 @@ Implementation notes:
   stable MT2Trading-readable source.
 - Decoding или generation opaque payloads это research task; перед включением
   для trading нужны fixture-based tests на captured samples.
+- Если adapter когда-нибудь должен будет генерировать MT2Trading payloads,
+  практические research paths такие: найти key и serialization в connector,
+  инструментировать MQL-сторону до `CryptEncode()` и снять `plain[]`, `key[]`,
+  `encrypted[]`, либо проверять known key/serialization hypotheses на captured
+  parameter-to-ciphertext fixtures.
 - Полезные fixture labels для следующего research pass: target prefix,
   direction, symbol, amount, expiration, martingale mode, terminal version и
   connector version.

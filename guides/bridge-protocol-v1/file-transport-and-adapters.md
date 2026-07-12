@@ -361,6 +361,18 @@ Observed payload facts:
   `Manual #1 -> state A`, `Manual #2 -> state B`, `Test00 #1 -> state A`
   suggests that the tail may include martingale/runtime state keyed by
   `signal_name`, not only static martingale settings.
+- The current high-probability implementation hypothesis is MQL-native
+  `CryptEncode(CRYPT_AES128/AES256)` followed by an `ArrayToHex`-style loop.
+  This matches the uppercase two-hex-characters-per-byte output and explains why
+  the same MT4/MT5 code path would be portable without a custom DLL.
+- The observed behavior is functionally ECB-like: the same logical plaintext
+  block appears to produce the same ciphertext block, and changing one logical
+  field changes only the corresponding 16-byte block. MQL `CryptEncode()` does
+  not expose an IV argument, so a normal CBC mode with transmitted random IV is
+  unlikely through that API. This does not prove the exact mode name, but it
+  makes DES and unencrypted binary serialization much less likely.
+- AES-128 and AES-256 cannot be distinguished from the ciphertext alone because
+  both use a 16-byte block size. The difference is only the key length.
 - If repeated fixtures confirm deterministic blocks, the adapter may not need
   to decrypt the format for a compatibility mode. It could build explicit lookup
   tables for known parameter values, for example `expiration=5m -> block 5 value`
@@ -387,6 +399,11 @@ Implementation notes:
   MT2Trading-readable source is identified.
 - Decoding or generating opaque payloads is a research task and should have
   fixture-based tests from captured samples before being enabled for trading.
+- If the adapter ever needs to generate MT2Trading payloads, the practical
+  research paths are: identify the key and serialization in the connector,
+  instrument the MQL side before `CryptEncode()` to capture `plain[]`, `key[]`
+  and `encrypted[]`, or test known key/serialization hypotheses against the
+  captured parameter-to-ciphertext fixtures.
 - Useful fixture labels for the next research pass: target prefix, direction,
   symbol, amount, expiration, martingale mode, terminal version and connector
   version.
