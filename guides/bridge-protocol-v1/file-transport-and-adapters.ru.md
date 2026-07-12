@@ -302,11 +302,22 @@ Observed target prefixes:
 | `mt2trade_iq` | IQ Option |
 | `mt2trade_binary` | Binary.com / Deriv |
 | `mt2trade_spectre` | Spectre.Ai |
+| `mt2trade_alpari` | Alpari |
+| `mt2trade_insta` | InstaBinary |
+| `mt2trade_clm` | CLM |
+| `mt2trade_gc` | GC Option |
+| `mt2trade_pocket` | Pocket Option |
+| `mt2trade_bitness` | Bitness |
+| `mt2trade_tester` | MT2Trading strategy tester / simulator |
 
 Второе поле это opaque encoded payload. Несколько captured samples отличаются
 при изменении martingale settings, и тот же payload shape встречается под
 разными target prefixes. Payload не надо считать decoded public contract, пока
 encoding не понят и не покрыт тестами.
+
+`mt2trade_tester` это observed non-broker target для MT2Trading strategy tester.
+В терминах OptionX он ближе к `source.kind = "backtest"` или
+`PlatformType::SIMULATOR`, чем к live broker account.
 
 Implementation notes:
 
@@ -317,6 +328,8 @@ Implementation notes:
 - Adapter должен моделировать line prefix как observed target selector отдельно
   от opaque payload. Unknown `mt2trade_*` prefixes надо репортить и игнорировать,
   если они явно не включены.
+- Target selector надо сохранять в parsed metadata даже если opaque payload
+  пока не декодируется.
 - Adapter не должен truncate или delete lines immediately. Если cleanup
   включён, надо держать retention window, чтобы не race с MT2Trading, который,
   похоже, тоже чистит consumed signals.
