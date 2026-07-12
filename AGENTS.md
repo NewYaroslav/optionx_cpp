@@ -23,6 +23,8 @@
 - [TradingView bridge research](guides/tradingview-bridge-research.md) -
   найденные пути TradingView -> bridge, webhook constraints, browser-extension
   MVP и риски.
+- [Bridge protocol v1 draft](guides/bridge-protocol-v1.md) -
+  общий draft протокола для HTTP/WebSocket/named-pipe мостов.
 - [Coding style](guides/coding-style.md) - naming, namespace, Doxygen,
   обработка ошибок, ownership и header-only правила.
 - [Git workflow](guides/git-workflow.md) - branch policy, PR-only workflow,
