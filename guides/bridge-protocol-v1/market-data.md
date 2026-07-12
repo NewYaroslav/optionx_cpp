@@ -113,6 +113,8 @@ Subscription response:
     "price_type": "mid"
   },
   "prefill_status": "accepted",
+  "prefill_snapshot_at_ms": 1783476705000,
+  "live_from_seq": 9281,
   "warnings": []
 }
 ```
@@ -121,6 +123,12 @@ If a provider cannot satisfy history or prefill, the bridge should reject the
 request as a domain result or accept the live subscription with a
 `prefill_status` such as `unsupported` or `limited`, depending on the requested
 policy. JSON-RPC errors are reserved for malformed envelopes or invalid params.
+
+When `prefill_status` is `accepted`, the bridge should deliver prefill events
+first, then emit a `market_data.prefill.completed` event with the boundary, then
+start live events. The boundary may be represented as `prefill_snapshot_at_ms`,
+`live_from_seq`, or both. Providers must document whether the boundary is
+gap-free, may contain duplicates, or is best-effort only.
 
 History request:
 
@@ -177,6 +185,8 @@ Tick event payload:
   "subscription_id": "md-sub-1",
   "provider_id": "binance-live",
   "symbol": "BTCUSDT",
+  "tick_id": "binance-live:BTCUSDT:9281",
+  "source_seq": 9281,
   "time_ms": 1783476705177,
   "bid": "64114.80",
   "ask": "64115.10",
@@ -208,6 +218,12 @@ Bar event payload:
 
 Market-data prices, volumes and spreads use the same decimal-string wire rule
 as trading money values. Times use integer milliseconds.
+
+`time_ms` alone is not a unique tick identity because several ticks may arrive
+within the same millisecond. Providers should include `source_seq`, `tick_id`,
+or both when the source can provide stable ordering. Ingest and storage layers
+should use these fields for duplicate detection, gap detection and append/upsert
+semantics.
 
 Ingest/write commands allow external sources to feed quotes into the OptionX
 ecosystem. This is useful when MT4/MT5, Binance or another source produces

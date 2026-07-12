@@ -63,7 +63,6 @@ layer instead of the bridge itself.
   "trade_id": "123",
   "unique_id": "0",
   "unique_hash": "external-key",
-  "idempotency_key": "client-stable-key",
   "signal_name": "rsi_cross",
   "comment": "optional user comment"
 }

@@ -183,8 +183,7 @@ management, routing и filters позже могут породить ноль, 
     }
   },
   "identity": {
-    "signal_name": "noisy_rsi_test",
-    "idempotency_key": "tv:abc123"
+    "signal_name": "noisy_rsi_test"
   },
   "metadata": {
     "rsi": "72.1",
@@ -229,6 +228,14 @@ Long-running commands возвращают `operation_id`. Это отделяе
 - `failed`: processing неожиданно failed.
 - `cancelled`: operation отменена до completion.
 
+Известные target states:
+
+- `pending`: target еще не завершен.
+- `succeeded`: target завершился и создал trade или final target result.
+- `rejected`: target отклонен бизнес-логикой.
+- `failed`: target неожиданно failed.
+- `cancelled`: target отменен до completion.
+
 Commands:
 
 - `operation.get`
@@ -244,7 +251,7 @@ Commands:
   "targets": [
     {
       "account_id": "1",
-      "status": "accepted",
+      "status": "succeeded",
       "trade_id": "123"
     },
     {
@@ -257,6 +264,11 @@ Commands:
   ]
 }
 ```
+
+`operation.cancel` является best effort. Сделку, уже отправленную брокеру,
+может быть невозможно отменить, и отмена operation не означает закрытие уже
+открытой trade. Bridges могут показывать промежуточное состояние
+`cancellation_requested`, прежде чем operation станет final.
 
 ### `signal.trades.query`
 
@@ -292,7 +304,7 @@ index `1` - previous bar и так далее.
     "indicator_version": "1.4",
     "settings_hash": "sha256:...",
     "symbol": "EURUSD",
-    "timeframe_sec": 60,
+    "timeframe_ms": 60000,
     "observed_at_ms": 1783476705177,
     "sample_id": "mt5:terminal-01:1783476705177"
   },
@@ -339,7 +351,7 @@ index `1` - previous bar и так далее.
     }
   ],
   "policy": {
-    "lookback_bars": 5,
+    "lookback_bars": 2,
     "accept_current_bar": false,
     "accept_previous_bar": true,
     "max_lag_bars": 1
@@ -359,6 +371,7 @@ index `1` - previous bar и так далее.
 - `empty_policy` нужен потому, что многие пользовательские indicators
   используют `0` как no data.
 - Все массивы `buffers[].values` должны иметь одинаковую длину.
+- `policy.lookback_bars` должен быть меньше или равен `buffers[].values.size`.
 - `bars` optional. Если он присутствует, его длина должна совпадать с каждым
   buffer, а `bars[i]` описывает `values[i]`.
 - Bar time - это `open_time_ms`. Использовать `is_closed`, чтобы отличать
@@ -527,21 +540,26 @@ lifecycle и financial outcome fields:
   "profit": "0.00",
   "balance": "1000.00",
   "open_balance": "1000.00",
-  "close_balance": "0.00",
+  "close_balance": null,
   "open_price": "1.14072",
-  "close_price": "0.0",
+  "close_price": null,
   "delay_ms": 120,
   "ping_ms": 30,
   "place_time_ms": 1783476719900,
   "send_time_ms": 1783476720000,
   "open_time_ms": 1783476720120,
-  "close_time_ms": 1783476780000,
+  "close_time_ms": null,
+  "expected_close_time_ms": 1783476780000,
   "account_type": "DEMO",
   "currency": "USD",
   "platform_type": "INTRADE_BAR",
   "origin_signal": {}
 }
 ```
+
+Unknown или unavailable snapshot values должны быть `null`. Fields, которые не
+applicable, должны отсутствовать. Известный numeric zero остается реальным
+decimal value, например `"0.00"`.
 
 Known lifecycle states:
 
@@ -704,6 +722,7 @@ Payload:
 ```json
 {
   "scope": {
+    "kind": "account",
     "account_id": "1",
     "platform_type": "INTRADE_BAR"
   },
@@ -711,4 +730,16 @@ Payload:
 }
 ```
 
-Пустой `scope` означает все accounts/platforms.
+Для global pause/resume использовать явный all-scope:
+
+```json
+{
+  "scope": {
+    "kind": "all"
+  },
+  "reason": "manual_pause"
+}
+```
+
+Missing или empty `scope` должен отклоняться как `invalid_params`; он не должен
+случайно останавливать всю торговлю.

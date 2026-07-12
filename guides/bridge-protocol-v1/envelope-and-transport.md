@@ -69,7 +69,7 @@ Business rejections should remain a normal `result`, not a JSON-RPC `error`:
 ```
 
 Events are JSON-RPC notifications: they have `jsonrpc`, `method` and `params`,
-but no `id`.
+but no `id`. Events are server-to-client only.
 
 ```json
 {
@@ -78,10 +78,10 @@ but no `id`.
   "params": {
     "protocol_version": "draft",
     "event_id": "evt-019c...",
-    "source": "optionx://bridge/2",
+    "source": "optionx://installation-019c/bridge/2",
     "stream_id": "bridge-instance-019c...",
     "seq": 1842,
-    "subscription_id": "sub-1",
+    "matched_subscription_ids": ["sub-1"],
     "occurred_at_ms": 1783476720120,
     "emitted_at_ms": 1783476720145,
     "subject": {
@@ -97,6 +97,13 @@ Rules:
 
 - `jsonrpc` must be `"2.0"` for JSON-RPC transports.
 - `id` identifies one RPC call. It is not a business identifier.
+- JSON-RPC batch requests are not supported in protocol v1.
+- All client commands must contain `id`.
+- Trade-affecting client notifications are forbidden because the bridge would
+  not be able to return an operation id, rejection reason or idempotency
+  conflict.
+- Unknown client notification methods must be ignored or rejected according to
+  transport policy; domain events are server-to-client notifications only.
 - `params.protocol_version` is required for bridge protocol messages.
 - Unknown optional response/event fields must be ignored by clients.
 - Unknown fields in trading command objects should be rejected unless they live
@@ -125,6 +132,15 @@ The protocol uses three independent identifier families:
 - A bridge must document the retention window for idempotency keys.
 - For fan-out commands, the key applies to the whole logical fan-out operation,
   not to each target account independently.
+
+Payload identity for idempotency is computed after protocol normalization:
+
+- enum aliases are normalized to canonical enum values;
+- numeric IDs are normalized to canonical string identifiers;
+- decimal strings and JSON numbers are normalized to the same decimal value;
+- JSON object field order is ignored;
+- `context.idempotency_key` is excluded from the fingerprint;
+- transport metadata, authentication data and headers are excluded.
 
 `unique_hash` is not a transport retry mechanism. Two different transports may
 deliver the same market signal with different RPC `id` and different
@@ -164,12 +180,10 @@ Rules:
   for example `trade.open`, `market_data.tick` and `report.created`.
 - Protocol-native enum values use `lower_snake_case`, for example `accepted`,
   `time_range`, `fixed_amount`, `append` and `pricealerts`.
-- Stable v1 canonical output should also normalize DTO/platform-style enum
-  values to `lower_snake_case`, for example `buy`, `sell`, `sprint`,
-  `intrade_bar` and `demo`.
-- During the draft and migration period, existing domain enum fields may still
-  appear in their current `UPPER_SNAKE_CASE` spelling in examples or older
-  bridges, for example `BUY`, `SELL`, `SPRINT`, `INTRADE_BAR` and `DEMO`.
+- Domain DTO enum values use `UPPER_SNAKE_CASE` as canonical output because
+  that matches the current C++ DTO surface, for example `BUY`, `SELL`,
+  `SPRINT`, `INTRADE_BAR` and `DEMO`.
+- ISO 4217 currency codes use uppercase, for example `USD`.
 - Responses and events must use the canonical spelling shown by the protocol.
 - Receivers should accept both `UPPER_SNAKE_CASE` and `lower_snake_case`
   aliases for known enum fields, for example `BUY` and `buy`, but bridges must
@@ -255,13 +269,13 @@ Rules:
 - REST endpoints must produce the same normalized domain payloads as JSON-RPC.
 - REST responses should reuse the same `result` shape as the corresponding
   JSON-RPC method.
-- Query-string writes are allowed only for explicitly enabled local or trusted
-  deployments, because URLs are commonly logged by browsers, proxies and
-  servers.
-- State-changing REST calls should prefer `POST`. `GET` write shortcuts are a
-  compatibility feature and must be disabled by default in production profiles.
-- Decimal and ID compatibility rules are the same as for JSON-RPC: requests may
-  use simple query values, while responses use canonical strings.
+- Query-string writes are not part of the v1 contract because URLs are commonly
+  logged by browsers, proxies and servers, and `GET` may be prefetched or
+  retried by intermediaries.
+- State-changing REST calls must use `POST`, even for simple clients that do
+  not construct JSON-RPC envelopes.
+- Decimal and ID compatibility rules are the same as for JSON-RPC: simple form
+  requests may use scalar field values, while responses use canonical strings.
 - Authentication must use transport headers, bearer tokens, mTLS, local-only
   binding or another transport mechanism; secrets must not be required in query
   strings.
@@ -272,9 +286,9 @@ Suggested endpoints:
 | --- | --- | --- |
 | `/api/v1/bridge/health` | `GET` | transport health |
 | `/api/v1/trades/open` | `POST` | `trade.open` |
-| `/api/v1/trades/open/simple` | `GET` | `trade.open` shortcut |
+| `/api/v1/trades/open/simple` | `POST` | `trade.open` simple form |
 | `/api/v1/signals/submit` | `POST` | `signal.submit` |
-| `/api/v1/signals/submit/simple` | `GET` | `signal.submit` shortcut |
+| `/api/v1/signals/submit/simple` | `POST` | `signal.submit` simple form |
 | `/api/v1/operations/{operation_id}` | `GET` | `operation.get` |
 | `/api/v1/trades/{trade_id}` | `GET` | `trade.result.get` |
 | `/api/v1/trades/active` | `GET` | `trade.active.query` |
@@ -323,13 +337,16 @@ Example `POST /api/v1/trades/open` body:
 }
 ```
 
-Example `GET` shortcut:
+Example simple form:
 
 ```text
-GET /api/v1/trades/open/simple?symbol=EURUSD&order_type=BUY&amount=10.00&duration_ms=60000&account_id=1&idempotency_key=manual%3Aclient-trade-1
+POST /api/v1/trades/open/simple
+Content-Type: application/x-www-form-urlencoded
+
+symbol=EURUSD&order_type=BUY&amount=10.00&duration_ms=60000&account_id=1&idempotency_key=manual%3Aclient-trade-1
 ```
 
-Shortcut query mapping:
+Simple form field mapping:
 
 - `symbol` -> `trade.symbol` or `signal.symbol`
 - `order_type` / `action` -> `BUY` or `SELL`
@@ -341,19 +358,20 @@ Shortcut query mapping:
 - `account_id` -> `routing.selector.kind = "account"`
 - `platform_type` -> `routing.platform_type`
 - `min_payout`, `refund` -> trade/signal payout constraints
-- `signal_name`, `unique_hash`, `idempotency_key`, `comment` -> identity/context
+- `idempotency_key` -> `context.idempotency_key`
+- `signal_name`, `unique_hash`, `comment` -> identity/context
 - `provider_id`, `stream`, `timeframe_ms`, `price_type` ->
   market-data provider and stream selection
 - `start_ms`, `end_ms`, `count`, `lookback_ms`, `cursor`, `limit` ->
   market-data history and prefill selection
-- Unknown query parameters should be rejected unless they use an agreed
+- Unknown simple-form fields should be rejected unless they use an agreed
   `metadata.` or `extensions.` prefix.
 
 REST status mapping:
 
 - `200 OK`: completed synchronously or query succeeded.
 - `202 Accepted`: accepted for asynchronous processing.
-- `400 Bad Request`: malformed request or unsupported query shortcut.
+- `400 Bad Request`: malformed request or unsupported simple form.
 - `401 Unauthorized` / `403 Forbidden`: authentication or authorization failed.
 - `409 Conflict`: idempotency conflict.
 - `422 Unprocessable Content`: valid syntax but invalid trading parameters.

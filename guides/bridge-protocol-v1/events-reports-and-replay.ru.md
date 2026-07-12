@@ -5,7 +5,6 @@
 Commands:
 
 - `reports.query`
-- `reports.subscribe`
 
 Report categories:
 
@@ -49,7 +48,19 @@ Report categories:
 Subscriptions полезны для WebSocket и named-pipe clients. HTTP clients могут
 использовать query commands или будущий event stream.
 
-Command:
+Event subscription commands:
+
+- `events.subscribe`
+- `events.unsubscribe`
+- `events.subscriptions.list`
+
+`events.subscribe` доставляет existing domain events клиенту.
+`market_data.subscribe` отличается: он создает или подключает concrete quote
+stream, который затем может производить `market_data.tick` и
+`market_data.bar` events. Reports доставляются через `events.subscribe` с topic
+`report.created`.
+
+`events.subscribe` request:
 
 ```json
 {
@@ -92,6 +103,16 @@ Unsubscribe:
 }
 ```
 
+Если одно event подходит сразу под несколько subscriptions на одном connection,
+bridge должен отправить один event с одним `event_id` и включить все совпавшие
+subscriptions:
+
+```json
+{
+  "matched_subscription_ids": ["sub-1", "sub-7"]
+}
+```
+
 Subscription resume - тема wire-contract, а не просто удобная фича. WebSocket
 clients могут переподключаться каждые N секунд, пока их явно не остановили, но
 само переподключение не гарантирует lossless event delivery.
@@ -100,8 +121,9 @@ Default draft behavior:
 
 - Subscriptions являются connection/session scoped, если bridge явно не
   объявляет durable subscriptions.
-- Delivery практически at-least-once. Clients должны дедуплицировать по
-  `source + event_id`.
+- При `event_replay = false` delivery является best-effort внутри active
+  connection. Во время disconnect возможна потеря; duplicates обычно не
+  ожидаются, но clients должны их выдерживать.
 - Ordering гарантирован только внутри одного `stream_id` и, для trade events,
   в порядке увеличения `revision`.
 - Если `event_replay` равен false, reconnecting clients должны заново
@@ -109,7 +131,8 @@ Default draft behavior:
   быть потеряны.
 - Если `event_replay` равен true, clients могут передать `resume_from_seq` или
   future `resume_token`; bridge replay retained events из configured retention
-  window.
+  window. Это resumable best-effort replay, если bridge дополнительно не дает
+  durable storage и checkpoints.
 
 Durable replay между restarts bridge - более сильная гарантия. Она означает,
 что bridge сохраняет event envelopes и replay checkpoints в storage, поэтому
@@ -132,6 +155,10 @@ Subscriber checkpoints могут храниться по authenticated client, 
 или explicit `resume_token`. Точная production model пока открыта, потому что
 она зависит от того, должен ли replay переживать только reconnects, full bridge
 restarts или application/database migrations.
+
+Durable replay с persisted checkpoints или acknowledgements - это режим,
+который может дать at-least-once delivery. Duplicates остаются возможными, и
+clients должны дедуплицировать по `source + event_id`.
 
 Будущие stable versions должны определить:
 
@@ -163,13 +190,20 @@ restarts или application/database migrations.
 - `report.created`
 - `market_data.tick`
 - `market_data.bar`
+- `market_data.prefill.completed`
 - `market_data.status`
 - `market_data.report`
 
 `trade.updated` и `trade.result.updated` должны нести полный result snapshot, а
 не только patch, если event явно не объявляет `patch: true`.
 
-Event delivery следует считать практически at-least-once. Clients должны
+Event delivery следует гарантии, объявленной capabilities: best-effort без
+replay, resumable best-effort с retained replay, и at-least-once только когда
+включены durable replay плюс checkpoint/ack semantics. Clients должны
 дедуплицировать по `source + event_id` и использовать `stream_id + seq`, чтобы
 обнаруживать gaps, когда transport поддерживает replay. Внутри одной trade
 events должны emit в порядке увеличения `revision`.
+
+`source` должен идентифицировать installation вместе с bridge instance,
+например `optionx://installation-019c/bridge/2`, чтобы `source + event_id`
+оставался устойчивым между несколькими local installations.

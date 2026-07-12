@@ -27,9 +27,9 @@ Important current mismatch:
 - `TradeRequest` should not grow `platform_type` for the public bridge protocol.
   Routing remains outside the platform request object.
 - Public JSON field names use `lower_snake_case`; protocol-native enum values
-  use `lower_snake_case`; stable v1 should normalize existing DTO/platform enum
-  values to `lower_snake_case` on output while accepting both
-  `UPPER_SNAKE_CASE` and `lower_snake_case` on input.
+  use `lower_snake_case`; domain DTO enum values use `UPPER_SNAKE_CASE` as
+  canonical output while accepting both `UPPER_SNAKE_CASE` and
+  `lower_snake_case` on input.
 - `trade.open` should not skip the public operation/report/origin lifecycle.
   Direct conversion to `TradeRequest` is a lower-level execution concern.
 - One signal producing many trades is modeled by one persisted signal/intake

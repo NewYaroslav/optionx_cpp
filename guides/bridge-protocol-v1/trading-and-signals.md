@@ -182,8 +182,7 @@ routing and filters may later produce zero, one or many trades.
     }
   },
   "identity": {
-    "signal_name": "noisy_rsi_test",
-    "idempotency_key": "tv:abc123"
+    "signal_name": "noisy_rsi_test"
   },
   "metadata": {
     "rsi": "72.1",
@@ -227,6 +226,14 @@ Known operation states:
 - `failed`: processing failed unexpectedly.
 - `cancelled`: operation was cancelled before completion.
 
+Known target states:
+
+- `pending`: target has not completed yet.
+- `succeeded`: target completed and produced a trade or final target result.
+- `rejected`: target was rejected by business logic.
+- `failed`: target failed unexpectedly.
+- `cancelled`: target was cancelled before completion.
+
 Commands:
 
 - `operation.get`
@@ -242,7 +249,7 @@ Commands:
   "targets": [
     {
       "account_id": "1",
-      "status": "accepted",
+      "status": "succeeded",
       "trade_id": "123"
     },
     {
@@ -255,6 +262,11 @@ Commands:
   ]
 }
 ```
+
+`operation.cancel` is best effort. A trade already submitted to a broker may be
+impossible to cancel, and cancelling an operation does not imply closing an
+already opened trade. Bridges may expose an intermediate
+`cancellation_requested` state before the operation reaches a final state.
 
 ### `signal.trades.query`
 
@@ -289,7 +301,7 @@ bar, index `1` is the previous bar, and so on.
     "indicator_version": "1.4",
     "settings_hash": "sha256:...",
     "symbol": "EURUSD",
-    "timeframe_sec": 60,
+    "timeframe_ms": 60000,
     "observed_at_ms": 1783476705177,
     "sample_id": "mt5:terminal-01:1783476705177"
   },
@@ -336,7 +348,7 @@ bar, index `1` is the previous bar, and so on.
     }
   ],
   "policy": {
-    "lookback_bars": 5,
+    "lookback_bars": 2,
     "accept_current_bar": false,
     "accept_previous_bar": true,
     "max_lag_bars": 1
@@ -355,6 +367,7 @@ Notes:
   constant.
 - `empty_policy` is necessary because many user indicators use `0` as no data.
 - All `buffers[].values` arrays must have the same length.
+- `policy.lookback_bars` must be less than or equal to `buffers[].values.size`.
 - `bars` is optional. When present, it must have the same length as each buffer,
   and `bars[i]` describes `values[i]`.
 - Bar time is `open_time_ms`. Use `is_closed` to distinguish the current bar
@@ -521,21 +534,26 @@ lifecycle and financial outcome fields:
   "profit": "0.00",
   "balance": "1000.00",
   "open_balance": "1000.00",
-  "close_balance": "0.00",
+  "close_balance": null,
   "open_price": "1.14072",
-  "close_price": "0.0",
+  "close_price": null,
   "delay_ms": 120,
   "ping_ms": 30,
   "place_time_ms": 1783476719900,
   "send_time_ms": 1783476720000,
   "open_time_ms": 1783476720120,
-  "close_time_ms": 1783476780000,
+  "close_time_ms": null,
+  "expected_close_time_ms": 1783476780000,
   "account_type": "DEMO",
   "currency": "USD",
   "platform_type": "INTRADE_BAR",
   "origin_signal": {}
 }
 ```
+
+Unknown or unavailable snapshot values should be `null`. Fields that are not
+applicable should be omitted. Known numeric zero remains a real decimal value,
+for example `"0.00"`.
 
 Known lifecycle states:
 
@@ -698,6 +716,7 @@ Payload:
 ```json
 {
   "scope": {
+    "kind": "account",
     "account_id": "1",
     "platform_type": "INTRADE_BAR"
   },
@@ -705,4 +724,16 @@ Payload:
 }
 ```
 
-An empty `scope` means all accounts/platforms.
+Use an explicit all-scope for global pause/resume:
+
+```json
+{
+  "scope": {
+    "kind": "all"
+  },
+  "reason": "manual_pause"
+}
+```
+
+Missing or empty `scope` must be rejected as `invalid_params`; it must not pause
+all trading accidentally.
