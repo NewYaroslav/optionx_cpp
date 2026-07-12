@@ -276,7 +276,10 @@ notification, поэтому у него нет `id`, нет `event_id` и не�
   "method": "replay.completed",
   "params": {
     "event_subscription_id": "evt-sub-1",
-    "last_replayed_seq": 1841,
+    "last_replayed": {
+      "stream_id": "old-bridge-instance-018f...",
+      "seq": 1841
+    },
     "live_from": {
       "stream_id": "bridge-instance-019c...",
       "seq": 1842
@@ -284,6 +287,11 @@ notification, поэтому у него нет `id`, нет `event_id` и не�
   }
 }
 ```
+
+`last_replayed` равен `null`, если retained events не были replayed. И
+`last_replayed`, и `live_from` используют координату `stream_id + seq`, потому
+что sequence numbers относятся к конкретному stream и могут начаться заново при
+смене bridge instance.
 
 Reports используют generic topic `report.created` с `payload.report_type`,
 например `signal_report`; отдельный параллельный signal-specific report topic

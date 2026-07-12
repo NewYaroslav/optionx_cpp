@@ -276,7 +276,10 @@ event:
   "method": "replay.completed",
   "params": {
     "event_subscription_id": "evt-sub-1",
-    "last_replayed_seq": 1841,
+    "last_replayed": {
+      "stream_id": "old-bridge-instance-018f...",
+      "seq": 1841
+    },
     "live_from": {
       "stream_id": "bridge-instance-019c...",
       "seq": 1842
@@ -284,6 +287,11 @@ event:
   }
 }
 ```
+
+`last_replayed` is `null` when no retained event was replayed. Both
+`last_replayed` and `live_from` use the `stream_id + seq` coordinate because
+sequence numbers are scoped to a stream and may restart when a bridge instance
+changes.
 
 Reports use the generic `report.created` topic with `payload.report_type`, for
 example `signal_report`; they should not need a parallel signal-specific report
