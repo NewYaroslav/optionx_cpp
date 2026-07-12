@@ -292,13 +292,22 @@ manual connector:
 Observed line shape:
 
 ```text
-mt2trade_all,<opaque_hex_payload>
+mt2trade_<target>,<opaque_hex_payload>
 ```
 
-The prefix `mt2trade_all` appears to route a signal to all configured brokers.
+Observed target prefixes:
+
+| Prefix | Observed target |
+| --- | --- |
+| `mt2trade_all` | all configured brokers |
+| `mt2trade_iq` | IQ Option |
+| `mt2trade_binary` | Binary.com / Deriv |
+| `mt2trade_spectre` | Spectre.Ai |
+
 The second field is an opaque encoded payload. Several captured samples differ
-when martingale settings change, but the payload should not be treated as a
-decoded public contract until the encoding is understood and tested.
+when martingale settings change, and the same payload shape appears under
+different target prefixes. The payload should not be treated as a decoded public
+contract until the encoding is understood and tested.
 
 Implementation notes:
 
@@ -306,6 +315,9 @@ Implementation notes:
   `MT2TradingFileBridge`, not as the canonical OptionX file transport.
 - The adapter can watch or write the known file only in an explicit
   compatibility mode.
+- The adapter should model the line prefix as an observed target selector,
+  separate from the opaque payload. Unknown `mt2trade_*` prefixes should be
+  reported and ignored unless explicitly enabled.
 - The adapter should not truncate or delete lines immediately. If cleanup is
   enabled, it should keep a retention window to avoid racing MT2Trading, which
   also appears to clean consumed signals.
@@ -325,5 +337,5 @@ Implementation notes:
 - Exact MQL4/MQL5 sample code for atomic write, polling and event dedupe.
 - Whether BotBinary balance/result can be obtained from a machine-readable
   source or only from the UI/report screen.
-- Whether MT2Trading `mt2trade_all` payloads can be decoded safely enough to
+- Whether MT2Trading `mt2trade_*` payloads can be decoded safely enough to
   support generation, not only observation.
