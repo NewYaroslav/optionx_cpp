@@ -210,6 +210,20 @@ Rules:
 - A cleanup worker may remove old `responses\`, `events\`, `archive\` and
   `errors\` files after retention expires.
 
+Event delivery files need an additional transport-level order because file
+system enumeration order is not portable. Files written to `events\ready\`
+should use:
+
+```text
+<delivery_seq:020>_<file_uuid>.json
+```
+
+`delivery_seq` is monotonically increasing inside one client event delivery
+queue. It covers replayed domain events, the `replay.completed` control
+notification and live domain events. It does not replace the domain event
+position `stream_id + seq`; it only tells the file consumer which ready file to
+claim next. Consumers should claim the lowest available `delivery_seq`.
+
 ### Authentication And Client Identity
 
 The file transport normally relies on local OS permissions and per-client
@@ -243,9 +257,15 @@ Recommendations:
 - File subscription idempotency is scoped as:
 
   ```text
-  configured client + method + client_subscription_key
+  configured client + method + effective_subscription_key
   ```
 
+- `effective_subscription_key` is `client_subscription_key` when present,
+  otherwise `context.idempotency_key`. A request that provides only
+  `context.idempotency_key` is still a valid durable subscription request. If
+  both keys are present, they must resolve to the same durable subscription:
+  the same normalized request returns the existing subscription, while a
+  different normalized request for the same effective key is a conflict.
 - `events.subscribe` defines topics, filters and `replay.mode`, exactly as in
   the general event contract. The bridge writes only the subscribed topics into
   the client's `events\ready\` directory.

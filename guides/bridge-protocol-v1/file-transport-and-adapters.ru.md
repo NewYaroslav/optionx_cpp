@@ -212,6 +212,20 @@ Rules:
 - Cleanup worker может удалять старые `responses\`, `events\`, `archive\` и
   `errors\` files после окончания retention.
 
+Event delivery files требуют отдельный transport-level порядок, потому что
+порядок enumeration в filesystem не portable. Файлы, которые bridge пишет в
+`events\ready\`, должны использовать:
+
+```text
+<delivery_seq:020>_<file_uuid>.json
+```
+
+`delivery_seq` монотонно растёт внутри одной client event delivery queue. Он
+охватывает replayed domain events, `replay.completed` control notification и
+live domain events. Он не заменяет domain event position `stream_id + seq`, а
+только говорит file consumer, какой ready file надо claim следующим. Consumers
+должны claim минимальный доступный `delivery_seq`.
+
 ### Authentication И Client Identity
 
 File transport обычно полагается на local OS permissions и per-client
@@ -246,9 +260,15 @@ Recommendations:
 - File subscription idempotency scoped так:
 
   ```text
-  configured client + method + client_subscription_key
+  configured client + method + effective_subscription_key
   ```
 
+- `effective_subscription_key` это `client_subscription_key`, если он задан,
+  иначе `context.idempotency_key`. Запрос, который передаёт только
+  `context.idempotency_key`, всё равно является валидным durable subscription
+  request. Если заданы оба ключа, они должны разрешаться в одну durable
+  subscription: тот же normalized request возвращает существующую подписку, а
+  другой normalized request для того же effective key является conflict.
 - `events.subscribe` задаёт topics, filters и `replay.mode` так же, как в общем
   event contract. Bridge пишет в `events\ready\` клиента только subscribed
   topics.
