@@ -129,8 +129,22 @@ async function handleContentStatus(message, sender) {
     await writeLog("info", `TradingView observer active${tabSuffix(sender)}`);
     return { ok: true };
   }
-  await writeLog("info", `TradingView content status: ${message.status || "unknown"}${tabSuffix(sender)}`);
+  await writeLog(
+    "info",
+    `TradingView content status: ${message.status || "unknown"}${formatStatusDetails(message.details)}${tabSuffix(sender)}`
+  );
   return { ok: true };
+}
+
+function formatStatusDetails(details) {
+  if (!details || typeof details !== "object") return "";
+  const fields = [];
+  for (const key of ["host", "path", "type", "count", "methods", "keys", "action", "symbol"]) {
+    if (details[key] !== null && details[key] !== undefined && String(details[key]) !== "") {
+      fields.push(`${key}=${String(details[key]).slice(0, 120)}`);
+    }
+  }
+  return fields.length > 0 ? ` [${fields.join(" ")}]` : "";
 }
 
 function tabSuffix(sender) {
@@ -200,6 +214,16 @@ async function handleTradingViewAlert(payload, sender) {
     return { ok: false, error: "empty payload" };
   }
 
+  const sourceGate = sourceCaptureGate(payload, config);
+  if (!sourceGate.enabled) {
+    return {
+      ok: true,
+      accepted: false,
+      disabled_source: true,
+      source_kind: sourceGate.source_kind
+    };
+  }
+
   const body = {
     ...payload,
     extension: (() => {
@@ -255,6 +279,26 @@ async function handleTradingViewAlert(payload, sender) {
     await setBadge("error");
     return { ok: false, accepted: false, error: text, error_kind: kind };
   }
+}
+
+function sourceCaptureGate(payload, config) {
+  const sourceKind = String(payload.source_kind || "").toLowerCase();
+  if (sourceKind === "alert_toast_dom" && config.capture_alert_toasts === false) {
+    return { enabled: false, source_kind: sourceKind };
+  }
+  if (
+    (sourceKind === "private_pricealerts_ws" ||
+      sourceKind === "tradingview_private_pricealerts_ws" ||
+      sourceKind.includes("pricealerts")) &&
+    config.capture_private_alerts === false
+  ) {
+    return { enabled: false, source_kind: sourceKind };
+  }
+  if (sourceKind === "private_chart_study_alert_messages" &&
+      config.capture_chart_study_alerts === false) {
+    return { enabled: false, source_kind: sourceKind };
+  }
+  return { enabled: true, source_kind: sourceKind };
 }
 
 function parseResponse(text) {

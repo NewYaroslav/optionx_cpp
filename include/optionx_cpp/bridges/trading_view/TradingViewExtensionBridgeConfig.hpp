@@ -86,6 +86,13 @@ namespace optionx::bridges::tradingview {
                     {"buy", buy_action_keywords},
                     {"sell", sell_action_keywords}
                 }},
+                {"study_alerts", {
+                    {"mode", study_alert_mode},
+                    {"close_window_seconds", study_alert_close_window_seconds},
+                    {"default_timeframe_seconds", study_alert_default_timeframe_seconds},
+                    {"max_signal_age_seconds", study_alert_max_signal_age_seconds},
+                    {"reject_historical", study_alert_reject_historical}
+                }},
                 {"level_alert_rules", {
                     {"default_action", default_level_action},
                     {"rules", level_alert_rules}
@@ -190,6 +197,38 @@ namespace optionx::bridges::tradingview {
                     j.at("sell_keywords").get<std::vector<std::string>>();
             }
 
+            if (j.contains("study_alerts") && j.at("study_alerts").is_object()) {
+                const auto& study_alerts = j.at("study_alerts");
+                study_alert_mode = study_alerts.value("mode", study_alert_mode);
+                study_alert_close_window_seconds =
+                    study_alerts.value("close_window_seconds", study_alert_close_window_seconds);
+                study_alert_default_timeframe_seconds =
+                    study_alerts.value("default_timeframe_seconds", study_alert_default_timeframe_seconds);
+                study_alert_max_signal_age_seconds =
+                    study_alerts.value("max_signal_age_seconds", study_alert_max_signal_age_seconds);
+                study_alert_reject_historical =
+                    study_alerts.value("reject_historical", study_alert_reject_historical);
+            }
+            if (j.contains("study_alert_mode")) {
+                study_alert_mode = j.at("study_alert_mode").get<std::string>();
+            }
+            if (j.contains("study_alert_close_window_seconds")) {
+                study_alert_close_window_seconds =
+                    j.at("study_alert_close_window_seconds").get<std::int64_t>();
+            }
+            if (j.contains("study_alert_default_timeframe_seconds")) {
+                study_alert_default_timeframe_seconds =
+                    j.at("study_alert_default_timeframe_seconds").get<std::int64_t>();
+            }
+            if (j.contains("study_alert_max_signal_age_seconds")) {
+                study_alert_max_signal_age_seconds =
+                    j.at("study_alert_max_signal_age_seconds").get<std::int64_t>();
+            }
+            if (j.contains("study_alert_reject_historical")) {
+                study_alert_reject_historical =
+                    j.at("study_alert_reject_historical").get<bool>();
+            }
+
             if (j.contains("level_alert_rules")) {
                 const auto& level_alerts = j.at("level_alert_rules");
                 if (level_alerts.is_object()) {
@@ -261,6 +300,18 @@ namespace optionx::bridges::tradingview {
             if (!is_valid_level_action(default_level_action)) {
                 return {false, "TradingView bridge default level alert action must be buy, sell, reject, or ignore."};
             }
+            if (!is_valid_study_alert_mode(study_alert_mode)) {
+                return {false, "TradingView bridge study alert mode must be realtime, fast, confirmed_only, or close_window."};
+            }
+            if (study_alert_close_window_seconds < 0) {
+                return {false, "TradingView bridge study alert close_window_seconds must not be negative."};
+            }
+            if (study_alert_default_timeframe_seconds <= 0) {
+                return {false, "TradingView bridge study alert default_timeframe_seconds must be positive."};
+            }
+            if (study_alert_max_signal_age_seconds < 0) {
+                return {false, "TradingView bridge study alert max_signal_age_seconds must not be negative."};
+            }
             for (const auto& rule : level_alert_rules) {
                 if (rule.action.empty()) {
                     return {false, "TradingView bridge level alert rule action is required."};
@@ -312,6 +363,15 @@ namespace optionx::bridges::tradingview {
                    normalized == "sell" ||
                    normalized == "reject" ||
                    normalized == "ignore";
+        }
+
+        /// \brief Returns true when the study alert handling mode is known.
+        static bool is_valid_study_alert_mode(const std::string& mode) {
+            const auto normalized = normalize_token(mode);
+            return normalized == "realtime" ||
+                   normalized == "fast" ||
+                   normalized == "confirmed_only" ||
+                   normalized == "close_window";
         }
 
         /// \brief Default words that make free-form alert text a buy signal.
@@ -380,6 +440,11 @@ namespace optionx::bridges::tradingview {
         bool use_default_action_keywords = true; ///< Enable built-in buy/sell words for alert text.
         std::vector<std::string> buy_action_keywords; ///< Custom buy words; extend or replace defaults.
         std::vector<std::string> sell_action_keywords; ///< Custom sell words; extend or replace defaults.
+        std::string study_alert_mode = "realtime"; ///< `realtime`/`fast` accepts all study alerts; `confirmed_only` accepts confirmed states; `close_window` accepts late intrabar alerts.
+        std::int64_t study_alert_close_window_seconds = 10; ///< Seconds before bar close accepted by `close_window`.
+        std::int64_t study_alert_default_timeframe_seconds = 60; ///< Fallback timeframe when payload has no interval.
+        std::int64_t study_alert_max_signal_age_seconds = 300; ///< Optional stale-alert cutoff when reject_historical is enabled; 0 disables age checks.
+        bool study_alert_reject_historical = false; ///< Reject chart-study alerts whose event/update time is too old.
         std::string default_level_action = "reject"; ///< Fallback for unmapped level alerts.
         std::vector<TradingViewLevelAlertRule> level_alert_rules; ///< User-defined level alert mappings.
 

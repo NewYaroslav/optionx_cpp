@@ -1,11 +1,13 @@
 # OptionX TradingView Alert Extension
 
-Small Chrome/Edge MV3 extension that watches visible TradingView alert toasts
-and forwards them to a local bridge.
+Small Chrome/Edge MV3 extension that watches TradingView alert events and
+forwards them to a local bridge. It supports visible alert toasts, the private
+`pricealerts/alert_fired` pushstream used by fresh level alerts, and indicator
+`alertMessages[]` emitted on the chart data WebSocket.
 
 This is an experimental free TradingView path. It does not use official
-TradingView webhooks, so it depends on TradingView's visible browser UI and can
-break when TradingView changes that UI.
+TradingView webhooks, so it depends on TradingView's browser UI and private
+browser-side alert streams. It can break when TradingView changes either one.
 
 ## Install
 
@@ -30,6 +32,26 @@ http://127.0.0.1:6560/api/v1/tradingview/signal
 
 ## What It Captures
 
+There are three independent capture modes in the popup:
+
+- **Visible alert toasts**: a DOM observer reads alert cards shown in the chart
+  page. This is useful as a low-risk fallback and for visible level alerts.
+- **Private alert feed**: a page-world WebSocket hook watches only
+  `wss://pushstream.tradingview.com/message-pipe-ws/private_feed` frames where
+  `text.channel == "pricealerts"` and `text.content.m == "alert_fired"`. It
+  ignores lifecycle messages such as `alerts_created` and `alerts_updated`.
+- **Indicator study alerts**: the same page-world WebSocket hook watches
+  `wss://data.tradingview.com/socket.io/websocket?...type=chart...` frames and
+  extracts `du.p[1].<study-id>.ns.d.data.alertMessages[]` emitted by Pine
+  `alert()` calls. This source is opt-in and disabled by default because chart
+  sockets can replay older study state during chart load or recalculation.
+
+The private feed hook stays inside the browser page. It does not expose
+TradingView cookies, session tokens or full WebSocket traffic to the local
+bridge; only normalized alert events are forwarded.
+
+### Visible Alert Toasts
+
 The content script watches for alert toast cards with visible text similar to:
 
 ```html
@@ -52,6 +74,105 @@ TradingView's configurable alert title/name is sent separately as
 Level alerts such as `EURUSD Crossing 1.14072` are market events, not trade
 commands. The local bridge should map these through user rules or reject them
 unless the alert message contains an explicit command.
+
+### Private Alert Feed
+
+Fresh TradingView price alert popups have also been observed on:
+
+```text
+wss://pushstream.tradingview.com/message-pipe-ws/private_feed
+```
+
+The extension injects a page-context WebSocket wrapper at `document_start` and
+forwards only confirmed `pricealerts/alert_fired` events. Event identity comes
+from TradingView's per-fire id:
+
+```json
+{
+  "source": "tradingview_extension",
+  "source_kind": "private_pricealerts_ws",
+  "method": "alert_fired",
+  "event_id": "tv_price_alert:53256556946",
+  "fire_id": "53256556946",
+  "alert_id": "5099741779",
+  "symbol": "FX:EURUSD",
+  "action": "alert",
+  "message": "EURUSD Crossing 1.14072"
+}
+```
+
+This mode is for fresh price/level alerts. Chart-socket indicator messages are
+handled by the separate study-alert mode below; full historical replay remains
+a separate backtesting/research path.
+
+### Indicator Study Alerts
+
+Indicator `alert()` messages from the open chart have been observed on the
+chart data WebSocket, not on `private_feed`:
+
+```text
+wss://data.tradingview.com/socket.io/websocket?from=chart/...&type=chart&auth=sessionid
+```
+
+The useful payload is not the outgoing `create_study` request. It is a later
+study update:
+
+```text
+du.p[1].<study-id>.ns.d
+  -> JSON
+  -> data.alertMessages[]
+  -> msg
+```
+
+`msg` can contain our Pine-provided JSON, for example:
+
+```json
+{
+  "source": "tradingview",
+  "signal_name": "noisy_rsi_test",
+  "action": "buy",
+  "symbol": "BTCUSD",
+  "tickerid": "CRYPTO:BTCUSD",
+  "price": 64130.49,
+  "time": 1783764000000
+}
+```
+
+The extension normalizes that to `source_kind:
+private_chart_study_alert_messages` and forwards it through the same local HTTP
+bridge path. Duplicate copies of the same study alert, for example the same
+`msg` repeated under two study ids, are suppressed by a bounded in-page key
+cache.
+
+When TradingView includes study debug state in `ns.d.data.debug[]`, the
+extension forwards the observed state as:
+
+- `bar_state`: for example `RT_CONFIRMED` or `HIST_CONFIRMED`;
+- `bar_state_source`: `debug_idx` or `debug_time` when matched to the alert
+  bar;
+- `bar_states`: unique states observed in the debug array.
+
+This mode is for live indicator capture. A separate history/replay API can
+intentionally consume older chart-socket data in a future PR.
+
+The browser extension does not decide whether an indicator alert is tradeable.
+It forwards the alert, bar metadata and chart interval; the local bridge applies
+the policy:
+
+- `realtime`/`fast`: accept study alerts immediately;
+- `confirmed_only`: accept only `state=confirmed`, `RT_CONFIRMED`, or
+  `HIST_CONFIRMED`;
+- `close_window`: accept ordinary intrabar alerts only during the configured
+  last seconds before bar close.
+
+`close_window` is a practical compatibility mode for simple Pine scripts using
+`alert.freq_once_per_bar`. It is not a non-repaint guarantee; it only limits how
+early in the bar a signal can be accepted.
+
+Custom Pine scripts can optionally send lifecycle messages with `state` set to
+`active`, `cancel`, or `confirmed`. The bridge treats `cancel` as non-tradeable
+and can treat `confirmed` as a confirmed signal. See
+`examples/optionx_noisy_test_lifecycle.pine` for a complete Pine fixture.
 
 ## Trigger vocabulary
 
@@ -99,11 +220,20 @@ transmit the raw URL.
 The shared secret is sent as the request header `X-OptionX-Secret`, never
 inside the JSON body.
 
+Indicator study alert capture is also disabled by default. Enable
+`Capture indicator study alerts` only when the bridge config has an explicit
+study policy such as `confirmed_only` or `close_window`.
+
 ## Test Indicator
 
 `examples/optionx_noisy_test_signals.pine` is a Pine Script test indicator for
 manual TradingView checks. It emits noisy RSI centerline `buy`/`sell` JSON
 alerts with `alert.freq_once_per_bar`.
+
+For non-repainting checks, enable the indicator's `Confirmed bars only` input.
+That variant uses `barstate.isconfirmed` and `alert.freq_once_per_bar_close`,
+which is the recommended Pine-side way to avoid alerts that disappear before
+the current bar closes.
 
 This is useful for:
 
@@ -111,12 +241,17 @@ This is useful for:
 - validating local duplicate suppression when the same signal appears in more
   than one study update.
 
-See `examples/README.md` for TradingView setup steps and the separate
-`alertcondition()` comparison fixture.
+`examples/optionx_noisy_test_lifecycle.pine` demonstrates the optional
+developer protocol with `signal_id`, `revision` and
+`state: active|cancel|confirmed`. It uses `alert.freq_all` so TradingView can
+deliver multiple state changes on the same realtime bar.
+
+See `examples/README.md` for TradingView setup steps, lifecycle notes and the
+separate `alertcondition()` comparison fixture.
 
 ## Local Payload
 
-The extension sends a `POST` with JSON:
+The extension sends a `POST` with JSON. Visible toast payloads look like:
 
 ```json
 {
@@ -179,12 +314,38 @@ seconds while the popup remains open. Recent events are also refreshed live
 while the popup is open whenever the background worker writes a new log entry.
 This status check does not send the shared secret or any TradingView payload.
 
-The content script also writes `TradingView observer active (...)` to the popup
-log when it attaches to a TradingView tab. If the bridge shows `online` but
-real TradingView alerts do not appear in **Recent events**, first reload the
-TradingView chart tab and look for that observer-active log entry. If it is
-present but no alert events appear, verify that the TradingView alert has popup
-notifications enabled and that a visible toast is shown in the chart page.
+The content script also writes `TradingView observer active (...)` and
+`private_feed_hook_injected` to the popup log when it attaches to a TradingView
+tab. If the bridge shows `online` but real TradingView alerts do not appear in
+**Recent events**, first reload the TradingView chart tab. The WebSocket hook
+must be present before TradingView opens the private feed or chart sockets. If
+toast capture is enabled but no toast events appear, verify that the TradingView
+alert has popup notifications enabled and that a visible toast is shown in the
+chart page.
+
+For indicator signals, the popup log should show
+`TradingView content status: chart_socket_hook_attached
+[host=data.tradingview.com path=/socket.io/websocket type=chart]` after the
+chart opens its `data.tradingview.com` WebSocket. If that line is missing,
+reload the TradingView tab after reloading the extension.
+
+Useful diagnostic lines:
+
+- `page_hook_installed` - the page-world hook executed;
+- `tradingview_ws_matched` - the hook saw a target TradingView WebSocket;
+- `chart_socket_hook_attached` - the hook wrapped the chart data socket;
+- `chart_socket_frames_seen` - chart socket frames are flowing through the hook;
+- `chart_socket_du_seen` - study/bar update frames are flowing;
+- `chart_socket_study_alerts_seen` - `data.alertMessages[]` was found;
+- `chart_socket_study_alerts_forwarded` - at least one indicator signal was
+  forwarded to the service worker.
+
+If `chart_socket_hook_attached` is present but `chart_socket_study_alerts_seen`
+is not, verify in DevTools Network that the chart socket actually contains
+`du ... alertMessages[]` frames for the current chart/script. If
+`chart_socket_study_alerts_forwarded` appears but the bridge receives nothing,
+check the following popup log line for `Bridge rejected`, `network_or_cors`,
+or `timeout`.
 
 Expected bridge behavior:
 
@@ -237,19 +398,25 @@ may collide if the alert fires repeatedly with identical text.
 
 ## Tests
 
-Three suites, all via `node --test`:
+Four suites, all via `node --test`:
 
 - **Unit** (`tests/parser.test.mjs`): pure-function parser tests, 65+ cases (action/symbol/price/direction parsing, raw_action/raw_direction, makeEventId 4-level resolution, resolveTriggerMetadata, DEFAULTS).
 - **Integration** (`tests/integration.test.mjs`): jsdom + real DOM pipeline. Loads `content_scripts/lib/parser.js` and `content_scripts/tradingview_alerts.js` into a jsdom environment with mocked `chrome.runtime.sendMessage`. Verifies the actual production DOM-to-payload path on real TradingView toast HTML, including: dynamic insertion, characterData mutations, multi-description guard, 5s dedup window, pct triggers, parsed JSON overrides, and BUY command parsing.
+- **Private/WebSocket feed** (`tests/private_feed.test.mjs`): jsdom + page hook
+  tests for `pushstream.tradingview.com/message-pipe-ws/private_feed` and the
+  chart data socket. Verifies that `pricealerts/alert_fired` becomes a
+  normalized payload, duplicate indicator `alertMessages[]` are forwarded once,
+  and lifecycle/non-target events are ignored.
 - **Popup** (`tests/popup.test.mjs`): jsdom popup checks for live log refresh from `chrome.storage.onChanged`.
 
 Running:
 ```bash
 cd browser_extensions/tradingview-alert-extension
 npm ci                  # reproducible install from package-lock.json
-npm test                # both suites
+npm test                # all suites
 npm run test:unit       # unit only
 npm run test:integration # integration only
+npm run test:private-feed # private feed hook only
 ```
 
 Standalone (no jsdom):

@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <ctime>
 #include <cstdint>
 #include <iomanip>
@@ -49,11 +50,23 @@ namespace optionx::bridges::tradingview::detail {
             std::string original_symbol;
             std::string action;
             std::string condition_type;
+            std::string signal_state;
+            std::string signal_lifecycle_id;
             std::string signal_name;
             std::string alert_name;
             std::string message;
+            std::string bar_state;
+            std::string bar_state_source;
+            std::string timeframe;
+            std::string trigger_unit;
             double price = 0.0;
+            double trigger_value = 0.0;
             std::int64_t time = 0;
+            std::int64_t bar_time = 0;
+            std::int64_t update_time = 0;
+            std::int64_t timeframe_seconds = 0;
+            std::int64_t signal_revision = 0;
+            bool has_trigger_value = false;
             bool is_level_alert = false;
             nlohmann::json raw;
         };
@@ -96,6 +109,70 @@ namespace optionx::bridges::tradingview::detail {
                 return false;
             }
             return position == text.size();
+        }
+
+        inline bool extract_last_number_from_text(
+                const std::string& text,
+                double& output) {
+            bool found = false;
+            double last_value = 0.0;
+
+            for (std::size_t index = 0; index < text.size();) {
+                const auto ch = static_cast<unsigned char>(text[index]);
+                const bool starts_number =
+                    std::isdigit(ch) ||
+                    ((text[index] == '-' || text[index] == '+') &&
+                     index + 1 < text.size() &&
+                     std::isdigit(static_cast<unsigned char>(text[index + 1])));
+                if (!starts_number) {
+                    ++index;
+                    continue;
+                }
+
+                if (index > 0 &&
+                    std::isalnum(static_cast<unsigned char>(text[index - 1]))) {
+                    ++index;
+                    continue;
+                }
+
+                auto end = index;
+                if (text[end] == '-' || text[end] == '+') {
+                    ++end;
+                }
+                bool has_digit = false;
+                while (end < text.size()) {
+                    const auto c = static_cast<unsigned char>(text[end]);
+                    if (std::isdigit(c)) {
+                        has_digit = true;
+                        ++end;
+                        continue;
+                    }
+                    if (text[end] == '.' || text[end] == ',') {
+                        ++end;
+                        continue;
+                    }
+                    break;
+                }
+
+                const bool right_ok =
+                    end >= text.size() ||
+                    !std::isalnum(static_cast<unsigned char>(text[end]));
+                if (has_digit && right_ok) {
+                    double parsed = 0.0;
+                    if (strict_number_string_to_double(
+                            text.substr(index, end - index),
+                            parsed)) {
+                        last_value = parsed;
+                        found = true;
+                    }
+                }
+                index = end > index ? end : index + 1;
+            }
+
+            if (found) {
+                output = last_value;
+            }
+            return found;
         }
 
         inline bool strict_integer_string_to_i64(
@@ -339,6 +416,30 @@ namespace optionx::bridges::tradingview::detail {
             return fallback;
         }
 
+        inline bool json_number_into(
+                const nlohmann::json& object,
+                std::initializer_list<const char*> keys,
+                double& output) {
+            if (!object.is_object()) {
+                return false;
+            }
+            for (const auto* key : keys) {
+                if (!object.contains(key)) {
+                    continue;
+                }
+                const auto& value = object.at(key);
+                if (value.is_number()) {
+                    output = value.get<double>();
+                    return true;
+                }
+                if (value.is_string() &&
+                    strict_number_string_to_double(value.get<std::string>(), output)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         inline std::int64_t json_integer(
                 const nlohmann::json& object,
                 std::initializer_list<const char*> keys,
@@ -370,6 +471,66 @@ namespace optionx::bridges::tradingview::detail {
                 }
             }
             return fallback;
+        }
+
+        inline std::int64_t current_time_ms() {
+            const auto now = std::chrono::system_clock::now().time_since_epoch();
+            return std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+        }
+
+        inline std::int64_t normalize_epoch_ms(std::int64_t value) {
+            if (value <= 0) {
+                return 0;
+            }
+            // TradingView bar/update times are usually milliseconds. Accept seconds too.
+            if (value < 100000000000LL) {
+                return value * 1000;
+            }
+            return value;
+        }
+
+        inline std::int64_t parse_timeframe_seconds(
+                const std::string& value,
+                std::int64_t fallback = 0) {
+            auto text = trim_copy(value);
+            if (text.empty()) {
+                return fallback;
+            }
+
+            char suffix = '\0';
+            if (!std::isdigit(static_cast<unsigned char>(text.back()))) {
+                suffix = text.back();
+                text.pop_back();
+            }
+            if (text.empty()) {
+                text = "1";
+            }
+
+            std::int64_t amount = 0;
+            if (!strict_integer_string_to_i64(text, amount) || amount <= 0) {
+                return fallback;
+            }
+
+            switch (suffix) {
+            case '\0':
+                return amount * 60;
+            case 'S':
+            case 's':
+                return amount;
+            case 'H':
+            case 'h':
+                return amount * 60 * 60;
+            case 'D':
+            case 'd':
+                return amount * 24 * 60 * 60;
+            case 'W':
+            case 'w':
+                return amount * 7 * 24 * 60 * 60;
+            case 'M':
+                return amount * 30 * 24 * 60 * 60;
+            default:
+                return fallback;
+            }
         }
 
         inline bool is_action_buy_sell(const std::string& action) {
@@ -437,6 +598,18 @@ namespace optionx::bridges::tradingview::detail {
             if (value == "cross") {
                 return "crossing";
             }
+            if (value == "up") {
+                return "crossing_up";
+            }
+            if (value == "down") {
+                return "crossing_down";
+            }
+            if (value == "above") {
+                return "greater_than";
+            }
+            if (value == "below") {
+                return "less_than";
+            }
             return value;
         }
 
@@ -462,7 +635,67 @@ namespace optionx::bridges::tradingview::detail {
                 text.find("below") != std::string::npos) {
                 return "less_than";
             }
+            if (text.find("moving up") != std::string::npos) {
+                return text.find('%') != std::string::npos ? "moving_up_pct" : "moving_up";
+            }
+            if (text.find("moving down") != std::string::npos) {
+                return text.find('%') != std::string::npos ? "moving_down_pct" : "moving_down";
+            }
             return {};
+        }
+
+        inline bool is_percent_trigger(
+                const std::string& condition_type,
+                const std::string& trigger_unit) {
+            const auto condition = lower_copy(trim_copy(condition_type));
+            const auto unit = lower_copy(trim_copy(trigger_unit));
+            return unit == "percent" ||
+                   unit == "%" ||
+                   (condition.size() >= 4 &&
+                    condition.substr(condition.size() - 4) == "_pct");
+        }
+
+        inline bool extract_percent_trigger_value_from_text(
+                const std::string& text,
+                double& output) {
+            const auto lowered = lower_copy(text);
+            auto marker = lowered.find("moving up");
+            auto marker_length = std::string("moving up").size();
+            if (marker == std::string::npos) {
+                marker = lowered.find("moving down");
+                marker_length = std::string("moving down").size();
+            }
+            if (marker == std::string::npos) {
+                return false;
+            }
+
+            auto begin = marker + marker_length;
+            while (begin < text.size() &&
+                   std::isspace(static_cast<unsigned char>(text[begin]))) {
+                ++begin;
+            }
+            auto end = begin;
+            while (end < text.size()) {
+                const auto ch = text[end];
+                if (std::isdigit(static_cast<unsigned char>(ch)) ||
+                    ch == '+' ||
+                    ch == '-' ||
+                    ch == '.' ||
+                    ch == ',') {
+                    ++end;
+                    continue;
+                }
+                break;
+            }
+            auto percent = end;
+            while (percent < text.size() &&
+                   std::isspace(static_cast<unsigned char>(text[percent]))) {
+                ++percent;
+            }
+            if (begin == end || percent >= text.size() || text[percent] != '%') {
+                return false;
+            }
+            return strict_number_string_to_double(text.substr(begin, end - begin), output);
         }
 
         inline std::string normalize_symbol_value(std::string symbol) {
@@ -624,7 +857,7 @@ namespace optionx::bridges::tradingview::detail {
 
         inline NormalizedEvent parse_pricealerts_private_feed(const nlohmann::json& payload) {
             NormalizedEvent event;
-            event.source_kind = "tradingview_private_pricealerts_ws";
+            event.source_kind = "private_pricealerts_ws";
             event.is_level_alert = true;
             event.raw = payload;
 
@@ -673,10 +906,6 @@ namespace optionx::bridges::tradingview::detail {
             if (event.message.empty()) {
                 event.message = first_json_string(payload, {"message", "description", "title"});
             }
-            event.price =
-                json_number(data, {"price", "trigger_price", "cross_price", "alert_value"});
-            event.time =
-                json_integer(data, {"time", "timestamp", "fire_time", "fired_at", "update_time"});
             if (event.condition_type.empty()) {
                 event.condition_type =
                     normalize_condition_type(first_json_string(
@@ -686,6 +915,30 @@ namespace optionx::bridges::tradingview::detail {
             if (event.condition_type.empty()) {
                 event.condition_type = infer_condition_type_from_message(event.message);
             }
+            event.trigger_unit = first_json_string(data, {"trigger_unit", "unit"});
+            event.has_trigger_value =
+                json_number_into(data, {"trigger_value", "alert_value"}, event.trigger_value);
+            if (!event.has_trigger_value &&
+                is_percent_trigger(event.condition_type, event.trigger_unit)) {
+                event.has_trigger_value =
+                    extract_percent_trigger_value_from_text(event.message, event.trigger_value);
+            }
+            if (event.trigger_unit.empty() &&
+                is_percent_trigger(event.condition_type, event.trigger_unit)) {
+                event.trigger_unit = "percent";
+            }
+
+            event.price = json_number(data, {"price", "trigger_price", "cross_price"});
+            if (event.price == 0.0 &&
+                !is_percent_trigger(event.condition_type, event.trigger_unit)) {
+                event.price = json_number(data, {"alert_value"});
+            }
+            if (event.price == 0.0 &&
+                !is_percent_trigger(event.condition_type, event.trigger_unit)) {
+                extract_last_number_from_text(event.message, event.price);
+            }
+            event.time =
+                json_integer(data, {"time", "timestamp", "fire_time", "fired_at", "update_time"});
             return event;
         }
 
@@ -715,12 +968,46 @@ namespace optionx::bridges::tradingview::detail {
             event.condition_type =
                 normalize_condition_type(first_json_string(
                     payload,
-                    {"condition_type", "condition", "crossing_type"}));
+                    {"condition_type", "condition", "crossing_type", "direction"}));
+            event.signal_state = first_json_string(payload, {"state", "signal_state", "lifecycle_state"});
+            event.signal_lifecycle_id = first_json_string(payload, {"signal_id", "lifecycle_id"});
+            event.signal_revision = json_integer(payload, {"revision", "signal_revision"});
             event.signal_name = first_json_string(payload, {"signal_name", "strategy", "name"});
             event.alert_name = first_json_string(payload, {"alert_name", "alert_title"});
             event.message = first_json_string(payload, {"message", "description", "text", "title"});
-            event.price = json_number(payload, {"price", "close", "trigger_price", "alert_value"});
+            event.bar_state = first_json_string(payload, {"bar_state", "bar_status", "study_bar_state"});
+            event.bar_state_source = first_json_string(payload, {"bar_state_source", "bar_status_source"});
+            event.timeframe = first_json_string(payload, {"timeframe", "interval", "resolution"});
+            event.timeframe_seconds =
+                json_integer(payload, {"timeframe_seconds", "interval_seconds", "bar_duration_seconds"});
+            if (event.condition_type.empty()) {
+                event.condition_type = infer_condition_type_from_message(event.message);
+            }
+            event.trigger_unit = first_json_string(payload, {"trigger_unit", "unit"});
+            event.has_trigger_value =
+                json_number_into(payload, {"trigger_value", "alert_value"}, event.trigger_value);
+            if (!event.has_trigger_value &&
+                is_percent_trigger(event.condition_type, event.trigger_unit)) {
+                event.has_trigger_value =
+                    extract_percent_trigger_value_from_text(event.message, event.trigger_value);
+            }
+            if (event.trigger_unit.empty() &&
+                is_percent_trigger(event.condition_type, event.trigger_unit)) {
+                event.trigger_unit = "percent";
+            }
+
+            event.price = json_number(payload, {"price", "close", "trigger_price"});
+            if (event.price == 0.0 &&
+                !is_percent_trigger(event.condition_type, event.trigger_unit)) {
+                event.price = json_number(payload, {"alert_value"});
+            }
+            if (event.price == 0.0 &&
+                !is_percent_trigger(event.condition_type, event.trigger_unit)) {
+                extract_last_number_from_text(event.message, event.price);
+            }
             event.time = json_integer(payload, {"time", "timestamp", "bar_time", "fire_time"});
+            event.bar_time = json_integer(payload, {"bar_time", "barTime"});
+            event.update_time = json_integer(payload, {"update_time", "updateTime"});
 
             if (payload.contains("barInfo") && payload.at("barInfo").is_object()) {
                 const auto& bar = payload.at("barInfo");
@@ -730,9 +1017,34 @@ namespace optionx::bridges::tradingview::detail {
                 if (event.time == 0) {
                     event.time = json_integer(bar, {"time", "updateTime"});
                 }
+                if (event.bar_time == 0) {
+                    event.bar_time = json_integer(bar, {"time"});
+                }
+                if (event.update_time == 0) {
+                    event.update_time = json_integer(bar, {"updateTime"});
+                }
             }
 
-            if (event.event_id.empty() && !event.fire_id.empty()) {
+            if (payload.contains("extension") && payload.at("extension").is_object()) {
+                const auto& extension = payload.at("extension");
+                if (event.timeframe.empty()) {
+                    event.timeframe = first_json_string(extension, {"interval", "timeframe", "resolution"});
+                }
+                if (event.timeframe_seconds == 0) {
+                    event.timeframe_seconds =
+                        json_integer(extension, {"timeframe_seconds", "interval_seconds", "bar_duration_seconds"});
+                }
+            }
+
+            if (event.event_id.empty() && !event.signal_lifecycle_id.empty()) {
+                event.event_id = event.signal_lifecycle_id;
+                if (!event.signal_state.empty()) {
+                    event.event_id += ":" + event.signal_state;
+                }
+                if (event.signal_revision > 0) {
+                    event.event_id += ":" + std::to_string(event.signal_revision);
+                }
+            } else if (event.event_id.empty() && !event.fire_id.empty()) {
                 event.event_id = event.source_kind + ":" + event.fire_id;
             } else if (event.event_id.empty() && !event.alert_id.empty()) {
                 event.event_id = event.source_kind + ":" + event.alert_id;
@@ -743,9 +1055,6 @@ namespace optionx::bridges::tradingview::detail {
                 source_kind.find("pricealert") != std::string::npos ||
                 event.method == "alert_fired" ||
                 lower_copy(event.action) == "alert";
-            if (event.condition_type.empty()) {
-                event.condition_type = infer_condition_type_from_message(event.message);
-            }
             return event;
         }
 
@@ -761,7 +1070,7 @@ namespace optionx::bridges::tradingview::detail {
         }
 
         inline nlohmann::json normalized_event_to_json(const NormalizedEvent& event) {
-            return nlohmann::json{
+            auto value = nlohmann::json{
                 {"source_kind", event.source_kind},
                 {"method", event.method},
                 {"fire_id", event.fire_id},
@@ -773,13 +1082,27 @@ namespace optionx::bridges::tradingview::detail {
                 {"original_symbol", event.original_symbol},
                 {"action", event.action},
                 {"condition_type", event.condition_type},
+                {"signal_state", event.signal_state},
+                {"signal_id", event.signal_lifecycle_id},
+                {"revision", event.signal_revision},
                 {"signal_name", event.signal_name},
                 {"alert_name", event.alert_name},
                 {"message", event.message},
+                {"bar_state", event.bar_state},
+                {"bar_state_source", event.bar_state_source},
+                {"timeframe", event.timeframe},
                 {"price", event.price},
+                {"trigger_value", event.has_trigger_value
+                    ? nlohmann::json(event.trigger_value)
+                    : nlohmann::json(nullptr)},
+                {"trigger_unit", event.trigger_unit},
                 {"time", event.time},
+                {"bar_time", event.bar_time},
+                {"update_time", event.update_time},
+                {"timeframe_seconds", event.timeframe_seconds},
                 {"is_level_alert", event.is_level_alert}
             };
+            return value;
         }
 
         inline nlohmann::json make_response(
@@ -840,6 +1163,84 @@ namespace optionx::bridges::tradingview::detail {
             }
         }
 
+        inline bool is_chart_study_alert(const NormalizedEvent& event) {
+            return lower_copy(event.source_kind) == "private_chart_study_alert_messages";
+        }
+
+        inline bool is_lifecycle_cancel(const NormalizedEvent& event) {
+            const auto state = lower_copy(trim_copy(event.signal_state));
+            return state == "cancel" ||
+                   state == "cancelled" ||
+                   state == "canceled";
+        }
+
+        inline bool is_confirmed_study_alert(const NormalizedEvent& event) {
+            const auto signal_state = lower_copy(trim_copy(event.signal_state));
+            if (signal_state == "confirmed") {
+                return true;
+            }
+            const auto state = lower_copy(trim_copy(event.bar_state));
+            return state == "hist_confirmed" ||
+                   state == "rt_confirmed";
+        }
+
+        inline std::int64_t effective_timeframe_seconds(
+                const TradingViewExtensionBridgeConfig& config,
+                const NormalizedEvent& event) {
+            if (event.timeframe_seconds > 0) {
+                return event.timeframe_seconds;
+            }
+            return parse_timeframe_seconds(
+                event.timeframe,
+                config.study_alert_default_timeframe_seconds);
+        }
+
+        inline std::int64_t event_reference_time_ms(const NormalizedEvent& event) {
+            const auto update = normalize_epoch_ms(event.update_time);
+            if (update > 0) {
+                return update;
+            }
+            const auto event_time = normalize_epoch_ms(event.time);
+            if (event_time > 0) {
+                return event_time;
+            }
+            return current_time_ms();
+        }
+
+        inline bool is_stale_study_alert(
+                const TradingViewExtensionBridgeConfig& config,
+                const NormalizedEvent& event) {
+            if (!config.study_alert_reject_historical ||
+                config.study_alert_max_signal_age_seconds <= 0) {
+                return false;
+            }
+            const auto reference_time = event_reference_time_ms(event);
+            if (reference_time <= 0) {
+                return false;
+            }
+            const auto age_ms = current_time_ms() - reference_time;
+            if (age_ms <= 0) {
+                return false;
+            }
+            return age_ms > config.study_alert_max_signal_age_seconds * 1000;
+        }
+
+        inline bool is_within_close_window(
+                const TradingViewExtensionBridgeConfig& config,
+                const NormalizedEvent& event) {
+            const auto bar_time = normalize_epoch_ms(event.bar_time > 0 ? event.bar_time : event.time);
+            const auto timeframe_seconds = effective_timeframe_seconds(config, event);
+            if (bar_time <= 0 || timeframe_seconds <= 0) {
+                return false;
+            }
+
+            const auto reference_time = event_reference_time_ms(event);
+            const auto close_time = bar_time + timeframe_seconds * 1000;
+            const auto window_start =
+                close_time - config.study_alert_close_window_seconds * 1000;
+            return reference_time >= window_start;
+        }
+
         inline std::unique_ptr<TradeSignal> build_signal(
                 const TradingViewExtensionBridgeConfig& config,
                 const NormalizedEvent& event,
@@ -881,9 +1282,22 @@ namespace optionx::bridges::tradingview::detail {
                 {"original_symbol", event.original_symbol},
                 {"normalized_symbol", event.symbol},
                 {"condition_type", event.condition_type},
+                {"signal_state", event.signal_state},
+                {"signal_id", event.signal_lifecycle_id},
+                {"revision", event.signal_revision},
+                {"bar_state", event.bar_state},
+                {"bar_state_source", event.bar_state_source},
+                {"timeframe", event.timeframe},
                 {"action", to_str(order_type, 1)},
                 {"price", event.price},
+                {"trigger_value", event.has_trigger_value
+                    ? nlohmann::json(event.trigger_value)
+                    : nlohmann::json(nullptr)},
+                {"trigger_unit", event.trigger_unit},
                 {"time", event.time},
+                {"bar_time", event.bar_time},
+                {"update_time", event.update_time},
+                {"timeframe_seconds", event.timeframe_seconds},
                 {"sizing", sizing_metadata(config)}
             };
             signal->user_data = user_data.dump();
@@ -943,6 +1357,41 @@ namespace optionx::bridges::tradingview::detail {
         result.event_id = event.event_id;
         result.dedupe_key = event.dedupe_key;
         result.parsed_payload = protocol::normalized_event_to_json(event);
+
+        if (protocol::is_chart_study_alert(event)) {
+            const auto study_mode =
+                protocol::lower_copy(protocol::trim_copy(config.study_alert_mode));
+
+            if (protocol::is_stale_study_alert(config, event)) {
+                result.reason = "stale_study_alert";
+                result.response =
+                    protocol::make_response(false, result.reason, result.event_id, result.dedupe_key);
+                return result;
+            }
+
+            if (protocol::is_lifecycle_cancel(event)) {
+                result.reason = "signal_lifecycle_cancel";
+                result.response =
+                    protocol::make_response(false, result.reason, result.event_id, result.dedupe_key);
+                return result;
+            }
+
+            if (study_mode == "confirmed_only" &&
+                !protocol::is_confirmed_study_alert(event)) {
+                result.reason = "unconfirmed_study_alert";
+                result.response =
+                    protocol::make_response(false, result.reason, result.event_id, result.dedupe_key);
+                return result;
+            }
+
+            if (study_mode == "close_window" &&
+                !protocol::is_within_close_window(config, event)) {
+                result.reason = "outside_close_window";
+                result.response =
+                    protocol::make_response(false, result.reason, result.event_id, result.dedupe_key);
+                return result;
+            }
+        }
 
         auto order_type = protocol::order_type_from_action(event.action);
         std::string signal_name = event.signal_name;

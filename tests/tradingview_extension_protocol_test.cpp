@@ -94,6 +94,11 @@ TEST(TradingViewExtensionProtocol, ConfigRoundTripsJson) {
     config.use_default_action_keywords = false;
     config.buy_action_keywords = {"entry-long"};
     config.sell_action_keywords = {"entry-short"};
+    config.study_alert_mode = "confirmed_only";
+    config.study_alert_close_window_seconds = 7;
+    config.study_alert_default_timeframe_seconds = 300;
+    config.study_alert_max_signal_age_seconds = 30;
+    config.study_alert_reject_historical = true;
     config.level_alert_rules.push_back(
         TradingViewLevelAlertRule{
             "123",
@@ -123,6 +128,11 @@ TEST(TradingViewExtensionProtocol, ConfigRoundTripsJson) {
     EXPECT_EQ(restored.buy_action_keywords.front(), "entry-long");
     ASSERT_EQ(restored.sell_action_keywords.size(), 1u);
     EXPECT_EQ(restored.sell_action_keywords.front(), "entry-short");
+    EXPECT_EQ(restored.study_alert_mode, "confirmed_only");
+    EXPECT_EQ(restored.study_alert_close_window_seconds, 7);
+    EXPECT_EQ(restored.study_alert_default_timeframe_seconds, 300);
+    EXPECT_EQ(restored.study_alert_max_signal_age_seconds, 30);
+    EXPECT_TRUE(restored.study_alert_reject_historical);
     EXPECT_EQ(restored.level_alert_rules.size(), 1u);
     EXPECT_EQ(restored.level_alert_rules.front().action, "sell");
     EXPECT_TRUE(restored.validate().first);
@@ -167,6 +177,323 @@ TEST(TradingViewExtensionProtocol, ParsesIndicatorBuySignal) {
     EXPECT_EQ(result.signal->duration, 120u);
     EXPECT_EQ(result.signal->min_payout, 0.65);
     EXPECT_NE(result.signal->user_data.find("\"source_kind\":\"tradingview\""), std::string::npos);
+}
+
+TEST(TradingViewExtensionProtocol, ParsesChartStudyIndicatorSignal) {
+    auto config = base_config();
+
+    const nlohmann::json payload = {
+        {"version", 1},
+        {"source", "tradingview_extension"},
+        {"source_kind", "private_chart_study_alert_messages"},
+        {"method", "du.alertMessages"},
+        {"event_id", "tv_study_alert:abc123"},
+        {"dedupe_key", "tv_study_alert:abc123"},
+        {"fingerprint", "abc123"},
+        {"chart_session", "cs_test"},
+        {"study_id", "8x94yO"},
+        {"signal_name", "noisy_rsi_test"},
+        {"action", "sell"},
+        {"symbol", "BTCUSD"},
+        {"tickerid", "CRYPTO:BTCUSD"},
+        {"price", 64131.92},
+        {"time", 1783763820000LL},
+        {"bar_time", 1783763820000LL},
+        {"update_time", 1783763881395LL},
+        {"bar_state", "RT_CONFIRMED"},
+        {"bar_state_source", "debug_idx"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.event_id, "tv_study_alert:abc123");
+    EXPECT_EQ(result.signal->unique_hash, "tv_study_alert:abc123");
+    EXPECT_EQ(result.signal->symbol, "BTCUSD");
+    EXPECT_EQ(result.signal->signal_name, "noisy_rsi_test");
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::SELL);
+    EXPECT_EQ(result.parsed_payload.at("bar_state"), "RT_CONFIRMED");
+    EXPECT_EQ(result.parsed_payload.at("bar_state_source"), "debug_idx");
+    EXPECT_NE(
+        result.signal->user_data.find("\"source_kind\":\"private_chart_study_alert_messages\""),
+        std::string::npos);
+    EXPECT_NE(
+        result.signal->user_data.find("\"bar_state\":\"RT_CONFIRMED\""),
+        std::string::npos);
+}
+
+TEST(TradingViewExtensionProtocol, RejectsUnconfirmedRealtimeStudyAlertWhenConfirmedOnly) {
+    auto config = base_config();
+    config.study_alert_mode = "confirmed_only";
+
+    const nlohmann::json payload = {
+        {"source_kind", "private_chart_study_alert_messages"},
+        {"method", "du.alertMessages"},
+        {"event_id", "tv_study_alert:rt"},
+        {"signal_name", "noisy_rsi_test"},
+        {"action", "buy"},
+        {"symbol", "BTCUSD"},
+        {"price", 64130.49},
+        {"time", 1783764000000LL},
+        {"bar_state", "RT"},
+        {"bar_state_source", "debug_idx"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    EXPECT_FALSE(result.accepted);
+    EXPECT_EQ(result.reason, "unconfirmed_study_alert");
+    EXPECT_FALSE(result.signal);
+    ASSERT_TRUE(result.parsed_payload.is_object());
+    EXPECT_EQ(result.parsed_payload.at("bar_state"), "RT");
+}
+
+TEST(TradingViewExtensionProtocol, RejectsHistoricLastStudyAlertWhenConfirmedOnly) {
+    auto config = base_config();
+    config.study_alert_mode = "confirmed_only";
+
+    const nlohmann::json payload = {
+        {"source_kind", "private_chart_study_alert_messages"},
+        {"method", "du.alertMessages"},
+        {"event_id", "tv_study_alert:hist_last"},
+        {"signal_name", "noisy_rsi_test"},
+        {"action", "buy"},
+        {"symbol", "BTCUSD"},
+        {"price", 64130.49},
+        {"time", 1783764000000LL},
+        {"bar_state", "HIST_LAST"},
+        {"bar_state_source", "debug_idx"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    EXPECT_FALSE(result.accepted);
+    EXPECT_EQ(result.reason, "unconfirmed_study_alert");
+    EXPECT_FALSE(result.signal);
+    ASSERT_TRUE(result.parsed_payload.is_object());
+    EXPECT_EQ(result.parsed_payload.at("bar_state"), "HIST_LAST");
+}
+
+TEST(TradingViewExtensionProtocol, AcceptsRealtimeConfirmedStudyAlertWhenConfirmedOnly) {
+    auto config = base_config();
+    config.study_alert_mode = "confirmed_only";
+
+    const nlohmann::json payload = {
+        {"source_kind", "private_chart_study_alert_messages"},
+        {"method", "du.alertMessages"},
+        {"event_id", "tv_study_alert:rt_confirmed"},
+        {"signal_name", "noisy_rsi_test"},
+        {"action", "sell"},
+        {"symbol", "BTCUSD"},
+        {"price", 64131.92},
+        {"time", 1783763820000LL},
+        {"bar_state", "RT_CONFIRMED"},
+        {"bar_state_source", "debug_idx"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::SELL);
+}
+
+TEST(TradingViewExtensionProtocol, AcceptsHistoricStudyAlertWhenConfirmedOnly) {
+    auto config = base_config();
+    config.study_alert_mode = "confirmed_only";
+
+    const nlohmann::json payload = {
+        {"source_kind", "private_chart_study_alert_messages"},
+        {"method", "du.alertMessages"},
+        {"event_id", "tv_study_alert:hist"},
+        {"signal_name", "noisy_rsi_test"},
+        {"action", "buy"},
+        {"symbol", "BTCUSD"},
+        {"price", 64131.92},
+        {"time", 1783763820000LL},
+        {"bar_state", "HIST_CONFIRMED"},
+        {"bar_state_source", "debug_last"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
+}
+
+TEST(TradingViewExtensionProtocol, AcceptsLateIntrabarStudyAlertInCloseWindow) {
+    auto config = base_config();
+    config.study_alert_mode = "close_window";
+    config.study_alert_close_window_seconds = 10;
+    config.study_alert_default_timeframe_seconds = 60;
+
+    const auto bar_time = 1783763820000LL;
+    const nlohmann::json payload = {
+        {"source_kind", "private_chart_study_alert_messages"},
+        {"method", "du.alertMessages"},
+        {"event_id", "tv_study_alert:late_window"},
+        {"signal_name", "noisy_rsi_test"},
+        {"action", "buy"},
+        {"symbol", "BTCUSD"},
+        {"price", 64131.92},
+        {"time", bar_time},
+        {"bar_time", bar_time},
+        {"update_time", bar_time + 55000LL}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
+}
+
+TEST(TradingViewExtensionProtocol, RejectsEarlyIntrabarStudyAlertOutsideCloseWindow) {
+    auto config = base_config();
+    config.study_alert_mode = "close_window";
+    config.study_alert_close_window_seconds = 10;
+    config.study_alert_default_timeframe_seconds = 60;
+
+    const auto bar_time = 1783763820000LL;
+    const nlohmann::json payload = {
+        {"source_kind", "private_chart_study_alert_messages"},
+        {"method", "du.alertMessages"},
+        {"event_id", "tv_study_alert:early_window"},
+        {"signal_name", "noisy_rsi_test"},
+        {"action", "sell"},
+        {"symbol", "BTCUSD"},
+        {"price", 64131.92},
+        {"time", bar_time},
+        {"bar_time", bar_time},
+        {"update_time", bar_time + 49000LL}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    EXPECT_FALSE(result.accepted);
+    EXPECT_EQ(result.reason, "outside_close_window");
+    EXPECT_FALSE(result.signal);
+}
+
+TEST(TradingViewExtensionProtocol, UsesExtensionIntervalForCloseWindow) {
+    auto config = base_config();
+    config.study_alert_mode = "close_window";
+    config.study_alert_close_window_seconds = 10;
+    config.study_alert_default_timeframe_seconds = 300;
+
+    const auto bar_time = 1783763820000LL;
+    const nlohmann::json payload = {
+        {"source_kind", "private_chart_study_alert_messages"},
+        {"method", "du.alertMessages"},
+        {"event_id", "tv_study_alert:extension_interval"},
+        {"signal_name", "noisy_rsi_test"},
+        {"action", "buy"},
+        {"symbol", "BTCUSD"},
+        {"price", 64131.92},
+        {"time", bar_time},
+        {"bar_time", bar_time},
+        {"update_time", bar_time + 55000LL},
+        {"extension", {
+            {"interval", "1"}
+        }}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.parsed_payload.at("timeframe"), "1");
+}
+
+TEST(TradingViewExtensionProtocol, RejectsStaleStudyAlertWhenEnabled) {
+    auto config = base_config();
+    config.study_alert_reject_historical = true;
+    config.study_alert_max_signal_age_seconds = 10;
+
+    const auto now = tv_protocol::protocol::current_time_ms();
+    const nlohmann::json payload = {
+        {"source_kind", "private_chart_study_alert_messages"},
+        {"method", "du.alertMessages"},
+        {"event_id", "tv_study_alert:stale"},
+        {"signal_name", "noisy_rsi_test"},
+        {"action", "buy"},
+        {"symbol", "BTCUSD"},
+        {"price", 64131.92},
+        {"time", now - 60000LL},
+        {"bar_time", now - 60000LL},
+        {"update_time", now - 60000LL}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    EXPECT_FALSE(result.accepted);
+    EXPECT_EQ(result.reason, "stale_study_alert");
+    EXPECT_FALSE(result.signal);
+}
+
+TEST(TradingViewExtensionProtocol, RejectsLifecycleCancelStudyAlert) {
+    auto config = base_config();
+
+    const nlohmann::json payload = {
+        {"source_kind", "private_chart_study_alert_messages"},
+        {"method", "du.alertMessages"},
+        {"event_id", "tv_study_alert:lifecycle_cancel"},
+        {"signal_name", "noisy_rsi_test"},
+        {"action", "buy"},
+        {"state", "cancel"},
+        {"signal_id", "BTCUSD|1|1783763820000|buy"},
+        {"revision", 2},
+        {"symbol", "BTCUSD"},
+        {"price", 64131.92},
+        {"time", 1783763820000LL}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    EXPECT_FALSE(result.accepted);
+    EXPECT_EQ(result.reason, "signal_lifecycle_cancel");
+    EXPECT_FALSE(result.signal);
+    EXPECT_EQ(result.parsed_payload.at("signal_id"), "BTCUSD|1|1783763820000|buy");
+    EXPECT_EQ(result.parsed_payload.at("revision"), 2);
+}
+
+TEST(TradingViewExtensionProtocol, AcceptsLifecycleConfirmedStudyAlertWhenConfirmedOnly) {
+    auto config = base_config();
+    config.study_alert_mode = "confirmed_only";
+
+    const nlohmann::json payload = {
+        {"source_kind", "private_chart_study_alert_messages"},
+        {"method", "du.alertMessages"},
+        {"signal_name", "noisy_rsi_test"},
+        {"action", "sell"},
+        {"state", "confirmed"},
+        {"signal_id", "BTCUSD|1|1783763820000|sell"},
+        {"revision", 3},
+        {"symbol", "BTCUSD"},
+        {"price", 64131.92},
+        {"time", 1783763820000LL}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.event_id, "BTCUSD|1|1783763820000|sell:confirmed:3");
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::SELL);
+    EXPECT_EQ(result.parsed_payload.at("signal_state"), "confirmed");
 }
 
 TEST(TradingViewExtensionProtocol, RejectsBodySecretByDefault) {
@@ -237,6 +564,7 @@ TEST(TradingViewExtensionProtocol, AppliesAlertIdRuleForLevelAlert) {
     EXPECT_EQ(result.signal->signal_name, "eurusd_level_sell");
     EXPECT_EQ(result.signal->unique_id, 53256556946LL);
     EXPECT_EQ(result.reason, "accepted");
+    EXPECT_EQ(result.parsed_payload.at("source_kind"), "private_pricealerts_ws");
 }
 
 TEST(TradingViewExtensionProtocol, AppliesConditionRuleForLevelAlert) {
@@ -266,6 +594,48 @@ TEST(TradingViewExtensionProtocol, AppliesConditionRuleForLevelAlert) {
     ASSERT_TRUE(result.signal);
     EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
     EXPECT_EQ(result.signal->signal_name, "eurusd_crossing_up");
+    EXPECT_DOUBLE_EQ(result.parsed_payload.at("price").get<double>(), 1.14072);
+}
+
+TEST(TradingViewExtensionProtocol, ParsesForwardedPrivateFeedPayload) {
+    auto config = base_config();
+    config.level_alert_rules.push_back(
+        TradingViewLevelAlertRule{
+            {},
+            "FX:EURUSD",
+            "crossing",
+            {},
+            {},
+            "buy",
+            "private_pricealert"});
+
+    auto payload = price_alert_payload(
+        "alert_fired",
+        nlohmann::json{
+            {"fire_id", 53256556946LL},
+            {"alert_id", 5099741779LL},
+            {"symbol", "={\"symbol\":\"FX:EURUSD\",\"adjustment\":\"splits\"}"},
+            {"message", "EURUSD Crossing 1.14072"},
+            {"fire_time", "2026-07-08T02:36:22Z"}
+        });
+    payload["source_kind"] = "private_pricealerts_ws";
+    payload["event_id"] = "tv_price_alert:53256556946";
+    payload["dedupe_key"] = "tv_price_alert:53256556946";
+    payload["fingerprint"] = "b9d62011";
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.event_id, "tv_price_alert:53256556946");
+    EXPECT_EQ(result.dedupe_key, "tv_price_alert:53256556946");
+    EXPECT_EQ(result.signal->unique_hash, "tv_price_alert:53256556946");
+    EXPECT_EQ(result.signal->symbol, "EURUSD");
+    EXPECT_EQ(result.signal->signal_name, "private_pricealert");
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
+    EXPECT_EQ(result.parsed_payload.at("source_kind"), "private_pricealerts_ws");
+    EXPECT_DOUBLE_EQ(result.parsed_payload.at("price").get<double>(), 1.14072);
 }
 
 TEST(TradingViewExtensionProtocol, RejectsUnmappedLevelAlert) {
@@ -328,6 +698,36 @@ TEST(TradingViewExtensionProtocol, DoesNotMapDirectionalLevelWordsByDefault) {
     EXPECT_FALSE(result.accepted);
     EXPECT_EQ(result.reason, "unmapped_level_alert");
     EXPECT_FALSE(result.signal);
+}
+
+TEST(TradingViewExtensionProtocol, MapsToastDirectionToConditionRule) {
+    auto config = base_config();
+    config.level_alert_rules.push_back(
+        TradingViewLevelAlertRule{
+            {},
+            "EURUSD",
+            "crossing_up",
+            {},
+            {},
+            "buy",
+            "eurusd_crossing_up"});
+
+    const nlohmann::json payload = {
+        {"source_kind", "alert_toast_dom"},
+        {"event_id", "toast:eurusd:direction-up"},
+        {"action", "alert"},
+        {"symbol", "EURUSD"},
+        {"direction", "up"},
+        {"message", "EURUSD Crossing Up 1.1400"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.parsed_payload.at("condition_type"), "crossing_up");
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
 }
 
 TEST(TradingViewExtensionProtocol, MatchesDefaultRussianKeywordsCaseInsensitively) {
@@ -396,6 +796,29 @@ TEST(TradingViewExtensionProtocol, ParsesCommaPriceAndIsoTimeFromToastPayload) {
     const auto user_data = nlohmann::json::parse(result.signal->user_data);
     EXPECT_DOUBLE_EQ(user_data.at("price").get<double>(), 64143.35);
     EXPECT_EQ(user_data.at("time").get<std::int64_t>(), 1783757385650LL);
+}
+
+TEST(TradingViewExtensionProtocol, KeepsPercentTriggerOutOfPriceFallback) {
+    auto config = base_config();
+
+    const nlohmann::json payload = {
+        {"source_kind", "alert_toast_dom"},
+        {"event_id", "toast:eurusd:moving-up-pct"},
+        {"action", "alert"},
+        {"symbol", "EURUSD"},
+        {"message", "EURUSD Moving Up 1.0%"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    EXPECT_FALSE(result.accepted);
+    EXPECT_EQ(result.reason, "unmapped_level_alert");
+    ASSERT_TRUE(result.parsed_payload.is_object());
+    EXPECT_EQ(result.parsed_payload.at("condition_type"), "moving_up_pct");
+    EXPECT_DOUBLE_EQ(result.parsed_payload.at("price").get<double>(), 0.0);
+    EXPECT_DOUBLE_EQ(result.parsed_payload.at("trigger_value").get<double>(), 1.0);
+    EXPECT_EQ(result.parsed_payload.at("trigger_unit"), "percent");
 }
 
 TEST(TradingViewExtensionProtocol, PreservesAlertNameAndUsesItForKeywords) {

@@ -178,8 +178,8 @@ wss://data.tradingview.com/socket.io/websocket?from=chart/<layout-id>/&date=<iso
 ```
 
 This is TradingView's private chart data channel. It is useful research for a
-quotes bridge, but it is not a stable public API and should be treated as an
-experimental/high-fragility integration.
+quotes bridge and historical/study-signal replay, but it is not a stable public
+API and should be treated as an experimental/high-fragility integration.
 
 Important: the first captured dump did not prove that alert events are
 delivered on this socket. It did show chart data, quote data and study data. A
@@ -260,15 +260,85 @@ Observed shape, sanitized:
 }
 ```
 
-This is very useful for indicator-driven signals because the inner `msg` can be
-our own JSON alert contract. The capture contained the same alert payload twice
-under two different study ids, so local code must deduplicate by at least:
+This is very useful for indicator-driven signals and future strategy-history
+testing because the inner `msg` can be our own JSON alert contract. The capture
+contained the same alert payload twice under two different study ids, so local
+code must deduplicate by at least:
 
 - parsed `msg`;
 - `barInfo.time` or parsed signal `time`;
 - `barInfo.updateTime`;
 - chart session/study id only as diagnostic metadata, not as the primary event
   id.
+
+A later BTCUSD capture on 2026-07-11 clarified the source split:
+
+- `wss://pushstream.tradingview.com/message-pipe-ws/private_feed` carries
+  price/level alert lifecycle and fresh `pricealerts/alert_fired` events;
+- `wss://data.tradingview.com/socket.io/websocket?...type=chart...` carries
+  chart, quote and study data, including indicator `alertMessages[]` emitted by
+  Pine `alert()` calls.
+
+In that chart-socket capture, frames matching `create_study` were only outgoing
+study creation requests. They contained `pineFeatures` with `"alert": 1`, but
+they did not contain a fired signal. The actual indicator signals appeared
+later in `du` frames under `ns.d.data.alertMessages[]`.
+
+Quick parse of the focused dump:
+
+- 64 TradingView `~m~` frames total;
+- 2 `create_study` frames, 54 `du` frames and 8 `qsd` frames;
+- 22 `alertMessages[]` entries, 11 unique after deduplicating the two study
+  ids `8x94yO` and `9S3h0E`;
+- debug rows included both `HIST_CONFIRMED` and `RT_CONFIRMED` bar states.
+
+This makes the chart socket useful in two different ways. For live indicator
+capture, the extension forwards `alertMessages[]` through the local bridge and
+deduplicates repeated copies from multiple study ids. For a future
+strategy/history evaluator, TradingView can calculate the Pine indicator over
+already loaded bars and emit signal-shaped alert messages with `barInfo`, but
+that path needs an explicit history boundary and should not be mixed into live
+trading.
+
+The observed study debug data contains bar-state strings such as
+`HIST_CONFIRMED` and `RT_CONFIRMED` in `ns.d.data.debug[].bs`. The extension
+forwards this as `bar_state` metadata when the debug entry matches the alert
+bar by index or time. The bridge can then run in fast/realtime mode or reject
+non-confirmed study alerts with `study_alerts.mode = "confirmed_only"`;
+currently confirmed means `HIST_CONFIRMED` or `RT_CONFIRMED`. Because this state
+comes from TradingView's private study payload, treat it as a useful
+diagnostic/private contract, not as a public API guarantee.
+
+For simple Pine scripts that use `alert.freq_once_per_bar`, TradingView can
+send an alert during an open realtime bar and never send a follow-up when the
+bar closes. The bridge therefore cannot prove that the signal survived until
+bar close. The compatible compromise is `study_alerts.mode = "close_window"`:
+accept an intrabar alert only when its `update_time`/event time falls within
+the configured last seconds before `bar_time + timeframe`. This mirrors the
+legacy MQL connector's "capture before bar close" window. It is a timing filter,
+not a non-repaint confirmation.
+
+Use `reject_historical` with `max_signal_age_seconds` to avoid accepting old
+`alertMessages[]` replayed by the private chart socket after page load or study
+recalculation.
+
+Custom Pine scripts can optionally implement a lifecycle protocol:
+
+```json
+{
+  "signal_id": "CRYPTO:BTCUSD|1|1783772160000|sell",
+  "revision": 2,
+  "action": "sell",
+  "state": "active|cancel|confirmed"
+}
+```
+
+This is not required for ordinary users. When present, the bridge treats
+`cancel` as non-tradeable and `confirmed` as a confirmed signal state.
+The full Pine fixture is saved at
+`browser_extensions/tradingview-alert-extension/examples/optionx_noisy_test_lifecycle.pine`.
+It uses `alert.freq_all` so TradingView can deliver multiple lifecycle events
+for the same realtime bar.
 
 Extraction contract for this private API mode:
 
@@ -298,6 +368,9 @@ Interpretation:
 
 - this confirms that some indicator/study alert messages can be observed through
   the private chart WebSocket;
+- these messages can include historical or replayed study state, so they should
+  not be mixed into the fresh-alert bridge until the library has a clear
+  bar/tick history and replay contract;
 - it does not yet prove that all TradingView platform alerts, especially plain
   price-level alerts, are delivered this way;
 - it may depend on how the Pine script emits `alert()`/`alertcondition()` and on
@@ -324,6 +397,10 @@ can disappear and appear again as the bar updates and RSI crosses back around
 the center level. That is useful for stress-testing capture and deduplication.
 For a less noisy production-style script, emit only on confirmed bars or use a
 bar-close alert frequency.
+
+The saved fixture includes a `Confirmed bars only` input that gates alerts with
+`barstate.isconfirmed` and switches to `alert.freq_once_per_bar_close`. This is
+the recommended Pine-side mode when the user wants non-repainting signals.
 
 TradingView's Pine docs describe `alert()` as the more flexible path for dynamic
 runtime messages. `alertcondition()` remains useful for separate selectable
@@ -867,9 +944,11 @@ There are two different free products hiding under one name:
    an internal pushstream-style integration.
 
 Current local prototype:
-`browser_extensions/tradingview-alert-extension` implements the first
+`browser_extensions/tradingview-alert-extension` implements the fresh
 alert-bridge slice. It is a Chrome/Edge MV3 extension that observes visible
-alert toast DOM and sends normalized JSON to a local HTTP bridge endpoint.
+alert toast DOM, the TradingView private `pricealerts/alert_fired` pushstream
+for level alerts, and chart-socket study `alertMessages[]` for indicator
+signals. It sends normalized JSON to a local HTTP bridge endpoint.
 
 Prefer local HTTP first for both modes:
 
@@ -1019,15 +1098,12 @@ server dependency intentionally.
 5. Add a manual smoke checklist: start local receiver, load unpacked extension,
    open TradingView Strategy Tester, enable bridge, trigger one demo signal,
    verify duplicate suppression.
-6. Add a developer-only `private_chart_socket_probe` mode to the extension that
-   patches WebSocket/EventSource in the page context, redacts credentials and
-   records method names around one manually triggered alert. Use that capture to
-   confirm whether non-price alerts arrive on `data.tradingview.com`,
-   pushstream, DOM only or a different channel.
-7. Prototype extraction of `du.p[1].<study-id>.ns.d.data.alertMessages[]` from
-   captured WebSocket frames and feed the parsed inner `msg` through the same
-   local TradingView extension protocol as DOM toasts.
-8. Prototype `private_pricealerts_ws` extraction from
-   `message-pipe-ws/private_feed`: consume only `pricealerts/alert_fired` as
-   events, treat `alerts_updated` as state/diagnostics, and deduplicate by
-   `fire_id`.
+6. Keep `private_pricealerts_ws` as the fresh level-alert source: consume only
+   `pricealerts/alert_fired` as events, treat `alerts_updated` as
+   state/diagnostics, and deduplicate by `fire_id`.
+7. Keep chart-socket study `alertMessages[]` as the fresh indicator source and
+   deduplicate repeated copies from multiple study ids.
+8. In a later PR, design a history/replay API for intentionally consuming the
+   seeded and historical chart-socket messages. That work needs at least a
+   bar/tick history boundary so historical signal messages are not mistaken for
+   fresh trading events.

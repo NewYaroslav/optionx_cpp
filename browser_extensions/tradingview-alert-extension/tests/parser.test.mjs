@@ -267,6 +267,10 @@ test("DEFAULTS.include_tab_url is false by default (privacy)", () => {
   assert.equal(defaults.DEFAULTS.include_tab_url, false);
 });
 
+test("DEFAULTS.capture_chart_study_alerts is opt-in by default", () => {
+  assert.equal(defaults.DEFAULTS.capture_chart_study_alerts, false);
+});
+
 test("DEFAULTS.secret is empty", () => {
   assert.equal(defaults.DEFAULTS.secret, "");
 });

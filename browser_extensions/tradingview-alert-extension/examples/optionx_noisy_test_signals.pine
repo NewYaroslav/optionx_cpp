@@ -3,6 +3,7 @@ indicator("OptionX Noisy Test Signals", overlay=true)
 
 rsi_len = input.int(7, "RSI Length")
 level = input.float(50.0, "RSI Center Level")
+confirmed_only = input.bool(false, "Confirmed bars only")
 
 r = ta.rsi(close, rsi_len)
 
@@ -12,8 +13,18 @@ sellSignal = ta.crossunder(r, level)
 plotshape(buySignal, title="BUY", text="BUY", style=shape.triangleup, location=location.belowbar, size=size.tiny)
 plotshape(sellSignal, title="SELL", text="SELL", style=shape.triangledown, location=location.abovebar, size=size.tiny)
 
-if buySignal
-    alert('{"source":"tradingview","signal_name":"noisy_rsi_test","action":"buy","symbol":"' + syminfo.ticker + '","tickerid":"' + syminfo.tickerid + '","price":' + str.tostring(close) + ',"time":' + str.tostring(time) + '}', alert.freq_once_per_bar)
+canAlert = not confirmed_only or barstate.isconfirmed
+buyMessage = '{"source":"tradingview","signal_name":"noisy_rsi_test","action":"buy","symbol":"' + syminfo.ticker + '","tickerid":"' + syminfo.tickerid + '","price":' + str.tostring(close) + ',"time":' + str.tostring(time) + '}'
+sellMessage = '{"source":"tradingview","signal_name":"noisy_rsi_test","action":"sell","symbol":"' + syminfo.ticker + '","tickerid":"' + syminfo.tickerid + '","price":' + str.tostring(close) + ',"time":' + str.tostring(time) + '}'
 
-if sellSignal
-    alert('{"source":"tradingview","signal_name":"noisy_rsi_test","action":"sell","symbol":"' + syminfo.ticker + '","tickerid":"' + syminfo.tickerid + '","price":' + str.tostring(close) + ',"time":' + str.tostring(time) + '}', alert.freq_once_per_bar)
+if buySignal and canAlert
+    if confirmed_only
+        alert(buyMessage, alert.freq_once_per_bar_close)
+    else
+        alert(buyMessage, alert.freq_once_per_bar)
+
+if sellSignal and canAlert
+    if confirmed_only
+        alert(sellMessage, alert.freq_once_per_bar_close)
+    else
+        alert(sellMessage, alert.freq_once_per_bar)

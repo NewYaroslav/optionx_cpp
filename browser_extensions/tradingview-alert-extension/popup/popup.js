@@ -1,6 +1,9 @@
 "use strict";
 
 const enabledEl = document.getElementById("enabled");
+const captureAlertToastsEl = document.getElementById("capture-alert-toasts");
+const capturePrivateAlertsEl = document.getElementById("capture-private-alerts");
+const captureChartStudyAlertsEl = document.getElementById("capture-chart-study-alerts");
 const includeTabUrlEl = document.getElementById("include-tab-url");
 const endpointEl = document.getElementById("endpoint");
 const secretEl = document.getElementById("secret");
@@ -24,6 +27,9 @@ clearEl.addEventListener("click", clearLogs);
 async function init() {
   const config = await chrome.storage.local.get(OptionXDefaults.DEFAULTS);
   enabledEl.checked = Boolean(config.enabled);
+  captureAlertToastsEl.checked = config.capture_alert_toasts !== false;
+  capturePrivateAlertsEl.checked = config.capture_private_alerts !== false;
+  captureChartStudyAlertsEl.checked = config.capture_chart_study_alerts !== false;
   includeTabUrlEl.checked = Boolean(config.include_tab_url);
   endpointEl.value = config.endpoint;
   secretEl.value = config.secret;
@@ -35,6 +41,9 @@ async function init() {
 async function saveConfig() {
   await chrome.storage.local.set({
     enabled: enabledEl.checked,
+    capture_alert_toasts: captureAlertToastsEl.checked,
+    capture_private_alerts: capturePrivateAlertsEl.checked,
+    capture_chart_study_alerts: captureChartStudyAlertsEl.checked,
     include_tab_url: includeTabUrlEl.checked,
     endpoint: endpointEl.value.trim() || OptionXDefaults.DEFAULTS.endpoint,
     secret: secretEl.value

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "OptionX TradingView Alert Bridge",
   "version": "0.1.1",
-  "description": "Captures visible TradingView alert toasts and forwards them to a local OptionX bridge.",
+  "description": "Captures TradingView alert events and forwards them to a local OptionX bridge.",
   "action": {
     "default_popup": "popup/popup.html",
     "default_title": "OptionX TradingView Alert Bridge"
@@ -16,10 +16,39 @@
         "https://*.tradingview.com/*"
       ],
       "js": [
+        "content_scripts/private_feed_page_hook.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://*.tradingview.com/*"
+      ],
+      "js": [
+        "content_scripts/tradingview_private_feed.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://*.tradingview.com/*"
+      ],
+      "js": [
         "content_scripts/lib/parser.js",
         "content_scripts/tradingview_alerts.js"
       ],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "content_scripts/private_feed_page_hook.js"
+      ],
+      "matches": [
+        "https://*.tradingview.com/*"
+      ]
     }
   ],
   "permissions": [
