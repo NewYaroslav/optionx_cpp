@@ -102,14 +102,20 @@ Rules:
   conflict.
 - Unknown client notification methods must be ignored or rejected according to
   transport policy; domain events are server-to-client notifications only.
-- `protocol.hello` is an unversioned bootstrap method.
+- `protocol.hello` is an unversioned bootstrap method, but its negotiation role
+  depends on the transport.
 - HTTP binds the protocol version through the route prefix, for example
-  `/api/v1/...`.
+  `/api/v1/...`; `protocol.hello` only confirms that selected version or may be
+  exposed on a separate unversioned discovery endpoint.
 - WebSocket binds the protocol version through the selected subprotocol, for
   example `Sec-WebSocket-Protocol: optionx.bridge.v1`, then keeps it for the
+  session. `protocol.hello` must not renegotiate a different version inside the
+  selected session.
+- Named-pipe and other session transports may use `protocol.hello` as the
+  initial protocol-version handshake, then keep the selected version for the
   session.
-- Named-pipe and other session transports select the protocol version during
-  the initial handshake, then keep it for the session.
+- If a session transport already selected v1 but `protocol.hello` requests only
+  unsupported versions, the bridge must return `unsupported_protocol_version`.
 - Business command `params` must not contain a separate `protocol_version`,
   avoiding conflicts such as `/api/v1` plus `params.protocol_version = "2"`.
 - Unknown optional response/event fields must be ignored by clients.
@@ -119,6 +125,33 @@ Rules:
   `_ms`.
 - Transport authentication must not be placed in `params`.
 - `metadata` is always a JSON object.
+
+### Error Taxonomy
+
+JSON-RPC errors are reserved for request/envelope failures and protocol
+execution errors:
+
+- `-32700`: parse error.
+- `-32600`: invalid request.
+- `-32601`: method not found.
+- `-32602`: invalid params.
+- `-32603`: internal error.
+
+OptionX protocol errors should use an implementation-defined code in the
+`-32000..-32099` range and a stable string in `error.data.code`, for example:
+
+- `authorization_failed`
+- `rate_limited`
+- `unsupported_protocol_version`
+- `idempotency_conflict`
+- `cursor_expired`
+- `stale_request`
+- `unsupported_buffer_encoding`
+
+Business/domain rejections such as `risk_limit`, `insufficient_balance`,
+`payout_too_low`, `broker_unavailable` or `duplicate_signal` should be normal
+method results with `status = "rejected"` and `reason.code`, not JSON-RPC
+errors.
 
 ### Identifiers
 
@@ -208,7 +241,9 @@ HTTP:
 - `POST /api/v1/bridge/command` accepts one JSON-RPC command and returns one
   JSON-RPC response.
 - `GET /api/v1/bridge/health` returns transport health.
-- A future HTTP event stream may expose Server-Sent Events, but polling via
+- Plain HTTP is request/response. It does not deliver live subscriptions by
+  itself; clients poll query/history commands with their own interval.
+- A future HTTP streaming binding may expose Server-Sent Events, but polling via
   query commands is enough for v1.
 - A REST convenience API may duplicate common commands for simple clients that
   cannot or should not construct JSON-RPC envelopes.
@@ -306,9 +341,6 @@ Suggested endpoints:
 | `/api/v1/accounts/{account_id}/balance` | `GET` | `account.balance.get` |
 | `/api/v1/market-data/providers` | `GET` | `market_data.providers.list` |
 | `/api/v1/market-data/providers/{provider_id}` | `GET` | `market_data.provider.get` |
-| `/api/v1/market-data/subscriptions` | `POST` | `market_data.subscribe` |
-| `/api/v1/market-data/subscriptions` | `GET` | `market_data.subscriptions.list` |
-| `/api/v1/market-data/subscriptions/{market_data_subscription_id}` | `DELETE` | `market_data.unsubscribe` |
 | `/api/v1/market-data/history/ticks` | `GET` | `market_data.history.get` |
 | `/api/v1/market-data/history/bars` | `GET` | `market_data.history.get` |
 | `/api/v1/market-data/ingest/ticks` | `POST` | `market_data.ingest.ticks` |

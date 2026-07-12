@@ -10,6 +10,11 @@ not the full outer JSON-RPC envelope.
 Return basic server identity and selected protocol version. This is useful for
 clients that can speak to multiple bridge implementations.
 
+For HTTP, the selected protocol version is already implied by the route prefix
+such as `/api/v1`; `protocol.hello` confirms it. For WebSocket, the selected
+version is implied by the accepted subprotocol. For named-pipe and similar
+session transports, `protocol.hello` may perform the actual version handshake.
+
 Request params:
 
 ```json
@@ -50,6 +55,8 @@ Result:
   "protocol_versions": ["1"],
   "server_instance_id": "019c...",
   "supported_methods": [
+    "protocol.hello",
+    "protocol.capabilities.get",
     "signal.submit",
     "trade.open",
     "trade.result.get",
@@ -92,7 +99,11 @@ Result:
 }
 ```
 
-## Method Summary
+The `supported_methods` list above is an excerpt. A real
+`protocol.capabilities.get` result must report the exact methods supported by
+that bridge instance.
+
+## Core Method Summary
 
 | Method | Side effect | Required scope | Idempotency | Async | Result/event |
 | --- | ---: | --- | ---: | ---: | --- |
@@ -107,13 +118,13 @@ Result:
 | `trade.active.query` | no | `trade:read` | no | no | active trade snapshots |
 | `market_data.providers.list` | no | `market_data:read` | no | no | provider list |
 | `market_data.provider.get` | no | `market_data:read` | no | no | provider details |
-| `market_data.subscribe` | yes | `market_data:read` | no | no | market-data subscription id |
-| `market_data.unsubscribe` | yes | `market_data:read` | no | no | subscription removed |
+| `market_data.subscribe` | yes | `market_data:read` | recommended | no | market-data subscription id |
+| `market_data.unsubscribe` | yes | `market_data:read` | idempotent | no | subscription removed |
 | `market_data.history.get` | no | `market_data:read` | no | maybe | history page |
 | `market_data.ingest.ticks` | yes | `market_data:write` | recommended | maybe | operation/counts |
 | `market_data.ingest.bars` | yes | `market_data:write` | recommended | maybe | operation/counts |
-| `events.subscribe` | yes | topic read scopes | no | no | event subscription id |
-| `events.unsubscribe` | yes | topic read scopes | no | no | subscription removed |
+| `events.subscribe` | yes | topic read scopes | recommended | no | event subscription id |
+| `events.unsubscribe` | yes | topic read scopes | idempotent | no | subscription removed |
 | `events.subscriptions.list` | no | topic read scopes | no | no | subscription list |
 
 ### `trade.open`
@@ -324,6 +335,21 @@ Commands:
   ]
 }
 ```
+
+`final` is a convenience flag but must be consistent with `status`:
+
+- `accepted` and `processing` imply `final = false`.
+- `completed`, `partially_completed`, `rejected`, `failed` and `cancelled`
+  imply `final = true`.
+- A snapshot that contradicts this invariant is a protocol/internal error.
+
+Fan-out aggregation rules:
+
+- All targets `succeeded` -> operation `completed`.
+- Some targets `succeeded` and some did not -> `partially_completed`.
+- All targets `rejected` -> `rejected`.
+- No target succeeded and at least one target `failed` -> `failed`.
+- All targets `cancelled` -> `cancelled`.
 
 `operation.cancel` is best effort. A trade already submitted to a broker may be
 impossible to cancel, and cancelling an operation does not imply closing an

@@ -8,10 +8,11 @@ trading platform, such as an Intrade Bar platform adapter, or to a smaller
 dedicated quote provider adapter.
 
 Multiple subscribers may exist at the same time. Each subscriber owns its own
-subscriptions and receives events only for those subscriptions. A subscriber is
-usually an authenticated WebSocket connection, named-pipe client, HTTP session
-or application component. `subscriber_id` is optional; when omitted, the bridge
-uses the authenticated transport/session identity.
+subscriptions and receives events only for those subscriptions. A live
+subscriber is usually an authenticated WebSocket connection, named-pipe client
+or application component. Plain HTTP clients usually poll history/query commands
+and do not receive live events. `subscriber_id` is optional; when omitted, the
+bridge uses the authenticated transport/session identity.
 
 Commands:
 
@@ -68,6 +69,10 @@ Live subscription request:
 
 ```json
 {
+  "context": {
+    "idempotency_key": "md:mt5-synthetic-feed-1:btcusd-1m"
+  },
+  "client_subscription_key": "mt5-synthetic-feed-1:btcusd-1m",
   "subscriber_id": "mt5-synthetic-feed-1",
   "provider_id": "intradebar-live",
   "symbol": "BTCUSD",
@@ -82,6 +87,10 @@ Live subscription request:
   }
 }
 ```
+
+`client_subscription_key` is scoped to the authenticated client and helps make
+subscription creation retry-safe. Repeating `market_data.unsubscribe` for an
+already removed subscription should be a successful no-op.
 
 `stream.kind` values:
 
@@ -206,6 +215,8 @@ Bar event payload:
   "timeframe_ms": 60000,
   "open_time_ms": 1783476660000,
   "close_time_ms": 1783476720000,
+  "source_seq": 9282,
+  "bar_revision": 17,
   "open": "64100.00",
   "high": "64150.00",
   "low": "64090.00",
@@ -224,6 +235,10 @@ within the same millisecond. Providers should include `source_seq`, `tick_id`,
 or both when the source can provide stable ordering. Ingest and storage layers
 should use these fields for duplicate detection, gap detection and append/upsert
 semantics.
+
+Open bar updates may share the same `open_time_ms` many times before the bar is
+closed. Providers should include `source_seq`, `bar_revision`, or both when the
+source can provide stable ordering for bar revisions.
 
 Ingest/write commands allow external sources to feed quotes into the OptionX
 ecosystem. This is useful when MT4/MT5, Binance or another source produces

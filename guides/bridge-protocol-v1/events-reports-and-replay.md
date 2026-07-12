@@ -45,8 +45,10 @@ Example:
 
 ## Subscriptions
 
-Subscriptions are useful for WebSocket and named-pipe clients. HTTP clients can
-use query commands or a future event stream.
+Subscriptions are useful for WebSocket and named-pipe clients. Plain HTTP
+clients should poll query/history commands with their own interval. A
+future HTTP streaming binding may expose Server-Sent Events, but ordinary REST
+does not deliver a live subscription stream.
 
 Event subscription commands:
 
@@ -71,6 +73,10 @@ and include the matched event subscription ids.
 
 ```json
 {
+  "context": {
+    "idempotency_key": "events:main-feed"
+  },
+  "client_subscription_key": "main-feed",
   "topics": [
     "trade.updated",
     "trade.result.updated",
@@ -106,6 +112,35 @@ Known `replay.mode` values:
 - `from_token`: replay from an opaque `resume_token` when the bridge supports
   resumable subscriptions.
 
+Exact replay forms:
+
+```json
+{
+  "replay": {
+    "mode": "from_seq",
+    "stream_id": "bridge-instance-019c...",
+    "seq": 1841
+  }
+}
+```
+
+```json
+{
+  "replay": {
+    "mode": "from_token",
+    "resume_token": "opaque-token"
+  }
+}
+```
+
+When replay is requested and available, the event order is:
+
+```text
+retained replay events
+-> replay.completed
+-> live events
+```
+
 Response:
 
 ```json
@@ -122,6 +157,11 @@ Unsubscribe:
   "event_subscription_id": "evt-sub-1"
 }
 ```
+
+`events.subscribe` should accept either `context.idempotency_key`,
+`client_subscription_key`, or both, so a network retry does not create duplicate
+subscriptions. Repeating `events.unsubscribe` for an already removed
+subscription should be a successful no-op.
 
 If one event matches several subscriptions on the same connection, the bridge
 should send one event with one `event_id` and include all matched subscriptions:
@@ -147,10 +187,11 @@ Default draft behavior:
   within increasing `revision`.
 - If `event_replay` is false, reconnecting clients must resubscribe and accept
   that events produced during disconnect may be lost.
-- If `event_replay` is true, clients may pass `resume_from_seq` or a future
-  `resume_token`; the bridge replays retained events from its configured
-  retention window. This is resumable best-effort replay unless the bridge also
-  provides durable storage and checkpoints.
+- If `event_replay` is true, clients may pass `replay.mode = "from_seq"` with
+  `stream_id + seq`, or `replay.mode = "from_token"` with `resume_token`; the
+  bridge replays retained events from its configured retention window. This is
+  resumable best-effort replay unless the bridge also provides durable storage
+  and checkpoints.
 
 Durable replay across bridge restarts is a stronger guarantee. It means the
 bridge persists event envelopes and replay checkpoints to storage, so a client
@@ -180,8 +221,8 @@ deduplicate by `source + event_id`.
 
 Future stable versions should define:
 
-- `resume_from_seq`
-- `resume_token`
+- exact durable replay checkpoint storage
+- acknowledgement semantics
 - event retention window
 - heartbeat interval
 - idle timeout

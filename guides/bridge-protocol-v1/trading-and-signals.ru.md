@@ -10,6 +10,11 @@
 Возвращает базовую server identity и выбранную protocol version. Это полезно
 для clients, которые могут говорить с несколькими bridge implementations.
 
+Для HTTP выбранная protocol version уже задана route prefix вроде `/api/v1`;
+`protocol.hello` только подтверждает ее. Для WebSocket выбранная версия задана
+accepted subprotocol. Для named-pipe и похожих session transports
+`protocol.hello` может выполнять реальное согласование версии.
+
 Параметры запроса:
 
 ```json
@@ -50,6 +55,8 @@
   "protocol_versions": ["1"],
   "server_instance_id": "019c...",
   "supported_methods": [
+    "protocol.hello",
+    "protocol.capabilities.get",
     "signal.submit",
     "trade.open",
     "trade.result.get",
@@ -92,7 +99,11 @@
 }
 ```
 
-## Сводка методов
+Список `supported_methods` выше является excerpt. Реальный результат
+`protocol.capabilities.get` должен возвращать точный список методов,
+поддерживаемых конкретным bridge instance.
+
+## Сводка Ключевых Методов
 
 | Метод | Побочный эффект | Нужный scope | Идемпотентность | Асинхронно | Результат/event |
 | --- | ---: | --- | ---: | ---: | --- |
@@ -107,13 +118,13 @@
 | `trade.active.query` | no | `trade:read` | no | no | active trade snapshots |
 | `market_data.providers.list` | no | `market_data:read` | no | no | provider list |
 | `market_data.provider.get` | no | `market_data:read` | no | no | provider details |
-| `market_data.subscribe` | yes | `market_data:read` | no | no | market-data subscription id |
-| `market_data.unsubscribe` | yes | `market_data:read` | no | no | subscription removed |
+| `market_data.subscribe` | yes | `market_data:read` | recommended | no | market-data subscription id |
+| `market_data.unsubscribe` | yes | `market_data:read` | idempotent | no | subscription removed |
 | `market_data.history.get` | no | `market_data:read` | no | maybe | history page |
 | `market_data.ingest.ticks` | yes | `market_data:write` | recommended | maybe | operation/counts |
 | `market_data.ingest.bars` | yes | `market_data:write` | recommended | maybe | operation/counts |
-| `events.subscribe` | yes | topic read scopes | no | no | event subscription id |
-| `events.unsubscribe` | yes | topic read scopes | no | no | subscription removed |
+| `events.subscribe` | yes | topic read scopes | recommended | no | event subscription id |
+| `events.unsubscribe` | yes | topic read scopes | idempotent | no | subscription removed |
 | `events.subscriptions.list` | no | topic read scopes | no | no | subscription list |
 
 ### `trade.open`
@@ -327,6 +338,22 @@ Commands:
   ]
 }
 ```
+
+`final` является convenience flag, но должен соответствовать `status`:
+
+- `accepted` и `processing` подразумевают `final = false`.
+- `completed`, `partially_completed`, `rejected`, `failed` и `cancelled`
+  подразумевают `final = true`.
+- Snapshot, который противоречит этому invariant, является protocol/internal
+  error.
+
+Правила aggregation для fan-out:
+
+- Все targets `succeeded` -> operation `completed`.
+- Часть targets `succeeded`, а часть нет -> `partially_completed`.
+- Все targets `rejected` -> `rejected`.
+- Нет успешных targets и хотя бы один target `failed` -> `failed`.
+- Все targets `cancelled` -> `cancelled`.
 
 `operation.cancel` является best effort. Сделку, уже отправленную брокеру,
 может быть невозможно отменить, и отмена operation не означает закрытие уже

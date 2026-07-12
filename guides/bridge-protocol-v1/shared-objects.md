@@ -61,7 +61,6 @@ layer instead of the bridge itself.
 {
   "signal_id": "101",
   "trade_id": "123",
-  "unique_id": "0",
   "unique_hash": "external-key",
   "signal_name": "rsi_cross",
   "comment": "optional user comment"
@@ -71,6 +70,10 @@ layer instead of the bridge itself.
 Existing OptionX DTOs currently use numeric IDs plus `unique_hash` and
 `unique_id`. Bridges may convert opaque protocol strings to local numeric DTO
 fields when the value is locally generated and representable.
+
+`unique_id`, `unique_hash` and `signal_name` are optional domain identity
+fields. If a field is not known, omit it. Do not use `"0"` or an empty string as
+a sentinel for "not specified"; a real external ID may legitimately be `"0"`.
 
 ### Expiry
 
@@ -93,6 +96,11 @@ Use one explicit expiry form instead of parallel `duration_sec` and
 
 Exactly one expiry form should be present. Trading commands should also include
 `context.valid_until_ms` when stale execution would be harmful.
+
+`valid_until_ms` is checked against bridge receive/validation time, not against
+`client_created_at_ms`. A stale command should be rejected with
+`stale_request`. `client_created_at_ms` is diagnostic/client timing metadata and
+must not be used as an ordering source.
 
 ### Decimal Values
 
@@ -169,7 +177,6 @@ and stream all trades related to one signal.
   "signal_id": "101",
   "operation_id": "op-019c...",
   "bridge_id": "2",
-  "unique_id": "0",
   "unique_hash": "tv:abc123",
   "signal_name": "noisy_rsi_test",
   "source_kind": "tradingview_extension"
