@@ -97,10 +97,14 @@ Use one explicit expiry form instead of parallel `duration_sec` and
 Exactly one expiry form should be present. Trading commands should also include
 `context.valid_until_ms` when stale execution would be harmful.
 
-`valid_until_ms` is checked against bridge receive/validation time, not against
-`client_created_at_ms`. A stale command should be rejected with
-`stale_request`. `client_created_at_ms` is diagnostic/client timing metadata and
-must not be used as an ordering source.
+`valid_until_ms` is checked against bridge receive/validation time and should
+be checked again immediately before the irreversible broker/platform dispatch.
+A stale command should be rejected with `stale_request`. After the command has
+actually been dispatched, later expiry of `valid_until_ms` does not cancel the
+operation. `client_created_at_ms` is diagnostic/client timing metadata and must
+not be used as an ordering source. Future versions may split this into
+`accept_until_ms` and `execute_before_ms` if the two deadlines need different
+semantics.
 
 ### Decimal Values
 
@@ -148,10 +152,7 @@ Notes:
 ```json
 {
   "mode": "fixed_amount",
-  "amount": "10.00",
-  "balance_percent": "2.5",
-  "system": "kelly",
-  "params": {}
+  "amount": "10.00"
 }
 ```
 
@@ -166,6 +167,19 @@ Known modes:
 Known systems are open-ended: `kelly`, `martingale`, `anti_martingale`,
 `labouchere`, custom names, etc. Typed C++ `IMoneyManagementParams` can be
 restored by higher-level code; protocol payloads carry JSON params.
+
+Mode-specific field rules:
+
+- `fixed_amount`: `amount` is required; `balance_percent` and `system` are
+  forbidden.
+- `balance_percent`: `balance_percent` is required; `amount` and `system` are
+  forbidden.
+- `risk_manager`: `system` is required and `params` is optional; `amount` and
+  `balance_percent` are forbidden unless a concrete risk manager explicitly
+  documents them as hints.
+- `ignore_signal_amount`: `amount`, `balance_percent` and `system` are
+  forbidden.
+- `none`: `amount`, `balance_percent`, `system` and `params` are forbidden.
 
 ### Origin Signal
 

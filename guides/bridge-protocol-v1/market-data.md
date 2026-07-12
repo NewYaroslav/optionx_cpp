@@ -123,7 +123,7 @@ Subscription response:
   },
   "prefill_status": "accepted",
   "prefill_snapshot_at_ms": 1783476705000,
-  "live_from_seq": 9281,
+  "live_from_source_seq": 9281,
   "warnings": []
 }
 ```
@@ -136,8 +136,10 @@ policy. JSON-RPC errors are reserved for malformed envelopes or invalid params.
 When `prefill_status` is `accepted`, the bridge should deliver prefill events
 first, then emit a `market_data.prefill.completed` event with the boundary, then
 start live events. The boundary may be represented as `prefill_snapshot_at_ms`,
-`live_from_seq`, or both. Providers must document whether the boundary is
-gap-free, may contain duplicates, or is best-effort only.
+`live_from_source_seq`, or both. `live_from_source_seq` refers to the provider
+or source sequence carried by tick/bar payloads, not to the outer event envelope
+`stream_id + seq`. Providers must document whether the boundary is gap-free,
+may contain duplicates, or is best-effort only.
 
 History request:
 

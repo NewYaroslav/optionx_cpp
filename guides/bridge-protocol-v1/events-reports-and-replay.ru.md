@@ -80,7 +80,6 @@ stream, который затем может производить `market_data
   "topics": [
     "trade.updated",
     "trade.result.updated",
-    "signal.report",
     "account.updated",
     "balance.updated",
     "platform.status",
@@ -137,7 +136,7 @@ Known `replay.mode` values:
 
 ```text
 retained replay events
--> replay.completed
+-> events.replay.completed
 -> live events
 ```
 
@@ -160,8 +159,15 @@ Unsubscribe:
 
 `events.subscribe` должен принимать `context.idempotency_key`,
 `client_subscription_key` или оба поля, чтобы сетевой retry не создавал
-дублирующиеся subscriptions. Повторный `events.unsubscribe` для уже удаленной
-subscription должен быть успешным no-op.
+дублирующиеся subscriptions. Для default session-scoped subscriptions retry
+scope равен `authenticated client + session_id + method + key`; новая session
+создает новую subscription. Durable subscriptions могут не включать
+`session_id` в scope и повторно привязывать reconnecting client к существующей
+subscription. Тот же key плюс тот же normalized request возвращает существующую
+subscription в текущем scope; тот же key плюс другой request возвращает
+`idempotency_conflict`, если не используется будущий явный subscription-update
+contract. Повторный `events.unsubscribe` для уже удаленной subscription должен
+быть успешным no-op.
 
 Если одно event подходит сразу под несколько subscriptions на одном connection,
 bridge должен отправить один event с одним `event_id` и включить все совпавшие
@@ -249,6 +255,7 @@ clients должны дедуплицировать по `source + event_id`.
 - `trading.status`
 - `bridge.status`
 - `report.created`
+- `events.replay.completed`
 - `market_data.tick`
 - `market_data.bar`
 - `market_data.prefill.completed`
@@ -257,6 +264,25 @@ clients должны дедуплицировать по `source + event_id`.
 
 `trade.updated` и `trade.result.updated` должны нести полный result snapshot, а
 не только patch, если event явно не объявляет `patch: true`.
+
+`events.replay.completed` отмечает границу между retained replay events и live
+events:
+
+```json
+{
+  "event_subscription_id": "evt-sub-1",
+  "stream_id": "bridge-instance-019c...",
+  "last_replayed_seq": 1841,
+  "live_from": {
+    "stream_id": "bridge-instance-019c...",
+    "seq": 1842
+  }
+}
+```
+
+Reports используют generic topic `report.created` с `payload.report_type`,
+например `signal_report`; отдельный параллельный signal-specific report topic
+для них не нужен.
 
 Event delivery следует гарантии, объявленной capabilities: best-effort без
 replay, resumable best-effort с retained replay, и at-least-once только когда

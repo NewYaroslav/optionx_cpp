@@ -99,9 +99,13 @@ identity fields. Если значение неизвестно, поле нуж
 содержать `context.valid_until_ms`, если stale execution опасен.
 
 `valid_until_ms` проверяется относительно времени приема/валидации на стороне
-bridge, а не относительно `client_created_at_ms`. Stale command должен быть
-отклонен с `stale_request`. `client_created_at_ms` является диагностической
-client timing metadata и не должен использоваться как источник ordering.
+bridge и должен проверяться повторно прямо перед необратимой отправкой
+broker/platform. Stale command должен быть отклонен с `stale_request`. После
+фактической отправки command истечение `valid_until_ms` уже не отменяет
+operation. `client_created_at_ms` является диагностической client timing
+metadata и не должен использоваться как источник ordering. Будущие версии могут
+разделить это на `accept_until_ms` и `execute_before_ms`, если двум deadline
+нужна разная семантика.
 
 ### Decimal Values
 
@@ -152,10 +156,7 @@ numbers как developer-friendly input form, но bridge implementations дол
 ```json
 {
   "mode": "fixed_amount",
-  "amount": "10.00",
-  "balance_percent": "2.5",
-  "system": "kelly",
-  "params": {}
+  "amount": "10.00"
 }
 ```
 
@@ -170,6 +171,18 @@ numbers как developer-friendly input form, но bridge implementations дол
 Known systems open-ended: `kelly`, `martingale`, `anti_martingale`,
 `labouchere`, custom names и т.д. Typed C++ `IMoneyManagementParams` могут быть
 восстановлены higher-level code; protocol payloads несут JSON params.
+
+Mode-specific field rules:
+
+- `fixed_amount`: `amount` обязателен; `balance_percent` и `system`
+  запрещены.
+- `balance_percent`: `balance_percent` обязателен; `amount` и `system`
+  запрещены.
+- `risk_manager`: `system` обязателен, `params` optional; `amount` и
+  `balance_percent` запрещены, если конкретный risk manager явно не
+  документирует их как hints.
+- `ignore_signal_amount`: `amount`, `balance_percent` и `system` запрещены.
+- `none`: `amount`, `balance_percent`, `system` и `params` запрещены.
 
 ### Origin Signal
 

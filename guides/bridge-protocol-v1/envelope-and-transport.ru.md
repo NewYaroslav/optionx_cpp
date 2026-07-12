@@ -148,12 +148,13 @@ OptionX protocol errors должны использовать implementation-def
 - `idempotency_conflict`
 - `cursor_expired`
 - `stale_request`
-- `unsupported_buffer_encoding`
 
 Бизнес/domain rejections вроде `risk_limit`, `insufficient_balance`,
-`payout_too_low`, `broker_unavailable` или `duplicate_signal` должны быть
-обычным result метода со `status = "rejected"` и `reason.code`, а не JSON-RPC
-errors.
+`payout_too_low`, `broker_unavailable`, `duplicate_signal` или
+`unsupported_buffer_encoding` должны быть обычным result метода со
+`status = "rejected"` и `reason.code`, а не JSON-RPC errors. Malformed payload
+structure, включая поврежденный encoding object или отсутствующие обязательные
+encoding fields, должен быть `-32602 invalid params`.
 
 ### Идентификаторы
 

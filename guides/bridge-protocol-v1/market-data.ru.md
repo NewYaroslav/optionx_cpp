@@ -123,7 +123,7 @@ Subscription response:
   },
   "prefill_status": "accepted",
   "prefill_snapshot_at_ms": 1783476705000,
-  "live_from_seq": 9281,
+  "live_from_source_seq": 9281,
   "warnings": []
 }
 ```
@@ -136,7 +136,9 @@ JSON-RPC errors остаются для malformed envelopes или invalid param
 Когда `prefill_status` равен `accepted`, bridge должен сначала доставить
 prefill events, затем emit `market_data.prefill.completed` event с boundary, и
 после этого начать live events. Boundary может быть представлен как
-`prefill_snapshot_at_ms`, `live_from_seq` или оба поля. Providers должны
+`prefill_snapshot_at_ms`, `live_from_source_seq` или оба поля.
+`live_from_source_seq` относится к provider/source sequence внутри tick/bar
+payloads, а не к outer event envelope `stream_id + seq`. Providers должны
 документировать, является ли boundary gap-free, может ли содержать duplicates
 или является только best-effort.
 

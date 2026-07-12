@@ -345,11 +345,18 @@ Commands:
 
 Fan-out aggregation rules:
 
+- If any target is still `pending`, the operation remains `accepted` or
+  `processing` with `final = false`.
+- Terminal aggregation is evaluated only after every target reaches a terminal
+  state.
 - All targets `succeeded` -> operation `completed`.
-- Some targets `succeeded` and some did not -> `partially_completed`.
+- Some terminal targets `succeeded` and some terminal targets did not ->
+  `partially_completed`.
 - All targets `rejected` -> `rejected`.
 - No target succeeded and at least one target `failed` -> `failed`.
 - All targets `cancelled` -> `cancelled`.
+- Mixed terminal outcomes with no successes should use the most severe
+  available status in this order: `failed`, `rejected`, `cancelled`.
 
 `operation.cancel` is best effort. A trade already submitted to a broker may be
 impossible to cancel, and cancelling an operation does not imply closing an
@@ -514,7 +521,10 @@ Compact binary buffer example:
 Compact payloads must still declare the same semantic metadata as JSON buffers:
 indexing mode, empty policy, value type, item count and bar-time meaning.
 Bridges that do not advertise the requested encoding should return a domain
-rejection such as `unsupported_buffer_encoding`.
+result with `status = "rejected"` and
+`reason.code = "unsupported_buffer_encoding"`. Malformed encoding structure,
+corrupted base64 or missing required encoding fields should be `-32602 invalid
+params`.
 
 Production `binary_base64` should be optimized for MT4/MT5 and C++:
 
@@ -543,6 +553,9 @@ Use this when an external tester has already calculated the trade result.
 
 ```json
 {
+  "context": {
+    "idempotency_key": "backtest:bt-2026-07-12-a:trade-1042"
+  },
   "source": {
     "kind": "backtest",
     "engine": "mt5",
@@ -553,6 +566,9 @@ Use this when an external tester has already calculated the trade result.
     "symbol": "EURUSD",
     "order_type": "BUY",
     "signal_name": "rsi_cross"
+  },
+  "identity": {
+    "unique_hash": "backtest:bt-2026-07-12-a:trade-1042"
   },
   "trade": {
     "symbol": "EURUSD",
@@ -585,6 +601,11 @@ Use this when an external tester has already calculated the trade result.
   "metadata": {}
 }
 ```
+
+`backtest.result.import` is state-changing. It should include
+`context.idempotency_key` for RPC retry safety and `identity.unique_hash` for
+domain-level deduplication of the imported trade record. `run_id` identifies the
+whole test run and is not enough to identify one imported trade.
 
 `source.kind = "backtest"` should be kept even when the physical storage is a
 separate database. The preferred application deployment model is a separate

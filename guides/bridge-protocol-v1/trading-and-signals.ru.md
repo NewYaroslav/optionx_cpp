@@ -349,11 +349,18 @@ Commands:
 
 Правила aggregation для fan-out:
 
+- Если хотя бы один target все еще `pending`, operation остается `accepted` или
+  `processing` с `final = false`.
+- Terminal aggregation выполняется только после того, как все targets стали
+  terminal.
 - Все targets `succeeded` -> operation `completed`.
-- Часть targets `succeeded`, а часть нет -> `partially_completed`.
+- Часть terminal targets `succeeded`, а часть terminal targets нет ->
+  `partially_completed`.
 - Все targets `rejected` -> `rejected`.
 - Нет успешных targets и хотя бы один target `failed` -> `failed`.
 - Все targets `cancelled` -> `cancelled`.
+- Смешанные terminal outcomes без success должны использовать самый серьезный
+  доступный status в порядке: `failed`, `rejected`, `cancelled`.
 
 `operation.cancel` является best effort. Сделку, уже отправленную брокеру,
 может быть невозможно отменить, и отмена operation не означает закрытие уже
@@ -521,7 +528,10 @@ Compact binary buffer example:
 Compact payloads все равно должны объявлять ту же semantic metadata, что и JSON
 buffers: indexing mode, empty policy, value type, item count и смысл bar time.
 Bridges, которые не объявили requested encoding, должны вернуть domain
-rejection вроде `unsupported_buffer_encoding`.
+result со `status = "rejected"` и
+`reason.code = "unsupported_buffer_encoding"`. Malformed encoding structure,
+corrupted base64 или отсутствующие обязательные encoding fields должны быть
+`-32602 invalid params`.
 
 Production `binary_base64` должен быть удобен для MT4/MT5 и C++:
 
@@ -550,6 +560,9 @@ Production `binary_base64` должен быть удобен для MT4/MT5 и 
 
 ```json
 {
+  "context": {
+    "idempotency_key": "backtest:bt-2026-07-12-a:trade-1042"
+  },
   "source": {
     "kind": "backtest",
     "engine": "mt5",
@@ -560,6 +573,9 @@ Production `binary_base64` должен быть удобен для MT4/MT5 и 
     "symbol": "EURUSD",
     "order_type": "BUY",
     "signal_name": "rsi_cross"
+  },
+  "identity": {
+    "unique_hash": "backtest:bt-2026-07-12-a:trade-1042"
   },
   "trade": {
     "symbol": "EURUSD",
@@ -592,6 +608,11 @@ Production `binary_base64` должен быть удобен для MT4/MT5 и 
   "metadata": {}
 }
 ```
+
+`backtest.result.import` является state-changing operation. Он должен содержать
+`context.idempotency_key` для безопасного RPC retry и `identity.unique_hash` для
+domain-level deduplication импортируемой trade record. `run_id` идентифицирует
+весь test run и недостаточен для идентификации одной импортируемой сделки.
 
 `source.kind = "backtest"` должен сохраняться даже когда физическое storage -
 отдельная database. Предпочтительная deployment model для приложения -
