@@ -58,12 +58,15 @@ namespace optionx::bridges::tradingview::detail {
             std::string bar_state;
             std::string bar_state_source;
             std::string timeframe;
+            std::string trigger_unit;
             double price = 0.0;
+            double trigger_value = 0.0;
             std::int64_t time = 0;
             std::int64_t bar_time = 0;
             std::int64_t update_time = 0;
             std::int64_t timeframe_seconds = 0;
             std::int64_t signal_revision = 0;
+            bool has_trigger_value = false;
             bool is_level_alert = false;
             nlohmann::json raw;
         };
@@ -413,6 +416,30 @@ namespace optionx::bridges::tradingview::detail {
             return fallback;
         }
 
+        inline bool json_number_into(
+                const nlohmann::json& object,
+                std::initializer_list<const char*> keys,
+                double& output) {
+            if (!object.is_object()) {
+                return false;
+            }
+            for (const auto* key : keys) {
+                if (!object.contains(key)) {
+                    continue;
+                }
+                const auto& value = object.at(key);
+                if (value.is_number()) {
+                    output = value.get<double>();
+                    return true;
+                }
+                if (value.is_string() &&
+                    strict_number_string_to_double(value.get<std::string>(), output)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         inline std::int64_t json_integer(
                 const nlohmann::json& object,
                 std::initializer_list<const char*> keys,
@@ -571,6 +598,18 @@ namespace optionx::bridges::tradingview::detail {
             if (value == "cross") {
                 return "crossing";
             }
+            if (value == "up") {
+                return "crossing_up";
+            }
+            if (value == "down") {
+                return "crossing_down";
+            }
+            if (value == "above") {
+                return "greater_than";
+            }
+            if (value == "below") {
+                return "less_than";
+            }
             return value;
         }
 
@@ -596,7 +635,67 @@ namespace optionx::bridges::tradingview::detail {
                 text.find("below") != std::string::npos) {
                 return "less_than";
             }
+            if (text.find("moving up") != std::string::npos) {
+                return text.find('%') != std::string::npos ? "moving_up_pct" : "moving_up";
+            }
+            if (text.find("moving down") != std::string::npos) {
+                return text.find('%') != std::string::npos ? "moving_down_pct" : "moving_down";
+            }
             return {};
+        }
+
+        inline bool is_percent_trigger(
+                const std::string& condition_type,
+                const std::string& trigger_unit) {
+            const auto condition = lower_copy(trim_copy(condition_type));
+            const auto unit = lower_copy(trim_copy(trigger_unit));
+            return unit == "percent" ||
+                   unit == "%" ||
+                   (condition.size() >= 4 &&
+                    condition.substr(condition.size() - 4) == "_pct");
+        }
+
+        inline bool extract_percent_trigger_value_from_text(
+                const std::string& text,
+                double& output) {
+            const auto lowered = lower_copy(text);
+            auto marker = lowered.find("moving up");
+            auto marker_length = std::string("moving up").size();
+            if (marker == std::string::npos) {
+                marker = lowered.find("moving down");
+                marker_length = std::string("moving down").size();
+            }
+            if (marker == std::string::npos) {
+                return false;
+            }
+
+            auto begin = marker + marker_length;
+            while (begin < text.size() &&
+                   std::isspace(static_cast<unsigned char>(text[begin]))) {
+                ++begin;
+            }
+            auto end = begin;
+            while (end < text.size()) {
+                const auto ch = text[end];
+                if (std::isdigit(static_cast<unsigned char>(ch)) ||
+                    ch == '+' ||
+                    ch == '-' ||
+                    ch == '.' ||
+                    ch == ',') {
+                    ++end;
+                    continue;
+                }
+                break;
+            }
+            auto percent = end;
+            while (percent < text.size() &&
+                   std::isspace(static_cast<unsigned char>(text[percent]))) {
+                ++percent;
+            }
+            if (begin == end || percent >= text.size() || text[percent] != '%') {
+                return false;
+            }
+            return strict_number_string_to_double(text.substr(begin, end - begin), output);
         }
 
         inline std::string normalize_symbol_value(std::string symbol) {
@@ -807,13 +906,6 @@ namespace optionx::bridges::tradingview::detail {
             if (event.message.empty()) {
                 event.message = first_json_string(payload, {"message", "description", "title"});
             }
-            event.price =
-                json_number(data, {"price", "trigger_price", "cross_price", "alert_value"});
-            if (event.price == 0.0) {
-                extract_last_number_from_text(event.message, event.price);
-            }
-            event.time =
-                json_integer(data, {"time", "timestamp", "fire_time", "fired_at", "update_time"});
             if (event.condition_type.empty()) {
                 event.condition_type =
                     normalize_condition_type(first_json_string(
@@ -823,6 +915,30 @@ namespace optionx::bridges::tradingview::detail {
             if (event.condition_type.empty()) {
                 event.condition_type = infer_condition_type_from_message(event.message);
             }
+            event.trigger_unit = first_json_string(data, {"trigger_unit", "unit"});
+            event.has_trigger_value =
+                json_number_into(data, {"trigger_value", "alert_value"}, event.trigger_value);
+            if (!event.has_trigger_value &&
+                is_percent_trigger(event.condition_type, event.trigger_unit)) {
+                event.has_trigger_value =
+                    extract_percent_trigger_value_from_text(event.message, event.trigger_value);
+            }
+            if (event.trigger_unit.empty() &&
+                is_percent_trigger(event.condition_type, event.trigger_unit)) {
+                event.trigger_unit = "percent";
+            }
+
+            event.price = json_number(data, {"price", "trigger_price", "cross_price"});
+            if (event.price == 0.0 &&
+                !is_percent_trigger(event.condition_type, event.trigger_unit)) {
+                event.price = json_number(data, {"alert_value"});
+            }
+            if (event.price == 0.0 &&
+                !is_percent_trigger(event.condition_type, event.trigger_unit)) {
+                extract_last_number_from_text(event.message, event.price);
+            }
+            event.time =
+                json_integer(data, {"time", "timestamp", "fire_time", "fired_at", "update_time"});
             return event;
         }
 
@@ -852,7 +968,7 @@ namespace optionx::bridges::tradingview::detail {
             event.condition_type =
                 normalize_condition_type(first_json_string(
                     payload,
-                    {"condition_type", "condition", "crossing_type"}));
+                    {"condition_type", "condition", "crossing_type", "direction"}));
             event.signal_state = first_json_string(payload, {"state", "signal_state", "lifecycle_state"});
             event.signal_lifecycle_id = first_json_string(payload, {"signal_id", "lifecycle_id"});
             event.signal_revision = json_integer(payload, {"revision", "signal_revision"});
@@ -864,8 +980,29 @@ namespace optionx::bridges::tradingview::detail {
             event.timeframe = first_json_string(payload, {"timeframe", "interval", "resolution"});
             event.timeframe_seconds =
                 json_integer(payload, {"timeframe_seconds", "interval_seconds", "bar_duration_seconds"});
-            event.price = json_number(payload, {"price", "close", "trigger_price", "alert_value"});
-            if (event.price == 0.0) {
+            if (event.condition_type.empty()) {
+                event.condition_type = infer_condition_type_from_message(event.message);
+            }
+            event.trigger_unit = first_json_string(payload, {"trigger_unit", "unit"});
+            event.has_trigger_value =
+                json_number_into(payload, {"trigger_value", "alert_value"}, event.trigger_value);
+            if (!event.has_trigger_value &&
+                is_percent_trigger(event.condition_type, event.trigger_unit)) {
+                event.has_trigger_value =
+                    extract_percent_trigger_value_from_text(event.message, event.trigger_value);
+            }
+            if (event.trigger_unit.empty() &&
+                is_percent_trigger(event.condition_type, event.trigger_unit)) {
+                event.trigger_unit = "percent";
+            }
+
+            event.price = json_number(payload, {"price", "close", "trigger_price"});
+            if (event.price == 0.0 &&
+                !is_percent_trigger(event.condition_type, event.trigger_unit)) {
+                event.price = json_number(payload, {"alert_value"});
+            }
+            if (event.price == 0.0 &&
+                !is_percent_trigger(event.condition_type, event.trigger_unit)) {
                 extract_last_number_from_text(event.message, event.price);
             }
             event.time = json_integer(payload, {"time", "timestamp", "bar_time", "fire_time"});
@@ -918,9 +1055,6 @@ namespace optionx::bridges::tradingview::detail {
                 source_kind.find("pricealert") != std::string::npos ||
                 event.method == "alert_fired" ||
                 lower_copy(event.action) == "alert";
-            if (event.condition_type.empty()) {
-                event.condition_type = infer_condition_type_from_message(event.message);
-            }
             return event;
         }
 
@@ -936,7 +1070,7 @@ namespace optionx::bridges::tradingview::detail {
         }
 
         inline nlohmann::json normalized_event_to_json(const NormalizedEvent& event) {
-            return nlohmann::json{
+            auto value = nlohmann::json{
                 {"source_kind", event.source_kind},
                 {"method", event.method},
                 {"fire_id", event.fire_id},
@@ -958,12 +1092,17 @@ namespace optionx::bridges::tradingview::detail {
                 {"bar_state_source", event.bar_state_source},
                 {"timeframe", event.timeframe},
                 {"price", event.price},
+                {"trigger_value", event.has_trigger_value
+                    ? nlohmann::json(event.trigger_value)
+                    : nlohmann::json(nullptr)},
+                {"trigger_unit", event.trigger_unit},
                 {"time", event.time},
                 {"bar_time", event.bar_time},
                 {"update_time", event.update_time},
                 {"timeframe_seconds", event.timeframe_seconds},
                 {"is_level_alert", event.is_level_alert}
             };
+            return value;
         }
 
         inline nlohmann::json make_response(
@@ -1151,6 +1290,10 @@ namespace optionx::bridges::tradingview::detail {
                 {"timeframe", event.timeframe},
                 {"action", to_str(order_type, 1)},
                 {"price", event.price},
+                {"trigger_value", event.has_trigger_value
+                    ? nlohmann::json(event.trigger_value)
+                    : nlohmann::json(nullptr)},
+                {"trigger_unit", event.trigger_unit},
                 {"time", event.time},
                 {"bar_time", event.bar_time},
                 {"update_time", event.update_time},

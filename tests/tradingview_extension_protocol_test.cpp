@@ -700,6 +700,36 @@ TEST(TradingViewExtensionProtocol, DoesNotMapDirectionalLevelWordsByDefault) {
     EXPECT_FALSE(result.signal);
 }
 
+TEST(TradingViewExtensionProtocol, MapsToastDirectionToConditionRule) {
+    auto config = base_config();
+    config.level_alert_rules.push_back(
+        TradingViewLevelAlertRule{
+            {},
+            "EURUSD",
+            "crossing_up",
+            {},
+            {},
+            "buy",
+            "eurusd_crossing_up"});
+
+    const nlohmann::json payload = {
+        {"source_kind", "alert_toast_dom"},
+        {"event_id", "toast:eurusd:direction-up"},
+        {"action", "alert"},
+        {"symbol", "EURUSD"},
+        {"direction", "up"},
+        {"message", "EURUSD Crossing Up 1.1400"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.parsed_payload.at("condition_type"), "crossing_up");
+    EXPECT_EQ(result.signal->order_type, optionx::OrderType::BUY);
+}
+
 TEST(TradingViewExtensionProtocol, MatchesDefaultRussianKeywordsCaseInsensitively) {
     auto config = base_config();
 
@@ -766,6 +796,29 @@ TEST(TradingViewExtensionProtocol, ParsesCommaPriceAndIsoTimeFromToastPayload) {
     const auto user_data = nlohmann::json::parse(result.signal->user_data);
     EXPECT_DOUBLE_EQ(user_data.at("price").get<double>(), 64143.35);
     EXPECT_EQ(user_data.at("time").get<std::int64_t>(), 1783757385650LL);
+}
+
+TEST(TradingViewExtensionProtocol, KeepsPercentTriggerOutOfPriceFallback) {
+    auto config = base_config();
+
+    const nlohmann::json payload = {
+        {"source_kind", "alert_toast_dom"},
+        {"event_id", "toast:eurusd:moving-up-pct"},
+        {"action", "alert"},
+        {"symbol", "EURUSD"},
+        {"message", "EURUSD Moving Up 1.0%"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    EXPECT_FALSE(result.accepted);
+    EXPECT_EQ(result.reason, "unmapped_level_alert");
+    ASSERT_TRUE(result.parsed_payload.is_object());
+    EXPECT_EQ(result.parsed_payload.at("condition_type"), "moving_up_pct");
+    EXPECT_DOUBLE_EQ(result.parsed_payload.at("price").get<double>(), 0.0);
+    EXPECT_DOUBLE_EQ(result.parsed_payload.at("trigger_value").get<double>(), 1.0);
+    EXPECT_EQ(result.parsed_payload.at("trigger_unit"), "percent");
 }
 
 TEST(TradingViewExtensionProtocol, PreservesAlertNameAndUsesItForKeywords) {

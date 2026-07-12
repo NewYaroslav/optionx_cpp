@@ -388,8 +388,14 @@ test("private feed content script relays page-hook payloads to service worker", 
 
   window.eval(readFileSync(CONTENT_SRC_PATH, "utf8"));
   const payload = {
+    version: 1,
+    source: "tradingview_extension",
     source_kind: "private_pricealerts_ws",
+    method: "alert_fired",
     event_id: "tv_price_alert:1",
+    dedupe_key: "tv_price_alert:1",
+    fire_id: "1",
+    action: "alert",
     text: {
       channel: "pricealerts",
       content: { m: "alert_fired", p: { fire_id: 1 } }
@@ -407,4 +413,142 @@ test("private feed content script relays page-hook payloads to service worker", 
   assert.ok(statusMessages.some((message) => message.status === "private_feed_hook_injected"));
   assert.equal(sentPayloads.length, 1);
   assert.deepEqual(sentPayloads[0], payload);
+});
+
+test("private feed content script relays validated chart study payloads", async () => {
+  const dom = createDom();
+  const { window } = dom;
+  const sentPayloads = [];
+
+  window.chrome = {
+    runtime: {
+      lastError: null,
+      getURL(path) {
+        return `chrome-extension://test/${path}`;
+      },
+      sendMessage(message, callback) {
+        if (message && message.type === "tradingview_alert") sentPayloads.push(message.payload);
+        if (callback) callback({ ok: true });
+      }
+    }
+  };
+
+  window.eval(readFileSync(CONTENT_SRC_PATH, "utf8"));
+  const payload = {
+    version: 1,
+    source: "tradingview_extension",
+    source_kind: "private_chart_study_alert_messages",
+    method: "du.alertMessages",
+    event_id: "tv_study_alert:abc123",
+    dedupe_key: "tv_study_alert:abc123",
+    chart_session: "cs_test",
+    study_id: "8x94yO",
+    signal_name: "noisy_rsi_test",
+    action: "buy",
+    symbol: "BTCUSD",
+    tickerid: "CRYPTO:BTCUSD",
+    price: 64131.92,
+    time: 1783763820000,
+    bar_time: 1783763820000,
+    update_time: 1783763881395,
+    raw: {
+      barInfo: { time: 1783763820000, updateTime: 1783763881395 },
+      alert_message_text: "{\"action\":\"buy\"}",
+      parsed_message: { action: "buy" }
+    }
+  };
+  window.dispatchEvent(new window.MessageEvent("message", {
+    source: window,
+    data: {
+      type: "optionx_tradingview_private_feed",
+      payload
+    }
+  }));
+  await flush();
+
+  assert.equal(sentPayloads.length, 1);
+  assert.deepEqual(sentPayloads[0], payload);
+});
+
+test("private feed content script rejects forged pricealert postMessage payloads", async () => {
+  const dom = createDom();
+  const { window } = dom;
+  const sentPayloads = [];
+  const statusMessages = [];
+
+  window.chrome = {
+    runtime: {
+      lastError: null,
+      getURL(path) {
+        return `chrome-extension://test/${path}`;
+      },
+      sendMessage(message, callback) {
+        if (message && message.type === "tradingview_alert") sentPayloads.push(message.payload);
+        if (message && message.type === "content_status") statusMessages.push(message);
+        if (callback) callback({ ok: true });
+      }
+    }
+  };
+
+  window.eval(readFileSync(CONTENT_SRC_PATH, "utf8"));
+  window.dispatchEvent(new window.MessageEvent("message", {
+    source: window,
+    data: {
+      type: "optionx_tradingview_private_feed",
+      payload: {
+        source_kind: "private_pricealerts_ws",
+        event_id: "fake",
+        action: "buy",
+        symbol: "EURUSD"
+      }
+    }
+  }));
+  await flush();
+
+  assert.equal(sentPayloads.length, 0);
+  assert.ok(statusMessages.some((message) => message.status === "private_feed_payload_rejected"));
+});
+
+test("private feed content script rejects pricealerts with forged trade action", async () => {
+  const dom = createDom();
+  const { window } = dom;
+  const sentPayloads = [];
+
+  window.chrome = {
+    runtime: {
+      lastError: null,
+      getURL(path) {
+        return `chrome-extension://test/${path}`;
+      },
+      sendMessage(message, callback) {
+        if (message && message.type === "tradingview_alert") sentPayloads.push(message.payload);
+        if (callback) callback({ ok: true });
+      }
+    }
+  };
+
+  window.eval(readFileSync(CONTENT_SRC_PATH, "utf8"));
+  window.dispatchEvent(new window.MessageEvent("message", {
+    source: window,
+    data: {
+      type: "optionx_tradingview_private_feed",
+      payload: {
+        version: 1,
+        source: "tradingview_extension",
+        source_kind: "private_pricealerts_ws",
+        method: "alert_fired",
+        event_id: "tv_price_alert:1",
+        dedupe_key: "tv_price_alert:1",
+        fire_id: "1",
+        action: "buy",
+        text: {
+          channel: "pricealerts",
+          content: { m: "alert_fired", p: { fire_id: 1 } }
+        }
+      }
+    }
+  }));
+  await flush();
+
+  assert.equal(sentPayloads.length, 0);
 });

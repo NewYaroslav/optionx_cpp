@@ -32,7 +32,7 @@ http://127.0.0.1:6560/api/v1/tradingview/signal
 
 ## What It Captures
 
-There are two independent capture modes in the popup:
+There are three independent capture modes in the popup:
 
 - **Visible alert toasts**: a DOM observer reads alert cards shown in the chart
   page. This is useful as a low-risk fallback and for visible level alerts.
@@ -43,7 +43,8 @@ There are two independent capture modes in the popup:
 - **Indicator study alerts**: the same page-world WebSocket hook watches
   `wss://data.tradingview.com/socket.io/websocket?...type=chart...` frames and
   extracts `du.p[1].<study-id>.ns.d.data.alertMessages[]` emitted by Pine
-  `alert()` calls.
+  `alert()` calls. This source is opt-in and disabled by default because chart
+  sockets can replay older study state during chart load or recalculation.
 
 The private feed hook stays inside the browser page. It does not expose
 TradingView cookies, session tokens or full WebSocket traffic to the local
@@ -218,6 +219,10 @@ transmit the raw URL.
 
 The shared secret is sent as the request header `X-OptionX-Secret`, never
 inside the JSON body.
+
+Indicator study alert capture is also disabled by default. Enable
+`Capture indicator study alerts` only when the bridge config has an explicit
+study policy such as `confirmed_only` or `close_window`.
 
 ## Test Indicator
 
