@@ -226,6 +226,21 @@ live domain events. Он не заменяет domain event position `stream_id 
 только говорит file consumer, какой ready file надо claim следующим. Consumers
 должны claim минимальный доступный `delivery_seq`.
 
+Rules для `delivery_seq`:
+
+- `delivery_seq` нельзя переиспользовать внутри одной client event delivery
+  queue.
+- Следующее значение `delivery_seq` должно переживать bridge restarts или
+  восстанавливаться как значение больше любого видимого номера в
+  `events\ready\` и `events\processing\`.
+- Ready files должны публиковаться по возрастанию `delivery_seq`. Bridge не
+  должен делать `N + 1` видимым раньше `N`.
+- Consumers должны сохранять последний completed `delivery_seq` и не должны
+  перескакивать через unexplained gap. Gap может быть закрыт более поздним
+  ready file, восстановленным processing file, retention policy metadata или
+  явным `report.created` diagnostic, который помечает missing delivery как
+  unavailable.
+
 ### Authentication И Client Identity
 
 File transport обычно полагается на local OS permissions и per-client
@@ -269,6 +284,9 @@ Recommendations:
   request. Если заданы оба ключа, они должны разрешаться в одну durable
   subscription: тот же normalized request возвращает существующую подписку, а
   другой normalized request для того же effective key является conflict.
+  Bridge должен сохранять оба переданных ключа как aliases, чтобы последующий
+  retry только с `context.idempotency_key` нашёл подписку, которая изначально
+  была создана с обоими fields.
 - `events.subscribe` задаёт topics, filters и `replay.mode` так же, как в общем
   event contract. Bridge пишет в `events\ready\` клиента только subscribed
   topics.

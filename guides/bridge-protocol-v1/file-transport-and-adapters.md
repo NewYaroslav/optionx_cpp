@@ -224,6 +224,19 @@ notification and live domain events. It does not replace the domain event
 position `stream_id + seq`; it only tells the file consumer which ready file to
 claim next. Consumers should claim the lowest available `delivery_seq`.
 
+`delivery_seq` rules:
+
+- `delivery_seq` must not be reused within one client event delivery queue.
+- The next `delivery_seq` value must survive bridge restarts, or be
+  reconstructed as greater than every visible value in `events\ready\` and
+  `events\processing\`.
+- Ready files must be published in increasing `delivery_seq` order. A bridge
+  must not make `N + 1` visible before `N`.
+- Consumers must persist the last completed `delivery_seq` and must not advance
+  past an unexplained gap. A gap can be resolved by a later ready file, a
+  recovered processing file, retention policy metadata, or an explicit
+  `report.created` diagnostic that marks the missing delivery as unavailable.
+
 ### Authentication And Client Identity
 
 The file transport normally relies on local OS permissions and per-client
@@ -266,6 +279,9 @@ Recommendations:
   both keys are present, they must resolve to the same durable subscription:
   the same normalized request returns the existing subscription, while a
   different normalized request for the same effective key is a conflict.
+  Bridges should store both provided keys as aliases so a later retry with only
+  `context.idempotency_key` can find a subscription first created with both
+  fields.
 - `events.subscribe` defines topics, filters and `replay.mode`, exactly as in
   the general event contract. The bridge writes only the subscribed topics into
   the client's `events\ready\` directory.
