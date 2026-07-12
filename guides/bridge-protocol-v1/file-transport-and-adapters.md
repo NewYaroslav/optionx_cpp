@@ -346,6 +346,21 @@ Observed payload facts:
   `0x50..0x5F` / decimal bytes `80..95`. All other 208 bytes in the 224-byte
   payload stayed identical. This strongly suggests independently encoded
   parameter blocks rather than one CBC-like stream over the whole payload.
+- A reported equal-length signal-name comparison `Manual -> Test00` changed
+  block 4 (`0x40..0x4F`) plus dynamic blocks 6 and 7, while keeping expiration
+  block 5 and the tail configuration blocks unchanged. This makes block 4 the
+  current best candidate for the serialized `signal_name` field when the name
+  length is six bytes. A shorter-name test such as `Manual -> Test` may shift
+  later serialized fields and therefore changes many following blocks.
+- Reported BUY fixtures with a six-byte signal name currently suggest this
+  block map: block 0 = direction/template or command type, block 2 = amount,
+  block 4 = signal name, block 5 = expiration, blocks 6-7 = dynamic data, and
+  blocks 8-13 = martingale configuration plus runtime chain state. This is a
+  working map, not a stable contract.
+- Reported tail blocks 8-13 have at least two byte-exact states. The sequence
+  `Manual #1 -> state A`, `Manual #2 -> state B`, `Test00 #1 -> state A`
+  suggests that the tail may include martingale/runtime state keyed by
+  `signal_name`, not only static martingale settings.
 - If repeated fixtures confirm deterministic blocks, the adapter may not need
   to decrypt the format for a compatibility mode. It could build explicit lookup
   tables for known parameter values, for example `expiration=5m -> block 5 value`
@@ -378,6 +393,9 @@ Implementation notes:
 - Useful next fixtures: repeat `5m`, `7m` and another duration with all other
   parameters fixed; repeat the same BUY twice and the same SELL twice with file
   cleanup between clicks; then change amount and martingale mode one at a time.
+- To test chain state, use fresh six-byte signal names such as `AAAAAA` and
+  `BBBBBB`: send `AAAAAA` twice, then `BBBBBB` once. If the hypothesis is
+  correct, the expected tail sequence is `A`, `B`, `A`.
 
 ## Open Questions
 

@@ -345,6 +345,21 @@ Observed payload facts:
   offset `0x50..0x5F` / decimal bytes `80..95`. Остальные 208 bytes в 224-byte
   payload остались идентичными. Это сильно похоже на independently encoded
   parameter blocks, а не на один CBC-like stream поверх всего payload.
+- Reported equal-length signal-name comparison `Manual -> Test00` поменял
+  block 4 (`0x40..0x4F`) плюс dynamic blocks 6 и 7, сохранив expiration block 5
+  и tail configuration blocks. Поэтому block 4 сейчас лучший кандидат на
+  serialized `signal_name` field, когда name length равен шести bytes. Тест с
+  более коротким именем, например `Manual -> Test`, может сдвигать последующие
+  serialized fields и поэтому менять много следующих blocks.
+- Reported BUY fixtures с six-byte signal name сейчас дают такую рабочую карту:
+  block 0 = direction/template или command type, block 2 = amount, block 4 =
+  signal name, block 5 = expiration, blocks 6-7 = dynamic data, blocks 8-13 =
+  martingale configuration плюс runtime chain state. Это рабочая карта, а не
+  stable contract.
+- Reported tail blocks 8-13 имеют минимум два byte-exact states. Последовательность
+  `Manual #1 -> state A`, `Manual #2 -> state B`, `Test00 #1 -> state A`
+  предполагает, что tail может содержать martingale/runtime state, привязанный к
+  `signal_name`, а не только static martingale settings.
 - Если повторные fixtures подтвердят deterministic blocks, adapter может не
   нуждаться в расшифровке формата для compatibility mode. Можно собрать явные
   lookup tables для известных значений параметров, например
@@ -378,6 +393,9 @@ Implementation notes:
   фиксированных остальных параметрах; повторить тот же BUY дважды и тот же SELL
   дважды с очисткой файла между кликами; затем менять amount и martingale mode
   по одному.
+- Для проверки chain state использовать новые six-byte signal names, например
+  `AAAAAA` и `BBBBBB`: отправить `AAAAAA` два раза, затем `BBBBBB` один раз.
+  Если гипотеза верна, ожидаемый tail sequence будет `A`, `B`, `A`.
 
 ## Open Questions
 
