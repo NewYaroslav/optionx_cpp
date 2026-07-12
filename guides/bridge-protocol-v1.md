@@ -196,6 +196,29 @@ Identifier compatibility rules:
 - Unknown external/broker identifiers should be treated as opaque strings and
   compared lexically, not numerically.
 
+### Naming And Enum Spelling
+
+The public wire protocol should use stable string spelling instead of exposing
+C++ enum names accidentally.
+
+Rules:
+
+- JSON field names use `lower_snake_case`.
+- JSON-RPC method names, event names and topics use dot-separated namespaces,
+  for example `trade.open`, `market_data.tick` and `report.created`.
+- Protocol-native enum values use `lower_snake_case`, for example `accepted`,
+  `time_range`, `fixed_amount`, `append` and `pricealerts`.
+- Existing domain enum fields that already mirror C++/broker naming may keep
+  their current `UPPER_SNAKE_CASE` spelling in this draft, for example `BUY`,
+  `SELL`, `SPRINT`, `INTRADE_BAR` and `DEMO`.
+- Responses and events must use the canonical spelling shown by the protocol.
+- Requests may accept documented aliases for compatibility, including
+  case-insensitive aliases, but bridges must normalize them before storing or
+  emitting data.
+- Unknown enum values should be rejected in trade-affecting requests unless
+  the field is explicitly open-ended, such as a custom money-management system
+  name.
+
 ## Transport Binding
 
 HTTP:
@@ -226,6 +249,40 @@ Named Pipe:
   integrations.
 - Subscribed events can be sent to connected pipe clients as JSON-RPC
   notifications.
+
+### Auth And Permissions
+
+MVP authentication can be a static API key configured by the local bridge. This
+is enough for local tools and browser extensions, but it must be a transport
+credential rather than part of business payloads.
+
+Recommended transport binding:
+
+- HTTP: `Authorization: Bearer <api_key>` or `X-OptionX-Api-Key`.
+- WebSocket: the same header during handshake when the client can set headers,
+  otherwise an initial `auth.login` command before any trade-affecting command.
+- Named pipe: OS-level pipe permissions first; an optional initial `auth.login`
+  command when several local clients share the same pipe.
+
+Rules:
+
+- API keys must not be required in query strings.
+- Auth can be disabled only for explicit local/dev profiles.
+- Non-loopback transports should require auth for every deployment profile.
+- A bridge should expose the authenticated client identity to idempotency,
+  rate-limit and audit code.
+- Permissions should be scope-based once multiple clients are supported.
+
+Suggested permission scopes:
+
+- `trade:write`: submit signals and open trades.
+- `trade:read`: read active and historical trades.
+- `market_data:read`: subscribe to quotes and query quote history.
+- `market_data:write`: ingest ticks and bars.
+- `account:read`: read account lists, balances and platform status.
+- `trading:control`: pause and resume trading.
+- `reports:read`: query and subscribe to reports.
+- `admin`: change bridge configuration or manage other clients.
 
 ### REST Convenience API
 
@@ -512,16 +569,29 @@ and stream all trades related to one signal.
 ```json
 {
   "signal_id": "101",
+  "operation_id": "op-019c...",
   "bridge_id": "2",
   "unique_id": "0",
   "unique_hash": "tv:abc123",
-  "signal_name": "noisy_rsi_test"
+  "signal_name": "noisy_rsi_test",
+  "source_kind": "tradingview_extension"
 }
 ```
 
 A single `signal.submit` may produce zero, one or many trades. Therefore
 trade-result commands and events should identify trades directly, but also
 include `origin_signal` for correlation.
+
+Persistent storage should keep a signal/intake record and link each produced
+trade to it through `origin_signal`. Multiple trades can appear because of
+account fan-out, best-payout retries, martingale/anti-martingale steps or other
+money-management chains. Follow-up trades should keep the same origin signal
+and may additionally carry `parent_trade_id`, `chain_id` or `step_index` inside
+`metadata` until a dedicated money-management execution model is specified.
+
+Direct `trade.open` commands may create a synthetic origin signal with
+`source_kind = "direct_trade_open"` so the same query and event model works for
+both concrete trade requests and higher-level strategy signals.
 
 ## Commands
 
@@ -565,7 +635,11 @@ Return supported methods, feature flags and limits.
     "event_replay": false,
     "trade_open_batch": false,
     "routing_all": true,
-    "buffer_encoding": ["json"],
+    "buffer_encoding": ["json", "binary_base64"],
+    "auth": {
+      "api_key": true,
+      "scopes": true
+    },
     "market_data": {
       "live_ticks": true,
       "live_bars": true,
@@ -583,6 +657,8 @@ Return supported methods, feature flags and limits.
     "max_market_data_subscriptions": 64,
     "max_market_data_prefill_items": 1000,
     "max_market_data_ingest_items": 10000,
+    "event_retention_ms": 0,
+    "max_replay_events": 0,
     "max_page_size": 1000
   }
 }
@@ -652,6 +728,14 @@ Response result:
 `trade.open` should represent one concrete trade on one selected account in the
 stable protocol. A future `trade.open.batch` command should cover explicit
 multi-trade submissions. Fan-out belongs primarily to `signal.submit`.
+
+`trade.open` is still allowed to pass through the same intake, validation,
+risk, reporting and persistence lifecycle as `signal.submit`. The difference is
+intent: `trade.open` already contains an executable trade request, while
+`signal.submit` may require sizing, routing and decision logic before any trade
+exists. A lower-level execution component may convert directly to `TradeRequest`,
+but public bridge APIs should keep the operation/report/origin-signal lifecycle
+observable.
 
 ### `signal.submit`
 
@@ -879,6 +963,43 @@ Known `empty_policy` values:
 - `zero_is_empty`: only zero means no data.
 - `zero_or_empty_value`: zero and `empty_value` mean no data.
 - `null_is_empty`: JSON null means no data.
+
+Default buffer encoding is JSON arrays because it is inspectable and easy for
+MQL scripts to produce. Large payloads may use a compact encoding when the
+bridge advertises it in `protocol.capabilities.get`.
+
+Compact binary buffer example:
+
+```json
+{
+  "encoding": {
+    "kind": "binary_base64",
+    "endianness": "little",
+    "value_type": "float64",
+    "layout": "buffer_major",
+    "count": 512
+  },
+  "buffers": [
+    {
+      "name": "buy",
+      "role": "buy",
+      "empty_policy": "zero_or_empty_value",
+      "empty_value": "2147483647.0",
+      "values_base64": "AAAA..."
+    }
+  ],
+  "bars": {
+    "kind": "compact",
+    "open_time_ms_base64": "AAAA...",
+    "is_closed_bitmap_base64": "AQ=="
+  }
+}
+```
+
+Compact payloads must still declare the same semantic metadata as JSON buffers:
+indexing mode, empty policy, value type, item count and bar-time meaning.
+Bridges that do not advertise the requested encoding should return a domain
+rejection such as `unsupported_buffer_encoding`.
 
 ### Market Data Commands
 
@@ -1197,9 +1318,11 @@ Use this when an external tester has already calculated the trade result.
 ```
 
 `source.kind = "backtest"` should be kept even when the physical storage is a
-separate database. `PlatformType::SIMULATOR` already exists in the C++ domain
-model and is useful for live simulation on real-time prices, for example "run
-for a week without real trades".
+separate database. The preferred application deployment model is a separate
+backtest database that uses the same storage classes as real/demo trading, but
+does not mix historical tests with live trade history. `PlatformType::SIMULATOR`
+already exists in the C++ domain model and is useful for live simulation on
+real-time prices, for example "run for a week without real trades".
 
 ### `trade.result.get`
 
@@ -1294,6 +1417,11 @@ that include `origin_signal`.
 Return closed or persisted trade records. The payload should mirror
 `TradeRecordQuery` and `TradeRecordFilter`.
 
+Use one `selector` for direct lookup, or `filter` plus pagination for list
+queries. If both are present, `selector` should narrow the query first and
+`filter` should still be required to match the same record; bridges should not
+silently choose priority between conflicting IDs.
+
 ```json
 {
   "time_range": {
@@ -1317,6 +1445,43 @@ Time ranges are half-open: `[start_ms, end_ms)`. Cursor pagination is preferred
 over offset pagination because new records may arrive while a client pages
 through history. Responses should include `next_cursor`, `has_more` and
 `snapshot_at_ms` when pagination is used.
+
+History response:
+
+```json
+{
+  "items": [
+    {
+      "trade_id": "123",
+      "state": "closed",
+      "outcome": "win",
+      "final": true,
+      "revision": 7,
+      "account_id": "1",
+      "platform_type": "INTRADE_BAR",
+      "symbol": "EURUSD",
+      "amount": "10.00",
+      "profit": "8.20",
+      "open_time_ms": 1783476720120,
+      "close_time_ms": 1783476780000,
+      "origin_signal": {}
+    }
+  ],
+  "next_cursor": "cursor-opaque",
+  "has_more": true,
+  "snapshot_at_ms": 1783600000000,
+  "order": {
+    "field": "close_time_ms",
+    "direction": "desc",
+    "tie_breaker": "trade_id"
+  }
+}
+```
+
+Cursors are opaque strings owned by the bridge implementation. Clients must not
+parse or modify them. A cursor may encode the snapshot boundary, sort direction
+and last seen key. A bridge may reject expired cursors with
+`cursor_expired`.
 
 ### `trade.active.query`
 
@@ -1474,9 +1639,27 @@ Unsubscribe:
 ```
 
 Subscription resume is a wire-contract topic, not only a convenience feature.
+WebSocket clients may reconnect every N seconds until explicitly stopped, but
+reconnecting by itself does not guarantee lossless event delivery.
+
+Default draft behavior:
+
+- Subscriptions are connection/session scoped unless a bridge explicitly
+  advertises durable subscriptions.
+- Delivery is practically at-least-once. Clients must deduplicate by
+  `source + event_id`.
+- Ordering is guaranteed only inside one `stream_id` and, for trade events,
+  within increasing `revision`.
+- If `event_replay` is false, reconnecting clients must resubscribe and accept
+  that events produced during disconnect may be lost.
+- If `event_replay` is true, clients may pass `resume_from_seq` or a future
+  `resume_token`; the bridge replays retained events from its configured
+  retention window.
+
 Future stable versions should define:
 
 - `resume_from_seq`
+- `resume_token`
 - event retention window
 - heartbeat interval
 - idle timeout
@@ -1518,8 +1701,10 @@ in increasing `revision` order.
 ## Mapping To Existing DTOs
 
 - `signal.submit` maps primarily to `TradeSignal`.
-- `trade.open` maps to an executable trade intent. The bridge may still emit a
-  `TradeSignal` first because the current bridge callback API is signal-based.
+- `trade.open` maps to an executable trade intent. Public bridge APIs should
+  still keep the same operation/report/origin lifecycle as `signal.submit`;
+  only lower-level platform execution code should bypass that lifecycle and
+  convert directly to `TradeRequest`.
 - `TradeSignal::assign_to_request()` maps signal fields to `TradeRequest`.
 - `trade.result.get` maps to `TradeResult`.
 - `trade.history.query` maps to `TradeRecordQuery` and returns `TradeRecord`.
@@ -1531,21 +1716,40 @@ Important current mismatch:
 - `TradeSignal` has `platform_type`; `TradeRequest` does not.
 - Therefore platform/account routing should remain a protocol/application layer
   around the signal/request instead of being forced into `TradeRequest`.
+- This matches the current intent: `TradeRequest` is the platform/broker-level
+  request object, while platform identity belongs to routing, account data,
+  platform instances and result/history snapshots.
+
+## Resolved Draft Decisions
+
+- `TradeRequest` should not grow `platform_type` for the public bridge protocol.
+  Routing remains outside the platform request object.
+- Public JSON field names use `lower_snake_case`; protocol-native enum values
+  use `lower_snake_case`; existing DTO/platform enum fields may keep
+  `UPPER_SNAKE_CASE` canonical spelling during the draft.
+- `trade.open` should not skip the public operation/report/origin lifecycle.
+  Direct conversion to `TradeRequest` is a lower-level execution concern.
+- One signal producing many trades is modeled by one persisted signal/intake
+  record plus many trade records with `origin_signal`.
+- `TradeRecordQuery` uses selector/filter payloads and opaque cursor
+  pagination.
+- Backtests should normally use a separate database selected by application
+  config, while protocol payloads still mark `source.kind = "backtest"`.
+- Large MT4/MT5 raw buffers may use an advertised compact/binary encoding.
+- Subscription reconnect is client behavior; replay is optional server behavior
+  advertised through capabilities and bounded by configured retention.
+- MVP auth is an optional local API key, transported through headers or an
+  initial auth command. Permissions should become scope-based as soon as
+  multiple clients share a bridge.
 
 ## Open Questions
 
-- Should `TradeRequest` grow `platform_type`, or should routing always live
-  outside it?
-- Exact enum/string spelling for public JSON fields.
-- Whether `trade.open` should bypass `TradeSignal` in future bridge APIs or
-  only do so in a lower-level execution component.
-- How to model one signal producing multiple trades in persistent storage.
-- Exact `TradeRecordQuery` JSON shape and cursor implementation.
-- Where to store backtest data: separate DB by application config is preferred,
-  but protocol must still mark `source.kind = "backtest"`.
-- Compact raw-buffer encoding for MT4/MT5 when bars/buffers become large.
-- Exact subscription replay retention, persistence and reconnect behavior.
-- Auth and permissions per transport.
+- Exact durable subscription storage model for event replay across bridge
+  restarts.
+- Whether stable v1 should normalize existing `UPPER_SNAKE_CASE` DTO enum
+  fields to `lower_snake_case` or preserve the current DTO-compatible spelling.
+- Exact binary payload format once compact MT4/MT5 buffers need production
+  interoperability rather than a draft shape.
 
 ## Before Stable Wire v1
 
