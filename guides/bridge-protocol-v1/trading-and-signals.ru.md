@@ -10,13 +10,26 @@
 Возвращает базовую server identity и выбранную protocol version. Это полезно
 для clients, которые могут говорить с несколькими bridge implementations.
 
+Параметры запроса:
+
 ```json
 {
   "client": {
     "name": "mgc-platform",
     "version": "0.1.0"
   },
-  "requested_protocol_versions": ["draft"]
+  "requested_protocol_versions": ["1"]
+}
+```
+
+Результат:
+
+```json
+{
+  "selected_protocol_version": "1",
+  "installation_id": "installation-019c",
+  "server_instance_id": "019c...",
+  "session_id": "session-019c..."
 }
 ```
 
@@ -24,9 +37,17 @@
 
 Возвращает supported methods, feature flags и limits.
 
+Параметры запроса:
+
+```json
+{}
+```
+
+Результат:
+
 ```json
 {
-  "protocol_versions": ["draft"],
+  "protocol_versions": ["1"],
   "server_instance_id": "019c...",
   "supported_methods": [
     "signal.submit",
@@ -71,6 +92,30 @@
 }
 ```
 
+## Сводка методов
+
+| Метод | Побочный эффект | Нужный scope | Идемпотентность | Асинхронно | Результат/event |
+| --- | ---: | --- | ---: | ---: | --- |
+| `protocol.hello` | no | none | no | no | selected version/session |
+| `protocol.capabilities.get` | no | none | no | no | capabilities snapshot |
+| `trade.open` | yes | `trade:write` | required | yes | `operation_id`, `trade.updated` |
+| `signal.submit` | yes | `trade:write` | required | yes | `operation_id`, `signal.*`, `trade.updated` |
+| `operation.get` | no | matching read scope | no | no | operation snapshot |
+| `operation.cancel` | yes | matching write/control scope | recommended | yes | operation snapshot/events |
+| `trade.result.get` | no | `trade:read` | no | no | trade result snapshot |
+| `trade.history.query` | no | `trade:read` | no | no | paged trade records |
+| `trade.active.query` | no | `trade:read` | no | no | active trade snapshots |
+| `market_data.providers.list` | no | `market_data:read` | no | no | provider list |
+| `market_data.provider.get` | no | `market_data:read` | no | no | provider details |
+| `market_data.subscribe` | yes | `market_data:read` | no | no | market-data subscription id |
+| `market_data.unsubscribe` | yes | `market_data:read` | no | no | subscription removed |
+| `market_data.history.get` | no | `market_data:read` | no | maybe | history page |
+| `market_data.ingest.ticks` | yes | `market_data:write` | recommended | maybe | operation/counts |
+| `market_data.ingest.bars` | yes | `market_data:write` | recommended | maybe | operation/counts |
+| `events.subscribe` | yes | topic read scopes | no | no | event subscription id |
+| `events.unsubscribe` | yes | topic read scopes | no | no | subscription removed |
+| `events.subscriptions.list` | no | topic read scopes | no | no | subscription list |
+
 ### `trade.open`
 
 Использовать, когда внешний client хочет конкретную сделку с явными trade
@@ -78,7 +123,6 @@ parameters.
 
 ```json
 {
-  "protocol_version": "draft",
   "context": {
     "idempotency_key": "manual:client-trade-1",
     "client_created_at_ms": 1783476719900,
@@ -136,6 +180,12 @@ Response result:
 stable protocol. Будущая команда `trade.open.batch` должна покрывать явные
 multi-trade submissions. Fan-out в первую очередь относится к `signal.submit`.
 
+Валидация routing для метода:
+
+- `routing.selector.kind` может быть `default` или `account`.
+- `routing.selector.kind = accounts` и `all` невалидны для `trade.open`.
+- `routing.policy` невалиден для `trade.open`.
+
 `trade.open` все равно может проходить через тот же intake, validation, risk,
 reporting и persistence lifecycle, что и `signal.submit`. Отличается intent:
 `trade.open` уже содержит executable trade request, а `signal.submit` может
@@ -150,11 +200,17 @@ lifecycle.
 management, routing и filters позже могут породить ноль, одну или несколько
 сделок.
 
+Валидация routing для метода:
+
+- `routing.selector.kind` может быть `default`, `account`, `accounts` или
+  `all`.
+- `routing.policy` разрешен и может выбирать best payout, fan-out,
+  risk-manager routing или другую application-defined policy.
+
 ```json
 {
-  "protocol_version": "draft",
   "context": {
-    "idempotency_key": "tv:abc123",
+    "idempotency_key": "retry:tv-alert-abc123",
     "client_created_at_ms": 1783476705177,
     "valid_until_ms": 1783476710000
   },
@@ -183,6 +239,7 @@ management, routing и filters позже могут породить ноль, 
     }
   },
   "identity": {
+    "unique_hash": "tv:abc123",
     "signal_name": "noisy_rsi_test"
   },
   "metadata": {
@@ -212,6 +269,12 @@ Response result:
 асинхронным или потому что risk/decision logic отклонила signal. Clients должны
 использовать `signal.trades.query` или subscriptions, чтобы наблюдать созданные
 trades.
+
+`identity.unique_hash`, `identity.unique_id` и `identity.signal_name` являются
+опциональными domain identity fields. Bridge не должен выводить `unique_hash` из
+`context.idempotency_key`, если это поведение явно не настроено и не
+задокументировано. Если `unique_hash` не передан и не сгенерирован domain layer,
+responses должны его опускать.
 
 ### Operation Lifecycle
 
@@ -267,8 +330,15 @@ Commands:
 
 `operation.cancel` является best effort. Сделку, уже отправленную брокеру,
 может быть невозможно отменить, и отмена operation не означает закрытие уже
-открытой trade. Bridges могут показывать промежуточное состояние
-`cancellation_requested`, прежде чем operation станет final.
+открытой trade. Bridges могут показывать cancellation intent как флаг, пока
+operation остается в своем обычном state:
+
+```json
+{
+  "status": "processing",
+  "cancellation_requested": true
+}
+```
 
 ### `signal.trades.query`
 
@@ -537,7 +607,8 @@ lifecycle и financial outcome fields:
   "broker_option_hash": "abc",
   "amount": "10.00",
   "payout": "0.82",
-  "profit": "0.00",
+  "profit": null,
+  "expected_profit": "8.20",
   "balance": "1000.00",
   "open_balance": "1000.00",
   "close_balance": null,
@@ -559,7 +630,9 @@ lifecycle и financial outcome fields:
 
 Unknown или unavailable snapshot values должны быть `null`. Fields, которые не
 applicable, должны отсутствовать. Известный numeric zero остается реальным
-decimal value, например `"0.00"`.
+decimal value, например `"0.00"`. `profit` означает realized/final profit; для
+открытой binary option он обычно должен быть `null`, а потенциальный payout
+можно передать как `expected_profit`.
 
 Known lifecycle states:
 

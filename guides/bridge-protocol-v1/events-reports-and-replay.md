@@ -60,6 +60,13 @@ stream, which may then produce `market_data.tick` and `market_data.bar` events.
 Reports are delivered through `events.subscribe` with the `report.created`
 topic.
 
+By default, a successful `market_data.subscribe` delivers its tick/bar events to
+the same client without requiring a separate `events.subscribe` call. A client
+may also use `events.subscribe` for market-data topics when it wants to observe
+already-created streams through the general event bus. If both subscriptions
+match the same event on the same connection, the bridge should send one event
+and include the matched event subscription ids.
+
 `events.subscribe` request:
 
 ```json
@@ -82,15 +89,28 @@ topic.
     "platform_type": "INTRADE_BAR",
     "symbol": "EURUSD"
   },
-  "replay_last": true
+  "replay": {
+    "mode": "last",
+    "count_per_topic": 1
+  }
 }
 ```
+
+Known `replay.mode` values:
+
+- `none`: do not replay retained events.
+- `last`: replay the last retained events matching the subscription filter,
+  usually bounded by `count_per_topic`.
+- `from_seq`: replay from a known `stream_id + seq` when event replay is
+  supported.
+- `from_token`: replay from an opaque `resume_token` when the bridge supports
+  resumable subscriptions.
 
 Response:
 
 ```json
 {
-  "subscription_id": "sub-1",
+  "event_subscription_id": "evt-sub-1",
   "topics": ["trade.updated", "report.created"]
 }
 ```
@@ -99,7 +119,7 @@ Unsubscribe:
 
 ```json
 {
-  "subscription_id": "sub-1"
+  "event_subscription_id": "evt-sub-1"
 }
 ```
 
@@ -108,7 +128,7 @@ should send one event with one `event_id` and include all matched subscriptions:
 
 ```json
 {
-  "matched_subscription_ids": ["sub-1", "sub-7"]
+  "matched_event_subscription_ids": ["evt-sub-1", "evt-sub-7"]
 }
 ```
 

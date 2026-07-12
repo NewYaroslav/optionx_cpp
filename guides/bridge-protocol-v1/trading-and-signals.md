@@ -10,13 +10,26 @@ not the full outer JSON-RPC envelope.
 Return basic server identity and selected protocol version. This is useful for
 clients that can speak to multiple bridge implementations.
 
+Request params:
+
 ```json
 {
   "client": {
     "name": "mgc-platform",
     "version": "0.1.0"
   },
-  "requested_protocol_versions": ["draft"]
+  "requested_protocol_versions": ["1"]
+}
+```
+
+Result:
+
+```json
+{
+  "selected_protocol_version": "1",
+  "installation_id": "installation-019c",
+  "server_instance_id": "019c...",
+  "session_id": "session-019c..."
 }
 ```
 
@@ -24,9 +37,17 @@ clients that can speak to multiple bridge implementations.
 
 Return supported methods, feature flags and limits.
 
+Request params:
+
+```json
+{}
+```
+
+Result:
+
 ```json
 {
-  "protocol_versions": ["draft"],
+  "protocol_versions": ["1"],
   "server_instance_id": "019c...",
   "supported_methods": [
     "signal.submit",
@@ -71,6 +92,30 @@ Return supported methods, feature flags and limits.
 }
 ```
 
+## Method Summary
+
+| Method | Side effect | Required scope | Idempotency | Async | Result/event |
+| --- | ---: | --- | ---: | ---: | --- |
+| `protocol.hello` | no | none | no | no | selected version/session |
+| `protocol.capabilities.get` | no | none | no | no | capabilities snapshot |
+| `trade.open` | yes | `trade:write` | required | yes | `operation_id`, `trade.updated` |
+| `signal.submit` | yes | `trade:write` | required | yes | `operation_id`, `signal.*`, `trade.updated` |
+| `operation.get` | no | matching read scope | no | no | operation snapshot |
+| `operation.cancel` | yes | matching write/control scope | recommended | yes | operation snapshot/events |
+| `trade.result.get` | no | `trade:read` | no | no | trade result snapshot |
+| `trade.history.query` | no | `trade:read` | no | no | paged trade records |
+| `trade.active.query` | no | `trade:read` | no | no | active trade snapshots |
+| `market_data.providers.list` | no | `market_data:read` | no | no | provider list |
+| `market_data.provider.get` | no | `market_data:read` | no | no | provider details |
+| `market_data.subscribe` | yes | `market_data:read` | no | no | market-data subscription id |
+| `market_data.unsubscribe` | yes | `market_data:read` | no | no | subscription removed |
+| `market_data.history.get` | no | `market_data:read` | no | maybe | history page |
+| `market_data.ingest.ticks` | yes | `market_data:write` | recommended | maybe | operation/counts |
+| `market_data.ingest.bars` | yes | `market_data:write` | recommended | maybe | operation/counts |
+| `events.subscribe` | yes | topic read scopes | no | no | event subscription id |
+| `events.unsubscribe` | yes | topic read scopes | no | no | subscription removed |
+| `events.subscriptions.list` | no | topic read scopes | no | no | subscription list |
+
 ### `trade.open`
 
 Use this when the external client wants a concrete trade with explicit trade
@@ -78,7 +123,6 @@ parameters.
 
 ```json
 {
-  "protocol_version": "draft",
   "context": {
     "idempotency_key": "manual:client-trade-1",
     "client_created_at_ms": 1783476719900,
@@ -136,6 +180,12 @@ Response result:
 stable protocol. A future `trade.open.batch` command should cover explicit
 multi-trade submissions. Fan-out belongs primarily to `signal.submit`.
 
+Method-specific routing validation:
+
+- `routing.selector.kind` may be `default` or `account`.
+- `routing.selector.kind = accounts` and `all` are invalid for `trade.open`.
+- `routing.policy` is invalid for `trade.open`.
+
 `trade.open` is still allowed to pass through the same intake, validation,
 risk, reporting and persistence lifecycle as `signal.submit`. The difference is
 intent: `trade.open` already contains an executable trade request, while
@@ -149,11 +199,16 @@ observable.
 Use this when the external client submits a strategy signal. Money management,
 routing and filters may later produce zero, one or many trades.
 
+Method-specific routing validation:
+
+- `routing.selector.kind` may be `default`, `account`, `accounts` or `all`.
+- `routing.policy` is allowed and may select best payout, fan-out, risk-manager
+  routing or another application-defined policy.
+
 ```json
 {
-  "protocol_version": "draft",
   "context": {
-    "idempotency_key": "tv:abc123",
+    "idempotency_key": "retry:tv-alert-abc123",
     "client_created_at_ms": 1783476705177,
     "valid_until_ms": 1783476710000
   },
@@ -182,6 +237,7 @@ routing and filters may later produce zero, one or many trades.
     }
   },
   "identity": {
+    "unique_hash": "tv:abc123",
     "signal_name": "noisy_rsi_test"
   },
   "metadata": {
@@ -210,6 +266,12 @@ Response result:
 `trade_refs` may be empty because signal processing can be asynchronous or
 because risk/decision logic rejected the signal. Clients should use
 `signal.trades.query` or subscriptions to observe produced trades.
+
+`identity.unique_hash`, `identity.unique_id` and `identity.signal_name` are
+optional domain identity fields. The bridge must not derive `unique_hash` from
+`context.idempotency_key` unless this behavior is explicitly configured and
+documented. If no `unique_hash` is supplied or generated by the domain layer,
+responses should omit it.
 
 ### Operation Lifecycle
 
@@ -265,8 +327,15 @@ Commands:
 
 `operation.cancel` is best effort. A trade already submitted to a broker may be
 impossible to cancel, and cancelling an operation does not imply closing an
-already opened trade. Bridges may expose an intermediate
-`cancellation_requested` state before the operation reaches a final state.
+already opened trade. Bridges may expose cancellation intent as a flag while the
+operation remains in its normal state:
+
+```json
+{
+  "status": "processing",
+  "cancellation_requested": true
+}
+```
 
 ### `signal.trades.query`
 
@@ -531,7 +600,8 @@ lifecycle and financial outcome fields:
   "broker_option_hash": "abc",
   "amount": "10.00",
   "payout": "0.82",
-  "profit": "0.00",
+  "profit": null,
+  "expected_profit": "8.20",
   "balance": "1000.00",
   "open_balance": "1000.00",
   "close_balance": null,
@@ -553,7 +623,9 @@ lifecycle and financial outcome fields:
 
 Unknown or unavailable snapshot values should be `null`. Fields that are not
 applicable should be omitted. Known numeric zero remains a real decimal value,
-for example `"0.00"`.
+for example `"0.00"`. `profit` is realized/final profit; for an opened binary
+option it should normally be `null`, while potential payout can be represented
+as `expected_profit`.
 
 Known lifecycle states:
 

@@ -60,6 +60,13 @@ stream, который затем может производить `market_data
 `market_data.bar` events. Reports доставляются через `events.subscribe` с topic
 `report.created`.
 
+Успешный `market_data.subscribe` по умолчанию доставляет свои tick/bar events
+тому же client без отдельного вызова `events.subscribe`. Client также может
+использовать `events.subscribe` для market-data topics, когда хочет наблюдать
+уже созданные streams через general event bus. Если обе subscriptions совпали с
+одним event на одном connection, bridge должен отправить один event и включить
+`matched_event_subscription_ids`.
+
 `events.subscribe` request:
 
 ```json
@@ -82,15 +89,28 @@ stream, который затем может производить `market_data
     "platform_type": "INTRADE_BAR",
     "symbol": "EURUSD"
   },
-  "replay_last": true
+  "replay": {
+    "mode": "last",
+    "count_per_topic": 1
+  }
 }
 ```
+
+Known `replay.mode` values:
+
+- `none`: не replay retained events.
+- `last`: replay последних retained events, совпадающих с subscription filter,
+  обычно ограниченный `count_per_topic`.
+- `from_seq`: replay от известного `stream_id + seq`, когда event replay
+  поддерживается.
+- `from_token`: replay от opaque `resume_token`, когда bridge поддерживает
+  resumable subscriptions.
 
 Response:
 
 ```json
 {
-  "subscription_id": "sub-1",
+  "event_subscription_id": "evt-sub-1",
   "topics": ["trade.updated", "report.created"]
 }
 ```
@@ -99,7 +119,7 @@ Unsubscribe:
 
 ```json
 {
-  "subscription_id": "sub-1"
+  "event_subscription_id": "evt-sub-1"
 }
 ```
 
@@ -109,7 +129,7 @@ subscriptions:
 
 ```json
 {
-  "matched_subscription_ids": ["sub-1", "sub-7"]
+  "matched_event_subscription_ids": ["evt-sub-1", "evt-sub-7"]
 }
 ```
 

@@ -104,7 +104,7 @@ Subscription response:
 ```json
 {
   "status": "accepted",
-  "subscription_id": "md-sub-1",
+  "market_data_subscription_id": "md-sub-1",
   "provider_id": "intradebar-live",
   "symbol": "BTCUSD",
   "stream": {
@@ -182,7 +182,7 @@ Tick event payload:
 
 ```json
 {
-  "subscription_id": "md-sub-1",
+  "market_data_subscription_id": "md-sub-1",
   "provider_id": "binance-live",
   "symbol": "BTCUSDT",
   "tick_id": "binance-live:BTCUSDT:9281",
@@ -200,7 +200,7 @@ Bar event payload:
 
 ```json
 {
-  "subscription_id": "md-sub-1",
+  "market_data_subscription_id": "md-sub-1",
   "provider_id": "intradebar-live",
   "symbol": "BTCUSD",
   "timeframe_ms": 60000,

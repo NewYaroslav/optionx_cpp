@@ -10,7 +10,6 @@ Commands use JSON-RPC 2.0 as the outer envelope:
   "id": "client-request-uuid",
   "method": "signal.submit",
   "params": {
-    "protocol_version": "draft",
     "context": {
       "idempotency_key": "tv:abc123",
       "client_created_at_ms": 1783476705177,
@@ -76,12 +75,11 @@ but no `id`. Events are server-to-client only.
   "jsonrpc": "2.0",
   "method": "trade.updated",
   "params": {
-    "protocol_version": "draft",
     "event_id": "evt-019c...",
     "source": "optionx://installation-019c/bridge/2",
     "stream_id": "bridge-instance-019c...",
     "seq": 1842,
-    "matched_subscription_ids": ["sub-1"],
+    "matched_event_subscription_ids": ["evt-sub-1"],
     "occurred_at_ms": 1783476720120,
     "emitted_at_ms": 1783476720145,
     "subject": {
@@ -104,7 +102,16 @@ Rules:
   conflict.
 - Unknown client notification methods must be ignored or rejected according to
   transport policy; domain events are server-to-client notifications only.
-- `params.protocol_version` is required for bridge protocol messages.
+- `protocol.hello` is an unversioned bootstrap method.
+- HTTP binds the protocol version through the route prefix, for example
+  `/api/v1/...`.
+- WebSocket binds the protocol version through the selected subprotocol, for
+  example `Sec-WebSocket-Protocol: optionx.bridge.v1`, then keeps it for the
+  session.
+- Named-pipe and other session transports select the protocol version during
+  the initial handshake, then keep it for the session.
+- Business command `params` must not contain a separate `protocol_version`,
+  avoiding conflicts such as `/api/v1` plus `params.protocol_version = "2"`.
 - Unknown optional response/event fields must be ignored by clients.
 - Unknown fields in trading command objects should be rejected unless they live
   under `metadata` or an explicitly namespaced `extensions` object.
@@ -138,6 +145,8 @@ Payload identity for idempotency is computed after protocol normalization:
 - enum aliases are normalized to canonical enum values;
 - numeric IDs are normalized to canonical string identifiers;
 - decimal strings and JSON numbers are normalized to the same decimal value;
+- decimal input scale is not part of the idempotency fingerprint; output scale
+  is determined by the field, currency, symbol precision or schema;
 - JSON object field order is ignored;
 - `context.idempotency_key` is excluded from the fingerprint;
 - transport metadata, authentication data and headers are excluded.
@@ -299,7 +308,7 @@ Suggested endpoints:
 | `/api/v1/market-data/providers/{provider_id}` | `GET` | `market_data.provider.get` |
 | `/api/v1/market-data/subscriptions` | `POST` | `market_data.subscribe` |
 | `/api/v1/market-data/subscriptions` | `GET` | `market_data.subscriptions.list` |
-| `/api/v1/market-data/subscriptions/{subscription_id}` | `DELETE` | `market_data.unsubscribe` |
+| `/api/v1/market-data/subscriptions/{market_data_subscription_id}` | `DELETE` | `market_data.unsubscribe` |
 | `/api/v1/market-data/history/ticks` | `GET` | `market_data.history.get` |
 | `/api/v1/market-data/history/bars` | `GET` | `market_data.history.get` |
 | `/api/v1/market-data/ingest/ticks` | `POST` | `market_data.ingest.ticks` |
@@ -312,7 +321,6 @@ Example `POST /api/v1/trades/open` body:
 
 ```json
 {
-  "protocol_version": "draft",
   "context": {
     "idempotency_key": "manual:client-trade-1",
     "valid_until_ms": 1783476725000
