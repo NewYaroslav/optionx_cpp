@@ -309,6 +309,33 @@ currently confirmed means `HIST_CONFIRMED` or `RT_CONFIRMED`. Because this state
 comes from TradingView's private study payload, treat it as a useful
 diagnostic/private contract, not as a public API guarantee.
 
+For simple Pine scripts that use `alert.freq_once_per_bar`, TradingView can
+send an alert during an open realtime bar and never send a follow-up when the
+bar closes. The bridge therefore cannot prove that the signal survived until
+bar close. The compatible compromise is `study_alerts.mode = "close_window"`:
+accept an intrabar alert only when its `update_time`/event time falls within
+the configured last seconds before `bar_time + timeframe`. This mirrors the
+legacy MQL connector's "capture before bar close" window. It is a timing filter,
+not a non-repaint confirmation.
+
+Use `reject_historical` with `max_signal_age_seconds` to avoid accepting old
+`alertMessages[]` replayed by the private chart socket after page load or study
+recalculation.
+
+Custom Pine scripts can optionally implement a lifecycle protocol:
+
+```json
+{
+  "signal_id": "CRYPTO:BTCUSD|1|1783772160000|sell",
+  "revision": 2,
+  "action": "sell",
+  "state": "active|cancel|confirmed"
+}
+```
+
+This is not required for ordinary users. When present, the bridge treats
+`cancel` as non-tradeable and `confirmed` as a confirmed signal state.
+
 Extraction contract for this private API mode:
 
 ```text

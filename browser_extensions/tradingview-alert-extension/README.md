@@ -154,6 +154,24 @@ extension forwards the observed state as:
 This mode is for live indicator capture. A separate history/replay API can
 intentionally consume older chart-socket data in a future PR.
 
+The browser extension does not decide whether an indicator alert is tradeable.
+It forwards the alert, bar metadata and chart interval; the local bridge applies
+the policy:
+
+- `realtime`/`fast`: accept study alerts immediately;
+- `confirmed_only`: accept only `state=confirmed`, `RT_CONFIRMED`, or
+  `HIST_CONFIRMED`;
+- `close_window`: accept ordinary intrabar alerts only during the configured
+  last seconds before bar close.
+
+`close_window` is a practical compatibility mode for simple Pine scripts using
+`alert.freq_once_per_bar`. It is not a non-repaint guarantee; it only limits how
+early in the bar a signal can be accepted.
+
+Custom Pine scripts can optionally send lifecycle messages with `state` set to
+`active`, `cancel`, or `confirmed`. The bridge treats `cancel` as non-tradeable
+and can treat `confirmed` as a confirmed signal.
+
 ## Trigger vocabulary
 
 The content script uses a best-effort vocabulary to label the toast direction.

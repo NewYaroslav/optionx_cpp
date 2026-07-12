@@ -48,11 +48,16 @@
 
   "study_alerts": {
     // realtime/fast accepts all study alerts.
-    // confirmed_only accepts only HIST_CONFIRMED and RT_CONFIRMED alerts from TradingView's
-    // chart-socket study debug state. For production, prefer making the Pine
-    // script emit only on bar close with barstate.isconfirmed and
-    // alert.freq_once_per_bar_close.
-    "mode": "realtime"
+    // confirmed_only accepts only confirmed lifecycle or chart debug states.
+    // close_window accepts ordinary intrabar alerts only near the bar close.
+    "mode": "close_window",
+    // On a 1m chart, 10 seconds means alerts are accepted from second 50.
+    "close_window_seconds": 10,
+    // Used when TradingView URL/Pine payload does not provide interval metadata.
+    "default_timeframe_seconds": 60,
+    // Reject old study alerts replayed by the private chart socket.
+    "reject_historical": true,
+    "max_signal_age_seconds": 300
   },
 
   "level_alert_rules": {
