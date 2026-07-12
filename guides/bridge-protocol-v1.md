@@ -175,11 +175,26 @@ deliver the same market signal with different RPC `id` and different
 `idempotency_key`, while the same `unique_hash` still lets the domain layer
 deduplicate the signal.
 
-External identifiers are opaque strings in the wire protocol, even when the
-current C++ DTO stores them as integers. This keeps the contract stable for
-JavaScript clients, broker IDs, UUIDs, composite IDs and future wider integer
-types. Implementations may parse locally generated numeric strings back into
-integer DTO fields at the adapter boundary.
+External identifiers are opaque references in the wire protocol, even when the
+current C++ DTO stores them as integers. Canonical responses and events should
+emit identifiers as strings. Requests may accept either strings or JSON integer
+numbers for identifier fields when the value is a local numeric ID.
+
+This keeps the contract stable for Python, Rust, MQL, JavaScript clients,
+broker IDs, UUIDs, composite IDs and future wider integer types. Implementations
+may parse locally generated numeric strings or integer inputs back into integer
+DTO fields at the adapter boundary.
+
+Identifier compatibility rules:
+
+- Canonical output: strings, for example `"trade_id": "123"`.
+- Accepted input: strings or JSON integers, for example `"trade_id": "123"` and
+  `"trade_id": 123`.
+- Do not accept floating-point, fractional or scientific-notation IDs.
+- Numeric input loses leading zeros by definition; clients that need leading
+  zeros must send a string.
+- Unknown external/broker identifiers should be treated as opaque strings and
+  compared lexically, not numerically.
 
 ## Transport Binding
 
@@ -261,7 +276,7 @@ Known policies:
 - `round_robin`: rotate through candidate accounts.
 - `random`: choose a random candidate account.
 
-MVP should implement only `default`, `account_id` and optionally `all`. More
+MVP should implement only `default`, `account` and optionally `all`. More
 advanced policies may belong to risk management or a future node/blueprint
 layer instead of the bridge itself.
 
@@ -305,13 +320,54 @@ Use one explicit expiry form instead of parallel `duration_sec` and
 Exactly one expiry form should be present. Trading commands should also include
 `context.valid_until_ms` when stale execution would be harmful.
 
+### Decimal Values
+
+Money, prices, payouts, refunds, percentages and indicator numeric values need
+decimal precision. Canonical responses and events should emit decimal values as
+base-10 strings. Requests may accept either decimal strings or JSON numbers as a
+developer-friendly input form, but bridge implementations should normalize them
+to a decimal representation before validation and storage.
+
+Canonical decimal string rules:
+
+- Use a dot as the decimal separator.
+- Do not use scientific notation.
+- Preserve sign where meaningful, for example profit may be `"-10.00"`.
+- Preserve meaningful scale when known, for example `"10.00"` for USD cents.
+- Use explicit units or field semantics instead of relying on formatting.
+
+Examples:
+
+```json
+{
+  "amount": "10.00",
+  "price": "1.14072",
+  "profit": "-10.00",
+  "balance_percent": "2.5",
+  "payout": "0.82"
+}
+```
+
+Notes:
+
+- Clients that require exact decimal value and scale must send decimal strings.
+  JSON numbers are accepted only as a convenience for simple integrations and
+  may already be rounded by the client's JSON stack.
+- `amount`, `balance`, `profit` and similar monetary values should carry a
+  currency in the surrounding object when possible.
+- `payout`, `refund` and `min_payout` are ratios in the `0..1` range unless a
+  field explicitly says otherwise.
+- `balance_percent` is a percent value, so `"2.5"` means 2.5%, not 0.025.
+- Time fields such as `*_ms` stay JSON integers. Current epoch milliseconds are
+  far below the JSON/JavaScript safe integer limit.
+
 ### Sizing
 
 ```json
 {
   "mode": "fixed_amount",
-  "amount": 10.0,
-  "balance_percent": 2.5,
+  "amount": "10.00",
+  "balance_percent": "2.5",
   "system": "kelly",
   "params": {}
 }
@@ -421,21 +477,21 @@ parameters.
     "symbol": "EURUSD",
     "order_type": "BUY",
     "option_type": "SPRINT",
-    "amount": 10.0,
+    "amount": "10.00",
     "expiry": {
       "kind": "duration",
       "duration_ms": 60000
     },
-    "min_payout": 0.75,
-    "refund": 0.0
+    "min_payout": "0.75",
+    "refund": "0.0"
   },
   "identity": {
     "unique_hash": "client-trade-1",
     "signal_name": "manual"
   },
   "metadata": {
-    "rsi": 27.4,
-    "price": 1.14072
+    "rsi": "27.4",
+    "price": "1.14072"
   }
 }
 ```
@@ -490,7 +546,7 @@ routing and filters may later produce zero, one or many trades.
       "kind": "duration",
       "duration_ms": 60000
     },
-    "min_payout": 0.75
+    "min_payout": "0.75"
   },
   "sizing": {
     "mode": "risk_manager",
@@ -504,8 +560,8 @@ routing and filters may later produce zero, one or many trades.
     "idempotency_key": "tv:abc123"
   },
   "metadata": {
-    "rsi": 72.1,
-    "price": 1.14072
+    "rsi": "72.1",
+    "price": "1.14072"
   }
 }
 ```
@@ -620,15 +676,15 @@ bar, index `1` is the previous bar, and so on.
       "name": "buy",
       "role": "buy",
       "empty_policy": "zero_or_empty_value",
-      "empty_value": 2147483647.0,
-      "values": [0.0, 1.14072]
+      "empty_value": "2147483647.0",
+      "values": ["0.0", "1.14072"]
     },
     {
       "name": "sell",
       "role": "sell",
       "empty_policy": "zero_or_empty_value",
-      "empty_value": 2147483647.0,
-      "values": [0.0, 0.0]
+      "empty_value": "2147483647.0",
+      "values": ["0.0", "0.0"]
     }
   ],
   "bars": [
@@ -636,21 +692,21 @@ bar, index `1` is the previous bar, and so on.
       "index": 0,
       "open_time_ms": 1783476720000,
       "is_closed": false,
-      "open": 1.14060,
-      "high": 1.14070,
-      "low": 1.14055,
-      "close": 1.14066,
-      "volume": 76.0
+      "open": "1.14060",
+      "high": "1.14070",
+      "low": "1.14055",
+      "close": "1.14066",
+      "volume": "76.0"
     },
     {
       "index": 1,
       "open_time_ms": 1783476660000,
       "is_closed": true,
-      "open": 1.14048,
-      "high": 1.14072,
-      "low": 1.14044,
-      "close": 1.14060,
-      "volume": 93.0
+      "open": "1.14048",
+      "high": "1.14072",
+      "low": "1.14044",
+      "close": "1.14060",
+      "volume": "93.0"
     }
   ],
   "policy": {
@@ -710,27 +766,27 @@ Use this when an external tester has already calculated the trade result.
     "symbol": "EURUSD",
     "order_type": "BUY",
     "option_type": "SPRINT",
-    "amount": 10.0,
+    "amount": "10.00",
     "expiry": {
       "kind": "duration",
       "duration_ms": 60000
     },
-    "min_payout": 0.75
+    "min_payout": "0.75"
   },
   "result": {
     "state": "closed",
     "outcome": "win",
     "final": true,
     "revision": 1,
-    "payout": 0.82,
-    "profit": 8.2,
-    "open_price": 1.14072,
-    "close_price": 1.14120,
+    "payout": "0.82",
+    "profit": "8.20",
+    "open_price": "1.14072",
+    "close_price": "1.14120",
     "open_time_ms": 1783476720000,
     "close_time_ms": 1783476780000,
     "spread": {
-      "open": 0.0001,
-      "close": 0.0001,
+      "open": "0.0001",
+      "close": "0.0001",
       "unit": "price"
     }
   },
@@ -774,14 +830,14 @@ lifecycle and financial outcome fields:
   "failure": null,
   "broker_option_id": "456",
   "broker_option_hash": "abc",
-  "amount": 10.0,
-  "payout": 0.82,
-  "profit": 0.0,
-  "balance": 1000.0,
-  "open_balance": 1000.0,
-  "close_balance": 0.0,
-  "open_price": 1.14072,
-  "close_price": 0.0,
+  "amount": "10.00",
+  "payout": "0.82",
+  "profit": "0.00",
+  "balance": "1000.00",
+  "open_balance": "1000.00",
+  "close_balance": "0.00",
+  "open_price": "1.14072",
+  "close_price": "0.0",
   "delay_ms": 120,
   "ping_ms": 30,
   "place_time_ms": 1783476719900,
@@ -892,7 +948,7 @@ Account response item:
   "platform_type": "INTRADE_BAR",
   "account_type": "DEMO",
   "currency": "USD",
-  "balance": 1000.0,
+  "balance": "1000.00",
   "connected": true,
   "trade_enabled": true,
   "open_trades": 2,
@@ -959,8 +1015,8 @@ Example:
   },
   "origin_signal": {},
   "context": {
-    "expected_price": 1.14072,
-    "actual_price": 1.14093,
+    "expected_price": "1.14072",
+    "actual_price": "1.14093",
     "ping_ms": 30,
     "configured_extra_delay_ms": 250
   }
