@@ -230,16 +230,41 @@ Rules для `delivery_seq`:
 
 - `delivery_seq` нельзя переиспользовать внутри одной client event delivery
   queue.
-- Следующее значение `delivery_seq` должно переживать bridge restarts или
-  восстанавливаться как значение больше любого видимого номера в
-  `events\ready\` и `events\processing\`.
+- Bridge должен сохранять следующий `delivery_seq` или последний выданный
+  `delivery_seq` как durable queue state до того, как соответствующий file
+  станет видимым.
+- При старте следующее значение должно восстанавливаться из durable queue state
+  и сверяться как значение больше любого видимого номера в `events\ready\`,
+  `events\processing\` и retained archives, которые относятся к той же queue.
+- Если durable queue state потерян и следующее значение нельзя восстановить,
+  bridge не должен продолжать старую queue, переиспользуя меньшие номера. Он
+  должен fail closed до operator reset или начать новую явно идентифицированную
+  delivery queue так, чтобы clients могли отличить её от старой.
 - Ready files должны публиковаться по возрастанию `delivery_seq`. Bridge не
   должен делать `N + 1` видимым раньше `N`.
 - Consumers должны сохранять последний completed `delivery_seq` и не должны
-  перескакивать через unexplained gap. Gap может быть закрыт более поздним
-  ready file, восстановленным processing file, retention policy metadata или
-  явным `report.created` diagnostic, который помечает missing delivery как
-  unavailable.
+  перескакивать через unexplained gap. Gap закрывается только missing delivery
+  file с ровно ожидаемым `delivery_seq`, например восстановленным processing
+  file или `delivery.gap` control notification. Более поздний file с большим
+  `delivery_seq` не должен использоваться для объяснения более раннего gap.
+
+Когда missing delivery нельзя восстановить, bridge должен опубликовать
+`delivery.gap` control notification с номером missing sequence:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "delivery.gap",
+  "params": {
+    "delivery_seq": 41,
+    "reason": "expired_by_retention",
+    "recoverable": false
+  }
+}
+```
+
+Сам файл `delivery.gap` должен называться с тем же `delivery_seq`, например
+`00000000000000000041_<file_uuid>.json`.
 
 ### Authentication И Client Identity
 
