@@ -61,6 +61,8 @@ namespace optionx::platforms::intrade_bar {
             std::string stream_symbol; ///< Broker websocket symbol, such as `EUR/USD`.
             std::shared_ptr<kurlyk::WebSocketClient> client; ///< Websocket client.
             std::size_t ref_count = 0; ///< Number of active subscriptions using this stream.
+            bool connect_requested = false; ///< Whether connect/reconnect is already in flight.
+            bool connect_start_failed = false; ///< Suppresses the WS_ERROR produced by connect(false).
             bool is_error = false;     ///< Suppresses repeated error logging.
         };
 
@@ -85,11 +87,25 @@ namespace optionx::platforms::intrade_bar {
                 const std::string& symbol,
                 const std::string& stream_symbol);
 
+        /// \brief Marks a stream for a new connection request while the manager mutex is held.
+        static bool mark_connect_requested_no_lock(const std::shared_ptr<FxStreamState>& stream);
+
+        /// \brief Updates the pending connect flag while holding the manager mutex.
+        void set_connect_requested(
+                const std::shared_ptr<FxStreamState>& stream,
+                bool requested);
+
+        /// \brief Marks a startup-level connect rejection and allows future connect attempts.
+        void mark_connect_start_failed(const std::shared_ptr<FxStreamState>& stream);
+
+        /// \brief Marks reconnect as pending unless the error belongs to a startup rejection.
+        void mark_reconnect_pending(const std::shared_ptr<FxStreamState>& stream);
+
         /// \brief Connects a stream if it has a websocket client.
-        static void connect_stream(const std::shared_ptr<FxStreamState>& stream);
+        void connect_stream(const std::shared_ptr<FxStreamState>& stream);
 
         /// \brief Disconnects a stream if it has a websocket client.
-        static void disconnect_stream(const std::shared_ptr<FxStreamState>& stream);
+        void disconnect_stream(const std::shared_ptr<FxStreamState>& stream);
 
         /// \brief Reconnects all active streams after a host/proxy/header change.
         void reconnect_all_streams();
@@ -147,11 +163,11 @@ namespace optionx::platforms::intrade_bar {
                 stream = create_stream_no_lock(normalized, stream_symbol);
                 stream->ref_count = 1;
                 m_streams.emplace(normalized, stream);
-                should_connect = true;
+                should_connect = mark_connect_requested_no_lock(stream);
             } else {
                 stream = it->second;
                 ++stream->ref_count;
-                should_connect = !stream->client->is_connected();
+                should_connect = mark_connect_requested_no_lock(stream);
             }
         }
 
@@ -258,11 +274,59 @@ namespace optionx::platforms::intrade_bar {
         return stream;
     }
 
+    inline bool FxPriceWebSocketManager::mark_connect_requested_no_lock(
+            const std::shared_ptr<FxStreamState>& stream) {
+        if (!stream || !stream->client) return false;
+        if (stream->connect_requested || stream->client->is_connected()) return false;
+        stream->connect_requested = true;
+        stream->connect_start_failed = false;
+        return true;
+    }
+
+    inline void FxPriceWebSocketManager::set_connect_requested(
+            const std::shared_ptr<FxStreamState>& stream,
+            const bool requested) {
+        if (!stream) return;
+        std::lock_guard<std::mutex> lock(m_mutex);
+        stream->connect_requested = requested;
+        if (!requested) {
+            stream->connect_start_failed = false;
+        }
+    }
+
+    inline void FxPriceWebSocketManager::mark_connect_start_failed(
+            const std::shared_ptr<FxStreamState>& stream) {
+        if (!stream) return;
+        std::lock_guard<std::mutex> lock(m_mutex);
+        stream->connect_requested = false;
+        stream->connect_start_failed = true;
+    }
+
+    inline void FxPriceWebSocketManager::mark_reconnect_pending(
+            const std::shared_ptr<FxStreamState>& stream) {
+        if (!stream) return;
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (stream->connect_start_failed) {
+            stream->connect_start_failed = false;
+            stream->connect_requested = false;
+            return;
+        }
+        stream->connect_requested = true;
+    }
+
     inline void FxPriceWebSocketManager::connect_stream(
             const std::shared_ptr<FxStreamState>& stream) {
-        if (stream && stream->client && !stream->client->is_connected()) {
-            stream->client->connect();
-        }
+        if (!stream || !stream->client || stream->client->is_connected()) return;
+
+        std::weak_ptr<FxStreamState> weak_stream = stream;
+        stream->client->connect(
+            [this, weak_stream](const bool accepted) {
+                if (accepted) return;
+
+                if (auto locked = weak_stream.lock()) {
+                    mark_connect_start_failed(locked);
+                }
+            });
     }
 
     inline void FxPriceWebSocketManager::disconnect_stream(
@@ -270,6 +334,7 @@ namespace optionx::platforms::intrade_bar {
         if (stream && stream->client) {
             stream->client->disconnect_and_wait();
         }
+        set_connect_requested(stream, false);
     }
 
     inline void FxPriceWebSocketManager::reconnect_all_streams() {
@@ -287,20 +352,24 @@ namespace optionx::platforms::intrade_bar {
             disconnect_stream(stream);
         }
 
-        bool should_connect = false;
+        std::vector<std::shared_ptr<FxStreamState>> streams_to_connect;
         {
             std::lock_guard<std::mutex> lock(m_mutex);
-            should_connect = m_platform_connected || !m_streams.empty();
+            const bool should_connect = m_platform_connected || !m_streams.empty();
+            if (should_connect) {
+                streams_to_connect.reserve(m_streams.size());
+            }
             for (auto& [symbol, stream] : m_streams) {
                 (void)symbol;
                 configure_client_no_lock(*stream->client);
+                if (should_connect && mark_connect_requested_no_lock(stream)) {
+                    streams_to_connect.push_back(stream);
+                }
             }
         }
 
-        if (should_connect) {
-            for (auto& stream : streams) {
-                connect_stream(stream);
-            }
+        for (auto& stream : streams_to_connect) {
+            connect_stream(stream);
         }
     }
 
@@ -311,7 +380,9 @@ namespace optionx::platforms::intrade_bar {
             streams.reserve(m_streams.size());
             for (auto& [symbol, stream] : m_streams) {
                 (void)symbol;
-                streams.push_back(stream);
+                if (mark_connect_requested_no_lock(stream)) {
+                    streams.push_back(stream);
+                }
             }
         }
 
@@ -325,6 +396,7 @@ namespace optionx::platforms::intrade_bar {
             const kurlyk::WebSocketEventData& event) {
         switch (event.event_type) {
         case kurlyk::WebSocketEventType::WS_OPEN:
+            set_connect_requested(stream, false);
             stream->is_error = false;
             emit_status(stream, market_data::MarketDataStreamStatus::CONNECTED);
             if (event.sender) {
@@ -347,10 +419,12 @@ namespace optionx::platforms::intrade_bar {
             handle_message(stream, event.message);
             break;
         case kurlyk::WebSocketEventType::WS_CLOSE:
+            mark_reconnect_pending(stream);
             stream->is_error = false;
             emit_status(stream, market_data::MarketDataStreamStatus::DISCONNECTED);
             break;
         case kurlyk::WebSocketEventType::WS_ERROR:
+            mark_reconnect_pending(stream);
             if (!stream->is_error) {
                 LOGIT_ERROR("Intrade Bar FX websocket error for ",
                             stream->stream_symbol,
