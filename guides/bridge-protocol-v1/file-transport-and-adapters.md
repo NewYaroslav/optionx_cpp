@@ -262,21 +262,23 @@ The current draft supports only these transition semantics:
 - `abandon_previous`: closes `previous_delivery_queue_id` as no longer active
   and starts `delivery_queue_id` at `first_delivery_seq`.
 
-When `transition = "abandon_previous"`, old ready/processing files from
+When `transition = "abandon_previous"`, unclaimed ready files from
 `previous_delivery_queue_id` must be ignored for live processing and may be
 archived or quarantined after retention rules allow it. The bridge must not
 publish more files into the abandoned queue. A future `drain_previous`
 transition is reserved, but it is not part of this file transport draft.
 
-`abandon_previous` takes effect when the atomic `queue-state.json` replacement
-becomes visible. A consumer that already claimed a file from the previous queue
-but has not yet committed its checkpoint must re-read `queue-state.json` before
-processing the file. If the claimed file's `delivery_queue_id` is no longer
-active, the consumer must not process it as a live delivery; it should move the
-file to archive or quarantine and leave the active queue checkpoint unchanged.
-This draft does not allow finishing old in-flight deliveries after
-`abandon_previous`; that behavior belongs to the reserved `drain_previous`
-transition.
+The atomic claim from `events\ready\` to `events\processing\` is the delivery
+acceptance boundary. A file that was successfully claimed before the consumer
+observed `abandon_previous` is an in-flight delivery and may be processed to
+completion under its original `(delivery_queue_id, delivery_seq)` checkpoint.
+`abandon_previous` does not revoke already claimed files; it only prevents new
+claims from the abandoned queue after the new `queue-state.json` is observed.
+Consumers should read `queue-state.json` before selecting a ready file. If they
+later observe that their claimed file belongs to an abandoned queue, they may
+finish it as an already accepted in-flight delivery or move it to archive or
+quarantine according to local retention policy, but they must not record it as
+part of the new active queue.
 
 `delivery_seq` rules:
 
@@ -380,8 +382,9 @@ Recommendations:
   the client's `events\ready\` directory.
 - MQL clients must read `events\queue-state.json`, then claim the lowest
   available `delivery_seq` for the active `delivery_queue_id` from
-  `events\ready\`. After claiming and before processing, they must re-read
-  `queue-state.json` to close the race with `abandon_previous`.
+  `events\ready\`. The successful claim is the acceptance boundary for that
+  delivery. A later `queue-state.json` change does not move the claimed file
+  into the new active queue and does not require the consumer to roll it back.
 - MQL clients should keep their event checkpoint as
   `(delivery_queue_id, delivery_seq)`. Domain `stream_id + seq` remains useful
   for deduplication and event-log replay, but it is not the file delivery
