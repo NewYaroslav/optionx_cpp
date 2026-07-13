@@ -270,6 +270,16 @@ Bridge не должен публиковать новые files в abandoned qu
 `drain_previous` transition reserved, но не является частью этого file transport
 draft.
 
+`abandon_previous` вступает в силу, когда atomic replacement
+`queue-state.json` становится видимым. Consumer, который уже claimed file из
+previous queue, но ещё не committed свой checkpoint, должен перечитать
+`queue-state.json` перед processing file. Если `delivery_queue_id` claimed file
+больше не active, consumer не должен обрабатывать его как live delivery; file
+надо перенести в archive или quarantine, а checkpoint active queue оставить без
+изменений. Этот draft не разрешает завершать старые in-flight deliveries после
+`abandon_previous`; такое поведение относится к reserved `drain_previous`
+transition.
+
 Rules для `delivery_seq`:
 
 - `delivery_seq` нельзя переиспользовать внутри одного `delivery_queue_id`.
@@ -345,8 +355,8 @@ Recommended model:
 
 ### Polling И Replay
 
-File transport не имеет live socket. Clients опрашивают `responses\` и
-`events\` с заданным interval.
+File transport не имеет live socket. Clients опрашивают `responses\ready\`,
+`events\queue-state.json` и `events\ready\` с заданным interval.
 
 Recommendations:
 
@@ -371,15 +381,21 @@ Recommendations:
 - `events.subscribe` задаёт topics, filters и `replay.mode` так же, как в общем
   event contract. Bridge пишет в `events\ready\` клиента только subscribed
   topics.
-- MQL clients должны хранить последний processed event filename или event
-  `stream_id + seq`.
-- Bridges могут писать event files в sequence order, но clients всё равно
-  должны дедуплицировать по `event_id`.
-- Durable replay можно представить как запись retained event notifications в
-  `events\` перед новыми live events.
-- `replay.completed` тоже может быть записан как JSON-RPC control notification
-  file после retained replay events и перед live events, если client запросил
-  replay.
+- MQL clients должны читать `events\queue-state.json`, затем claim минимальный
+  доступный `delivery_seq` для active `delivery_queue_id` из `events\ready\`.
+  После claim и перед processing они должны перечитать `queue-state.json`,
+  чтобы закрыть race с `abandon_previous`.
+- MQL clients должны хранить event checkpoint как
+  `(delivery_queue_id, delivery_seq)`. Domain `stream_id + seq` остаётся
+  полезным для deduplication и event-log replay, но это не file delivery
+  checkpoint.
+- Bridges должны писать event delivery files по возрастанию `delivery_seq`
+  внутри active `delivery_queue_id`; clients также должны дедуплицировать по
+  `event_id`.
+- Durable replay представляется записью retained event notifications в
+  `events\ready\`, затем `replay.completed` JSON-RPC control notification, затем
+  новых live event notifications. Все они используют один порядок delivery
+  queue.
 
 ## Legacy Adapter Profiles
 
