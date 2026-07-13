@@ -226,6 +226,48 @@ live domain events. It does not replace the domain event position
 next. Consumers should claim the lowest available `delivery_seq` for the active
 `delivery_queue_id`.
 
+`delivery_queue_id` and `file_uuid` must be ASCII and must not contain `_`,
+path separators, whitespace or shell metacharacters. A conservative allowed
+character set is:
+
+```text
+[A-Za-z0-9.-]+
+```
+
+This keeps underscore-separated filename parsing unambiguous. The
+`delivery_seq` segment is exactly 20 decimal digits.
+
+The active queue is defined out-of-band by `events\queue-state.json`. This file
+must be updated atomically by writing a temporary file in the same directory and
+renaming it over the previous state:
+
+```json
+{
+  "delivery_queue_id": "dq-019c",
+  "first_delivery_seq": 1,
+  "previous_delivery_queue_id": "dq-old",
+  "transition": "abandon_previous",
+  "activated_at_ms": 1783920000000
+}
+```
+
+Consumers must read `queue-state.json` before polling `events\ready\`.
+Consumer checkpoints are keyed by `(delivery_queue_id, delivery_seq)`, not by
+`delivery_seq` alone. Files whose `delivery_queue_id` does not match the active
+queue must not be processed as live deliveries for the active queue.
+
+The current draft supports only these transition semantics:
+
+- `initial`: creates the first active queue.
+- `abandon_previous`: closes `previous_delivery_queue_id` as no longer active
+  and starts `delivery_queue_id` at `first_delivery_seq`.
+
+When `transition = "abandon_previous"`, old ready/processing files from
+`previous_delivery_queue_id` must be ignored for live processing and may be
+archived or quarantined after retention rules allow it. The bridge must not
+publish more files into the abandoned queue. A future `drain_previous`
+transition is reserved, but it is not part of this file transport draft.
+
 `delivery_seq` rules:
 
 - `delivery_seq` must not be reused within one `delivery_queue_id`.
@@ -239,8 +281,8 @@ next. Consumers should claim the lowest available `delivery_seq` for the active
   `events\processing\` and retained archives that belong to the same queue.
 - If the durable queue state is lost and the next value cannot be reconstructed,
   the bridge must not continue the old queue by reusing lower numbers. It must
-  fail closed until the operator resets the queue, or start a new explicitly
-  identified delivery queue with a new `delivery_queue_id`.
+  fail closed until the operator atomically resets `queue-state.json` to a new
+  `delivery_queue_id` with `transition = "abandon_previous"`.
 - Ready files must be published in increasing `delivery_seq` order. A bridge
   must not make `N + 1` visible before `N`.
 - Consumers must persist the last completed `delivery_seq` and must not advance
