@@ -215,18 +215,22 @@ system enumeration order is not portable. Files written to `events\ready\`
 should use:
 
 ```text
-<delivery_seq:020>_<file_uuid>.json
+<delivery_queue_id>_<delivery_seq:020>_<file_uuid>.json
 ```
 
-`delivery_seq` is monotonically increasing inside one client event delivery
-queue. It covers replayed domain events, the `replay.completed` control
-notification and live domain events. It does not replace the domain event
-position `stream_id + seq`; it only tells the file consumer which ready file to
-claim next. Consumers should claim the lowest available `delivery_seq`.
+`delivery_queue_id` is a path-safe transport identifier for one client event
+delivery queue. `delivery_seq` is monotonically increasing inside that queue. It
+covers replayed domain events, the `replay.completed` control notification and
+live domain events. It does not replace the domain event position
+`stream_id + seq`; it only tells the file consumer which ready file to claim
+next. Consumers should claim the lowest available `delivery_seq` for the active
+`delivery_queue_id`.
 
 `delivery_seq` rules:
 
-- `delivery_seq` must not be reused within one client event delivery queue.
+- `delivery_seq` must not be reused within one `delivery_queue_id`.
+- For one `delivery_queue_id`, each `delivery_seq` has exactly one terminal
+  record.
 - The bridge must persist the next `delivery_seq` or the last issued
   `delivery_seq` as durable queue state before making the corresponding file
   visible.
@@ -236,8 +240,7 @@ claim next. Consumers should claim the lowest available `delivery_seq`.
 - If the durable queue state is lost and the next value cannot be reconstructed,
   the bridge must not continue the old queue by reusing lower numbers. It must
   fail closed until the operator resets the queue, or start a new explicitly
-  identified delivery queue in a way that clients can distinguish from the old
-  one.
+  identified delivery queue with a new `delivery_queue_id`.
 - Ready files must be published in increasing `delivery_seq` order. A bridge
   must not make `N + 1` visible before `N`.
 - Consumers must persist the last completed `delivery_seq` and must not advance
@@ -254,6 +257,7 @@ When a missing delivery cannot be recovered, the bridge must publish a
   "jsonrpc": "2.0",
   "method": "delivery.gap",
   "params": {
+    "delivery_queue_id": "dq-019c...",
     "delivery_seq": 41,
     "reason": "expired_by_retention",
     "recoverable": false
@@ -261,8 +265,18 @@ When a missing delivery cannot be recovered, the bridge must publish a
 }
 ```
 
-The `delivery.gap` file itself must be named with the same `delivery_seq`, for
-example `00000000000000000041_<file_uuid>.json`.
+The `delivery.gap` file itself must be named with the same `delivery_queue_id`
+and `delivery_seq`, for example
+`dq-019c_00000000000000000041_<file_uuid>.json`.
+
+`delivery.gap` is the terminal replacement for that delivery slot, not a second
+delivery with the same number. Before publishing `delivery.gap(N)`, the bridge
+must atomically mark slot `N` as tombstoned or replaced in durable queue state.
+If the original delivery file for `N` is later recovered from `processing\`, it
+must be moved to quarantine or archive and must not be returned to `ready\`.
+If a consumer observes two ready files with the same `delivery_queue_id` and
+`delivery_seq`, it must treat this as a protocol violation and must not advance
+its checkpoint for that slot.
 
 ### Authentication And Client Identity
 
