@@ -5,6 +5,10 @@
 /// \file MetaTraderFileBridgeConfig.hpp
 /// \brief Defines configuration for the MetaTrader common-files bridge transport.
 
+#include "data/bridge.hpp"
+
+#include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -32,11 +36,52 @@ namespace optionx::bridges::metatrader_file {
 #endif
     }
 
+    /// \brief Returns an ASCII-uppercase copy for protocol/path identifiers.
+    inline std::string ascii_upper_copy(std::string value) {
+        std::transform(
+            value.begin(),
+            value.end(),
+            value.begin(),
+            [](const unsigned char ch) {
+                return static_cast<char>(std::toupper(ch));
+            });
+        return value;
+    }
+
+    /// \brief Returns true when a path component is a Windows reserved device name.
+    /// \details Windows treats names such as `CON` and `COM1` as devices even
+    /// when an extension is appended, so the base name before the first dot is checked.
+    inline bool is_windows_reserved_device_name(const std::string& value) {
+        if (value.empty()) return false;
+
+        const auto dot = value.find('.');
+        const auto base = ascii_upper_copy(value.substr(0, dot));
+        if (base == "CON" ||
+            base == "PRN" ||
+            base == "AUX" ||
+            base == "NUL") {
+            return true;
+        }
+        if (base.size() == 4 &&
+            (base.substr(0, 3) == "COM" || base.substr(0, 3) == "LPT") &&
+            base[3] >= '1' &&
+            base[3] <= '9') {
+            return true;
+        }
+        return false;
+    }
+
     /// \brief Returns true when a path segment is safe for protocol filenames.
     /// \details The file transport uses `_` as a separator, so stable IDs must
     /// not contain it. Conservative IDs keep parsing portable across MQL and C++.
-    inline bool is_safe_file_transport_id(const std::string& value) noexcept {
-        if (value.empty()) return false;
+    inline bool is_safe_file_transport_id(const std::string& value) {
+        if (value.empty() ||
+            value == "." ||
+            value == ".." ||
+            value.back() == '.' ||
+            is_windows_reserved_device_name(value)) {
+            return false;
+        }
         for (const unsigned char ch : value) {
             const bool ok =
                 (ch >= 'A' && ch <= 'Z') ||
@@ -45,6 +90,45 @@ namespace optionx::bridges::metatrader_file {
                 ch == '-' ||
                 ch == '.';
             if (!ok) return false;
+        }
+        return true;
+    }
+
+    /// \brief Returns a normalized absolute path without touching the filesystem.
+    inline std::filesystem::path lexically_absolute_normal(
+            const std::filesystem::path& path) {
+        return std::filesystem::absolute(path).lexically_normal();
+    }
+
+    /// \brief Returns true when `child` is inside or equal to `parent`.
+    inline bool path_is_within_or_equal(
+            const std::filesystem::path& parent,
+            const std::filesystem::path& child) {
+        const auto normalized_parent = lexically_absolute_normal(parent);
+        const auto normalized_child = lexically_absolute_normal(child);
+
+        auto parent_it = normalized_parent.begin();
+        auto child_it = normalized_child.begin();
+        for (; parent_it != normalized_parent.end(); ++parent_it, ++child_it) {
+            if (child_it == normalized_child.end() || *parent_it != *child_it) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// \brief Returns true when a namespace subdirectory is a safe relative path.
+    inline bool is_safe_namespace_subdir(const std::string& value) {
+        if (value.empty()) return false;
+        const auto path = std::filesystem::u8path(value);
+        if (path.is_absolute() || path.has_root_name() || path.has_root_directory()) {
+            return false;
+        }
+        for (const auto& part : path) {
+            const auto text = part.u8string();
+            if (!is_safe_file_transport_id(text)) {
+                return false;
+            }
         }
         return true;
     }
@@ -126,14 +210,20 @@ namespace optionx::bridges::metatrader_file {
             if (namespace_subdir.empty()) {
                 return {false, "MetaTrader file bridge namespace_subdir is empty."};
             }
-            if (std::filesystem::u8path(namespace_subdir).is_absolute()) {
-                return {false, "MetaTrader file bridge namespace_subdir must be relative."};
+            if (!is_safe_namespace_subdir(namespace_subdir)) {
+                return {
+                    false,
+                    "MetaTrader file bridge namespace_subdir must be a safe relative path."
+                };
             }
             if (bridge_id == 0) {
                 return {false, "MetaTrader file bridge bridge_id is required."};
             }
             if (!is_safe_file_transport_id(client_id)) {
-                return {false, "MetaTrader file bridge client_id must match [A-Za-z0-9.-]+."};
+                return {
+                    false,
+                    "MetaTrader file bridge client_id must be a safe [A-Za-z0-9.-]+ identifier."
+                };
             }
             if (poll_interval_ms <= 0) {
                 return {false, "MetaTrader file bridge poll_interval_ms must be positive."};
@@ -149,6 +239,13 @@ namespace optionx::bridges::metatrader_file {
             }
             if (max_ready_files == 0) {
                 return {false, "MetaTrader file bridge max_ready_files must be positive."};
+            }
+            const auto root = std::filesystem::u8path(common_files_root);
+            if (!path_is_within_or_equal(root, client_root())) {
+                return {
+                    false,
+                    "MetaTrader file bridge client_root must stay inside common_files_root."
+                };
             }
             return {true, std::string()};
         }
