@@ -96,7 +96,8 @@ namespace optionx {
     enum class BridgeType {
         UNKNOWN = 0,                    ///< Unknown bridge type.
         LEGACY_TRADING_NAMED_PIPE,      ///< Legacy named-pipe trading bridge.
-        TRADING_VIEW_EXTENSION_HTTP     ///< TradingView browser extension HTTP bridge.
+        TRADING_VIEW_EXTENSION_HTTP,    ///< TradingView browser extension HTTP bridge.
+        METATRADER_FILE_TRANSPORT       ///< MetaTrader common-files JSON-RPC bridge transport.
     };
 
     /// \brief Converts BridgeType to its string representation.
@@ -107,7 +108,8 @@ namespace optionx {
         static const std::vector<std::string> str_data = {
             "UNKNOWN",
             "LEGACY_TRADING_NAMED_PIPE",
-            "TRADING_VIEW_EXTENSION_HTTP"
+            "TRADING_VIEW_EXTENSION_HTTP",
+            "METATRADER_FILE_TRANSPORT"
         };
         return utils::enum_string_or_unknown(str_data, static_cast<size_t>(value));
     }
@@ -120,7 +122,8 @@ namespace optionx {
         static const std::unordered_map<std::string, BridgeType> str_data = {
             {"UNKNOWN",                    BridgeType::UNKNOWN},
             {"LEGACY_TRADING_NAMED_PIPE",  BridgeType::LEGACY_TRADING_NAMED_PIPE},
-            {"TRADING_VIEW_EXTENSION_HTTP", BridgeType::TRADING_VIEW_EXTENSION_HTTP}
+            {"TRADING_VIEW_EXTENSION_HTTP", BridgeType::TRADING_VIEW_EXTENSION_HTTP},
+            {"METATRADER_FILE_TRANSPORT",  BridgeType::METATRADER_FILE_TRANSPORT}
         };
         auto it = str_data.find(utils::to_upper_case(str));
         if (it != str_data.end()) {

@@ -52,6 +52,24 @@ The exact root may be configured because terminals, portable installations and
 VPS images can place the common files directory differently. The protocol uses
 relative subdirectories once a root is configured.
 
+### C++ MVP Surface
+
+The first C++ implementation slice intentionally exposes only reusable
+file-transport building blocks:
+
+- `bridges/metatrader_file.hpp` as the umbrella include;
+- `MetaTraderFileBridgeConfig` for the MetaQuotes Common Files root, client
+  directory identity, polling/lease/retention settings and file limits;
+- `metatrader_file::detail` helpers for path-safe IDs, filenames, queue-state
+  compatible event filenames, JSON-RPC request/response/notification documents,
+  atomic temp-to-ready publishing, ready-to-processing claim and bounded JSON
+  reads;
+- small helpers for `balance.updated` and `trade.updated` notification payloads.
+
+This slice does not yet define a long-running `BaseBridge` polling loop, MQL
+advisor code or a broker execution adapter. Those pieces should use these
+helpers in follow-up implementation PRs.
+
 ### File Message Shape
 
 Each request file contains exactly one UTF-8 JSON-RPC request document:

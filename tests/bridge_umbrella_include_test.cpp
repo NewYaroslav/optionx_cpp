@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <optionx_cpp/bridges.hpp>
+#include <optionx_cpp/bridges/metatrader_file.hpp>
 #include <optionx_cpp/bridges/named_pipe.hpp>
 #include <optionx_cpp/bridges/trading_view.hpp>
 
@@ -18,6 +19,14 @@ TEST(BridgeUmbrellaIncludeTest, ExposesTradingViewBridgeFamily) {
     EXPECT_EQ(
         config.bridge_type(),
         optionx::BridgeType::TRADING_VIEW_EXTENSION_HTTP);
+}
+
+TEST(BridgeUmbrellaIncludeTest, ExposesMetaTraderFileBridgeFamily) {
+    optionx::bridges::metatrader_file::MetaTraderFileBridgeConfig config;
+
+    EXPECT_EQ(
+        config.bridge_type(),
+        optionx::BridgeType::METATRADER_FILE_TRANSPORT);
 }
 
 TEST(BridgeUmbrellaIncludeTest, ExposesSignalReportApi) {

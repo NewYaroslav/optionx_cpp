@@ -53,6 +53,25 @@ errors\                  optional shared malformed/unprocessable-file retention
 и VPS images могут располагать common files directory по-разному. После выбора
 root протокол использует относительные subdirectories.
 
+### C++ MVP Surface
+
+Первый C++ implementation slice намеренно открывает только reusable building
+blocks file transport:
+
+- `bridges/metatrader_file.hpp` как umbrella include;
+- `MetaTraderFileBridgeConfig` для MetaQuotes Common Files root, client
+  directory identity, polling/lease/retention settings и file limits;
+- helpers в `metatrader_file::detail` для path-safe IDs, filenames,
+  event filenames совместимых с queue-state, JSON-RPC request/response/
+  notification documents, atomic temp-to-ready publishing,
+  ready-to-processing claim и bounded JSON reads;
+- небольшие helpers для notification payloads `balance.updated` и
+  `trade.updated`.
+
+Этот slice ещё не задаёт long-running `BaseBridge` polling loop, MQL advisor
+code или broker execution adapter. Эти части должны использовать helpers в
+следующих implementation PR.
+
 ### File Message Shape
 
 Каждый request file содержит ровно один UTF-8 JSON-RPC request document:
