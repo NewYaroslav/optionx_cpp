@@ -72,6 +72,34 @@ blocks file transport:
 code или broker execution adapter. Эти части должны использовать helpers в
 следующих implementation PR.
 
+### Future MetaTrader Discovery Utility
+
+Поиск путей MetaTrader стоит реализовать как переиспользуемую utility в
+следующем PR, а не как ad-hoc логику внутри file bridge. Эту utility смогут
+использовать file transport, quote translators, MQL sample tooling и будущие
+MT4/MT5 adapters.
+
+Ожидаемая ответственность:
+
+- находить default MetaQuotes roaming directory на Windows через OS
+  known-folder API, используя `%APPDATA%` только как fallback;
+- отдавать default Common Files root:
+  `%APPDATA%\MetaQuotes\Terminal\Common\Files`;
+- перечислять известные terminal data directories в
+  `%APPDATA%\MetaQuotes\Terminal\<terminal-hash>\`;
+- классифицировать terminals по наличию директорий `MQL4` или `MQL5`;
+- возвращать per-terminal директории `MQL4\Files` / `MQL5\Files`, если они
+  существуют;
+- принимать явно настроенные terminal или Common Files roots и не пытаться
+  угадывать поверх них;
+- держать path confinement и reserved-name checks отдельно от discovery, чтобы
+  bridge одинаково валидировал настроенные и найденные roots.
+
+В старом `mega-connector` есть полезный prior art в
+`tools/mt/common/utils.hpp` (`SHGetKnownFolderPath`, terminal enumeration и
+history-folder discovery), но OptionX utility лучше спроектировать вокруг
+маленьких тестируемых helpers, а не копировать старый application-specific API.
+
 ### File Message Shape
 
 Каждый request file содержит ровно один UTF-8 JSON-RPC request document:
