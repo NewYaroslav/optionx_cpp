@@ -60,10 +60,19 @@ namespace optionx::bridges::metatrader_file::detail {
         std::uint64_t file_seq = 0; ///< Monotonic per-file sequence when present.
     };
 
+    /// \struct NdjsonMalformedRecord
+    /// \brief One complete NDJSON line that could not be parsed.
+    struct NdjsonMalformedRecord {
+        std::uint64_t start_offset = 0; ///< Byte offset where this line starts.
+        std::uint64_t next_offset = 0; ///< Byte offset immediately after this line feed.
+        std::string message; ///< Parse error summary.
+    };
+
     /// \struct NdjsonReadResult
     /// \brief Result of reading complete NDJSON records.
     struct NdjsonReadResult {
         std::vector<NdjsonRecord> records; ///< Complete parsed records.
+        std::vector<NdjsonMalformedRecord> malformed_records; ///< Complete records skipped as malformed.
         std::uint64_t next_offset = 0; ///< Offset suitable for the next incremental read.
         bool source_truncated = false; ///< True when the requested offset was beyond EOF.
         bool incomplete_tail = false; ///< True when the file ended with a partial line.
@@ -356,6 +365,73 @@ namespace optionx::bridges::metatrader_file::detail {
         return document;
     }
 
+    /// \brief Truncates an append log to the last complete LF-terminated line.
+    /// \return True when the file was truncated.
+    inline bool repair_incomplete_ndjson_tail(const std::filesystem::path& file) {
+        std::error_code ec;
+        const auto file_exists = std::filesystem::exists(file, ec);
+        if (ec) {
+            throw std::runtime_error("Failed to inspect NDJSON log path: " + ec.message());
+        }
+        if (!file_exists) {
+            return false;
+        }
+
+        const auto size = std::filesystem::file_size(file, ec);
+        if (ec) {
+            throw std::runtime_error("Failed to read NDJSON file size: " + ec.message());
+        }
+        if (size == 0) {
+            return false;
+        }
+
+        std::ifstream in(file, std::ios::binary);
+        if (!in) {
+            throw std::runtime_error("Failed to open NDJSON log: " + file.u8string());
+        }
+
+        in.seekg(static_cast<std::streamoff>(size - 1), std::ios::beg);
+        char last = '\0';
+        in.get(last);
+        if (!in) {
+            throw std::runtime_error("Failed to inspect NDJSON log tail: " + file.u8string());
+        }
+        if (last == '\n') {
+            return false;
+        }
+
+        constexpr std::uint64_t chunk_size = 4096;
+        std::vector<char> buffer(static_cast<std::size_t>(chunk_size));
+        std::uint64_t scan_end = size;
+
+        while (scan_end > 0) {
+            const auto chunk = std::min<std::uint64_t>(chunk_size, scan_end);
+            scan_end -= chunk;
+            in.clear();
+            in.seekg(static_cast<std::streamoff>(scan_end), std::ios::beg);
+            in.read(buffer.data(), static_cast<std::streamsize>(chunk));
+            if (in.gcount() != static_cast<std::streamsize>(chunk)) {
+                throw std::runtime_error("Failed to scan NDJSON log tail: " + file.u8string());
+            }
+
+            for (std::uint64_t i = chunk; i > 0; --i) {
+                if (buffer[static_cast<std::size_t>(i - 1)] == '\n') {
+                    std::filesystem::resize_file(file, scan_end + i, ec);
+                    if (ec) {
+                        throw std::runtime_error("Failed to truncate NDJSON log tail: " + ec.message());
+                    }
+                    return true;
+                }
+            }
+        }
+
+        std::filesystem::resize_file(file, 0, ec);
+        if (ec) {
+            throw std::runtime_error("Failed to truncate NDJSON log tail: " + ec.message());
+        }
+        return true;
+    }
+
     /// \brief Appends one compact JSON line and a trailing LF.
     /// \details One NDJSON file must have exactly one writer. A record is
     /// visible to readers only after its trailing `\n`.
@@ -377,6 +453,8 @@ namespace optionx::bridges::metatrader_file::detail {
             }
         }
 
+        repair_incomplete_ndjson_tail(file);
+
         std::ofstream out(file, std::ios::binary | std::ios::app);
         if (!out) {
             throw std::runtime_error("Failed to open NDJSON log: " + file.u8string());
@@ -395,10 +473,18 @@ namespace optionx::bridges::metatrader_file::detail {
             const std::uint64_t offset,
             const std::size_t max_line_bytes,
             const std::size_t max_records = 0) {
+        if (max_line_bytes == 0) {
+            throw std::invalid_argument("MetaTrader file transport max_line_bytes must be positive.");
+        }
+
         NdjsonReadResult result;
 
         std::error_code ec;
-        if (!std::filesystem::exists(file, ec)) {
+        const auto file_exists = std::filesystem::exists(file, ec);
+        if (ec) {
+            throw std::runtime_error("Failed to inspect NDJSON log path: " + ec.message());
+        }
+        if (!file_exists) {
             result.source_truncated = offset != 0;
             return result;
         }
@@ -415,12 +501,8 @@ namespace optionx::bridges::metatrader_file::detail {
         }
         result.next_offset = start_offset;
 
-        const auto remaining = file_size - start_offset;
-        if (remaining == 0) {
+        if (file_size == start_offset) {
             return result;
-        }
-        if (remaining > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
-            throw std::runtime_error("NDJSON tail is too large to read on this platform.");
         }
 
         std::ifstream in(file, std::ios::binary);
@@ -428,52 +510,62 @@ namespace optionx::bridges::metatrader_file::detail {
             throw std::runtime_error("Failed to open NDJSON log: " + file.u8string());
         }
         in.seekg(static_cast<std::streamoff>(start_offset), std::ios::beg);
-        std::string tail(static_cast<std::size_t>(remaining), '\0');
-        in.read(&tail[0], static_cast<std::streamsize>(tail.size()));
-        if (!in && !in.eof()) {
-            throw std::runtime_error("Failed to read NDJSON log: " + file.u8string());
-        }
 
-        std::size_t pos = 0;
-        while (pos < tail.size()) {
-            const auto newline = tail.find('\n', pos);
-            if (newline == std::string::npos) {
-                result.incomplete_tail = pos < tail.size();
-                const auto partial_size = tail.size() - pos;
-                if (partial_size > max_line_bytes) {
-                    throw std::runtime_error("Incomplete NDJSON tail exceeds configured byte limit.");
+        std::uint64_t current_offset = start_offset;
+        std::uint64_t line_start = start_offset;
+        std::string line;
+        line.reserve(std::min<std::size_t>(max_line_bytes, 4096u));
+
+        char ch = '\0';
+        while (in.get(ch)) {
+            ++current_offset;
+            if (ch != '\n') {
+                if (line.size() >= max_line_bytes) {
+                    throw std::runtime_error("NDJSON line exceeds configured byte limit.");
                 }
-                break;
+                line.push_back(ch);
+                continue;
             }
 
-            auto line = tail.substr(pos, newline - pos);
+            const auto record_next = current_offset;
             if (!line.empty() && line.back() == '\r') {
                 line.pop_back();
             }
-            const auto record_start = start_offset + static_cast<std::uint64_t>(pos);
-            const auto record_next = start_offset + static_cast<std::uint64_t>(newline + 1);
             result.next_offset = record_next;
-            pos = newline + 1;
 
-            if (line.empty()) {
-                continue;
+            if (!line.empty()) {
+                try {
+                    NdjsonRecord record;
+                    record.document = nlohmann::json::parse(line);
+                    record.start_offset = line_start;
+                    record.next_offset = record_next;
+                    if (record.document.contains("file_seq")) {
+                        record.file_seq = record.document.at("file_seq").get<std::uint64_t>();
+                    }
+                    result.records.push_back(std::move(record));
+                } catch (const std::exception& ex) {
+                    result.malformed_records.push_back(NdjsonMalformedRecord{
+                        line_start,
+                        record_next,
+                        ex.what()
+                    });
+                }
             }
-            if (line.size() > max_line_bytes) {
-                throw std::runtime_error("NDJSON line exceeds configured byte limit.");
-            }
-
-            NdjsonRecord record;
-            record.document = nlohmann::json::parse(line);
-            record.start_offset = record_start;
-            record.next_offset = record_next;
-            if (record.document.contains("file_seq")) {
-                record.file_seq = record.document.at("file_seq").get<std::uint64_t>();
-            }
-            result.records.push_back(std::move(record));
 
             if (max_records != 0 && result.records.size() >= max_records) {
-                break;
+                return result;
             }
+
+            line.clear();
+            line_start = current_offset;
+        }
+
+        if (in.bad()) {
+            throw std::runtime_error("Failed to read NDJSON log: " + file.u8string());
+        }
+
+        if (!line.empty()) {
+            result.incomplete_tail = true;
         }
 
         return result;
@@ -485,7 +577,8 @@ namespace optionx::bridges::metatrader_file::detail {
     inline std::vector<NdjsonRecord> read_ndjson_since_file_seq(
             const std::filesystem::path& file,
             const std::uint64_t last_file_seq,
-            const std::size_t max_line_bytes) {
+            const std::size_t max_line_bytes,
+            const std::size_t max_records = 0) {
         auto all = read_ndjson_from_offset(file, 0, max_line_bytes);
         std::vector<NdjsonRecord> filtered;
         for (auto& record : all.records) {
@@ -494,9 +587,39 @@ namespace optionx::bridges::metatrader_file::detail {
             }
             if (record.file_seq > last_file_seq) {
                 filtered.push_back(std::move(record));
+                if (max_records != 0 && filtered.size() >= max_records) {
+                    break;
+                }
             }
         }
         return filtered;
+    }
+
+    /// \brief Returns the greatest file sequence currently visible in an NDJSON log.
+    inline std::uint64_t max_file_seq_in_ndjson(
+            const std::filesystem::path& file,
+            const std::size_t max_line_bytes) {
+        const auto all = read_ndjson_from_offset(file, 0, max_line_bytes);
+        std::uint64_t max_seq = 0;
+        for (const auto& record : all.records) {
+            if (record.file_seq > max_seq) {
+                max_seq = record.file_seq;
+            }
+        }
+        return max_seq;
+    }
+
+    /// \brief Computes the next writer sequence from current log content and reader checkpoint.
+    inline std::uint64_t next_file_seq_after_checkpoint(
+            const std::filesystem::path& writer_log,
+            const std::uint64_t reader_last_file_seq,
+            const std::size_t max_line_bytes) {
+        const auto visible_max = max_file_seq_in_ndjson(writer_log, max_line_bytes);
+        const auto base = std::max(visible_max, reader_last_file_seq);
+        if (base == std::numeric_limits<std::uint64_t>::max()) {
+            throw std::overflow_error("MetaTrader file transport file_seq overflow.");
+        }
+        return base + 1;
     }
 
     /// \brief Builds a checkpoint snapshot for a log reader.

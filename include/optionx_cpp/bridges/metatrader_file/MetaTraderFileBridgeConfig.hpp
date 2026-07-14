@@ -107,14 +107,17 @@ namespace optionx::bridges::metatrader_file {
         const auto normalized_parent = lexically_absolute_normal(parent);
         const auto normalized_child = lexically_absolute_normal(child);
 
-        auto parent_it = normalized_parent.begin();
-        auto child_it = normalized_child.begin();
-        for (; parent_it != normalized_parent.end(); ++parent_it, ++child_it) {
-            if (child_it == normalized_child.end() || *parent_it != *child_it) {
-                return false;
-            }
+        if (normalized_parent == normalized_child) {
+            return true;
         }
-        return true;
+
+        const auto relative = normalized_child.lexically_relative(normalized_parent);
+        if (relative.empty() || relative.is_absolute()) {
+            return false;
+        }
+
+        const auto first = relative.begin();
+        return first != relative.end() && *first != "..";
     }
 
     /// \brief Returns true when a namespace subdirectory is a safe relative path.

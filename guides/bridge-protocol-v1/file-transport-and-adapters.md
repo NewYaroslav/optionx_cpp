@@ -203,6 +203,18 @@ Append-log writers must avoid exposing half-written records:
 A reader processes only complete lines. A final line without `\n` is considered
 incomplete and must be retried on the next poll.
 
+On startup, and before the first append after startup, a writer must repair its
+own append log if the file ends with an incomplete line. The repair truncates
+the file to the last complete LF-terminated record, or to an empty file when no
+complete record exists. This prevents a crashed half-record from being glued to
+the next valid record.
+
+Readers must enforce `max_line_bytes` while streaming the file, not after
+loading the full tail into memory. A complete malformed line may be skipped and
+reported as transport diagnostics; the reader checkpoint may advance past that
+complete malformed line. An incomplete final line is not processed and does not
+advance the checkpoint.
+
 `state.json` and checkpoint files are not append logs. They must be written via
 same-directory temporary file and atomic replacement:
 
@@ -224,6 +236,17 @@ Writers must keep `file_seq` monotonic across cleanup cycles. After
 than any command written before cleanup. This lets the bridge safely read the
 file from the beginning and skip already processed records by `last_file_seq`.
 Byte offsets are allowed only as an optimization.
+
+After restart, a writer should initialize its next sequence as:
+
+```text
+next_file_seq = max(last file_seq currently visible in the writer-owned log,
+                    reader checkpoint last_file_seq) + 1
+```
+
+If the writer stores a durable next-sequence value, that value must also be
+included in the maximum. The writer must not restart at `1` while the reader
+checkpoint still points to a later sequence.
 
 Recommended checkpoint shape:
 

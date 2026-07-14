@@ -181,6 +181,16 @@ Append-log writer:
 Reader processes only complete lines. Final line without `\n` is incomplete and
 is retried on the next poll.
 
+Before first append after startup, writer repairs its own append-log when the
+file ends with an incomplete line: truncate to the last complete LF-terminated
+record, or to an empty file when no complete record exists. This prevents a
+crashed half-record from being glued to the next valid record.
+
+Reader must enforce `max_line_bytes` while streaming the file, not after loading
+the full tail into memory. A complete malformed line may be skipped and reported
+as transport diagnostics; checkpoint may advance past that complete malformed
+line. Incomplete final line is not processed and does not advance checkpoint.
+
 `state.json` and checkpoint files are written through same-directory temp file
 and atomic replacement:
 
@@ -201,6 +211,17 @@ Writers must keep `file_seq` monotonic across cleanup cycles. After
 `commands.ndjson` is cleared, the next command must use a greater `file_seq`
 than any command before cleanup. This lets reader scan from the beginning and
 skip old records by `last_file_seq`. Byte offsets are only an optimization.
+
+After restart, writer should initialize its next sequence as:
+
+```text
+next_file_seq = max(last file_seq currently visible in the writer-owned log,
+                    reader checkpoint last_file_seq) + 1
+```
+
+If writer stores a durable next-sequence value, that value is included in the
+maximum too. Writer must not restart at `1` while reader checkpoint still points
+to a later sequence.
 
 Recommended checkpoint shape:
 

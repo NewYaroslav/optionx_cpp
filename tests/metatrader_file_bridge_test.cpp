@@ -82,6 +82,33 @@ TEST(MetaTraderFileBridgeConfig, RoundTripsJsonAndValidatesSafeClientId) {
     EXPECT_TRUE(restored.validate().first);
 }
 
+TEST(MetaTraderFileBridgeConfig, AcceptsDotRootAndTrailingSeparators) {
+    namespace mtfile = optionx::bridges::metatrader_file;
+
+    mtfile::MetaTraderFileBridgeConfig dot_root;
+    dot_root.common_files_root = ".";
+    dot_root.bridge_id = 1;
+    dot_root.client_id = "terminal-01";
+    EXPECT_TRUE(dot_root.validate().first);
+
+    mtfile::MetaTraderFileBridgeConfig slash_root;
+    const auto root = make_temp_root();
+    slash_root.common_files_root = (root / "").u8string();
+    slash_root.bridge_id = 1;
+    slash_root.client_id = "terminal-01";
+    EXPECT_TRUE(slash_root.validate().first);
+    EXPECT_TRUE(mtfile::path_is_within_or_equal(root, slash_root.client_root()));
+    EXPECT_FALSE(mtfile::path_is_within_or_equal(root, root.parent_path() / "outside"));
+
+#if defined(_WIN32)
+    mtfile::MetaTraderFileBridgeConfig windows_root;
+    windows_root.common_files_root = "C:/OptionXRoot/";
+    windows_root.bridge_id = 1;
+    windows_root.client_id = "terminal-01";
+    EXPECT_TRUE(windows_root.validate().first);
+#endif
+}
+
 TEST(MetaTraderFileProtocol, BuildsNdjsonLayout) {
     namespace protocol = optionx::bridges::metatrader_file::detail;
 
@@ -141,6 +168,15 @@ TEST(MetaTraderFileProtocol, AppendsReadsAndClearsNdjsonLogs) {
     EXPECT_EQ(parsed.records[1].file_seq, 2u);
     EXPECT_EQ(parsed.records[1].document.at("method").get<std::string>(), "trade.active.query");
 
+    const auto first_only = protocol::read_ndjson_from_offset(
+        layout.commands_log(),
+        0,
+        config.max_line_bytes,
+        1);
+    ASSERT_EQ(first_only.records.size(), 1u);
+    EXPECT_EQ(first_only.records[0].file_seq, 1u);
+    EXPECT_FALSE(first_only.incomplete_tail);
+
     const auto since_one = protocol::read_ndjson_since_file_seq(
         layout.commands_log(),
         1,
@@ -165,6 +201,134 @@ TEST(MetaTraderFileProtocol, AppendsReadsAndClearsNdjsonLogs) {
     const auto checkpoint = protocol::make_log_checkpoint(128, 3);
     EXPECT_EQ(checkpoint.at("offset").get<std::uint64_t>(), 128u);
     EXPECT_EQ(checkpoint.at("last_file_seq").get<std::uint64_t>(), 3u);
+}
+
+TEST(MetaTraderFileProtocol, ReadsByFileSequenceAfterClearAndRegrow) {
+    namespace protocol = optionx::bridges::metatrader_file::detail;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+    const auto log = root / "commands.ndjson";
+    constexpr std::size_t max_line_bytes = 4096;
+
+    for (std::uint64_t seq = 1; seq <= 20; ++seq) {
+        protocol::append_json_line(
+            log,
+            protocol::make_file_jsonrpc_request(seq, "old-" + std::to_string(seq), "trade.open"),
+            max_line_bytes);
+    }
+    const auto old_size = std::filesystem::file_size(log);
+    const auto checkpoint = protocol::make_log_checkpoint(old_size, 20);
+
+    protocol::clear_file_atomic(log);
+    for (std::uint64_t seq = 21; seq <= 50; ++seq) {
+        protocol::append_json_line(
+            log,
+            protocol::make_file_jsonrpc_request(seq, "new-" + std::to_string(seq), "trade.open"),
+            max_line_bytes);
+    }
+    ASSERT_GT(std::filesystem::file_size(log), checkpoint.at("offset").get<std::uint64_t>());
+
+    const auto records = protocol::read_ndjson_since_file_seq(
+        log,
+        checkpoint.at("last_file_seq").get<std::uint64_t>(),
+        max_line_bytes);
+    ASSERT_EQ(records.size(), 30u);
+    EXPECT_EQ(records.front().file_seq, 21u);
+    EXPECT_EQ(records.front().document.at("id").get<std::string>(), "new-21");
+    EXPECT_EQ(records.back().file_seq, 50u);
+}
+
+TEST(MetaTraderFileProtocol, RepairsIncompleteTailBeforeAppend) {
+    namespace protocol = optionx::bridges::metatrader_file::detail;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+    const auto log = root / "commands.ndjson";
+    constexpr std::size_t max_line_bytes = 4096;
+
+    protocol::append_json_line(
+        log,
+        protocol::make_file_jsonrpc_request(1, "req-1", "trade.open"),
+        max_line_bytes);
+    {
+        std::ofstream out(log, std::ios::binary | std::ios::app);
+        out << "{\"file_seq\":2,\"jsonrpc\":\"2.0\"";
+    }
+
+    protocol::append_json_line(
+        log,
+        protocol::make_file_jsonrpc_request(3, "req-3", "trade.open"),
+        max_line_bytes);
+
+    const auto parsed = protocol::read_ndjson_from_offset(log, 0, max_line_bytes);
+    ASSERT_EQ(parsed.records.size(), 2u);
+    EXPECT_TRUE(parsed.malformed_records.empty());
+    EXPECT_FALSE(parsed.incomplete_tail);
+    EXPECT_EQ(parsed.records[0].file_seq, 1u);
+    EXPECT_EQ(parsed.records[1].file_seq, 3u);
+}
+
+TEST(MetaTraderFileProtocol, SkipsMalformedCompleteLinesAndBoundsTail) {
+    namespace protocol = optionx::bridges::metatrader_file::detail;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+    const auto log = root / "commands.ndjson";
+    constexpr std::size_t max_line_bytes = 128;
+
+    protocol::append_json_line(
+        log,
+        protocol::make_file_jsonrpc_request(1, "req-1", "trade.open"),
+        max_line_bytes);
+    {
+        std::ofstream out(log, std::ios::binary | std::ios::app);
+        out << "{\"file_seq\":2,\"jsonrpc\":\"2.0\"\n";
+    }
+    protocol::append_json_line(
+        log,
+        protocol::make_file_jsonrpc_request(3, "req-3", "trade.open"),
+        max_line_bytes);
+
+    const auto parsed = protocol::read_ndjson_from_offset(log, 0, max_line_bytes);
+    ASSERT_EQ(parsed.records.size(), 2u);
+    ASSERT_EQ(parsed.malformed_records.size(), 1u);
+    EXPECT_EQ(parsed.records[0].file_seq, 1u);
+    EXPECT_EQ(parsed.records[1].file_seq, 3u);
+    EXPECT_GT(parsed.malformed_records[0].next_offset, parsed.malformed_records[0].start_offset);
+
+    const auto huge_tail = root / "huge-tail.ndjson";
+    {
+        std::ofstream out(huge_tail, std::ios::binary);
+        out << std::string(max_line_bytes + 1, 'x');
+    }
+    EXPECT_THROW(
+        protocol::read_ndjson_from_offset(huge_tail, 0, max_line_bytes),
+        std::runtime_error);
+}
+
+TEST(MetaTraderFileProtocol, ComputesNextFileSequenceFromLogAndCheckpoint) {
+    namespace protocol = optionx::bridges::metatrader_file::detail;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+    const auto log = root / "events.ndjson";
+    constexpr std::size_t max_line_bytes = 4096;
+
+    EXPECT_EQ(protocol::next_file_seq_after_checkpoint(log, 7, max_line_bytes), 8u);
+
+    protocol::append_json_line(
+        log,
+        protocol::make_file_jsonrpc_notification(10, "balance.updated"),
+        max_line_bytes);
+    protocol::append_json_line(
+        log,
+        protocol::make_file_jsonrpc_notification(12, "trade.updated"),
+        max_line_bytes);
+
+    EXPECT_EQ(protocol::max_file_seq_in_ndjson(log, max_line_bytes), 12u);
+    EXPECT_EQ(protocol::next_file_seq_after_checkpoint(log, 5, max_line_bytes), 13u);
+    EXPECT_EQ(protocol::next_file_seq_after_checkpoint(log, 20, max_line_bytes), 21u);
 }
 
 TEST(MetaTraderFileProtocol, BoundedJsonReadRejectsOversizedSnapshots) {
