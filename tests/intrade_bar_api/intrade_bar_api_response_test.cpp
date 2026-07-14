@@ -124,6 +124,23 @@ bool wait_for_platform(
     return predicate();
 }
 
+template <class Predicate>
+bool remains_true_for_platform(
+        IntradeBarPlatform& platform,
+        Predicate&& predicate,
+        std::chrono::milliseconds duration) {
+    const auto deadline = std::chrono::steady_clock::now() + duration;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (!predicate()) return false;
+        pump_platform(platform, 1);
+        platform.event_bus().drain();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    platform.event_bus().drain();
+    pump_platform(platform, 1);
+    return predicate();
+}
+
 using TradeHistoryHttpServer = SimpleWeb::Server<SimpleWeb::HTTP>;
 using MarketDataWsServer = SimpleWeb::SocketServer<SimpleWeb::WS>;
 
@@ -1767,6 +1784,12 @@ TEST(IntradeBarApiResponses, FxWebSocketSubscriptionsAreRefCountedBySymbol) {
 
     const auto subscriptions_after_subscribe = server.subscription_count.load();
     EXPECT_EQ(subscriptions_after_subscribe, 1);
+    EXPECT_TRUE(remains_true_for_platform(
+        platform,
+        [&]() {
+            return server.subscription_count.load() == subscriptions_after_subscribe;
+        },
+        std::chrono::milliseconds(250)));
 
     market_data::MarketDataSubscriptionResult unsubscribe_result;
     EXPECT_TRUE(platform.unsubscribe(
@@ -1828,6 +1851,12 @@ TEST(IntradeBarApiResponses, FxWebSocketBarSubscriptionsAreRefCountedBySymbol) {
         }));
 
     EXPECT_EQ(server.subscription_count.load(), 1);
+    EXPECT_TRUE(remains_true_for_platform(
+        platform,
+        [&]() {
+            return server.subscription_count.load() == 1;
+        },
+        std::chrono::milliseconds(250)));
 
     market_data::MarketDataSubscriptionResult unsubscribe_result;
     EXPECT_TRUE(platform.unsubscribe(
