@@ -44,6 +44,10 @@
 - Держи библиотеку header-only, если задача явно не требует нового `.cpp`.
 - Для публичных data/module/platform domains используй ближайший aggregate
   include point вместо ручного восстановления порядка зависимостей в leaf headers.
+- Для bridge families используй только `include/optionx_cpp/bridges.hpp` или
+  umbrella headers `bridges/metatrader_file.hpp`, `bridges/named_pipe.hpp`,
+  `bridges/trading_view.hpp`; leaf/detail bridge headers не являются
+  самостоятельными include-точками.
 - Внутри `include/optionx_cpp` не подключай headers через `"optionx_cpp/..."`;
   используй локальные пути от `include/optionx_cpp`, например `"data/..."`.
 - Для project-owned C/C++ headers используй `#pragma once` и non-reserved

@@ -5,21 +5,6 @@
 /// \file TradingViewExtensionProtocol.hpp
 /// \brief Parses TradingView browser-extension messages into TradeSignal objects.
 
-#include <algorithm>
-#include <cctype>
-#include <chrono>
-#include <ctime>
-#include <cstdint>
-#include <iomanip>
-#include <memory>
-#include <sstream>
-#include <stdexcept>
-#include <string>
-#include <utility>
-#include <vector>
-
-#include "utils/unicode_case.hpp"
-
 namespace optionx::bridges::tradingview::detail {
 
     /// \struct TradingViewParseResult

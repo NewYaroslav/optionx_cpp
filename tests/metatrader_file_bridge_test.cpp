@@ -38,11 +38,9 @@ TEST(MetaTraderFileBridgeConfig, RoundTripsJsonAndValidatesSafeClientId) {
     config.client_id = "terminal-01";
     config.client_secret = "local-secret";
     config.poll_interval_ms = 100;
-    config.processing_lease_ms = 5000;
-    config.retention_ms = 10000;
-    config.request_body_limit = 4096;
-    config.max_ready_files = 32;
-    config.archive_processed_requests = false;
+    config.max_line_bytes = 4096;
+    config.enable_events = true;
+    config.enable_state_snapshot = false;
 
     nlohmann::json json;
     config.to_json(json);
@@ -56,11 +54,9 @@ TEST(MetaTraderFileBridgeConfig, RoundTripsJsonAndValidatesSafeClientId) {
     EXPECT_EQ(restored.client_id, "terminal-01");
     EXPECT_EQ(restored.client_secret, "local-secret");
     EXPECT_EQ(restored.poll_interval_ms, 100);
-    EXPECT_EQ(restored.processing_lease_ms, 5000);
-    EXPECT_EQ(restored.retention_ms, 10000);
-    EXPECT_EQ(restored.request_body_limit, 4096u);
-    EXPECT_EQ(restored.max_ready_files, 32u);
-    EXPECT_FALSE(restored.archive_processed_requests);
+    EXPECT_EQ(restored.max_line_bytes, 4096u);
+    EXPECT_TRUE(restored.enable_events);
+    EXPECT_FALSE(restored.enable_state_snapshot);
     EXPECT_TRUE(restored.validate().first);
 
     restored.client_id = "bad_client";
@@ -86,33 +82,23 @@ TEST(MetaTraderFileBridgeConfig, RoundTripsJsonAndValidatesSafeClientId) {
     EXPECT_TRUE(restored.validate().first);
 }
 
-TEST(MetaTraderFileProtocol, BuildsAndParsesOrderedEventFilenames) {
+TEST(MetaTraderFileProtocol, BuildsNdjsonLayout) {
     namespace protocol = optionx::bridges::metatrader_file::detail;
 
-    const auto filename = protocol::make_event_filename("dq-01", 42, "evt-a");
-    EXPECT_EQ(filename, "dq-01_00000000000000000042_evt-a.json");
+    optionx::bridges::metatrader_file::MetaTraderFileBridgeConfig config;
+    config.common_files_root = "C:/Users/User/AppData/Roaming/MetaQuotes/Terminal/Common/Files";
+    config.bridge_id = 11;
+    config.client_id = "terminal-01";
 
-    const auto parsed = protocol::parse_event_filename(filename);
-    ASSERT_TRUE(parsed);
-    EXPECT_EQ(parsed->delivery_queue_id, "dq-01");
-    EXPECT_EQ(parsed->delivery_seq, 42u);
-    EXPECT_EQ(parsed->file_uuid, "evt-a");
-
-    EXPECT_FALSE(protocol::parse_event_filename("dq_01_00000000000000000042_evt-a.json"));
-    EXPECT_FALSE(protocol::parse_event_filename("dq-01_42_evt-a.json"));
-    EXPECT_THROW(
-        protocol::make_event_filename("dq_01", 1, "evt-a"),
-        std::invalid_argument);
-    EXPECT_THROW(
-        protocol::make_event_filename("CON", 1, "evt-a"),
-        std::invalid_argument);
-    EXPECT_THROW(
-        protocol::make_message_filename(1783476720120LL, ".."),
-        std::invalid_argument);
-    EXPECT_FALSE(protocol::is_safe_transport_filename("CON.json"));
+    const auto layout = protocol::make_layout(config);
+    EXPECT_EQ(layout.commands_log().filename().u8string(), "commands.ndjson");
+    EXPECT_EQ(layout.events_log().filename().u8string(), "events.ndjson");
+    EXPECT_EQ(layout.state_snapshot().filename().u8string(), "state.json");
+    EXPECT_EQ(layout.commands_checkpoint().filename().u8string(), "commands.checkpoint.json");
+    EXPECT_EQ(layout.events_checkpoint().filename().u8string(), "events.checkpoint.json");
 }
 
-TEST(MetaTraderFileProtocol, PublishesClaimsAndReadsJsonAtomically) {
+TEST(MetaTraderFileProtocol, AppendsReadsAndClearsNdjsonLogs) {
     namespace protocol = optionx::bridges::metatrader_file::detail;
 
     const auto root = make_temp_root();
@@ -126,61 +112,76 @@ TEST(MetaTraderFileProtocol, PublishesClaimsAndReadsJsonAtomically) {
     const auto layout = protocol::make_layout(config);
     protocol::ensure_runtime_directories(layout);
 
-    const auto request = protocol::make_jsonrpc_request(
+    const auto request1 = protocol::make_file_jsonrpc_request(
+        1,
         "req-1",
         "account.balance.get",
         nlohmann::json{{"account_id", "1"}});
-    const auto filename = protocol::make_message_filename(1783476720120LL, "req-a");
-    const auto ready_file =
-        protocol::publish_json_atomic(layout.requests_ready(), filename, request);
 
-    EXPECT_TRUE(std::filesystem::exists(ready_file));
-    EXPECT_FALSE(std::filesystem::exists(layout.requests_ready() / (filename + ".tmp")));
+    const auto request2 = protocol::make_file_jsonrpc_request(
+        2,
+        "req-2",
+        "trade.active.query");
 
-    std::filesystem::path claimed_file;
-    ASSERT_TRUE(protocol::claim_ready_file(
-        ready_file,
-        layout.requests_processing(),
-        claimed_file));
-    EXPECT_FALSE(std::filesystem::exists(ready_file));
-    EXPECT_TRUE(std::filesystem::exists(claimed_file));
-
-    const auto parsed = protocol::read_json_file(claimed_file, 4096);
-    EXPECT_EQ(parsed.at("jsonrpc").get<std::string>(), "2.0");
-    EXPECT_EQ(parsed.at("id").get<std::string>(), "req-1");
-    EXPECT_EQ(parsed.at("method").get<std::string>(), "account.balance.get");
-
-    const auto collision_filename = protocol::make_message_filename(1783476720121LL, "req-b");
-    const auto collision_path = layout.responses_ready() / collision_filename;
+    protocol::append_json_line(layout.commands_log(), request1, config.max_line_bytes);
+    protocol::append_json_line(layout.commands_log(), request2, config.max_line_bytes);
     {
-        std::ofstream out(collision_path, std::ios::binary | std::ios::trunc);
-        out << "{\"old\":true}";
+        std::ofstream out(layout.commands_log(), std::ios::binary | std::ios::app);
+        out << "{\"file_seq\":3,\"jsonrpc\":\"2.0\"";
     }
+
+    const auto parsed = protocol::read_ndjson_from_offset(
+        layout.commands_log(),
+        0,
+        config.max_line_bytes);
+    ASSERT_EQ(parsed.records.size(), 2u);
+    EXPECT_TRUE(parsed.incomplete_tail);
+    EXPECT_EQ(parsed.records[0].file_seq, 1u);
+    EXPECT_EQ(parsed.records[0].document.at("id").get<std::string>(), "req-1");
+    EXPECT_EQ(parsed.records[1].file_seq, 2u);
+    EXPECT_EQ(parsed.records[1].document.at("method").get<std::string>(), "trade.active.query");
+
+    const auto since_one = protocol::read_ndjson_since_file_seq(
+        layout.commands_log(),
+        1,
+        config.max_line_bytes);
+    ASSERT_EQ(since_one.size(), 1u);
+    EXPECT_EQ(since_one[0].file_seq, 2u);
+
+    protocol::clear_file_atomic(layout.commands_log());
+    protocol::append_json_line(
+        layout.commands_log(),
+        protocol::make_file_jsonrpc_request(3, "req-3", "account.balance.get"),
+        config.max_line_bytes);
+
+    const auto after_cleanup = protocol::read_ndjson_since_file_seq(
+        layout.commands_log(),
+        2,
+        config.max_line_bytes);
+    ASSERT_EQ(after_cleanup.size(), 1u);
+    EXPECT_EQ(after_cleanup[0].file_seq, 3u);
+    EXPECT_EQ(after_cleanup[0].document.at("id").get<std::string>(), "req-3");
+
+    const auto checkpoint = protocol::make_log_checkpoint(128, 3);
+    EXPECT_EQ(checkpoint.at("offset").get<std::uint64_t>(), 128u);
+    EXPECT_EQ(checkpoint.at("last_file_seq").get<std::uint64_t>(), 3u);
+}
+
+TEST(MetaTraderFileProtocol, BoundedJsonReadRejectsOversizedSnapshots) {
+    namespace protocol = optionx::bridges::metatrader_file::detail;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+    const auto json_file = root / "state.json";
+
+    protocol::write_text_file_atomic(json_file, "{\"ok\":true}");
+    const auto parsed = protocol::read_json_file(json_file, 32);
+    EXPECT_TRUE(parsed.at("ok").get<bool>());
+
+    protocol::write_text_file_atomic(json_file, "{\"value\":\"123456789\"}");
     EXPECT_THROW(
-        protocol::publish_json_atomic(layout.responses_ready(), collision_filename, request),
+        protocol::read_json_file(json_file, 8),
         std::runtime_error);
-    const auto old_collision = protocol::read_json_file(collision_path, 4096);
-    EXPECT_TRUE(old_collision.at("old").get<bool>());
-
-    const auto claim_collision_filename = protocol::make_message_filename(1783476720122LL, "req-c");
-    const auto ready_collision = protocol::publish_json_atomic(
-        layout.requests_ready(),
-        claim_collision_filename,
-        request);
-    const auto processing_collision = layout.requests_processing() / claim_collision_filename;
-    {
-        std::ofstream out(processing_collision, std::ios::binary | std::ios::trunc);
-        out << "{\"processing\":true}";
-    }
-
-    std::filesystem::path ignored_claim;
-    EXPECT_FALSE(protocol::claim_ready_file(
-        ready_collision,
-        layout.requests_processing(),
-        ignored_claim));
-    EXPECT_TRUE(std::filesystem::exists(ready_collision));
-    const auto old_processing = protocol::read_json_file(processing_collision, 4096);
-    EXPECT_TRUE(old_processing.at("processing").get<bool>());
 }
 
 TEST(MetaTraderFileProtocol, BuildsBalanceAndTradeUpdateNotifications) {
@@ -202,6 +203,38 @@ TEST(MetaTraderFileProtocol, BuildsBalanceAndTradeUpdateNotifications) {
     EXPECT_EQ(balance_payload.at("account_id").get<std::string>(), "1");
     EXPECT_EQ(balance_payload.at("balance").at("value").get<std::string>(), "1024.50");
     EXPECT_EQ(balance_payload.at("balance").at("currency").get<std::string>(), "USD");
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+    optionx::bridges::metatrader_file::MetaTraderFileBridgeConfig config;
+    config.common_files_root = root.u8string();
+    config.bridge_id = 11;
+    config.client_id = "terminal-01";
+    const auto layout = protocol::make_layout(config);
+
+    protocol::append_json_line(
+        layout.events_log(),
+        protocol::with_file_seq(balance_event, 1),
+        config.max_line_bytes);
+    const auto events = protocol::read_ndjson_since_file_seq(
+        layout.events_log(),
+        0,
+        config.max_line_bytes);
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].document.at("method").get<std::string>(), "balance.updated");
+
+    const auto state = protocol::make_state_snapshot(
+        7,
+        1783476720120LL,
+        "connected",
+        nlohmann::json::array({{
+            {"account_id", "1"},
+            {"balance", {{"value", "1024.50"}, {"currency", "USD"}}}
+        }}));
+    protocol::write_json_file_atomic(layout.state_snapshot(), state);
+    const auto parsed_state = protocol::read_json_file(layout.state_snapshot(), config.max_line_bytes);
+    EXPECT_EQ(parsed_state.at("version").get<std::uint64_t>(), 7u);
+    EXPECT_EQ(parsed_state.at("connection").get<std::string>(), "connected");
 
     optionx::TradeRequest request;
     request.trade_id = 77;
@@ -263,6 +296,20 @@ TEST(MetaTraderFileProtocol, BuildsBalanceAndTradeUpdateNotifications) {
     EXPECT_EQ(trade.at("origin_signal").at("signal_id").get<std::string>(), "12");
     EXPECT_EQ(trade.at("origin_signal").at("unique_hash").get<std::string>(), "tv:abc123");
     EXPECT_TRUE(trade.at("failure").is_null());
+
+    optionx::TradeResult cancelled;
+    cancelled.trade_id = 88;
+    cancelled.trade_state = optionx::TradeState::CANCELED_TRADE;
+    const auto cancelled_snapshot = protocol::make_protocol_trade_snapshot(cancelled);
+    EXPECT_EQ(cancelled_snapshot.at("state").get<std::string>(), "cancelled");
+    EXPECT_EQ(cancelled_snapshot.at("outcome").get<std::string>(), "unknown");
+    EXPECT_TRUE(cancelled_snapshot.at("final").get<bool>());
+    EXPECT_TRUE(cancelled_snapshot.at("failure").is_null());
+
+    cancelled.error_desc = "Cancelled by user.";
+    const auto cancelled_with_reason = protocol::make_protocol_trade_snapshot(cancelled);
+    EXPECT_EQ(cancelled_with_reason.at("failure").at("code").get<std::string>(), "cancelled");
+    EXPECT_EQ(cancelled_with_reason.at("failure").at("message").get<std::string>(), "Cancelled by user.");
 }
 
 int main(int argc, char** argv) {

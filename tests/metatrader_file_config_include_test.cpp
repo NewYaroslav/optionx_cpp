@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
-#include <optionx_cpp/bridges/metatrader_file/MetaTraderFileBridgeConfig.hpp>
+#include <optionx_cpp/bridges/metatrader_file.hpp>
 
-TEST(MetaTraderFileConfigIncludeTest, HeaderIsSelfContained) {
+TEST(MetaTraderFileConfigIncludeTest, UmbrellaHeaderExposesConfig) {
     optionx::bridges::metatrader_file::MetaTraderFileBridgeConfig config;
 
     config.common_files_root = ".";

@@ -3,27 +3,27 @@
 #define OPTIONX_HEADER_BRIDGES_METATRADER_FILE_DETAIL_META_TRADER_FILE_PROTOCOL_HPP_INCLUDED
 
 /// \file MetaTraderFileProtocol.hpp
-/// \brief File-drop transport helpers for MetaTrader common-files integrations.
+/// \brief NDJSON file-transport helpers for MetaTrader common-files integrations.
 
 #include "../MetaTraderFileBridgeConfig.hpp"
 #include "data/trading.hpp"
 
 #include <algorithm>
-#include <array>
+#include <atomic>
 #include <cerrno>
-#include <charconv>
 #include <chrono>
 #include <cmath>
-#include <cstdio>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <locale>
-#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #if defined(_WIN32)
@@ -32,185 +32,59 @@
 #endif
 #include <windows.h>
 #elif defined(__unix__) || defined(__APPLE__)
-#include <unistd.h>
-#if defined(__linux__)
 #include <fcntl.h>
-#include <sys/syscall.h>
-#ifndef RENAME_NOREPLACE
-#define RENAME_NOREPLACE (1U << 0U)
-#endif
-#endif
+#include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 namespace optionx::bridges::metatrader_file::detail {
 
     /// \struct FileTransportLayout
-    /// \brief Resolved directories for one OptionX file-transport client.
+    /// \brief Resolved files for one OptionX MetaTrader file-transport client.
     struct FileTransportLayout {
         std::filesystem::path root; ///< Client root directory.
 
-        std::filesystem::path requests_ready() const { return root / "requests" / "ready"; }
-        std::filesystem::path requests_processing() const { return root / "requests" / "processing"; }
-        std::filesystem::path requests_archive() const { return root / "requests" / "archive"; }
-        std::filesystem::path requests_errors() const { return root / "requests" / "errors"; }
-        std::filesystem::path responses_ready() const { return root / "responses" / "ready"; }
-        std::filesystem::path responses_processing() const { return root / "responses" / "processing"; }
-        std::filesystem::path events_ready() const { return root / "events" / "ready"; }
-        std::filesystem::path events_processing() const { return root / "events" / "processing"; }
-        std::filesystem::path archive() const { return root / "archive"; }
-        std::filesystem::path errors() const { return root / "errors"; }
-        std::filesystem::path queue_state() const { return root / "events" / "queue-state.json"; }
+        std::filesystem::path commands_log() const { return root / "commands.ndjson"; }
+        std::filesystem::path events_log() const { return root / "events.ndjson"; }
+        std::filesystem::path state_snapshot() const { return root / "state.json"; }
+        std::filesystem::path commands_checkpoint() const { return root / "commands.checkpoint.json"; }
+        std::filesystem::path events_checkpoint() const { return root / "events.checkpoint.json"; }
     };
 
-    /// \struct EventFileNameParts
-    /// \brief Parsed ordered event-delivery filename parts.
-    struct EventFileNameParts {
-        std::string delivery_queue_id; ///< Active delivery queue identifier.
-        std::uint64_t delivery_seq = 0; ///< Transport-level delivery sequence.
-        std::string file_uuid; ///< Transport-level file identifier.
+    /// \struct NdjsonRecord
+    /// \brief One complete NDJSON line plus transport offsets.
+    struct NdjsonRecord {
+        nlohmann::json document; ///< Parsed line document.
+        std::uint64_t start_offset = 0; ///< Byte offset where this line starts.
+        std::uint64_t next_offset = 0; ///< Byte offset immediately after this line feed.
+        std::uint64_t file_seq = 0; ///< Monotonic per-file sequence when present.
     };
 
-    /// \brief Builds resolved directories from a bridge config.
+    /// \struct NdjsonReadResult
+    /// \brief Result of reading complete NDJSON records.
+    struct NdjsonReadResult {
+        std::vector<NdjsonRecord> records; ///< Complete parsed records.
+        std::uint64_t next_offset = 0; ///< Offset suitable for the next incremental read.
+        bool source_truncated = false; ///< True when the requested offset was beyond EOF.
+        bool incomplete_tail = false; ///< True when the file ended with a partial line.
+    };
+
+    /// \brief Builds resolved files from a bridge config.
     inline FileTransportLayout make_layout(const MetaTraderFileBridgeConfig& config) {
         return FileTransportLayout{config.client_root()};
     }
 
-    /// \brief Returns all directories that should exist before polling/publishing.
-    inline std::vector<std::filesystem::path> runtime_directories(
-            const FileTransportLayout& layout) {
-        return {
-            layout.requests_ready(),
-            layout.requests_processing(),
-            layout.requests_archive(),
-            layout.requests_errors(),
-            layout.responses_ready(),
-            layout.responses_processing(),
-            layout.events_ready(),
-            layout.events_processing(),
-            layout.archive(),
-            layout.errors()
-        };
-    }
-
-    /// \brief Creates all runtime directories for a file-transport client.
+    /// \brief Creates the client root directory.
     inline void ensure_runtime_directories(const FileTransportLayout& layout) {
-        for (const auto& dir : runtime_directories(layout)) {
-            std::error_code ec;
-            std::filesystem::create_directories(dir, ec);
-            if (ec) {
-                throw std::runtime_error(
-                    "Failed to create file transport directory: " +
-                    dir.u8string() +
-                    ": " +
-                    ec.message());
-            }
+        std::error_code ec;
+        std::filesystem::create_directories(layout.root, ec);
+        if (ec) {
+            throw std::runtime_error(
+                "Failed to create MetaTrader file transport directory: " +
+                layout.root.u8string() +
+                ": " +
+                ec.message());
         }
-    }
-
-    /// \brief Returns true when a filename can be safely created by helpers.
-    inline bool is_safe_transport_filename(const std::string& filename) {
-        if (filename.empty() || filename == "." || filename == "..") return false;
-        const auto dot = filename.find('.');
-        if (is_windows_reserved_device_name(filename.substr(0, dot))) return false;
-        for (const unsigned char ch : filename) {
-            const bool ok =
-                (ch >= 'A' && ch <= 'Z') ||
-                (ch >= 'a' && ch <= 'z') ||
-                (ch >= '0' && ch <= '9') ||
-                ch == '-' ||
-                ch == '.' ||
-                ch == '_';
-            if (!ok) return false;
-        }
-        return true;
-    }
-
-    /// \brief Returns a zero-padded decimal delivery sequence.
-    inline std::string format_delivery_seq(const std::uint64_t seq) {
-        std::array<char, 20> digits{};
-        std::array<char, 20> raw{};
-        const auto result = std::to_chars(raw.data(), raw.data() + raw.size(), seq);
-        if (result.ec != std::errc()) {
-            throw std::runtime_error("Failed to format file transport delivery sequence.");
-        }
-        const auto count = static_cast<std::size_t>(result.ptr - raw.data());
-        if (count > digits.size()) {
-            throw std::runtime_error("File transport delivery sequence exceeds 20 digits.");
-        }
-        digits.fill('0');
-        std::copy(raw.data(), raw.data() + count, digits.data() + digits.size() - count);
-        return std::string(digits.data(), digits.size());
-    }
-
-    /// \brief Builds the unordered request/response filename pattern.
-    inline std::string make_message_filename(
-            const std::int64_t unix_ms,
-            const std::string& file_uuid) {
-        if (unix_ms < 0) {
-            throw std::invalid_argument("File transport unix_ms must not be negative.");
-        }
-        if (!is_safe_file_transport_id(file_uuid)) {
-            throw std::invalid_argument(
-                "File transport file_uuid must be a safe [A-Za-z0-9.-]+ identifier.");
-        }
-        return std::to_string(unix_ms) + "_" + file_uuid + ".json";
-    }
-
-    /// \brief Builds the ordered event filename pattern.
-    inline std::string make_event_filename(
-            const std::string& delivery_queue_id,
-            const std::uint64_t delivery_seq,
-            const std::string& file_uuid) {
-        if (!is_safe_file_transport_id(delivery_queue_id)) {
-            throw std::invalid_argument(
-                "File transport delivery_queue_id must be a safe [A-Za-z0-9.-]+ identifier.");
-        }
-        if (!is_safe_file_transport_id(file_uuid)) {
-            throw std::invalid_argument(
-                "File transport file_uuid must be a safe [A-Za-z0-9.-]+ identifier.");
-        }
-        return delivery_queue_id + "_" + format_delivery_seq(delivery_seq) + "_" + file_uuid + ".json";
-    }
-
-    /// \brief Parses an ordered event-delivery filename.
-    inline std::optional<EventFileNameParts> parse_event_filename(
-            const std::string& filename) {
-        const std::string suffix = ".json";
-        if (filename.size() <= suffix.size() ||
-            filename.substr(filename.size() - suffix.size()) != suffix) {
-            return std::nullopt;
-        }
-
-        const auto first_sep = filename.find('_');
-        const auto second_sep = filename.find('_', first_sep == std::string::npos ? 0 : first_sep + 1);
-        if (first_sep == std::string::npos ||
-            second_sep == std::string::npos ||
-            filename.find('_', second_sep + 1) != std::string::npos) {
-            return std::nullopt;
-        }
-
-        EventFileNameParts parts;
-        parts.delivery_queue_id = filename.substr(0, first_sep);
-        const auto seq_text = filename.substr(first_sep + 1, second_sep - first_sep - 1);
-        parts.file_uuid = filename.substr(
-            second_sep + 1,
-            filename.size() - second_sep - 1 - suffix.size());
-
-        if (!is_safe_file_transport_id(parts.delivery_queue_id) ||
-            !is_safe_file_transport_id(parts.file_uuid) ||
-            seq_text.size() != 20) {
-            return std::nullopt;
-        }
-        for (const char ch : seq_text) {
-            if (ch < '0' || ch > '9') return std::nullopt;
-        }
-
-        try {
-            parts.delivery_seq = static_cast<std::uint64_t>(std::stoull(seq_text));
-        } catch (...) {
-            return std::nullopt;
-        }
-        return parts;
     }
 
     /// \brief Returns milliseconds since Unix epoch.
@@ -219,8 +93,8 @@ namespace optionx::bridges::metatrader_file::detail {
             std::chrono::system_clock::now().time_since_epoch()).count();
     }
 
-    /// \brief Atomically moves a regular file without replacing an existing destination.
-    inline bool rename_file_no_replace(
+    /// \brief Atomically replaces a regular file with another file.
+    inline bool replace_file_atomic(
             const std::filesystem::path& source,
             const std::filesystem::path& destination,
             std::error_code& ec) noexcept {
@@ -229,57 +103,12 @@ namespace optionx::bridges::metatrader_file::detail {
         if (::MoveFileExW(
                 source.c_str(),
                 destination.c_str(),
-                MOVEFILE_WRITE_THROUGH) != 0) {
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0) {
             return true;
         }
-        const auto code = ::GetLastError();
-        if (code == ERROR_FILE_EXISTS || code == ERROR_ALREADY_EXISTS) {
-            ec = std::make_error_code(std::errc::file_exists);
-        } else {
-            ec = std::error_code(static_cast<int>(code), std::system_category());
-        }
+        ec = std::error_code(static_cast<int>(::GetLastError()), std::system_category());
         return false;
-#elif defined(__linux__)
-#if defined(SYS_renameat2)
-        if (::syscall(
-                SYS_renameat2,
-                AT_FDCWD,
-                source.c_str(),
-                AT_FDCWD,
-                destination.c_str(),
-                RENAME_NOREPLACE) == 0) {
-            return true;
-        }
-        const int rename_errno = errno;
-        if (rename_errno != ENOSYS && rename_errno != EINVAL) {
-            ec = std::error_code(rename_errno, std::generic_category());
-            return false;
-        }
-#endif
-        if (::link(source.c_str(), destination.c_str()) != 0) {
-            ec = std::error_code(errno, std::generic_category());
-            return false;
-        }
-        if (::unlink(source.c_str()) != 0) {
-            ec = std::error_code(errno, std::generic_category());
-            return false;
-        }
-        return true;
-#elif defined(__unix__) || defined(__APPLE__)
-        if (::link(source.c_str(), destination.c_str()) != 0) {
-            ec = std::error_code(errno, std::generic_category());
-            return false;
-        }
-        if (::unlink(source.c_str()) != 0) {
-            ec = std::error_code(errno, std::generic_category());
-            return false;
-        }
-        return true;
 #else
-        if (std::filesystem::exists(destination, ec)) {
-            ec = std::make_error_code(std::errc::file_exists);
-            return false;
-        }
         std::filesystem::rename(source, destination, ec);
         return !ec;
 #endif
@@ -291,70 +120,194 @@ namespace optionx::bridges::metatrader_file::detail {
         std::filesystem::remove(file, remove_ec);
     }
 
-    /// \brief Writes a JSON document to `ready_dir/final_filename` via same-directory temp rename.
-    inline std::filesystem::path publish_json_atomic(
-            const std::filesystem::path& ready_dir,
-            const std::string& final_filename,
-            const nlohmann::json& document,
-            const int indent = -1) {
-        if (!is_safe_transport_filename(final_filename)) {
-            throw std::invalid_argument("File transport final filename is not path-safe.");
-        }
-
-        std::error_code ec;
-        std::filesystem::create_directories(ready_dir, ec);
-        if (ec) {
-            throw std::runtime_error("Failed to create ready directory: " + ec.message());
-        }
-
-        const auto final_path = ready_dir / final_filename;
-        const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
-        const auto temp_path = ready_dir / (final_filename + ".tmp." + std::to_string(tick));
-        {
-            std::ofstream out(temp_path, std::ios::binary | std::ios::trunc);
-            if (!out) {
-                throw std::runtime_error("Failed to open temp file: " + temp_path.u8string());
-            }
-            out << document.dump(indent);
-            out.flush();
-            if (!out) {
-                throw std::runtime_error("Failed to write temp file: " + temp_path.u8string());
-            }
-        }
-
-        rename_file_no_replace(temp_path, final_path, ec);
-        if (ec) {
-            remove_file_quietly(temp_path);
-            if (ec == std::make_error_code(std::errc::file_exists)) {
-                throw std::runtime_error(
-                    "File transport final file already exists: " +
-                    final_path.u8string());
-            }
-            throw std::runtime_error("Failed to publish file transport JSON: " + ec.message());
-        }
-        return final_path;
+    /// \brief Returns the current process ID for temporary filename uniqueness.
+    inline std::uint64_t current_process_id() noexcept {
+#if defined(_WIN32)
+        return static_cast<std::uint64_t>(::GetCurrentProcessId());
+#elif defined(__unix__) || defined(__APPLE__)
+        return static_cast<std::uint64_t>(::getpid());
+#else
+        return 0;
+#endif
     }
 
-    /// \brief Claims a ready file by moving it into a processing directory.
-    inline bool claim_ready_file(
-            const std::filesystem::path& ready_file,
-            const std::filesystem::path& processing_dir,
-            std::filesystem::path& claimed_path) {
-        const auto filename = ready_file.filename().u8string();
-        if (!is_safe_transport_filename(filename)) {
+    /// \brief Returns true when an exclusive-create operation failed because the file exists.
+    inline bool is_file_exists_error(const std::error_code& ec) noexcept {
+#if defined(_WIN32)
+        return ec.category() == std::system_category() &&
+               (ec.value() == ERROR_FILE_EXISTS || ec.value() == ERROR_ALREADY_EXISTS);
+#else
+        return ec == std::errc::file_exists;
+#endif
+    }
+
+    /// \brief Builds a same-directory temp path that is unique across retries and processes.
+    inline std::filesystem::path make_temp_file_path(
+            const std::filesystem::path& parent,
+            const std::filesystem::path& filename) {
+        static std::atomic<std::uint64_t> temp_counter{0};
+        const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
+        const auto seq = temp_counter.fetch_add(1, std::memory_order_relaxed);
+        return parent / (
+            filename.u8string() +
+            ".tmp." +
+            std::to_string(current_process_id()) +
+            "." +
+            std::to_string(tick) +
+            "." +
+            std::to_string(seq));
+    }
+
+    /// \brief Creates and writes a temp file only if it does not already exist.
+    inline bool write_text_file_exclusive(
+            const std::filesystem::path& file,
+            const std::string& text,
+            std::error_code& ec) noexcept {
+        ec.clear();
+#if defined(_WIN32)
+        HANDLE handle = ::CreateFileW(
+            file.c_str(),
+            GENERIC_WRITE,
+            0,
+            nullptr,
+            CREATE_NEW,
+            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH,
+            nullptr);
+        if (handle == INVALID_HANDLE_VALUE) {
+            ec = std::error_code(static_cast<int>(::GetLastError()), std::system_category());
             return false;
         }
 
+        std::size_t offset = 0;
+        while (offset < text.size()) {
+            const auto remaining = text.size() - offset;
+            const auto chunk = static_cast<DWORD>(std::min<std::size_t>(
+                remaining,
+                static_cast<std::size_t>(std::numeric_limits<DWORD>::max())));
+            DWORD written = 0;
+            if (::WriteFile(handle, text.data() + offset, chunk, &written, nullptr) == 0 ||
+                written == 0) {
+                ec = std::error_code(static_cast<int>(::GetLastError()), std::system_category());
+                ::CloseHandle(handle);
+                return false;
+            }
+            offset += written;
+        }
+
+        if (::FlushFileBuffers(handle) == 0) {
+            ec = std::error_code(static_cast<int>(::GetLastError()), std::system_category());
+            ::CloseHandle(handle);
+            return false;
+        }
+        if (::CloseHandle(handle) == 0) {
+            ec = std::error_code(static_cast<int>(::GetLastError()), std::system_category());
+            return false;
+        }
+        return true;
+#elif defined(__unix__) || defined(__APPLE__)
+        const int fd = ::open(file.c_str(), O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
+        if (fd < 0) {
+            ec = std::error_code(errno, std::generic_category());
+            return false;
+        }
+
+        std::size_t offset = 0;
+        while (offset < text.size()) {
+            const auto written = ::write(fd, text.data() + offset, text.size() - offset);
+            if (written < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                ec = std::error_code(errno, std::generic_category());
+                ::close(fd);
+                return false;
+            }
+            if (written == 0) {
+                ec = std::make_error_code(std::errc::io_error);
+                ::close(fd);
+                return false;
+            }
+            offset += static_cast<std::size_t>(written);
+        }
+
+        if (::fsync(fd) != 0) {
+            ec = std::error_code(errno, std::generic_category());
+            ::close(fd);
+            return false;
+        }
+        if (::close(fd) != 0) {
+            ec = std::error_code(errno, std::generic_category());
+            return false;
+        }
+        return true;
+#else
+        if (std::filesystem::exists(file, ec)) {
+            ec = std::make_error_code(std::errc::file_exists);
+            return false;
+        }
+        std::ofstream out(file, std::ios::binary);
+        if (!out) {
+            ec = std::make_error_code(std::errc::io_error);
+            return false;
+        }
+        out << text;
+        out.flush();
+        if (!out) {
+            ec = std::make_error_code(std::errc::io_error);
+            return false;
+        }
+        return true;
+#endif
+    }
+
+    /// \brief Writes text via same-directory temp file and atomic replacement.
+    inline void write_text_file_atomic(
+            const std::filesystem::path& file,
+            const std::string& text) {
+        const auto parent = file.parent_path();
+        if (!parent.empty()) {
+            std::error_code ec;
+            std::filesystem::create_directories(parent, ec);
+            if (ec) {
+                throw std::runtime_error("Failed to create file transport directory: " + ec.message());
+            }
+        }
+
+        std::filesystem::path temp_path;
         std::error_code ec;
-        if (!std::filesystem::exists(ready_file, ec)) {
-            return false;
+        bool temp_created = false;
+        for (int attempt = 0; attempt < 64; ++attempt) {
+            temp_path = make_temp_file_path(parent, file.filename());
+            if (write_text_file_exclusive(temp_path, text, ec)) {
+                temp_created = true;
+                break;
+            }
+            if (!is_file_exists_error(ec)) {
+                throw std::runtime_error("Failed to create temp file: " + temp_path.u8string() + ": " + ec.message());
+            }
         }
-        std::filesystem::create_directories(processing_dir, ec);
-        if (ec) return false;
+        if (!temp_created) {
+            throw std::runtime_error("Failed to create unique MetaTrader file transport temp file.");
+        }
 
-        claimed_path = processing_dir / filename;
-        rename_file_no_replace(ready_file, claimed_path, ec);
-        return !ec;
+        replace_file_atomic(temp_path, file, ec);
+        if (ec) {
+            remove_file_quietly(temp_path);
+            throw std::runtime_error("Failed to replace file transport file: " + ec.message());
+        }
+    }
+
+    /// \brief Atomically clears a log file owned by the caller.
+    inline void clear_file_atomic(const std::filesystem::path& file) {
+        write_text_file_atomic(file, std::string());
+    }
+
+    /// \brief Writes a JSON snapshot through atomic replacement.
+    inline void write_json_file_atomic(
+            const std::filesystem::path& file,
+            const nlohmann::json& document,
+            const int indent = 2) {
+        write_text_file_atomic(file, document.dump(indent));
     }
 
     /// \brief Reads and parses a JSON file with a maximum byte limit.
@@ -367,16 +320,193 @@ namespace optionx::bridges::metatrader_file::detail {
             throw std::runtime_error("Failed to read JSON file size: " + ec.message());
         }
         if (size > max_bytes) {
-            throw std::runtime_error("File transport JSON exceeds configured byte limit.");
+            throw std::runtime_error("MetaTrader file transport JSON exceeds configured byte limit.");
+        }
+        if (max_bytes == std::numeric_limits<std::size_t>::max() ||
+            max_bytes + 1 > static_cast<std::size_t>(std::numeric_limits<std::streamsize>::max())) {
+            throw std::runtime_error("MetaTrader file transport JSON byte limit is too large for bounded read.");
         }
 
         std::ifstream in(file, std::ios::binary);
         if (!in) {
             throw std::runtime_error("Failed to open JSON file: " + file.u8string());
         }
-        std::ostringstream buffer;
-        buffer << in.rdbuf();
-        return nlohmann::json::parse(buffer.str());
+
+        std::string data(max_bytes + 1, '\0');
+        in.read(data.data(), static_cast<std::streamsize>(data.size()));
+        const auto count = static_cast<std::size_t>(in.gcount());
+        if (in.bad()) {
+            throw std::runtime_error("Failed to read JSON file: " + file.u8string());
+        }
+        if (count > max_bytes || !in.eof()) {
+            throw std::runtime_error("MetaTrader file transport JSON exceeds configured byte limit.");
+        }
+        data.resize(count);
+        return nlohmann::json::parse(data);
+    }
+
+    /// \brief Returns a compact JSON-RPC/notification document with a file sequence.
+    inline nlohmann::json with_file_seq(
+            nlohmann::json document,
+            const std::uint64_t file_seq) {
+        if (file_seq == 0) {
+            throw std::invalid_argument("MetaTrader file transport file_seq must be positive.");
+        }
+        document["file_seq"] = file_seq;
+        return document;
+    }
+
+    /// \brief Appends one compact JSON line and a trailing LF.
+    /// \details One NDJSON file must have exactly one writer. A record is
+    /// visible to readers only after its trailing `\n`.
+    inline void append_json_line(
+            const std::filesystem::path& file,
+            const nlohmann::json& document,
+            const std::size_t max_line_bytes) {
+        const auto line = document.dump(-1);
+        if (line.size() > max_line_bytes) {
+            throw std::runtime_error("MetaTrader file transport NDJSON line exceeds configured byte limit.");
+        }
+
+        const auto parent = file.parent_path();
+        if (!parent.empty()) {
+            std::error_code ec;
+            std::filesystem::create_directories(parent, ec);
+            if (ec) {
+                throw std::runtime_error("Failed to create file transport directory: " + ec.message());
+            }
+        }
+
+        std::ofstream out(file, std::ios::binary | std::ios::app);
+        if (!out) {
+            throw std::runtime_error("Failed to open NDJSON log: " + file.u8string());
+        }
+        out << line << '\n';
+        out.flush();
+        if (!out) {
+            throw std::runtime_error("Failed to append NDJSON log: " + file.u8string());
+        }
+    }
+
+    /// \brief Reads complete NDJSON records starting at a byte offset.
+    /// \details The last line is ignored until it has a trailing `\n`.
+    inline NdjsonReadResult read_ndjson_from_offset(
+            const std::filesystem::path& file,
+            const std::uint64_t offset,
+            const std::size_t max_line_bytes,
+            const std::size_t max_records = 0) {
+        NdjsonReadResult result;
+
+        std::error_code ec;
+        if (!std::filesystem::exists(file, ec)) {
+            result.source_truncated = offset != 0;
+            return result;
+        }
+
+        const auto file_size = std::filesystem::file_size(file, ec);
+        if (ec) {
+            throw std::runtime_error("Failed to read NDJSON file size: " + ec.message());
+        }
+
+        std::uint64_t start_offset = offset;
+        if (start_offset > file_size) {
+            start_offset = 0;
+            result.source_truncated = true;
+        }
+        result.next_offset = start_offset;
+
+        const auto remaining = file_size - start_offset;
+        if (remaining == 0) {
+            return result;
+        }
+        if (remaining > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
+            throw std::runtime_error("NDJSON tail is too large to read on this platform.");
+        }
+
+        std::ifstream in(file, std::ios::binary);
+        if (!in) {
+            throw std::runtime_error("Failed to open NDJSON log: " + file.u8string());
+        }
+        in.seekg(static_cast<std::streamoff>(start_offset), std::ios::beg);
+        std::string tail(static_cast<std::size_t>(remaining), '\0');
+        in.read(&tail[0], static_cast<std::streamsize>(tail.size()));
+        if (!in && !in.eof()) {
+            throw std::runtime_error("Failed to read NDJSON log: " + file.u8string());
+        }
+
+        std::size_t pos = 0;
+        while (pos < tail.size()) {
+            const auto newline = tail.find('\n', pos);
+            if (newline == std::string::npos) {
+                result.incomplete_tail = pos < tail.size();
+                const auto partial_size = tail.size() - pos;
+                if (partial_size > max_line_bytes) {
+                    throw std::runtime_error("Incomplete NDJSON tail exceeds configured byte limit.");
+                }
+                break;
+            }
+
+            auto line = tail.substr(pos, newline - pos);
+            if (!line.empty() && line.back() == '\r') {
+                line.pop_back();
+            }
+            const auto record_start = start_offset + static_cast<std::uint64_t>(pos);
+            const auto record_next = start_offset + static_cast<std::uint64_t>(newline + 1);
+            result.next_offset = record_next;
+            pos = newline + 1;
+
+            if (line.empty()) {
+                continue;
+            }
+            if (line.size() > max_line_bytes) {
+                throw std::runtime_error("NDJSON line exceeds configured byte limit.");
+            }
+
+            NdjsonRecord record;
+            record.document = nlohmann::json::parse(line);
+            record.start_offset = record_start;
+            record.next_offset = record_next;
+            if (record.document.contains("file_seq")) {
+                record.file_seq = record.document.at("file_seq").get<std::uint64_t>();
+            }
+            result.records.push_back(std::move(record));
+
+            if (max_records != 0 && result.records.size() >= max_records) {
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    /// \brief Reads complete records with `file_seq` greater than `last_file_seq`.
+    /// \details This is robust to owner-side log cleanup when writers keep
+    /// `file_seq` monotonic across cleanup cycles.
+    inline std::vector<NdjsonRecord> read_ndjson_since_file_seq(
+            const std::filesystem::path& file,
+            const std::uint64_t last_file_seq,
+            const std::size_t max_line_bytes) {
+        auto all = read_ndjson_from_offset(file, 0, max_line_bytes);
+        std::vector<NdjsonRecord> filtered;
+        for (auto& record : all.records) {
+            if (record.file_seq == 0) {
+                throw std::runtime_error("NDJSON record is missing required file_seq.");
+            }
+            if (record.file_seq > last_file_seq) {
+                filtered.push_back(std::move(record));
+            }
+        }
+        return filtered;
+    }
+
+    /// \brief Builds a checkpoint snapshot for a log reader.
+    inline nlohmann::json make_log_checkpoint(
+            const std::uint64_t offset,
+            const std::uint64_t last_file_seq) {
+        return nlohmann::json{
+            {"offset", offset},
+            {"last_file_seq", last_file_seq}
+        };
     }
 
     /// \brief Builds a JSON-RPC request document.
@@ -390,6 +520,17 @@ namespace optionx::bridges::metatrader_file::detail {
             {"method", std::move(method)},
             {"params", std::move(params)}
         };
+    }
+
+    /// \brief Builds a JSON-RPC request document with a required file sequence.
+    inline nlohmann::json make_file_jsonrpc_request(
+            const std::uint64_t file_seq,
+            nlohmann::json id,
+            std::string method,
+            nlohmann::json params = nlohmann::json::object()) {
+        return with_file_seq(
+            make_jsonrpc_request(std::move(id), std::move(method), std::move(params)),
+            file_seq);
     }
 
     /// \brief Builds a JSON-RPC success response.
@@ -434,7 +575,17 @@ namespace optionx::bridges::metatrader_file::detail {
         };
     }
 
-    /// \brief Formats a decimal value as a compact string for wire payloads.
+    /// \brief Builds a JSON-RPC notification document with a required file sequence.
+    inline nlohmann::json make_file_jsonrpc_notification(
+            const std::uint64_t file_seq,
+            std::string method,
+            nlohmann::json params = nlohmann::json::object()) {
+        return with_file_seq(
+            make_jsonrpc_notification(std::move(method), std::move(params)),
+            file_seq);
+    }
+
+    /// \brief Formats a decimal value as a locale-independent fixed-scale string.
     inline std::string decimal_to_string(
             const double value,
             const int precision = 12) {
@@ -636,7 +787,17 @@ namespace optionx::bridges::metatrader_file::detail {
         if (result.open_date > 0) snapshot["open_time_ms"] = result.open_date;
         if (result.close_date > 0) snapshot["close_time_ms"] = result.close_date;
 
-        if (result.error_code != TradeErrorCode::SUCCESS ||
+        if (result.trade_state == TradeState::CANCELED_TRADE &&
+            result.error_code == TradeErrorCode::SUCCESS) {
+            if (result.error_desc.empty()) {
+                snapshot["failure"] = nullptr;
+            } else {
+                snapshot["failure"] = {
+                    {"code", "cancelled"},
+                    {"message", result.error_desc}
+                };
+            }
+        } else if (result.error_code != TradeErrorCode::SUCCESS ||
             is_error_trade_state(result.trade_state)) {
             const auto failure_code =
                 result.error_code == TradeErrorCode::SUCCESS
@@ -772,6 +933,22 @@ namespace optionx::bridges::metatrader_file::detail {
                 std::move(subject),
                 revision,
                 std::move(payload)));
+    }
+
+    /// \brief Builds a `state.json` snapshot.
+    inline nlohmann::json make_state_snapshot(
+            const std::uint64_t version,
+            const std::int64_t updated_at_ms,
+            std::string connection,
+            nlohmann::json accounts = nlohmann::json::array(),
+            nlohmann::json open_trades = nlohmann::json::array()) {
+        return nlohmann::json{
+            {"version", version},
+            {"updated_at_ms", updated_at_ms},
+            {"connection", std::move(connection)},
+            {"accounts", std::move(accounts)},
+            {"open_trades", std::move(open_trades)}
+        };
     }
 
 } // namespace optionx::bridges::metatrader_file::detail

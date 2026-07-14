@@ -27,8 +27,10 @@
   dependencies; do not rebuild aggregate include order inside leaf DTO headers.
 - Do not use `../` in `#include` directives.
 - Avoid broad or implementation-only includes in leaf headers. Direct leaf
-  includes are acceptable for white-box/internal tests, not the main public
-  include contract.
+  includes are acceptable for white-box/internal tests only for domains that
+  explicitly keep self-contained leaves. Bridge family leaf/detail headers are
+  not standalone include points; use `bridges.hpp` or the nearest
+  `bridges/<family>.hpp` umbrella.
 - Platform-specific files лежат в папке платформы и подключаются относительными
   includes из facade header.
 

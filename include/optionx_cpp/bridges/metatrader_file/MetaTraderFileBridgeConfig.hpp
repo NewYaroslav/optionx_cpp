@@ -134,7 +134,7 @@ namespace optionx::bridges::metatrader_file {
     }
 
     /// \class MetaTraderFileBridgeConfig
-    /// \brief Configuration for the OptionX JSON-RPC file-drop transport.
+    /// \brief Configuration for the OptionX MetaTrader NDJSON file transport.
     class MetaTraderFileBridgeConfig final : public IBridgeConfig {
     public:
         /// \brief Serializes the bridge configuration.
@@ -147,13 +147,9 @@ namespace optionx::bridges::metatrader_file {
                 {"client_id", client_id},
                 {"client_secret", client_secret},
                 {"poll_interval_ms", poll_interval_ms},
-                {"processing_lease_ms", processing_lease_ms},
-                {"retention_ms", retention_ms},
-                {"request_body_limit", request_body_limit},
-                {"max_ready_files", max_ready_files},
-                {"archive_processed_requests", archive_processed_requests},
-                {"enable_responses", enable_responses},
-                {"enable_events", enable_events}
+                {"max_line_bytes", max_line_bytes},
+                {"enable_events", enable_events},
+                {"enable_state_snapshot", enable_state_snapshot}
             };
         }
 
@@ -178,26 +174,14 @@ namespace optionx::bridges::metatrader_file {
             if (j.contains("poll_interval_ms")) {
                 poll_interval_ms = j.at("poll_interval_ms").get<std::int64_t>();
             }
-            if (j.contains("processing_lease_ms")) {
-                processing_lease_ms = j.at("processing_lease_ms").get<std::int64_t>();
-            }
-            if (j.contains("retention_ms")) {
-                retention_ms = j.at("retention_ms").get<std::int64_t>();
-            }
-            if (j.contains("request_body_limit")) {
-                request_body_limit = j.at("request_body_limit").get<std::size_t>();
-            }
-            if (j.contains("max_ready_files")) {
-                max_ready_files = j.at("max_ready_files").get<std::size_t>();
-            }
-            if (j.contains("archive_processed_requests")) {
-                archive_processed_requests = j.at("archive_processed_requests").get<bool>();
-            }
-            if (j.contains("enable_responses")) {
-                enable_responses = j.at("enable_responses").get<bool>();
+            if (j.contains("max_line_bytes")) {
+                max_line_bytes = j.at("max_line_bytes").get<std::size_t>();
             }
             if (j.contains("enable_events")) {
                 enable_events = j.at("enable_events").get<bool>();
+            }
+            if (j.contains("enable_state_snapshot")) {
+                enable_state_snapshot = j.at("enable_state_snapshot").get<bool>();
             }
         }
 
@@ -228,17 +212,8 @@ namespace optionx::bridges::metatrader_file {
             if (poll_interval_ms <= 0) {
                 return {false, "MetaTrader file bridge poll_interval_ms must be positive."};
             }
-            if (processing_lease_ms <= 0) {
-                return {false, "MetaTrader file bridge processing_lease_ms must be positive."};
-            }
-            if (retention_ms < 0) {
-                return {false, "MetaTrader file bridge retention_ms must not be negative."};
-            }
-            if (request_body_limit == 0) {
-                return {false, "MetaTrader file bridge request_body_limit must be positive."};
-            }
-            if (max_ready_files == 0) {
-                return {false, "MetaTrader file bridge max_ready_files must be positive."};
+            if (max_line_bytes == 0) {
+                return {false, "MetaTrader file bridge max_line_bytes must be positive."};
             }
             const auto root = std::filesystem::u8path(common_files_root);
             if (!path_is_within_or_equal(root, client_root())) {
@@ -283,13 +258,9 @@ namespace optionx::bridges::metatrader_file {
         std::string client_id = "default"; ///< Path-safe client directory ID.
         std::string client_secret; ///< Optional directory-level shared secret metadata.
         std::int64_t poll_interval_ms = 250; ///< Recommended bridge polling interval.
-        std::int64_t processing_lease_ms = 30000; ///< Time after which processing files may be recovered.
-        std::int64_t retention_ms = 24LL * 60LL * 60LL * 1000LL; ///< Archive/error retention window.
-        std::size_t request_body_limit = 64 * 1024; ///< Maximum JSON request file size.
-        std::size_t max_ready_files = 1024; ///< Backpressure limit for ready directories.
-        bool archive_processed_requests = true; ///< Retain processed request files when possible.
-        bool enable_responses = true; ///< Write JSON-RPC responses for request files.
-        bool enable_events = true; ///< Write event notification files for subscribed clients.
+        std::size_t max_line_bytes = 64 * 1024; ///< Maximum complete NDJSON line size.
+        bool enable_events = true; ///< Append bridge events to events.ndjson.
+        bool enable_state_snapshot = true; ///< Atomically publish state.json snapshots.
     };
 
 } // namespace optionx::bridges::metatrader_file

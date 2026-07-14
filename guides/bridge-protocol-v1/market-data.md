@@ -238,8 +238,9 @@ Bar event payload:
 }
 ```
 
-Market-data prices, volumes and spreads use the same decimal-string wire rule
-as trading money values. Times use integer milliseconds.
+Market-data prices, volumes and spreads use the shared decimal-string wire
+rule. They are not `MoneyValue` objects unless a concrete provider schema says
+otherwise. Times use integer milliseconds.
 
 `time_ms` alone is not a unique tick identity because several ticks may arrive
 within the same millisecond. Providers should include `source_seq`, `tick_id`,

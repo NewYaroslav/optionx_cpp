@@ -5,15 +5,6 @@
 /// \file TradingViewExtensionBridgeConfig.hpp
 /// \brief Defines configuration for the TradingView browser-extension HTTP bridge.
 
-#include <cstdint>
-#include <algorithm>
-#include <cctype>
-#include <memory>
-#include <string>
-#include <unordered_map>
-#include <utility>
-#include <vector>
-
 namespace optionx::bridges::tradingview {
 
     /// \struct TradingViewLevelAlertRule

@@ -150,7 +150,10 @@ parameters.
     "symbol": "EURUSD",
     "order_type": "BUY",
     "option_type": "SPRINT",
-    "amount": "10.00",
+    "amount": {
+      "value": "10.00",
+      "currency": "USD"
+    },
     "expiry": {
       "kind": "duration",
       "duration_ms": 60000
@@ -575,7 +578,10 @@ Use this when an external tester has already calculated the trade result.
     "symbol": "EURUSD",
     "order_type": "BUY",
     "option_type": "SPRINT",
-    "amount": "10.00",
+    "amount": {
+      "value": "10.00",
+      "currency": "USD"
+    },
     "expiry": {
       "kind": "duration",
       "duration_ms": 60000
@@ -588,7 +594,10 @@ Use this when an external tester has already calculated the trade result.
     "final": true,
     "revision": 1,
     "payout": "0.82",
-    "profit": "8.20",
+    "profit": {
+      "value": "8.20",
+      "currency": "USD"
+    },
     "open_price": "1.14072",
     "close_price": "1.14120",
     "open_time_ms": 1783476720000,
@@ -646,12 +655,24 @@ lifecycle and financial outcome fields:
   "failure": null,
   "broker_option_id": "456",
   "broker_option_hash": "abc",
-  "amount": "10.00",
+  "amount": {
+    "value": "10.00",
+    "currency": "USD"
+  },
   "payout": "0.82",
   "profit": null,
-  "expected_profit": "8.20",
-  "balance": "1000.00",
-  "open_balance": "1000.00",
+  "expected_profit": {
+    "value": "8.20",
+    "currency": "USD"
+  },
+  "balance": {
+    "value": "1000.00",
+    "currency": "USD"
+  },
+  "open_balance": {
+    "value": "1000.00",
+    "currency": "USD"
+  },
   "close_balance": null,
   "open_price": "1.14072",
   "close_price": null,
@@ -670,10 +691,10 @@ lifecycle and financial outcome fields:
 ```
 
 Unknown or unavailable snapshot values should be `null`. Fields that are not
-applicable should be omitted. Known numeric zero remains a real decimal value,
-for example `"0.00"`. `profit` is realized/final profit; for an opened binary
-option it should normally be `null`, while potential payout can be represented
-as `expected_profit`.
+applicable should be omitted. Known monetary zero remains a real money value,
+for example `{ "value": "0.00", "currency": "USD" }`. `profit` is
+realized/final profit; for an opened binary option it should normally be
+`null`, while potential payout can be represented as `expected_profit`.
 
 Known lifecycle states:
 
@@ -759,8 +780,14 @@ History response:
       "account_id": "1",
       "platform_type": "INTRADE_BAR",
       "symbol": "EURUSD",
-      "amount": "10.00",
-      "profit": "8.20",
+      "amount": {
+        "value": "10.00",
+        "currency": "USD"
+      },
+      "profit": {
+        "value": "8.20",
+        "currency": "USD"
+      },
       "open_time_ms": 1783476720120,
       "close_time_ms": 1783476780000,
       "origin_signal": {}
@@ -814,7 +841,10 @@ Account response item:
   "platform_type": "INTRADE_BAR",
   "account_type": "DEMO",
   "currency": "USD",
-  "balance": "1000.00",
+  "balance": {
+    "value": "1000.00",
+    "currency": "USD"
+  },
   "connected": true,
   "trade_enabled": true,
   "open_trades": 2,

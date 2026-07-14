@@ -1,26 +1,23 @@
-# Bridge Protocol v1 Draft - File Transport И Legacy Adapters
+# Bridge Protocol v1 Draft - File Transport And Legacy Adapters
 
 ## Область
 
 Этот раздел описывает две связанные, но разные вещи:
 
-- OptionX file-drop transport, то есть binding протокола для клиентов, которые
-  не могут использовать HTTP, WebSocket или named pipes;
-- legacy adapter profiles для сторонних программ, у которых публичная или
-  наблюдаемая интеграция сделана через файлы или HTTP-like команды, но не через
-  OptionX protocol.
+- OptionX file transport для клиентов, которые не могут использовать HTTP,
+  WebSocket или named pipes;
+- legacy adapter profiles для сторонних инструментов с файловым или HTTP-like
+  API, который не является OptionX protocol.
 
 Английская версия каноническая. Русский файл синхронизируется с английским
 после изменения английского текста.
 
 ## OptionX File-Drop Transport
 
-File-drop transport нужен в первую очередь для MT4/MT5 indicators, advisors и
-marketplace packages. В правилах MetaQuotes marketplace и в пользовательских
-окружениях raw sockets, local HTTP servers или WebSocket clients часто сложнее
-поставлять, чем обычный file I/O. File transport позволяет MQL-стороне писать
-requests в MetaQuotes common files sandbox, а bridge может писать назад
-responses, events, balances и trade snapshots.
+File transport в первую очередь нужен для MT4/MT5 indicators, advisors и
+MetaQuotes marketplace packages. В таких окружениях обычный file I/O проще
+поставлять и поддерживать, чем raw sockets, local HTTP server или WebSocket
+client.
 
 Default root:
 
@@ -37,152 +34,123 @@ Recommended OptionX subdirectory:
 Recommended layout:
 
 ```text
-requests\ready\          client -> bridge JSON-RPC commands ready to claim
-requests\processing\     bridge-owned claimed request files
-requests\archive\        optional processed request retention
-requests\errors\         malformed/unprocessable request retention
-responses\ready\         bridge -> client JSON-RPC responses ready to claim
-responses\processing\    client-owned claimed response files
-events\ready\            bridge -> client JSON-RPC notifications ready to claim
-events\processing\       client-owned claimed event files
-archive\                 optional shared retention area
-errors\                  optional shared malformed/unprocessable-file retention
+commands.ndjson          MT4/MT5 -> bridge append-only command log
+events.ndjson            bridge -> MT4/MT5 append-only event/result log
+state.json               bridge -> MT4/MT5 latest state snapshot
+commands.checkpoint.json bridge-owned reader checkpoint, optional
+events.checkpoint.json   MT-owned reader checkpoint, optional
 ```
 
-Точный root должен настраиваться, потому что terminals, portable installations
-и VPS images могут располагать common files directory по-разному. После выбора
-root протокол использует относительные subdirectories.
+Точный root настраивается, потому что portable terminals и VPS images могут
+располагать Common Files по-разному.
+
+Canonical MetaTrader file transport является line-oriented, а не
+one-file-per-message. У каждого append-log только один writer:
+
+- MQL сторона пишет только `commands.ndjson`;
+- bridge пишет только `events.ndjson`;
+- bridge пишет `state.json` через atomic replace.
+
+Reader хранит свой checkpoint и не переписывает append-log другой стороны.
 
 ### C++ MVP Surface
 
-Первый C++ implementation slice намеренно открывает только reusable building
-blocks file transport:
+Первый C++ implementation slice открывает только reusable building blocks:
 
 - `bridges/metatrader_file.hpp` как umbrella include;
 - `MetaTraderFileBridgeConfig` для MetaQuotes Common Files root, client
-  directory identity, polling/lease/retention settings и file limits;
-- helpers в `metatrader_file::detail` для path-safe IDs, filenames,
-  event filenames совместимых с queue-state, JSON-RPC request/response/
-  notification documents, atomic temp-to-ready publishing,
-  ready-to-processing claim и bounded JSON reads;
-- небольшие helpers для notification payloads `balance.updated` и
-  `trade.updated`.
+  directory identity, polling interval и NDJSON line limits;
+- helpers в `metatrader_file::detail` для path-safe IDs, NDJSON append/read,
+  owner-side cleanup, JSON-RPC request/response/notification documents,
+  atomic state snapshots и bounded JSON reads;
+- helpers для `balance.updated`, `trade.updated` и `state.json` payloads.
 
-Этот slice ещё не задаёт long-running `BaseBridge` polling loop, MQL advisor
+Этот slice еще не задает long-running `BaseBridge` polling loop, MQL advisor
 code или broker execution adapter. Эти части должны использовать helpers в
-следующих implementation PR.
+следующем implementation PR.
 
 ### Future MetaTrader Discovery Utility
 
-Поиск путей MetaTrader стоит реализовать как переиспользуемую utility в
-следующем PR, а не как ad-hoc логику внутри file bridge. Эту utility смогут
-использовать file transport, quote translators, MQL sample tooling и будущие
-MT4/MT5 adapters.
+Поиск путей MetaTrader стоит реализовать отдельной reusable utility в будущем
+PR, а не ad-hoc логикой внутри file bridge. Utility должна быть полезна file
+transport, quote translators, MQL sample tooling и будущим MT4/MT5 adapters.
 
-Ожидаемая ответственность:
+Expected responsibilities:
 
 - находить default MetaQuotes roaming directory на Windows через OS
   known-folder API, используя `%APPDATA%` только как fallback;
 - отдавать default Common Files root:
   `%APPDATA%\MetaQuotes\Terminal\Common\Files`;
-- перечислять известные terminal data directories в
+- перечислять known terminal data directories в
   `%APPDATA%\MetaQuotes\Terminal\<terminal-hash>\`;
-- классифицировать terminals по наличию директорий `MQL4` или `MQL5`;
-- возвращать per-terminal директории `MQL4\Files` / `MQL5\Files`, если они
-  существуют;
-- принимать явно настроенные terminal или Common Files roots и не пытаться
-  угадывать поверх них;
-- держать path confinement и reserved-name checks отдельно от discovery, чтобы
-  bridge одинаково валидировал настроенные и найденные roots.
+- классифицировать terminals по наличию `MQL4` или `MQL5` directories;
+- возвращать per-terminal `MQL4\Files` / `MQL5\Files`, если они существуют;
+- принимать явно настроенные terminal или Common Files roots без guesswork;
+- держать path confinement и reserved-name checks отдельно от discovery.
 
-В старом `mega-connector` есть полезный prior art в
-`tools/mt/common/utils.hpp` (`SHGetKnownFolderPath`, terminal enumeration и
-history-folder discovery), но OptionX utility лучше спроектировать вокруг
-маленьких тестируемых helpers, а не копировать старый application-specific API.
+В старом `mega-connector` есть useful prior art в `tools/mt/common/utils.hpp`,
+но OptionX utility лучше спроектировать как набор маленьких testable helpers.
 
 ### File Message Shape
 
-Каждый request file содержит ровно один UTF-8 JSON-RPC request document:
+`commands.ndjson` и `events.ndjson` это UTF-8 NDJSON files. Одна complete line
+это один compact JSON document. Строка без trailing `\n` считается incomplete и
+пока не обрабатывается.
+
+Каждая log record имеет monotonic `file_seq`, который назначает writer этого
+лога. Это transport-local sequence для checkpoint/cleanup. Он не заменяет
+JSON-RPC `id`, `context.idempotency_key`, trade IDs или domain event
+`stream_id + seq`.
+
+Example command line in `commands.ndjson`:
 
 ```json
-{
-  "jsonrpc": "2.0",
-  "id": "mql5-ea-0001",
-  "method": "trade.open",
-  "params": {
-    "context": {
-      "idempotency_key": "mql5:terminal-01:bar-1783476720:buy",
-      "client_created_at_ms": 1783476720120,
-      "valid_until_ms": 1783476729000
-    },
-    "routing": {
-      "selector": {
-        "kind": "default"
-      }
-    },
-    "trade": {
-      "symbol": "EURUSD",
-      "order_type": "BUY",
-      "option_type": "SPRINT",
-      "amount": "1.00",
-      "expiry": {
-        "kind": "duration",
-        "duration_ms": 60000
-      }
-    }
-  }
-}
+{"file_seq":1,"jsonrpc":"2.0","id":"mql5-ea-0001","method":"trade.open","params":{"context":{"idempotency_key":"mql5:terminal-01:bar-1783476720:buy","client_created_at_ms":1783476720120,"valid_until_ms":1783476729000},"routing":{"selector":{"kind":"default"}},"trade":{"symbol":"EURUSD","order_type":"BUY","option_type":"SPRINT","amount":{"value":"1.00","currency":"USD"},"expiry":{"kind":"duration","duration_ms":60000}}}}
 ```
 
-Responses являются обычными JSON-RPC responses, пишутся в `responses\` и
-коррелируются по исходному request `id`:
+Bridge может отвечать событиями в `events.ndjson`, без отдельного
+`responses` directory. Например:
 
 ```json
-{
-  "jsonrpc": "2.0",
-  "id": "mql5-ea-0001",
-  "result": {
-    "status": "accepted",
-    "final": false,
-    "operation_id": "op-019c..."
-  }
-}
+{"file_seq":101,"jsonrpc":"2.0","method":"trade.accepted","params":{"request_id":"mql5-ea-0001","operation_id":"op-019c...","trade_id":"784512"}}
 ```
 
-Events являются обычными JSON-RPC notifications, пишутся в `events\`. Сюда
-относятся trade updates, balance updates и reports:
+Domain event notifications могут использовать обычный bridge event envelope:
+
+```json
+{"file_seq":102,"jsonrpc":"2.0","method":"balance.updated","params":{"event_id":"evt-019c...","source":"optionx://installation-019c/bridge/file","stream_id":"file-bridge-instance-019c...","seq":42,"occurred_at_ms":1783476725000,"emitted_at_ms":1783476725010,"subject":{"account_id":"1"},"revision":3,"payload":{"account_id":"1","balance":{"value":"1024.50","currency":"USD"}}}}
+```
+
+`state.json` это atomically replaced snapshot, а не append-log:
 
 ```json
 {
-  "jsonrpc": "2.0",
-  "method": "balance.updated",
-  "params": {
-    "event_id": "evt-019c...",
-    "source": "optionx://installation-019c/bridge/file",
-    "stream_id": "file-bridge-instance-019c...",
-    "seq": 42,
-    "occurred_at_ms": 1783476725000,
-    "emitted_at_ms": 1783476725010,
-    "subject": {
-      "account_id": "1"
-    },
-    "revision": 3,
-    "payload": {
+  "version": 56,
+  "updated_at_ms": 1784030400000,
+  "connection": "connected",
+  "accounts": [
+    {
       "account_id": "1",
       "balance": {
-        "value": "1024.50",
+        "value": "1018.50",
         "currency": "USD"
       }
     }
-  }
+  ],
+  "open_trades": [
+    {
+      "trade_id": "784513",
+      "symbol": "EURUSD",
+      "order_type": "BUY"
+    }
+  ]
 }
 ```
 
 ### Supported Commands
 
-File transport должен поддерживать те же business methods, что и остальные
-transports, но MVP стоит начинать с методов, которые делают MQL-интеграцию
-полезной без HTTP:
+File transport should support the same business methods as other transports,
+but MVP should prioritize:
 
 - `protocol.hello`
 - `protocol.capabilities.get`
@@ -198,254 +166,104 @@ transports, но MVP стоит начинать с методов, которы
 - `trading.pause`
 - `trading.resume`
 - `reports.query`
-- `events.subscribe`
-- `events.unsubscribe`
-- `events.subscriptions.list`
 
-Такой набор делает file API не слишком бедным: через него можно слать signals,
-открывать trades, узнавать завершение operation или trade, читать текущий
-balance, смотреть active/history snapshots и узнавать точный список methods,
-limits и event topics, которые поддерживает урезанный file-based bridge.
+Explicit event subscription commands can be added later if a file client needs
+something more selective than the default `events.ndjson` stream.
 
 ### Atomicity И Cleanup
 
-Writers не должны показывать consumers недописанные файлы:
+Append-log writer:
 
-1. Писать во временное имя в той же директории, например
-   `<unix_ms>_<file_uuid>.json.tmp`.
-2. Flush и close file.
-3. Atomic rename в `ready\` directory с финальным именем, например
-   `<unix_ms>_<file_uuid>.json`.
+1. serializes the whole JSON document in memory;
+2. writes compact JSON plus one trailing `\n`;
+3. flushes the file.
 
-Consumers должны claim ready file через atomic rename в processing name или
-processing directory. Если файл locked, consumer должен повторить позже, а не
-считать файл malformed.
+Reader processes only complete lines. Final line without `\n` is incomplete and
+is retried on the next poll.
 
-Recommended filename pattern:
+`state.json` and checkpoint files are written through same-directory temp file
+and atomic replacement:
 
 ```text
-<unix_ms>_<file_uuid>.json
+state.json.tmp.<id> -> state.json
+commands.checkpoint.json.tmp.<id> -> commands.checkpoint.json
 ```
 
-Rules:
+Cleanup owner-driven:
 
-- File names должны быть ASCII и path-safe.
-- `file_uuid` это только transport-level identifier. JSON-RPC correlation всё
-  равно делается по полю `id` внутри file content.
-- `id`, `method` и client identity берутся из file content и bridge config, а
-  не из filename.
-- Writers должны создавать final filenames с no-overwrite semantics.
-- File content это UTF-8 JSON. BOM не должен быть обязательным.
-- Multiline JSON допустим для file messages, но compact JSON проще читать в
-  небольших MQL clients.
-- `context.idempotency_key` всё равно обязателен для trade-affecting commands.
-- `context.valid_until_ms` strongly recommended, потому что file polling может
-  добавлять задержку.
-- Claimed request files старше `processing_lease_ms` надо восстанавливать,
-  перенося назад в `requests\ready\`, или обрабатывать повторно. Повторная
-  обработка безопасна только если соблюдаются idempotency records: bridge
-  должен вернуть исходный или текущий operation result, а не создать ещё одну
-  сделку.
-- Consumers responses и events должны claim files в `responses\processing\` или
-  `events\processing\`, сохранять локальный checkpoint, затем удалять или
-  архивировать claimed files. Stale client-owned processing files можно
-  восстанавливать после lease timeout.
-- Bridge должен хранить processed files настраиваемое время перед удалением или
-  archive.
-- Bridge не должен сразу удалять чужие или unknown files. Unknown files лучше
-  игнорировать или переносить в `errors\` только если watched directory
-  выделена под OptionX.
-- Duplicate files обрабатываются через idempotency и domain deduplication.
-- Cleanup worker может удалять старые `responses\`, `events\`, `archive\` и
-  `errors\` files после окончания retention.
+- MQL side may clear `commands.ndjson`, because it is the only writer.
+- Bridge may clear `events.ndjson`, because it is the only writer.
+- Reader must never remove or rewrite the other side append-log.
+- Writer should clear a log only after reader checkpoint confirms all records up
+  to the intended `file_seq` were processed.
 
-Event delivery files требуют отдельный transport-level порядок, потому что
-порядок enumeration в filesystem не portable. Файлы, которые bridge пишет в
-`events\ready\`, должны использовать:
+Writers must keep `file_seq` monotonic across cleanup cycles. After
+`commands.ndjson` is cleared, the next command must use a greater `file_seq`
+than any command before cleanup. This lets reader scan from the beginning and
+skip old records by `last_file_seq`. Byte offsets are only an optimization.
 
-```text
-<delivery_queue_id>_<delivery_seq:020>_<file_uuid>.json
-```
-
-`delivery_queue_id` это path-safe transport identifier для одной client event
-delivery queue. `delivery_seq` монотонно растёт внутри этой queue. Он охватывает
-replayed domain events, `replay.completed` control notification и live domain
-events. Он не заменяет domain event position `stream_id + seq`, а только
-говорит file consumer, какой ready file надо claim следующим. Consumers должны
-claim минимальный доступный `delivery_seq` для активного `delivery_queue_id`.
-
-`delivery_queue_id` и `file_uuid` должны быть ASCII и не должны содержать `_`,
-path separators, whitespace или shell metacharacters. Консервативный allowed
-character set:
-
-```text
-[A-Za-z0-9.-]+
-```
-
-Это сохраняет однозначный parsing filename с underscore separators. Segment
-`delivery_seq` содержит ровно 20 decimal digits.
-
-Активная queue задаётся out-of-band файлом `events\queue-state.json`. Этот файл
-надо обновлять атомарно: записать temporary file в той же directory и rename
-поверх предыдущего state:
+Recommended checkpoint shape:
 
 ```json
 {
-  "delivery_queue_id": "dq-019c",
-  "first_delivery_seq": 1,
-  "previous_delivery_queue_id": "dq-old",
-  "transition": "abandon_previous",
-  "activated_at_ms": 1783920000000
+  "offset": 18273,
+  "last_file_seq": 102
 }
 ```
 
-Consumers должны читать `queue-state.json` перед polling `events\ready\`.
-Consumer checkpoints keyed by `(delivery_queue_id, delivery_seq)`, а не только
-по `delivery_seq`. Files, чей `delivery_queue_id` не совпадает с active queue,
-нельзя обрабатывать как live deliveries для active queue.
+If checkpoint offset is beyond current file size, reader treats the log as
+cleaned/truncated and restarts from byte offset `0`. Reader still uses
+`last_file_seq` and idempotency records to avoid duplicate trade execution.
 
-Текущий draft поддерживает только такую transition semantics:
+Trade-affecting commands still require `context.idempotency_key`.
+`context.valid_until_ms` is strongly recommended because file polling can add
+latency. Repeated command with the same JSON-RPC `id` or idempotency key must
+return or re-emit the original/current operation result, not create a second
+trade.
 
-- `initial`: создаёт первую active queue.
-- `abandon_previous`: закрывает `previous_delivery_queue_id` как больше не
-  active и запускает `delivery_queue_id` с `first_delivery_seq`.
-
-При `transition = "abandon_previous"` unclaimed ready files из
-`previous_delivery_queue_id` надо игнорировать для live processing и можно
-архивировать или переносить в quarantine, когда это позволяют retention rules.
-Bridge не должен публиковать новые files в abandoned queue. Future
-`drain_previous` transition reserved, но не является частью этого file transport
-draft.
-
-Atomic claim из `events\ready\` в `events\processing\` является delivery
-acceptance boundary. File, который был успешно claimed до того, как consumer
-увидел `abandon_previous`, является in-flight delivery и может быть processed до
-completion под своим исходным checkpoint `(delivery_queue_id, delivery_seq)`.
-`abandon_previous` не отзывает уже claimed files; он только запрещает новые
-claims из abandoned queue после того, как новый `queue-state.json` стал видимым.
-Consumers должны читать `queue-state.json` перед выбором ready file. Если позже
-они видят, что claimed file относится к abandoned queue, они могут завершить его
-как уже accepted in-flight delivery или перенести в archive/quarantine согласно
-local retention policy, но не должны записывать его как часть новой active queue.
-
-Rules для `delivery_seq`:
-
-- `delivery_seq` нельзя переиспользовать внутри одного `delivery_queue_id`.
-- Для одного `delivery_queue_id` каждый `delivery_seq` имеет ровно один
-  terminal record.
-- Bridge должен сохранять следующий `delivery_seq` или последний выданный
-  `delivery_seq` как durable queue state до того, как соответствующий file
-  станет видимым.
-- При старте следующее значение должно восстанавливаться из durable queue state
-  и сверяться как значение больше любого видимого номера в `events\ready\`,
-  `events\processing\` и retained archives, которые относятся к той же queue.
-- Если durable queue state потерян и следующее значение нельзя восстановить,
-  bridge не должен продолжать старую queue, переиспользуя меньшие номера. Он
-  должен fail closed до тех пор, пока operator атомарно не reset
-  `queue-state.json` на новый `delivery_queue_id` с
-  `transition = "abandon_previous"`.
-- Ready files должны публиковаться по возрастанию `delivery_seq`. Bridge не
-  должен делать `N + 1` видимым раньше `N`.
-- Consumers должны сохранять последний completed `delivery_seq` и не должны
-  перескакивать через unexplained gap. Gap закрывается только missing delivery
-  file с ровно ожидаемым `delivery_seq`, например восстановленным processing
-  file или `delivery.gap` control notification. Более поздний file с большим
-  `delivery_seq` не должен использоваться для объяснения более раннего gap.
-
-Когда missing delivery нельзя восстановить, bridge должен опубликовать
-`delivery.gap` control notification с номером missing sequence:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "delivery.gap",
-  "params": {
-    "delivery_queue_id": "dq-019c...",
-    "delivery_seq": 41,
-    "reason": "expired_by_retention",
-    "recoverable": false
-  }
-}
-```
-
-Сам файл `delivery.gap` должен называться с тем же `delivery_queue_id` и
-`delivery_seq`, например `dq-019c_00000000000000000041_<file_uuid>.json`.
-
-`delivery.gap` это terminal replacement для этого delivery slot, а не вторая
-delivery с тем же номером. Перед публикацией `delivery.gap(N)` bridge должен
-атомарно пометить slot `N` как tombstoned или replaced в durable queue state.
-Если original delivery file для `N` позже восстановлен из `processing\`, его
-надо перенести в quarantine или archive и нельзя возвращать в `ready\`. Если
-consumer видит два ready files с одним `delivery_queue_id` и `delivery_seq`, он
-должен считать это protocol violation и не должен продвигать checkpoint для
-этого slot.
+This draft intentionally does not define log rotation. Baseline profile is
+append, checkpoint and clear.
 
 ### Authentication И Client Identity
 
-File transport обычно полагается на local OS permissions и per-client
-directories. Он не должен требовать API keys внутри JSON-RPC `params`.
+File transport normally relies on local OS permissions and per-client
+directories. It should not require API keys inside JSON-RPC `params`.
 
 Recommended model:
 
-- Directory identity аутентифицирует клиента только если OS permissions
-  изолируют writer. Иначе file transport это trusted-local-client profile в
-  границах одного OS user.
-- Bridge config сопоставляет watched directory с configured client id и
-  permission scopes.
-- Если нужен shared API key, он задаётся как transport metadata для этой
-  директории, а не как business field.
-- На Windows по возможности надо использовать directory ACLs для ограничения
-  writers.
-- Каждый client должен получать отдельную directory, если на одной машине
-  работают несколько advisors, terminals или tools.
-- Для недоверенных same-user processes лучше использовать named pipes с ACLs
-  или другой transport с credential authentication.
+- Directory identity is authenticated only when OS permissions isolate writer.
+  Otherwise file transport is trusted-local-client profile inside one OS user.
+- Bridge config maps a watched directory to configured client id and permission
+  scopes.
+- If a shared API key is needed, it is transport metadata for the directory, not
+  a business field.
+- On Windows, directory ACLs should restrict writers where possible.
+- Each client should get a separate directory when several advisors, terminals
+  or tools run on the same machine.
+- For untrusted same-user processes, prefer named pipes with ACLs or another
+  transport with credential authentication.
 
 ### Polling И Replay
 
-File transport не имеет live socket. Clients опрашивают `responses\ready\`,
-`events\queue-state.json` и `events\ready\` с заданным interval.
+File transport has no live socket. Bridge polls `commands.ndjson`; MQL side
+polls `events.ndjson` and `state.json`.
 
 Recommendations:
 
-- `events.subscribe`, `events.unsubscribe` и `events.subscriptions.list`
-  являются валидными file-transport requests. File subscriptions durable и
-  client-scoped, потому что живой socket session отсутствует.
-- File subscription idempotency scoped так:
-
-  ```text
-  configured client + method + effective_subscription_key
-  ```
-
-- `effective_subscription_key` это `client_subscription_key`, если он задан,
-  иначе `context.idempotency_key`. Запрос, который передаёт только
-  `context.idempotency_key`, всё равно является валидным durable subscription
-  request. Если заданы оба ключа, они должны разрешаться в одну durable
-  subscription: тот же normalized request возвращает существующую подписку, а
-  другой normalized request для того же effective key является conflict.
-  Bridge должен сохранять оба переданных ключа как aliases, чтобы последующий
-  retry только с `context.idempotency_key` нашёл подписку, которая изначально
-  была создана с обоими fields.
-- `events.subscribe` задаёт topics, filters и `replay.mode` так же, как в общем
-  event contract. Bridge пишет в `events\ready\` клиента только subscribed
-  topics.
-- MQL clients должны читать `events\queue-state.json`, затем claim минимальный
-  доступный `delivery_seq` для active `delivery_queue_id` из `events\ready\`.
-  Успешный claim является acceptance boundary для этой delivery. Более позднее
-  изменение `queue-state.json` не переносит claimed file в новую active queue и
-  не требует rollback со стороны consumer.
-- MQL clients должны хранить event checkpoint как
-  `(delivery_queue_id, delivery_seq)`. Domain `stream_id + seq` остаётся
-  полезным для deduplication и event-log replay, но это не file delivery
-  checkpoint.
-- Bridges должны писать event delivery files по возрастанию `delivery_seq`
-  внутри active `delivery_queue_id`; clients также должны дедуплицировать по
-  `event_id`.
-- Durable replay представляется записью retained event notifications в
-  `events\ready\`, затем `replay.completed` JSON-RPC control notification, затем
-  новых live event notifications. Все они используют один порядок delivery
-  queue.
-
+- For the first MetaTrader bridge implementation, prefer a small always-on event
+  stream over explicit `events.subscribe` management. MQL can ignore event types
+  it does not need.
+- Later implementation may accept `events.subscribe` commands in
+  `commands.ndjson`, but results still go through `events.ndjson` and
+  `state.json`, not through per-subscription delivery directories.
+- `state.json` is authoritative for current connection/account/open-trade state.
+  `events.ndjson` is a change log and may be cleaned by the bridge after MQL
+  checkpoint confirms it was read.
+- Replay after reconnect: reader loads last checkpoint and processes complete
+  records with greater `file_seq`. If append-log was cleared, reader scans from
+  the beginning of current file and still filters by `last_file_seq`.
+- Domain event deduplication still uses `event_id` and domain `stream_id + seq`
+  when those fields are present.
 ## Legacy Adapter Profiles
 
 Legacy adapter profiles не являются новой surface OptionX protocol. Это
@@ -665,12 +483,11 @@ Implementation notes:
 
 ## Open Questions
 
-- Точные retention defaults для request, response, event, archive и error
-  files.
-- Должен ли первый production file transport быть только JSON или ещё
-  поддерживать compact line-oriented format для очень маленьких MQL scripts.
-- Точный MQL4/MQL5 sample code для atomic write, polling и event dedupe.
+- Точная cleanup policy для `commands.ndjson` и `events.ndjson`, когда peer
+  checkpoint подтверждает обработку записей.
+- Точный MQL4/MQL5 sample code для append NDJSON, polling complete lines,
+  atomic replace `state.json` и event dedupe.
 - Можно ли получить BotBinary balance/result из machine-readable source или
   только из UI/report screen.
 - Можно ли безопасно декодировать MT2Trading `mt2trade_*` payloads настолько,
-  чтобы поддерживать generation, а не только observation.
+  чтобы поддержать generation, а не только observation.

@@ -36,21 +36,27 @@ Recommended OptionX subdirectory:
 Recommended layout:
 
 ```text
-requests\ready\          client -> bridge JSON-RPC commands ready to claim
-requests\processing\     bridge-owned claimed request files
-requests\archive\        optional processed request retention
-requests\errors\         malformed/unprocessable request retention
-responses\ready\         bridge -> client JSON-RPC responses ready to claim
-responses\processing\    client-owned claimed response files
-events\ready\            bridge -> client JSON-RPC notifications ready to claim
-events\processing\       client-owned claimed event files
-archive\                 optional shared retention area
-errors\                  optional shared malformed/unprocessable-file retention
+commands.ndjson          MT4/MT5 -> bridge append-only command log
+events.ndjson            bridge -> MT4/MT5 append-only event/result log
+state.json               bridge -> MT4/MT5 latest state snapshot
+commands.checkpoint.json bridge-owned reader checkpoint, optional
+events.checkpoint.json   MT-owned reader checkpoint, optional
 ```
 
 The exact root may be configured because terminals, portable installations and
 VPS images can place the common files directory differently. The protocol uses
 relative subdirectories once a root is configured.
+
+The canonical MetaTrader file transport is intentionally line-oriented rather
+than one-file-per-message. Each append log has one writer:
+
+- the MQL side is the only writer of `commands.ndjson`;
+- the bridge is the only writer of `events.ndjson`;
+- the bridge is the only writer of `state.json`.
+
+This avoids writer/writer locking while keeping the format easy to implement in
+MQL4/MQL5. Readers keep their own checkpoint and never rewrite another side's
+append log.
 
 ### C++ MVP Surface
 
@@ -59,11 +65,10 @@ file-transport building blocks:
 
 - `bridges/metatrader_file.hpp` as the umbrella include;
 - `MetaTraderFileBridgeConfig` for the MetaQuotes Common Files root, client
-  directory identity, polling/lease/retention settings and file limits;
-- `metatrader_file::detail` helpers for path-safe IDs, filenames, queue-state
-  compatible event filenames, JSON-RPC request/response/notification documents,
-  atomic temp-to-ready publishing, ready-to-processing claim and bounded JSON
-  reads;
+  directory identity, polling interval and NDJSON line limits;
+- `metatrader_file::detail` helpers for path-safe IDs, NDJSON append/read,
+  owner-side log cleanup, JSON-RPC request/response/notification documents,
+  atomic state snapshots and bounded JSON reads;
 - small helpers for `balance.updated` and `trade.updated` notification payloads.
 
 This slice does not yet define a long-running `BaseBridge` polling loop, MQL
@@ -99,79 +104,63 @@ small testable helpers instead of copying the old application-specific API.
 
 ### File Message Shape
 
-Each request file contains exactly one UTF-8 JSON-RPC request document:
+`commands.ndjson` and `events.ndjson` are UTF-8 NDJSON files. One complete
+line is one compact JSON document. A line without a trailing `\n` is
+incomplete and must not be processed yet.
+
+Each log record has a monotonic `file_seq` assigned by that log's writer. The
+sequence is transport-local and exists to let the reader skip records already
+processed before cleanup. It does not replace JSON-RPC `id`,
+`context.idempotency_key`, domain trade IDs or event `stream_id + seq`.
+
+Example command line in `commands.ndjson`:
 
 ```json
-{
-  "jsonrpc": "2.0",
-  "id": "mql5-ea-0001",
-  "method": "trade.open",
-  "params": {
-    "context": {
-      "idempotency_key": "mql5:terminal-01:bar-1783476720:buy",
-      "client_created_at_ms": 1783476720120,
-      "valid_until_ms": 1783476729000
-    },
-    "routing": {
-      "selector": {
-        "kind": "default"
-      }
-    },
-    "trade": {
-      "symbol": "EURUSD",
-      "order_type": "BUY",
-      "option_type": "SPRINT",
-      "amount": "1.00",
-      "expiry": {
-        "kind": "duration",
-        "duration_ms": 60000
-      }
-    }
-  }
-}
+{"file_seq":1,"jsonrpc":"2.0","id":"mql5-ea-0001","method":"trade.open","params":{"context":{"idempotency_key":"mql5:terminal-01:bar-1783476720:buy","client_created_at_ms":1783476720120,"valid_until_ms":1783476729000},"routing":{"selector":{"kind":"default"}},"trade":{"symbol":"EURUSD","order_type":"BUY","option_type":"SPRINT","amount":{"value":"1.00","currency":"USD"},"expiry":{"kind":"duration","duration_ms":60000}}}}
 ```
 
-Responses are normal JSON-RPC responses written to `responses\` and correlated
-by the original request `id`:
+The bridge may answer through events instead of a separate response log. For a
+trade request, `trade.accepted`, `trade.rejected` and later `trade.updated` /
+`trade.closed` events can all reference the original JSON-RPC `id`.
+Implementations that want a strict JSON-RPC response may append a response-like
+event to `events.ndjson`, but there is no separate `responses` directory in the
+canonical MetaTrader file binding.
+
+Example bridge event line in `events.ndjson`:
 
 ```json
-{
-  "jsonrpc": "2.0",
-  "id": "mql5-ea-0001",
-  "result": {
-    "status": "accepted",
-    "final": false,
-    "operation_id": "op-019c..."
-  }
-}
+{"file_seq":101,"jsonrpc":"2.0","method":"trade.accepted","params":{"request_id":"mql5-ea-0001","operation_id":"op-019c...","trade_id":"784512"}}
 ```
 
-Events are normal JSON-RPC notifications written to `events\`. This includes
-trade updates, balance updates and reports:
+Domain event notifications can still use the normal bridge event envelope:
+
+```json
+{"file_seq":102,"jsonrpc":"2.0","method":"balance.updated","params":{"event_id":"evt-019c...","source":"optionx://installation-019c/bridge/file","stream_id":"file-bridge-instance-019c...","seq":42,"occurred_at_ms":1783476725000,"emitted_at_ms":1783476725010,"subject":{"account_id":"1"},"revision":3,"payload":{"account_id":"1","balance":{"value":"1024.50","currency":"USD"}}}}
+```
+
+`state.json` is an atomically replaced snapshot, not an append log:
 
 ```json
 {
-  "jsonrpc": "2.0",
-  "method": "balance.updated",
-  "params": {
-    "event_id": "evt-019c...",
-    "source": "optionx://installation-019c/bridge/file",
-    "stream_id": "file-bridge-instance-019c...",
-    "seq": 42,
-    "occurred_at_ms": 1783476725000,
-    "emitted_at_ms": 1783476725010,
-    "subject": {
-      "account_id": "1"
-    },
-    "revision": 3,
-    "payload": {
+  "version": 56,
+  "updated_at_ms": 1784030400000,
+  "connection": "connected",
+  "accounts": [
+    {
       "account_id": "1",
       "balance": {
-        "value": "1024.50",
+        "value": "1018.50",
         "currency": "USD"
       }
     }
-  }
+  ],
+  "open_trades": [
+    {
+      "trade_id": "784513",
+      "symbol": "EURUSD",
+      "order_type": "BUY"
+    }
+  ]
 }
 ```
 
@@ -195,187 +184,70 @@ useful without HTTP:
 - `trading.pause`
 - `trading.resume`
 - `reports.query`
-- `events.subscribe`
-- `events.unsubscribe`
-- `events.subscriptions.list`
 
 This keeps the file API useful enough for real integrations: it can submit
 signals, open trades, ask whether an operation or trade is complete, read the
 current balance, inspect active/history snapshots and discover the exact
-methods, limits and event topics supported by a reduced file-based bridge.
+methods and limits supported by a reduced file-based bridge. Explicit event
+subscription commands can be added later if a file client needs something more
+selective than the default `events.ndjson` stream.
 
 ### Atomicity And Cleanup
 
-Writers must avoid exposing half-written files:
+Append-log writers must avoid exposing half-written records:
 
-1. Write to a temporary name in the same directory, for example
-   `<unix_ms>_<file_uuid>.json.tmp`.
-2. Flush and close the file.
-3. Atomically rename it into the `ready\` directory with its final name, for
-   example `<unix_ms>_<file_uuid>.json`.
+1. Serialize the whole JSON document in memory.
+2. Write compact JSON plus one trailing `\n`.
+3. Flush the file.
 
-Consumers should claim a ready file by atomic rename into a processing name or
-processing directory. If a file is locked, the consumer should retry later
-instead of treating it as malformed.
+A reader processes only complete lines. A final line without `\n` is considered
+incomplete and must be retried on the next poll.
 
-Recommended filename pattern:
+`state.json` and checkpoint files are not append logs. They must be written via
+same-directory temporary file and atomic replacement:
 
 ```text
-<unix_ms>_<file_uuid>.json
+state.json.tmp.<id> -> state.json
+commands.checkpoint.json.tmp.<id> -> commands.checkpoint.json
 ```
 
-Rules:
+Cleanup is owner-driven:
 
-- File names should be ASCII and path-safe.
-- `file_uuid` is a transport-level identifier only. JSON-RPC correlation still
-  uses the `id` field inside the file content.
-- `id`, `method` and client identity are read from file content and bridge
-  configuration, not from the filename.
-- Writers should create final filenames with no-overwrite semantics.
-- File content is UTF-8 JSON. A BOM should not be required.
-- Multiline JSON is allowed for file messages, but compact JSON is easier for
-  simple MQL readers.
-- `context.idempotency_key` is still required for trade-affecting commands.
-- `context.valid_until_ms` is strongly recommended because file polling can
-  introduce delay.
-- Claimed request files older than `processing_lease_ms` should be recovered by
-  moving them back to `requests\ready\` or by processing them again. Reprocessing
-  is safe only when idempotency records are honored: the bridge must return the
-  original or current operation result instead of creating another trade.
-- Response and event consumers should claim files into `responses\processing\`
-  or `events\processing\`, store their local checkpoint, then delete or archive
-  the claimed files. Stale client-owned processing files may be restored after a
-  lease timeout.
-- The bridge should retain processed files for a configurable window before
-  deleting or archiving them.
-- The bridge must not delete foreign or unknown files immediately. Unknown
-  files should be ignored or moved to `errors\` only when the watched
-  directory is dedicated to OptionX.
-- Duplicate files are handled through idempotency and domain deduplication.
-- A cleanup worker may remove old `responses\`, `events\`, `archive\` and
-  `errors\` files after retention expires.
+- The MQL side may clear `commands.ndjson` because it is the only writer.
+- The bridge may clear `events.ndjson` because it is the only writer.
+- A reader must never remove or rewrite the other side's append log.
+- A writer should clear a log only after the reader checkpoint confirms that
+  all records up to the intended `file_seq` have been processed.
 
-Event delivery files need an additional transport-level order because file
-system enumeration order is not portable. Files written to `events\ready\`
-should use:
+Writers must keep `file_seq` monotonic across cleanup cycles. After
+`commands.ndjson` is cleared, the next command must use a greater `file_seq`
+than any command written before cleanup. This lets the bridge safely read the
+file from the beginning and skip already processed records by `last_file_seq`.
+Byte offsets are allowed only as an optimization.
 
-```text
-<delivery_queue_id>_<delivery_seq:020>_<file_uuid>.json
-```
-
-`delivery_queue_id` is a path-safe transport identifier for one client event
-delivery queue. `delivery_seq` is monotonically increasing inside that queue. It
-covers replayed domain events, the `replay.completed` control notification and
-live domain events. It does not replace the domain event position
-`stream_id + seq`; it only tells the file consumer which ready file to claim
-next. Consumers should claim the lowest available `delivery_seq` for the active
-`delivery_queue_id`.
-
-`delivery_queue_id` and `file_uuid` must be ASCII and must not contain `_`,
-path separators, whitespace or shell metacharacters. A conservative allowed
-character set is:
-
-```text
-[A-Za-z0-9.-]+
-```
-
-This keeps underscore-separated filename parsing unambiguous. The
-`delivery_seq` segment is exactly 20 decimal digits.
-
-The active queue is defined out-of-band by `events\queue-state.json`. This file
-must be updated atomically by writing a temporary file in the same directory and
-renaming it over the previous state:
+Recommended checkpoint shape:
 
 ```json
 {
-  "delivery_queue_id": "dq-019c",
-  "first_delivery_seq": 1,
-  "previous_delivery_queue_id": "dq-old",
-  "transition": "abandon_previous",
-  "activated_at_ms": 1783920000000
+  "offset": 18273,
+  "last_file_seq": 102
 }
 ```
 
-Consumers must read `queue-state.json` before polling `events\ready\`.
-Consumer checkpoints are keyed by `(delivery_queue_id, delivery_seq)`, not by
-`delivery_seq` alone. Files whose `delivery_queue_id` does not match the active
-queue must not be processed as live deliveries for the active queue.
+If a checkpoint offset is beyond the current file size, the reader should treat
+the log as cleaned/truncated and restart from byte offset `0`. The reader must
+still use `last_file_seq` and idempotency records to avoid duplicate trade
+execution.
 
-The current draft supports only these transition semantics:
+Trade-affecting commands still require `context.idempotency_key`.
+`context.valid_until_ms` is strongly recommended because file polling can
+introduce delay. If a command with the same JSON-RPC `id` or idempotency key is
+seen again, the bridge must return or re-emit the original/current operation
+result instead of creating a second trade.
 
-- `initial`: creates the first active queue.
-- `abandon_previous`: closes `previous_delivery_queue_id` as no longer active
-  and starts `delivery_queue_id` at `first_delivery_seq`.
-
-When `transition = "abandon_previous"`, unclaimed ready files from
-`previous_delivery_queue_id` must be ignored for live processing and may be
-archived or quarantined after retention rules allow it. The bridge must not
-publish more files into the abandoned queue. A future `drain_previous`
-transition is reserved, but it is not part of this file transport draft.
-
-The atomic claim from `events\ready\` to `events\processing\` is the delivery
-acceptance boundary. A file that was successfully claimed before the consumer
-observed `abandon_previous` is an in-flight delivery and may be processed to
-completion under its original `(delivery_queue_id, delivery_seq)` checkpoint.
-`abandon_previous` does not revoke already claimed files; it only prevents new
-claims from the abandoned queue after the new `queue-state.json` is observed.
-Consumers should read `queue-state.json` before selecting a ready file. If they
-later observe that their claimed file belongs to an abandoned queue, they may
-finish it as an already accepted in-flight delivery or move it to archive or
-quarantine according to local retention policy, but they must not record it as
-part of the new active queue.
-
-`delivery_seq` rules:
-
-- `delivery_seq` must not be reused within one `delivery_queue_id`.
-- For one `delivery_queue_id`, each `delivery_seq` has exactly one terminal
-  record.
-- The bridge must persist the next `delivery_seq` or the last issued
-  `delivery_seq` as durable queue state before making the corresponding file
-  visible.
-- On startup, the next value must be restored from durable queue state and
-  reconciled as greater than every visible value in `events\ready\`,
-  `events\processing\` and retained archives that belong to the same queue.
-- If the durable queue state is lost and the next value cannot be reconstructed,
-  the bridge must not continue the old queue by reusing lower numbers. It must
-  fail closed until the operator atomically resets `queue-state.json` to a new
-  `delivery_queue_id` with `transition = "abandon_previous"`.
-- Ready files must be published in increasing `delivery_seq` order. A bridge
-  must not make `N + 1` visible before `N`.
-- Consumers must persist the last completed `delivery_seq` and must not advance
-  past an unexplained gap. A gap is resolved only by the missing delivery file
-  with exactly the expected `delivery_seq`, for example a recovered processing
-  file or a `delivery.gap` control notification. A later file with a higher
-  `delivery_seq` must not be used to explain an earlier gap.
-
-When a missing delivery cannot be recovered, the bridge must publish a
-`delivery.gap` control notification using the missing sequence number:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "delivery.gap",
-  "params": {
-    "delivery_queue_id": "dq-019c...",
-    "delivery_seq": 41,
-    "reason": "expired_by_retention",
-    "recoverable": false
-  }
-}
-```
-
-The `delivery.gap` file itself must be named with the same `delivery_queue_id`
-and `delivery_seq`, for example
-`dq-019c_00000000000000000041_<file_uuid>.json`.
-
-`delivery.gap` is the terminal replacement for that delivery slot, not a second
-delivery with the same number. Before publishing `delivery.gap(N)`, the bridge
-must atomically mark slot `N` as tombstoned or replaced in durable queue state.
-If the original delivery file for `N` is later recovered from `processing\`, it
-must be moved to quarantine or archive and must not be returned to `ready\`.
-If a consumer observes two ready files with the same `delivery_queue_id` and
-`delivery_seq`, it must treat this as a protocol violation and must not advance
-its checkpoint for that slot.
+This draft intentionally does not define log rotation. Production
+implementations may add owner-side compaction later, but the baseline profile is
+append, checkpoint and clear.
 
 ### Authentication And Client Identity
 
@@ -399,48 +271,27 @@ Recommended model:
 
 ### Polling And Replay
 
-File transport has no live socket. Clients poll `responses\ready\`,
-`events\queue-state.json` and `events\ready\` at a configured interval.
+File transport has no live socket. The bridge polls `commands.ndjson` and the
+MQL side polls `events.ndjson` and `state.json` at configured intervals.
 
 Recommendations:
 
-- `events.subscribe`, `events.unsubscribe` and `events.subscriptions.list` are
-  valid file-transport requests. File subscriptions are durable and
-  client-scoped because there is no live socket session.
-- File subscription idempotency is scoped as:
-
-  ```text
-  configured client + method + effective_subscription_key
-  ```
-
-- `effective_subscription_key` is `client_subscription_key` when present,
-  otherwise `context.idempotency_key`. A request that provides only
-  `context.idempotency_key` is still a valid durable subscription request. If
-  both keys are present, they must resolve to the same durable subscription:
-  the same normalized request returns the existing subscription, while a
-  different normalized request for the same effective key is a conflict.
-  Bridges should store both provided keys as aliases so a later retry with only
-  `context.idempotency_key` can find a subscription first created with both
-  fields.
-- `events.subscribe` defines topics, filters and `replay.mode`, exactly as in
-  the general event contract. The bridge writes only the subscribed topics into
-  the client's `events\ready\` directory.
-- MQL clients must read `events\queue-state.json`, then claim the lowest
-  available `delivery_seq` for the active `delivery_queue_id` from
-  `events\ready\`. The successful claim is the acceptance boundary for that
-  delivery. A later `queue-state.json` change does not move the claimed file
-  into the new active queue and does not require the consumer to roll it back.
-- MQL clients should keep their event checkpoint as
-  `(delivery_queue_id, delivery_seq)`. Domain `stream_id + seq` remains useful
-  for deduplication and event-log replay, but it is not the file delivery
-  checkpoint.
-- Bridges must emit event delivery files in increasing `delivery_seq` order
-  within the active `delivery_queue_id`; clients must also deduplicate by
-  `event_id`.
-- Durable replay is represented by writing retained event notifications into
-  `events\ready\`, followed by a `replay.completed` JSON-RPC control
-  notification, followed by new live event notifications. All of them use the
-  same delivery queue ordering.
+- For the first MetaTrader bridge implementation, prefer a small always-on
+  event stream over explicit `events.subscribe` management. The MQL side can
+  ignore event types it does not need.
+- A later implementation may accept `events.subscribe` commands in
+  `commands.ndjson`, but the result should still be reflected through
+  `events.ndjson` and `state.json`, not through per-subscription delivery
+  directories.
+- `state.json` is authoritative for current connection/account/open-trade
+  state. `events.ndjson` is a change log and may be cleaned by the bridge after
+  the MQL checkpoint confirms it was read.
+- Replay after reconnect is simple: a reader loads its last checkpoint and
+  processes complete records with a greater `file_seq`. If the append log was
+  cleared, the reader scans from the beginning of the current file and still
+  filters by `last_file_seq`.
+- Domain event deduplication still uses `event_id` and domain `stream_id + seq`
+  when those fields are present.
 
 ## Legacy Adapter Profiles
 
@@ -663,11 +514,10 @@ Implementation notes:
 
 ## Open Questions
 
-- Exact retention defaults for request, response, event, archive and error
-  files.
-- Whether the first production file transport should use JSON only or also
-  support a compact line-oriented format for very small MQL scripts.
-- Exact MQL4/MQL5 sample code for atomic write, polling and event dedupe.
+- Exact cleanup policy for `commands.ndjson` and `events.ndjson` once the peer
+  checkpoint confirms records were processed.
+- Exact MQL4/MQL5 sample code for appending NDJSON, polling complete lines,
+  atomically replacing `state.json` and deduplicating event IDs.
 - Whether BotBinary balance/result can be obtained from a machine-readable
   source or only from the UI/report screen.
 - Whether MT2Trading `mt2trade_*` payloads can be decoded safely enough to

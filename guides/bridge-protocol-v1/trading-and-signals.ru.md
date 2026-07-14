@@ -150,7 +150,10 @@ parameters.
     "symbol": "EURUSD",
     "order_type": "BUY",
     "option_type": "SPRINT",
-    "amount": "10.00",
+    "amount": {
+      "value": "10.00",
+      "currency": "USD"
+    },
     "expiry": {
       "kind": "duration",
       "duration_ms": 60000
@@ -492,7 +495,8 @@ index `1` - previous bar и так далее.
 - `empty_value`: только `empty_value` означает no data.
 - `zero_is_empty`: только zero означает no data.
 - `zero_or_empty_value`: zero и `empty_value` означают no data.
-- `null_is_empty`: JSON null означает no data.
+-
+ull_is_empty`: JSON null означает no data.
 
 Default buffer encoding - JSON arrays, потому что их легко инспектировать и
 легко производить из MQL scripts. Большие payloads могут использовать compact
@@ -582,7 +586,10 @@ Production `binary_base64` должен быть удобен для MT4/MT5 и 
     "symbol": "EURUSD",
     "order_type": "BUY",
     "option_type": "SPRINT",
-    "amount": "10.00",
+    "amount": {
+      "value": "10.00",
+      "currency": "USD"
+    },
     "expiry": {
       "kind": "duration",
       "duration_ms": 60000
@@ -595,7 +602,10 @@ Production `binary_base64` должен быть удобен для MT4/MT5 и 
     "final": true,
     "revision": 1,
     "payout": "0.82",
-    "profit": "8.20",
+    "profit": {
+      "value": "8.20",
+      "currency": "USD"
+    },
     "open_price": "1.14072",
     "close_price": "1.14120",
     "open_time_ms": 1783476720000,
@@ -654,12 +664,24 @@ lifecycle и financial outcome fields:
   "failure": null,
   "broker_option_id": "456",
   "broker_option_hash": "abc",
-  "amount": "10.00",
+  "amount": {
+      "value": "10.00",
+      "currency": "USD"
+    },
   "payout": "0.82",
   "profit": null,
-  "expected_profit": "8.20",
-  "balance": "1000.00",
-  "open_balance": "1000.00",
+  "expected_profit": {
+    "value": "8.20",
+    "currency": "USD"
+  },
+  "balance": {
+    "value": "1000.00",
+    "currency": "USD"
+  },
+  "open_balance": {
+    "value": "1000.00",
+    "currency": "USD"
+  },
   "close_balance": null,
   "open_price": "1.14072",
   "close_price": null,
@@ -677,10 +699,12 @@ lifecycle и financial outcome fields:
 }
 ```
 
-Unknown или unavailable snapshot values должны быть `null`. Fields, которые не
+Unknown или unavailable snapshot values должны быть
+ull`. Fields, которые не
 applicable, должны отсутствовать. Известный numeric zero остается реальным
 decimal value, например `"0.00"`. `profit` означает realized/final profit; для
-открытой binary option он обычно должен быть `null`, а потенциальный payout
+открытой binary option он обычно должен быть
+ull`, а потенциальный payout
 можно передать как `expected_profit`.
 
 Known lifecycle states:
@@ -750,7 +774,8 @@ list queries. Если присутствуют оба, `selector` должен 
 
 Time ranges являются half-open: `[start_ms, end_ms)`. Cursor pagination
 предпочтительнее offset pagination, потому что новые records могут появляться,
-пока client листает history. Responses должны включать `next_cursor`,
+пока client листает history. Responses должны включать
+ext_cursor`,
 `has_more` и `snapshot_at_ms`, когда используется pagination.
 
 History response:
@@ -767,8 +792,14 @@ History response:
       "account_id": "1",
       "platform_type": "INTRADE_BAR",
       "symbol": "EURUSD",
-      "amount": "10.00",
-      "profit": "8.20",
+      "amount": {
+      "value": "10.00",
+      "currency": "USD"
+    },
+      "profit": {
+      "value": "8.20",
+      "currency": "USD"
+    },
       "open_time_ms": 1783476720120,
       "close_time_ms": 1783476780000,
       "origin_signal": {}
@@ -822,7 +853,10 @@ Account response item:
   "platform_type": "INTRADE_BAR",
   "account_type": "DEMO",
   "currency": "USD",
-  "balance": "1000.00",
+  "balance": {
+    "value": "1000.00",
+    "currency": "USD"
+  },
   "connected": true,
   "trade_enabled": true,
   "open_trades": 2,
