@@ -411,6 +411,47 @@ TEST(MetaTraderFileProtocol, SequenceWindowBoundsScannedAndReturnedRecords) {
     EXPECT_FALSE(third.has_more);
 }
 
+TEST(MetaTraderFileProtocol, SequenceWindowUsesActualStartOffsetForHasMore) {
+    namespace protocol = optionx::bridges::metatrader_file::detail;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+    const auto log = root / "commands.ndjson";
+    constexpr std::size_t max_line_bytes = 4096;
+
+    protocol::append_json_line(
+        log,
+        protocol::make_file_jsonrpc_request(1, "new-1", "new.command"),
+        max_line_bytes);
+    protocol::append_json_line(
+        log,
+        protocol::make_file_jsonrpc_request(2, "new-2", "new.command"),
+        max_line_bytes);
+
+    const auto truncated = protocol::read_ndjson_sequence_window(
+        log,
+        1000,
+        0,
+        max_line_bytes,
+        1);
+    EXPECT_TRUE(truncated.source_truncated);
+    EXPECT_EQ(truncated.scanned_records, 1u);
+    ASSERT_EQ(truncated.records.size(), 1u);
+    EXPECT_EQ(truncated.records[0].file_seq, 1u);
+    EXPECT_TRUE(truncated.has_more);
+    EXPECT_GT(truncated.next_offset, 0u);
+
+    const auto exact_eof = protocol::read_ndjson_sequence_window(
+        log,
+        0,
+        0,
+        max_line_bytes,
+        2);
+    EXPECT_EQ(exact_eof.scanned_records, 2u);
+    ASSERT_EQ(exact_eof.records.size(), 2u);
+    EXPECT_FALSE(exact_eof.has_more);
+}
+
 TEST(MetaTraderFileProtocol, ComputesNextFileSequenceFromLogAndCheckpoint) {
     namespace protocol = optionx::bridges::metatrader_file::detail;
 

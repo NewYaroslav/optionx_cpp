@@ -73,10 +73,12 @@ namespace optionx::bridges::metatrader_file::detail {
     struct NdjsonReadResult {
         std::vector<NdjsonRecord> records; ///< Complete parsed records.
         std::vector<NdjsonMalformedRecord> malformed_records; ///< Complete records skipped as malformed.
+        std::uint64_t start_offset = 0; ///< Actual byte offset used for this read after truncation handling.
         std::uint64_t next_offset = 0; ///< Offset suitable for the next incremental read.
         std::size_t scanned_records = 0; ///< Complete non-empty lines processed.
         bool source_truncated = false; ///< True when the requested offset was beyond EOF.
         bool incomplete_tail = false; ///< True when the file ended with a partial line.
+        bool stopped_by_record_limit = false; ///< True when unread bytes remain after hitting max_records.
     };
 
     /// \struct NdjsonSequenceReadResult
@@ -540,6 +542,7 @@ namespace optionx::bridges::metatrader_file::detail {
             start_offset = 0;
             result.source_truncated = true;
         }
+        result.start_offset = start_offset;
         result.next_offset = start_offset;
 
         if (file_size == start_offset) {
@@ -595,6 +598,15 @@ namespace optionx::bridges::metatrader_file::detail {
             }
 
             if (max_records != 0 && complete_records >= max_records) {
+                const auto next = in.peek();
+                if (next == std::char_traits<char>::eof()) {
+                    if (in.bad()) {
+                        throw std::runtime_error("Failed to read NDJSON log: " + file.u8string());
+                    }
+                    in.clear();
+                } else {
+                    result.stopped_by_record_limit = true;
+                }
                 return result;
             }
 
@@ -674,10 +686,7 @@ namespace optionx::bridges::metatrader_file::detail {
         result.scanned_records = batch.scanned_records;
         result.source_truncated = batch.source_truncated;
         result.incomplete_tail = batch.incomplete_tail;
-        result.has_more =
-            batch.scanned_records >= max_scanned_records &&
-            !batch.incomplete_tail &&
-            batch.next_offset > start_offset;
+        result.has_more = batch.stopped_by_record_limit;
 
         struct Entry {
             bool malformed = false;
