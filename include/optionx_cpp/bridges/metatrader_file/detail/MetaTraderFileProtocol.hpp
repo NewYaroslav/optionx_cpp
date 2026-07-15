@@ -74,8 +74,21 @@ namespace optionx::bridges::metatrader_file::detail {
         std::vector<NdjsonRecord> records; ///< Complete parsed records.
         std::vector<NdjsonMalformedRecord> malformed_records; ///< Complete records skipped as malformed.
         std::uint64_t next_offset = 0; ///< Offset suitable for the next incremental read.
+        std::size_t scanned_records = 0; ///< Complete non-empty lines processed.
         bool source_truncated = false; ///< True when the requested offset was beyond EOF.
         bool incomplete_tail = false; ///< True when the file ended with a partial line.
+    };
+
+    /// \struct NdjsonSequenceReadResult
+    /// \brief Bounded scan result for polling by `file_seq`.
+    struct NdjsonSequenceReadResult {
+        std::vector<NdjsonRecord> records; ///< Complete records with file_seq greater than the checkpoint.
+        std::vector<NdjsonMalformedRecord> malformed_records; ///< Complete malformed records seen during the scan.
+        std::uint64_t next_offset = 0; ///< Offset suitable for the next bounded scan in the same log identity.
+        std::size_t scanned_records = 0; ///< Complete non-empty lines processed, including malformed and old records.
+        bool source_truncated = false; ///< True when the requested offset was beyond EOF.
+        bool incomplete_tail = false; ///< True when the file ended with a partial line.
+        bool has_more = false; ///< True when the scan stopped at a configured record limit before EOF.
     };
 
     /// \brief Builds resolved files from a bridge config.
@@ -460,7 +473,9 @@ namespace optionx::bridges::metatrader_file::detail {
 
     /// \brief Appends one compact JSON line and a trailing LF.
     /// \details One NDJSON file must have exactly one writer. A record is
-    /// visible to readers only after its trailing `\n`.
+    /// visible to readers only after its trailing `\n`. This helper is not
+    /// internally synchronized; callers must serialize all append/repair/clear
+    /// operations for the same log file, typically through one owner queue.
     inline void append_json_line(
             const std::filesystem::path& file,
             const nlohmann::json& document,
@@ -562,6 +577,7 @@ namespace optionx::bridges::metatrader_file::detail {
 
             if (!line.empty()) {
                 ++complete_records;
+                result.scanned_records = complete_records;
                 try {
                     NdjsonRecord record;
                     record.document = nlohmann::json::parse(line);
@@ -631,6 +647,118 @@ namespace optionx::bridges::metatrader_file::detail {
         return filtered;
     }
 
+    /// \brief Bounded scan by `file_seq` for polling loops.
+    /// \details `max_scanned_records` limits complete non-empty lines processed,
+    /// including malformed and already-seen records. `max_returned_records`
+    /// limits only newly returned valid records. `start_offset` is an optimization
+    /// and is safe only while the caller knows the log identity is unchanged.
+    inline NdjsonSequenceReadResult read_ndjson_sequence_window(
+            const std::filesystem::path& file,
+            const std::uint64_t start_offset,
+            const std::uint64_t last_file_seq,
+            const std::size_t max_line_bytes,
+            const std::size_t max_scanned_records,
+            const std::size_t max_returned_records = 0) {
+        if (max_scanned_records == 0) {
+            throw std::invalid_argument("MetaTrader file transport max_scanned_records must be positive.");
+        }
+
+        auto batch = read_ndjson_from_offset(
+            file,
+            start_offset,
+            max_line_bytes,
+            max_scanned_records);
+
+        NdjsonSequenceReadResult result;
+        result.next_offset = batch.next_offset;
+        result.scanned_records = batch.scanned_records;
+        result.source_truncated = batch.source_truncated;
+        result.incomplete_tail = batch.incomplete_tail;
+        result.has_more =
+            batch.scanned_records >= max_scanned_records &&
+            !batch.incomplete_tail &&
+            batch.next_offset > start_offset;
+
+        struct Entry {
+            bool malformed = false;
+            std::size_t index = 0;
+            std::uint64_t start_offset = 0;
+            std::uint64_t next_offset = 0;
+        };
+
+        std::vector<Entry> entries;
+        entries.reserve(batch.records.size() + batch.malformed_records.size());
+        for (std::size_t i = 0; i < batch.records.size(); ++i) {
+            entries.push_back(Entry{false, i, batch.records[i].start_offset, batch.records[i].next_offset});
+        }
+        for (std::size_t i = 0; i < batch.malformed_records.size(); ++i) {
+            entries.push_back(Entry{
+                true,
+                i,
+                batch.malformed_records[i].start_offset,
+                batch.malformed_records[i].next_offset
+            });
+        }
+        std::sort(
+            entries.begin(),
+            entries.end(),
+            [](const Entry& lhs, const Entry& rhs) {
+                return lhs.start_offset < rhs.start_offset;
+            });
+
+        result.next_offset = start_offset;
+        for (const auto& entry : entries) {
+            if (entry.malformed) {
+                result.malformed_records.push_back(std::move(batch.malformed_records[entry.index]));
+                result.next_offset = entry.next_offset;
+                continue;
+            }
+
+            auto& record = batch.records[entry.index];
+            if (record.file_seq > last_file_seq) {
+                if (max_returned_records != 0 &&
+                    result.records.size() >= max_returned_records) {
+                    result.has_more = true;
+                    break;
+                }
+                result.records.push_back(std::move(record));
+            }
+            result.next_offset = entry.next_offset;
+        }
+
+        if (result.next_offset < batch.next_offset) {
+            result.has_more = true;
+        }
+        if (entries.empty()) {
+            result.next_offset = batch.next_offset;
+        }
+        if (result.next_offset == start_offset && batch.source_truncated) {
+            result.next_offset = batch.next_offset;
+        }
+
+        return result;
+    }
+
+    /// \brief Builds a cleanup-safe checkpoint snapshot for a log reader.
+    inline nlohmann::json make_log_checkpoint(const std::uint64_t last_file_seq) {
+        return nlohmann::json{{"last_file_seq", last_file_seq}};
+    }
+
+    /// \brief Builds an offset checkpoint for a known append-log generation.
+    inline nlohmann::json make_log_checkpoint_with_offset(
+            std::string log_generation,
+            const std::uint64_t offset,
+            const std::uint64_t last_file_seq) {
+        if (log_generation.empty()) {
+            throw std::invalid_argument("MetaTrader file transport log_generation is required for offset checkpoints.");
+        }
+        return nlohmann::json{
+            {"log_generation", std::move(log_generation)},
+            {"offset", offset},
+            {"last_file_seq", last_file_seq}
+        };
+    }
+
     /// \brief Returns the greatest file sequence currently visible in an NDJSON log.
     inline std::uint64_t max_file_seq_in_ndjson(
             const std::filesystem::path& file,
@@ -656,18 +784,6 @@ namespace optionx::bridges::metatrader_file::detail {
             throw std::overflow_error("MetaTrader file transport file_seq overflow.");
         }
         return base + 1;
-    }
-
-    /// \brief Builds a checkpoint snapshot for a log reader.
-    /// \details `last_file_seq` is authoritative across cleanup cycles; `offset`
-    /// is only an optimization while the append log identity is known unchanged.
-    inline nlohmann::json make_log_checkpoint(
-            const std::uint64_t offset,
-            const std::uint64_t last_file_seq) {
-        return nlohmann::json{
-            {"offset", offset},
-            {"last_file_seq", last_file_seq}
-        };
     }
 
     /// \brief Builds a JSON-RPC request document.

@@ -209,6 +209,11 @@ the file to the last complete LF-terminated record, or to an empty file when no
 complete record exists. This prevents a crashed half-record from being glued to
 the next valid record.
 
+The single-writer rule is per log file and includes all threads/tasks inside
+that writer. Repair, append and owner-side clear operations for the same log
+must be serialized by the caller, for example through one owner queue or a
+per-log mutex. The low-level append helper is intentionally unlocked.
+
 Readers must enforce `max_line_bytes` while streaming the file, not after
 loading the full tail into memory. A complete malformed line may be skipped and
 reported as transport diagnostics; the reader checkpoint may advance past that
@@ -265,9 +270,10 @@ that proof, after restart or cleanup the reader must scan the current file from
 the beginning and filter by `last_file_seq`. The reader must still use
 idempotency records to avoid duplicate trade execution.
 
-Polling helpers may limit the number of processed complete non-empty lines per
-poll. The limit should count both accepted records and malformed complete lines
-so malformed input cannot make one poll accumulate unbounded diagnostics.
+Polling helpers may limit both the number of scanned complete non-empty lines
+and the number of returned new records per poll. The scan limit counts accepted,
+already-seen and malformed complete lines so malformed input cannot make one
+poll accumulate unbounded diagnostics.
 
 Trade-affecting commands still require `context.idempotency_key`.
 `context.valid_until_ms` is strongly recommended because file polling can
@@ -283,6 +289,8 @@ Deferred implementation work:
 
 - MetaTrader terminal discovery utilities for locating `Common\Files`.
 - A concrete polling bridge class built on this protocol helper layer.
+- A runtime writer object or owner queue that serializes append, repair and
+  owner-side clear operations per log file.
 - Optional `log_generation`/file identity support if persisted byte-offset
   optimization becomes necessary.
 - A callback/visitor NDJSON reader if future logs need very large scans without

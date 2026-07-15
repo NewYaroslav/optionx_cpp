@@ -198,9 +198,14 @@ TEST(MetaTraderFileProtocol, AppendsReadsAndClearsNdjsonLogs) {
     EXPECT_EQ(after_cleanup[0].file_seq, 3u);
     EXPECT_EQ(after_cleanup[0].document.at("id").get<std::string>(), "req-3");
 
-    const auto checkpoint = protocol::make_log_checkpoint(128, 3);
-    EXPECT_EQ(checkpoint.at("offset").get<std::uint64_t>(), 128u);
+    const auto checkpoint = protocol::make_log_checkpoint(3);
     EXPECT_EQ(checkpoint.at("last_file_seq").get<std::uint64_t>(), 3u);
+    EXPECT_FALSE(checkpoint.contains("offset"));
+
+    const auto offset_checkpoint = protocol::make_log_checkpoint_with_offset("gen-1", 128, 3);
+    EXPECT_EQ(offset_checkpoint.at("log_generation").get<std::string>(), "gen-1");
+    EXPECT_EQ(offset_checkpoint.at("offset").get<std::uint64_t>(), 128u);
+    EXPECT_EQ(offset_checkpoint.at("last_file_seq").get<std::uint64_t>(), 3u);
 }
 
 TEST(MetaTraderFileProtocol, ReadsByFileSequenceAfterClearAndRegrow) {
@@ -218,7 +223,7 @@ TEST(MetaTraderFileProtocol, ReadsByFileSequenceAfterClearAndRegrow) {
             max_line_bytes);
     }
     const auto old_size = std::filesystem::file_size(log);
-    const auto checkpoint = protocol::make_log_checkpoint(old_size, 20);
+    const auto checkpoint = protocol::make_log_checkpoint(20);
 
     protocol::clear_file_atomic(log);
     for (std::uint64_t seq = 21; seq <= 50; ++seq) {
@@ -227,7 +232,7 @@ TEST(MetaTraderFileProtocol, ReadsByFileSequenceAfterClearAndRegrow) {
             protocol::make_file_jsonrpc_request(seq, "new-" + std::to_string(seq), "trade.open"),
             max_line_bytes);
     }
-    ASSERT_GT(std::filesystem::file_size(log), checkpoint.at("offset").get<std::uint64_t>());
+    ASSERT_GT(std::filesystem::file_size(log), old_size);
 
     const auto records = protocol::read_ndjson_since_file_seq(
         log,
@@ -343,6 +348,67 @@ TEST(MetaTraderFileProtocol, InvalidFileSequenceIsMalformedAndDoesNotBlockLaterR
     const auto filtered = protocol::read_ndjson_since_file_seq(log, 0, max_line_bytes);
     ASSERT_EQ(filtered.size(), 1u);
     EXPECT_EQ(filtered[0].file_seq, 42u);
+}
+
+TEST(MetaTraderFileProtocol, SequenceWindowBoundsScannedAndReturnedRecords) {
+    namespace protocol = optionx::bridges::metatrader_file::detail;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+    const auto log = root / "commands.ndjson";
+    constexpr std::size_t max_line_bytes = 4096;
+    std::filesystem::create_directories(root);
+
+    protocol::append_json_line(
+        log,
+        protocol::make_file_jsonrpc_request(1, "old-1", "old.command"),
+        max_line_bytes);
+    {
+        std::ofstream out(log, std::ios::binary | std::ios::app);
+        out << "{\"jsonrpc\":\"2.0\",\"method\":\"bad.command\"}\n";
+    }
+    protocol::append_json_line(
+        log,
+        protocol::make_file_jsonrpc_request(2, "new-2", "new.command"),
+        max_line_bytes);
+    protocol::append_json_line(
+        log,
+        protocol::make_file_jsonrpc_request(3, "new-3", "new.command"),
+        max_line_bytes);
+
+    const auto first = protocol::read_ndjson_sequence_window(
+        log,
+        0,
+        1,
+        max_line_bytes,
+        2);
+    EXPECT_TRUE(first.records.empty());
+    ASSERT_EQ(first.malformed_records.size(), 1u);
+    EXPECT_EQ(first.scanned_records, 2u);
+    EXPECT_TRUE(first.has_more);
+    EXPECT_GT(first.next_offset, 0u);
+
+    const auto second = protocol::read_ndjson_sequence_window(
+        log,
+        first.next_offset,
+        1,
+        max_line_bytes,
+        10,
+        1);
+    ASSERT_EQ(second.records.size(), 1u);
+    EXPECT_EQ(second.records[0].file_seq, 2u);
+    EXPECT_TRUE(second.has_more);
+
+    const auto third = protocol::read_ndjson_sequence_window(
+        log,
+        second.next_offset,
+        1,
+        max_line_bytes,
+        10,
+        1);
+    ASSERT_EQ(third.records.size(), 1u);
+    EXPECT_EQ(third.records[0].file_seq, 3u);
+    EXPECT_FALSE(third.has_more);
 }
 
 TEST(MetaTraderFileProtocol, ComputesNextFileSequenceFromLogAndCheckpoint) {

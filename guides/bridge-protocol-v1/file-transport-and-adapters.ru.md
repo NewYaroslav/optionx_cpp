@@ -186,6 +186,11 @@ file ends with an incomplete line: truncate to the last complete LF-terminated
 record, or to an empty file when no complete record exists. This prevents a
 crashed half-record from being glued to the next valid record.
 
+Single-writer rule is per log file and includes all threads/tasks inside that
+writer. Repair, append and owner-side clear operations for the same log must be
+serialized by caller, for example through one owner queue or a per-log mutex.
+Low-level append helper is intentionally unlocked.
+
 Reader must enforce `max_line_bytes` while streaming the file, not after loading
 the full tail into memory. A complete malformed line may be skipped and reported
 as transport diagnostics; checkpoint may advance past that complete malformed
@@ -241,9 +246,10 @@ or cleanup reader scans current file from beginning and filters by
 `last_file_seq`. Reader still uses idempotency records to avoid duplicate trade
 execution.
 
-Polling helpers may limit processed complete non-empty lines per poll. The limit
-should count both accepted records and malformed complete lines so malformed
-input cannot make one poll accumulate unbounded diagnostics.
+Polling helpers may limit both scanned complete non-empty lines and returned new
+records per poll. Scan limit counts accepted, already-seen and malformed
+complete lines so malformed input cannot make one poll accumulate unbounded
+diagnostics.
 
 Trade-affecting commands still require `context.idempotency_key`.
 `context.valid_until_ms` is strongly recommended because file polling can add
@@ -258,6 +264,8 @@ Deferred implementation work:
 
 - MetaTrader terminal discovery utilities for locating `Common\Files`.
 - Concrete polling bridge class built on this protocol helper layer.
+- Runtime writer object or owner queue that serializes append, repair and
+  owner-side clear operations per log file.
 - Optional `log_generation`/file identity support if persisted byte-offset
   optimization becomes necessary.
 - Callback/visitor NDJSON reader if future logs need very large scans without
