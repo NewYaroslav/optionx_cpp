@@ -138,8 +138,11 @@ $env:OPTIONX_INTRADE_BAR_CONFIG_FILE="tests\intrade_bar_api\intrade_bar_api.loca
 #include <optionx_cpp/platforms/IntradeBarPlatform.hpp>
 ```
 
-Direct leaf includes допустимы для white-box tests, но они не должны заменять
-проверку публичного include contract.
+Direct leaf includes допустимы для white-box tests only when that domain
+explicitly keeps self-contained leaf headers. Bridge family tests must include
+`optionx_cpp/bridges.hpp` or the nearest `optionx_cpp/bridges/<family>.hpp`
+umbrella; bridge leaf/detail headers are not standalone include-contract
+targets.
 
 ## Examples
 

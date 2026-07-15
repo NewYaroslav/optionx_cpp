@@ -5,16 +5,6 @@
 /// \file LegacyTradingProtocol.hpp
 /// \brief Defines helpers for the legacy named-pipe trading JSON protocol.
 
-#include <algorithm>
-#include <cctype>
-#include <cstdint>
-#include <limits>
-#include <memory>
-#include <stdexcept>
-#include <string>
-#include <time_shield.hpp>
-#include <vector>
-
 namespace optionx::bridges::named_pipe::detail {
 
     inline std::string parse_symbol(const std::string& symbol) {

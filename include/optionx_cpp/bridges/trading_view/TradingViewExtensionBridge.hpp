@@ -5,21 +5,6 @@
 /// \file TradingViewExtensionBridge.hpp
 /// \brief Defines the TradingView browser-extension HTTP bridge.
 
-#include "TradingViewExtensionBridgeConfig.hpp"
-
-#include <server_http.hpp>
-
-#include <atomic>
-#include <chrono>
-#include <deque>
-#include <memory>
-#include <mutex>
-#include <nlohmann/json.hpp>
-#include <stdexcept>
-#include <string>
-#include <thread>
-#include <unordered_set>
-
 namespace optionx::bridges::tradingview {
 
     /// \class TradingViewExtensionBridge

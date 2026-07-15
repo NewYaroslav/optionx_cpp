@@ -37,13 +37,19 @@
 - Public aggregate headers (`optionx.hpp`, `data.hpp`, `market_data.hpp`,
   `platforms.hpp`, `storages.hpp`, `components.hpp`, `utils.hpp`,
   `bridges.hpp`) задают публичные точки подключения.
+- Bridge families are public only through `bridges.hpp` or the family umbrella
+  headers: `bridges/metatrader_file.hpp`, `bridges/named_pipe.hpp` and
+  `bridges/trading_view.hpp`. Headers under `bridges/<family>/` and
+  `bridges/<family>/detail/` are not standalone public include entry points.
 - Domain aggregates, например `data/trading.hpp`, задают include context для
   связанных leaf headers.
 - Leaf DTO headers не должны вручную восстанавливать весь порядок зависимостей
   соседнего домена. Если зависимость общая для домена, держи ее в ближайшем
   aggregate.
-- Direct leaf includes допустимы в white-box/internal tests, но они не должны
-  случайно становиться новым пользовательским include contract.
+- Direct leaf includes допустимы в white-box/internal tests for domains that
+  explicitly keep self-contained leaf headers. Bridge family leaf/detail headers
+  are an exception: tests and examples must include the bridge umbrella header
+  first.
 
 Текущая CMake-сборка tests/examples добавляет два include-root:
 `include` и `include/optionx_cpp`. Первый нужен для внешнего стиля

@@ -386,7 +386,10 @@ Example `POST /api/v1/trades/open` body:
     "symbol": "EURUSD",
     "order_type": "BUY",
     "option_type": "SPRINT",
-    "amount": "10.00",
+    "amount": {
+      "value": "10.00",
+      "currency": "USD"
+    },
     "expiry": {
       "kind": "duration",
       "duration_ms": 60000

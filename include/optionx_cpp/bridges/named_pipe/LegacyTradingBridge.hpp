@@ -5,22 +5,6 @@
 /// \file LegacyTradingBridge.hpp
 /// \brief Defines the legacy named-pipe trading bridge.
 
-#include "LegacyTradingBridgeConfig.hpp"
-
-#include <logit_cpp/logit.hpp>
-#include <chrono>
-#include <memory>
-#include <mutex>
-#include <nlohmann/json.hpp>
-#include <set>
-#include <stdexcept>
-#include <string>
-#include <vector>
-
-#if defined(_WIN32)
-#include <SimpleNamedPipe/NamedPipeServer.hpp>
-#endif
-
 namespace optionx::bridges::named_pipe {
 
     /// \class LegacyTradingBridge

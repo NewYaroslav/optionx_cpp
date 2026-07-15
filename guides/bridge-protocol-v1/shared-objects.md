@@ -106,13 +106,26 @@ not be used as an ordering source. Future versions may split this into
 `accept_until_ms` and `execute_before_ms` if the two deadlines need different
 semantics.
 
-### Decimal Values
+### Money And Decimal Values
 
 Money, prices, payouts, refunds, percentages and indicator numeric values need
-decimal precision. Canonical responses and events should emit decimal values as
-base-10 strings. Requests may accept either decimal strings or JSON numbers as a
-developer-friendly input form, but bridge implementations should normalize them
-to a decimal representation before validation and storage.
+decimal precision. Monetary fields in canonical responses and events use a
+`MoneyValue` object:
+
+```json
+{
+  "value": "10.00",
+  "currency": "USD"
+}
+```
+
+`currency` should be present when it is known. Request schemas may also accept a
+plain decimal string or JSON number as a developer-friendly shorthand when the
+currency is implied by the selected account, but bridge implementations should
+normalize all forms to one decimal representation before validation and storage.
+
+Prices, payouts, refunds, percentages and indicator numeric values remain
+base-10 decimal strings unless their schema defines a richer object.
 
 Canonical decimal string rules:
 
@@ -126,9 +139,15 @@ Examples:
 
 ```json
 {
-  "amount": "10.00",
+  "amount": {
+    "value": "10.00",
+    "currency": "USD"
+  },
   "price": "1.14072",
-  "profit": "-10.00",
+  "profit": {
+    "value": "-10.00",
+    "currency": "USD"
+  },
   "balance_percent": "2.5",
   "payout": "0.82"
 }
@@ -139,8 +158,8 @@ Notes:
 - Clients that require exact decimal value and scale must send decimal strings.
   JSON numbers are accepted only as a convenience for simple integrations and
   may already be rounded by the client's JSON stack.
-- `amount`, `balance`, `profit` and similar monetary values should carry a
-  currency in the surrounding object when possible.
+- `amount`, `balance`, `profit`, `expected_profit` and similar monetary values
+  should use `MoneyValue` in canonical responses/events.
 - `payout`, `refund` and `min_payout` are ratios in the `0..1` range unless a
   field explicitly says otherwise.
 - `balance_percent` is a percent value, so `"2.5"` means 2.5%, not 0.025.
@@ -152,7 +171,10 @@ Notes:
 ```json
 {
   "mode": "fixed_amount",
-  "amount": "10.00"
+  "amount": {
+    "value": "10.00",
+    "currency": "USD"
+  }
 }
 ```
 

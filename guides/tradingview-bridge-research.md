@@ -641,10 +641,11 @@ The first native receiver is implemented as a header-only bridge:
 The smoke config is parsed as JSONC by stripping comments first. This keeps the
 committed example runnable while still documenting common rule variants inline.
 
-The full HTTP bridge intentionally is not included by `include/optionx_cpp/bridges.hpp`,
-because it includes `server_http.hpp` from Simple-Web-Server. The aggregate
-header includes only the config. Users that need the server include the bridge
-header explicitly.
+The full HTTP bridge is included through the bridge aggregate surface:
+`include/optionx_cpp/bridges.hpp` includes
+`include/optionx_cpp/bridges/trading_view.hpp`, and the family umbrella includes
+the config, protocol helpers and HTTP bridge. Users should include the aggregate
+or family umbrella header instead of leaf/detail bridge headers directly.
 
 Default local endpoint:
 

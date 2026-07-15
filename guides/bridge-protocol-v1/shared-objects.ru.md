@@ -107,31 +107,48 @@ metadata и не должен использоваться как источни
 разделить это на `accept_until_ms` и `execute_before_ms`, если двум deadline
 нужна разная семантика.
 
-### Decimal Values
+### Money And Decimal Values
 
-Деньги, prices, payouts, refunds, percentages и indicator numeric values требуют
-decimal precision. Канонические responses и events должны отдавать decimal
-values как base-10 strings. Requests могут принимать decimal strings или JSON
-numbers как developer-friendly input form, но bridge implementations должны
-нормализовать их в decimal representation до validation и storage.
+Money values, prices, payouts, refunds, percentages и indicator numeric values требуют
+точной decimal-семантики. Monetary fields в canonical responses/events используют
+`MoneyValue` object:
 
-Правила canonical decimal string:
+```json
+{
+  "value": "10.00",
+  "currency": "USD"
+}
+```
+
+`currency` должен присутствовать, когда он известен. Request schemas могут также
+принимать plain decimal string или JSON number как developer-friendly shorthand,
+если currency выводится из выбранного account, но bridge implementations должны
+нормализовать все формы до одной decimal representation перед validation/storage.
+
+Prices, payouts, refunds, percentages и indicator numeric values остаются
+base-10 decimal strings, если конкретная schema не задаёт более богатый object.
+
+Canonical decimal string rules:
 
 - Использовать точку как decimal separator.
 - Не использовать scientific notation.
 - Сохранять sign, где он имеет смысл, например profit может быть `"-10.00"`.
-- Сохранять meaningful scale, когда он известен, например `"10.00"` для USD
-  cents.
-- Использовать явные units или field semantics вместо зависимости от
-  formatting.
+- Сохранять meaningful scale, когда он известен, например `"10.00"` для USD cents.
+- Использовать явные units или field semantics вместо зависимости от formatting.
 
 Примеры:
 
 ```json
 {
-  "amount": "10.00",
+  "amount": {
+    "value": "10.00",
+    "currency": "USD"
+  },
   "price": "1.14072",
-  "profit": "-10.00",
+  "profit": {
+    "value": "-10.00",
+    "currency": "USD"
+  },
   "balance_percent": "2.5",
   "payout": "0.82"
 }
@@ -139,11 +156,11 @@ numbers как developer-friendly input form, но bridge implementations дол
 
 Заметки:
 
-- Clients, которым нужны точные decimal value и scale, должны отправлять
-  decimal strings. JSON numbers принимаются только как удобство для простых
-  integrations и могут быть уже округлены JSON stack клиента.
-- `amount`, `balance`, `profit` и похожие monetary values должны нести currency
-  в окружающем object, когда это возможно.
+- Clients, которым нужны точные decimal value и scale, должны отправлять decimal
+  strings или `MoneyValue.value`. JSON numbers принимаются только как удобство
+  для простых integrations и могут быть уже округлены JSON stack клиента.
+- `amount`, `balance`, `profit`, `expected_profit` и похожие monetary values
+  должны использовать `MoneyValue` в canonical responses/events.
 - `payout`, `refund` и `min_payout` являются ratios в диапазоне `0..1`, если
   поле явно не говорит обратное.
 - `balance_percent` является percent value, поэтому `"2.5"` означает 2.5%, а не
@@ -156,7 +173,10 @@ numbers как developer-friendly input form, но bridge implementations дол
 ```json
 {
   "mode": "fixed_amount",
-  "amount": "10.00"
+  "amount": {
+    "value": "10.00",
+    "currency": "USD"
+  }
 }
 ```
 
