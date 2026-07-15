@@ -212,8 +212,9 @@ the next valid record.
 Readers must enforce `max_line_bytes` while streaming the file, not after
 loading the full tail into memory. A complete malformed line may be skipped and
 reported as transport diagnostics; the reader checkpoint may advance past that
-complete malformed line. An incomplete final line is not processed and does not
-advance the checkpoint.
+complete malformed line. Missing, zero, negative, fractional or non-numeric
+`file_seq` values make the complete line malformed at the transport layer. An
+incomplete final line is not processed and does not advance the checkpoint.
 
 `state.json` and checkpoint files are not append logs. They must be written via
 same-directory temporary file and atomic replacement:
@@ -248,19 +249,25 @@ If the writer stores a durable next-sequence value, that value must also be
 included in the maximum. The writer must not restart at `1` while the reader
 checkpoint still points to a later sequence.
 
-Recommended checkpoint shape:
+Baseline checkpoint shape:
 
 ```json
 {
-  "offset": 18273,
   "last_file_seq": 102
 }
 ```
 
-If a checkpoint offset is beyond the current file size, the reader should treat
-the log as cleaned/truncated and restart from byte offset `0`. The reader must
-still use `last_file_seq` and idempotency records to avoid duplicate trade
-execution.
+Persisted byte offsets are not part of the baseline cleanup-safe checkpoint.
+A reader may keep a byte offset only as an optimization while it can prove that
+the append-log identity has not changed since the offset was recorded, for
+example through a future `log_generation` or equivalent file identity. Without
+that proof, after restart or cleanup the reader must scan the current file from
+the beginning and filter by `last_file_seq`. The reader must still use
+idempotency records to avoid duplicate trade execution.
+
+Polling helpers may limit the number of processed complete non-empty lines per
+poll. The limit should count both accepted records and malformed complete lines
+so malformed input cannot make one poll accumulate unbounded diagnostics.
 
 Trade-affecting commands still require `context.idempotency_key`.
 `context.valid_until_ms` is strongly recommended because file polling can
@@ -271,6 +278,15 @@ result instead of creating a second trade.
 This draft intentionally does not define log rotation. Production
 implementations may add owner-side compaction later, but the baseline profile is
 append, checkpoint and clear.
+
+Deferred implementation work:
+
+- MetaTrader terminal discovery utilities for locating `Common\Files`.
+- A concrete polling bridge class built on this protocol helper layer.
+- Optional `log_generation`/file identity support if persisted byte-offset
+  optimization becomes necessary.
+- A callback/visitor NDJSON reader if future logs need very large scans without
+  accumulating records.
 
 ### Authentication And Client Identity
 

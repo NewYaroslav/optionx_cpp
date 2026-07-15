@@ -307,6 +307,44 @@ TEST(MetaTraderFileProtocol, SkipsMalformedCompleteLinesAndBoundsTail) {
         std::runtime_error);
 }
 
+TEST(MetaTraderFileProtocol, InvalidFileSequenceIsMalformedAndDoesNotBlockLaterRecords) {
+    namespace protocol = optionx::bridges::metatrader_file::detail;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+    const auto log = root / "commands.ndjson";
+    constexpr std::size_t max_line_bytes = 4096;
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream out(log, std::ios::binary | std::ios::app);
+        out << "{\"jsonrpc\":\"2.0\",\"method\":\"missing.seq\"}\n";
+        out << "{\"file_seq\":0,\"jsonrpc\":\"2.0\",\"method\":\"zero.seq\"}\n";
+        out << "{\"file_seq\":-1,\"jsonrpc\":\"2.0\",\"method\":\"negative.seq\"}\n";
+        out << "{\"file_seq\":1.5,\"jsonrpc\":\"2.0\",\"method\":\"float.seq\"}\n";
+        out << "{\"file_seq\":\"42\",\"jsonrpc\":\"2.0\",\"method\":\"string.seq\"}\n";
+    }
+    protocol::append_json_line(
+        log,
+        protocol::make_file_jsonrpc_request(42, "req-42", "valid.command"),
+        max_line_bytes);
+
+    const auto first_complete = protocol::read_ndjson_from_offset(log, 0, max_line_bytes, 1);
+    EXPECT_TRUE(first_complete.records.empty());
+    ASSERT_EQ(first_complete.malformed_records.size(), 1u);
+    EXPECT_GT(first_complete.next_offset, 0u);
+
+    const auto parsed = protocol::read_ndjson_from_offset(log, 0, max_line_bytes);
+    ASSERT_EQ(parsed.records.size(), 1u);
+    ASSERT_EQ(parsed.malformed_records.size(), 5u);
+    EXPECT_EQ(parsed.records[0].file_seq, 42u);
+    EXPECT_EQ(parsed.records[0].document.at("id").get<std::string>(), "req-42");
+
+    const auto filtered = protocol::read_ndjson_since_file_seq(log, 0, max_line_bytes);
+    ASSERT_EQ(filtered.size(), 1u);
+    EXPECT_EQ(filtered[0].file_seq, 42u);
+}
+
 TEST(MetaTraderFileProtocol, ComputesNextFileSequenceFromLogAndCheckpoint) {
     namespace protocol = optionx::bridges::metatrader_file::detail;
 
@@ -329,6 +367,10 @@ TEST(MetaTraderFileProtocol, ComputesNextFileSequenceFromLogAndCheckpoint) {
     EXPECT_EQ(protocol::max_file_seq_in_ndjson(log, max_line_bytes), 12u);
     EXPECT_EQ(protocol::next_file_seq_after_checkpoint(log, 5, max_line_bytes), 13u);
     EXPECT_EQ(protocol::next_file_seq_after_checkpoint(log, 20, max_line_bytes), 21u);
+
+    const auto first_after_ten = protocol::read_ndjson_since_file_seq(log, 10, max_line_bytes, 1);
+    ASSERT_EQ(first_after_ten.size(), 1u);
+    EXPECT_EQ(first_after_ten[0].file_seq, 12u);
 }
 
 TEST(MetaTraderFileProtocol, BoundedJsonReadRejectsOversizedSnapshots) {

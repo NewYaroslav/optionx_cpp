@@ -432,6 +432,32 @@ namespace optionx::bridges::metatrader_file::detail {
         return true;
     }
 
+    /// \brief Extracts and validates the required positive transport-local sequence.
+    inline std::uint64_t parse_required_file_seq(const nlohmann::json& document) {
+        const auto it = document.find("file_seq");
+        if (it == document.end()) {
+            throw std::runtime_error("NDJSON record is missing required file_seq.");
+        }
+
+        std::uint64_t file_seq = 0;
+        if (it->is_number_unsigned()) {
+            file_seq = it->get<std::uint64_t>();
+        } else if (it->is_number_integer()) {
+            const auto signed_seq = it->get<std::int64_t>();
+            if (signed_seq <= 0) {
+                throw std::runtime_error("NDJSON record file_seq must be positive.");
+            }
+            file_seq = static_cast<std::uint64_t>(signed_seq);
+        } else {
+            throw std::runtime_error("NDJSON record file_seq must be an integer.");
+        }
+
+        if (file_seq == 0) {
+            throw std::runtime_error("NDJSON record file_seq must be positive.");
+        }
+        return file_seq;
+    }
+
     /// \brief Appends one compact JSON line and a trailing LF.
     /// \details One NDJSON file must have exactly one writer. A record is
     /// visible to readers only after its trailing `\n`.
@@ -513,6 +539,7 @@ namespace optionx::bridges::metatrader_file::detail {
 
         std::uint64_t current_offset = start_offset;
         std::uint64_t line_start = start_offset;
+        std::size_t complete_records = 0;
         std::string line;
         line.reserve(std::min<std::size_t>(max_line_bytes, 4096u));
 
@@ -534,14 +561,13 @@ namespace optionx::bridges::metatrader_file::detail {
             result.next_offset = record_next;
 
             if (!line.empty()) {
+                ++complete_records;
                 try {
                     NdjsonRecord record;
                     record.document = nlohmann::json::parse(line);
                     record.start_offset = line_start;
                     record.next_offset = record_next;
-                    if (record.document.contains("file_seq")) {
-                        record.file_seq = record.document.at("file_seq").get<std::uint64_t>();
-                    }
+                    record.file_seq = parse_required_file_seq(record.document);
                     result.records.push_back(std::move(record));
                 } catch (const std::exception& ex) {
                     result.malformed_records.push_back(NdjsonMalformedRecord{
@@ -552,7 +578,7 @@ namespace optionx::bridges::metatrader_file::detail {
                 }
             }
 
-            if (max_records != 0 && result.records.size() >= max_records) {
+            if (max_records != 0 && complete_records >= max_records) {
                 return result;
             }
 
@@ -579,18 +605,28 @@ namespace optionx::bridges::metatrader_file::detail {
             const std::uint64_t last_file_seq,
             const std::size_t max_line_bytes,
             const std::size_t max_records = 0) {
-        auto all = read_ndjson_from_offset(file, 0, max_line_bytes);
         std::vector<NdjsonRecord> filtered;
-        for (auto& record : all.records) {
-            if (record.file_seq == 0) {
-                throw std::runtime_error("NDJSON record is missing required file_seq.");
-            }
-            if (record.file_seq > last_file_seq) {
-                filtered.push_back(std::move(record));
-                if (max_records != 0 && filtered.size() >= max_records) {
-                    break;
+
+        std::uint64_t offset = 0;
+        while (true) {
+            const auto scan_limit = max_records == 0 ? 0 : std::max<std::size_t>(max_records, 1);
+            auto batch = read_ndjson_from_offset(file, offset, max_line_bytes, scan_limit);
+            for (auto& record : batch.records) {
+                if (record.file_seq > last_file_seq) {
+                    filtered.push_back(std::move(record));
+                    if (max_records != 0 && filtered.size() >= max_records) {
+                        return filtered;
+                    }
                 }
             }
+
+            if (max_records == 0 ||
+                batch.incomplete_tail ||
+                batch.next_offset <= offset ||
+                (batch.records.size() + batch.malformed_records.size()) < scan_limit) {
+                break;
+            }
+            offset = batch.next_offset;
         }
         return filtered;
     }
@@ -623,6 +659,8 @@ namespace optionx::bridges::metatrader_file::detail {
     }
 
     /// \brief Builds a checkpoint snapshot for a log reader.
+    /// \details `last_file_seq` is authoritative across cleanup cycles; `offset`
+    /// is only an optimization while the append log identity is known unchanged.
     inline nlohmann::json make_log_checkpoint(
             const std::uint64_t offset,
             const std::uint64_t last_file_seq) {
