@@ -5,27 +5,6 @@
 /// \file MetaTraderFileProtocol.hpp
 /// \brief NDJSON file-transport helpers for MetaTrader common-files integrations.
 
-#include "../MetaTraderFileBridgeConfig.hpp"
-#include "data/trading.hpp"
-
-#include <algorithm>
-#include <atomic>
-#include <cerrno>
-#include <chrono>
-#include <cmath>
-#include <cstdint>
-#include <filesystem>
-#include <fstream>
-#include <iomanip>
-#include <limits>
-#include <locale>
-#include <sstream>
-#include <stdexcept>
-#include <string>
-#include <system_error>
-#include <utility>
-#include <vector>
-
 #if defined(_WIN32)
 #ifndef NOMINMAX
 #define NOMINMAX

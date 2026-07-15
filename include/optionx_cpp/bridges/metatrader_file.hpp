@@ -6,15 +6,20 @@
 /// \brief Includes MetaTrader file-transport bridge headers.
 
 #include <algorithm>
+#include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cmath>
 #include <cctype>
 #include <cstdint>
+#include <cstddef>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <locale>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -22,8 +27,9 @@
 #include <utility>
 #include <vector>
 
-#include "data/bridge.hpp"
-#include "data/trading.hpp"
+#include <optionx_cpp/data/bridge.hpp>
+#include <optionx_cpp/data/trading.hpp>
+#include <optionx_cpp/utils/metatrader_paths.hpp>
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -33,6 +39,7 @@
 #endif
 
 #include "BaseBridge.hpp"
+#include "metatrader_file/MetaTraderFilePathUtils.hpp"
 #include "metatrader_file/MetaTraderFileBridgeConfig.hpp"
 #include "metatrader_file/detail/MetaTraderFileProtocol.hpp"
 

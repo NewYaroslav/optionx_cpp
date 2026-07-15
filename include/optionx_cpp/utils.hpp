@@ -26,6 +26,7 @@
 #include "utils/log_redaction.hpp"    ///< Secret redaction helpers for diagnostics.
 #include "utils/json_comments.hpp"    ///< JSONC-style comment stripping helpers.
 #include "utils/unicode_case.hpp"     ///< Unicode-aware caseless matching helpers.
+#include "utils/metatrader_paths.hpp" ///< MetaTrader directory discovery helpers.
 
 // Data encoding
 #include "utils/Base36.hpp"           ///< Base36 encoding/decoding implementation
