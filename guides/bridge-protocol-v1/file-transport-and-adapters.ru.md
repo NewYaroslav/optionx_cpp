@@ -63,19 +63,21 @@ Reader хранит свой checkpoint и не переписывает append-
 - helpers в `metatrader_file::detail` для path-safe IDs, NDJSON append/read,
   owner-side cleanup, JSON-RPC request/response/notification documents,
   atomic state snapshots и bounded JSON reads;
+- helpers `utils::metatrader` для default MetaQuotes roaming location,
+  Common Files root и terminal data directories;
 - helpers для `balance.updated`, `trade.updated` и `state.json` payloads.
 
 Этот slice еще не задает long-running `BaseBridge` polling loop, MQL advisor
 code или broker execution adapter. Эти части должны использовать helpers в
 следующем implementation PR.
 
-### Future MetaTrader Discovery Utility
+### MetaTrader Discovery Utility
 
-Поиск путей MetaTrader стоит реализовать отдельной reusable utility в будущем
-PR, а не ad-hoc логикой внутри file bridge. Utility должна быть полезна file
-transport, quote translators, MQL sample tooling и будущим MT4/MT5 adapters.
+Поиск путей MetaTrader реализован отдельной reusable utility, а не ad-hoc
+логикой внутри file bridge. Utility предназначена для file transport, quote
+translators, MQL sample tooling и будущих MT4/MT5 adapters.
 
-Expected responsibilities:
+Responsibilities:
 
 - находить default MetaQuotes roaming directory на Windows через OS
   known-folder API, используя `%APPDATA%` только как fallback;
@@ -87,6 +89,9 @@ Expected responsibilities:
 - возвращать per-terminal `MQL4\Files` / `MQL5\Files`, если они существуют;
 - принимать явно настроенные terminal или Common Files roots без guesswork;
 - держать path confinement и reserved-name checks отдельно от discovery.
+
+C++ entry points находятся в `optionx::utils::metatrader` и доступны через
+`optionx_cpp/utils.hpp` и `optionx_cpp/bridges/metatrader_file.hpp`.
 
 В старом `mega-connector` есть useful prior art в `tools/mt/common/utils.hpp`,
 но OptionX utility лучше спроектировать как набор маленьких testable helpers.
@@ -262,7 +267,6 @@ append, checkpoint and clear.
 
 Deferred implementation work:
 
-- MetaTrader terminal discovery utilities for locating `Common\Files`.
 - Concrete polling bridge class built on this protocol helper layer.
 - Runtime writer object or owner queue that serializes append, repair and
   owner-side clear operations per log file.

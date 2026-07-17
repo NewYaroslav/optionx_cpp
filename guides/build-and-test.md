@@ -90,7 +90,7 @@ Target naming:
 - `tradeup_ws_invalid_token_probe` - TradeUp WebSocket probe.
 
 Линкуемые libs для tests в `CMakeLists.txt`: `ws2_32`, `wsock32`, `crypt32`,
-`ssl`, `crypto`, `curl`, `mdbx`, `ntdll`, `bcrypt`, `AES`, `gtest`.
+`ssl`, `crypto`, `curl`, `mdbx`, `shell32`, `ole32`, `ntdll`, `bcrypt`, `AES`, `gtest`.
 
 Compile definition: `ASIO_STANDALONE`. Для tests также задается
 `LOGIT_BASE_PATH`.
@@ -129,6 +129,12 @@ $env:OPTIONX_INTRADE_BAR_CONFIG_FILE="tests\intrade_bar_api\intrade_bar_api.loca
 ```
 
 ## Include-Contract Checks
+
+GitHub CI also runs a focused Windows smoke job for MetaTrader file transport
+helpers. It builds and runs `metatrader_paths_test`,
+`metatrader_file_config_include_test`, `metatrader_file_bridge_test` and
+`bridge_umbrella_include_test` on `windows-latest` so Windows filesystem API
+paths such as atomic replacement and exclusive temp creation are covered by CI.
 
 При изменении публичных aggregate headers или include policy добавляй или
 обновляй тест, который подключает intended public entry point:

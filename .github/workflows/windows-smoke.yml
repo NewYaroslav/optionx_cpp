@@ -1,0 +1,43 @@
+name: Windows Smoke
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  metatrader-file:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-windows
+          -DOPTIONX_BUILD_DEPS=ON
+          -DOPTIONX_BUILD_TESTS=ON
+          -DOPTIONX_LIGHTWEIGHT_BRIDGE_SMOKE_TESTS=ON
+
+      - name: Build MetaTrader path discovery test
+        run: cmake --build build-windows --config Debug --target metatrader_paths_test
+
+      - name: Build MetaTrader file transport tests
+        run: >
+          cmake --build build-windows --config Debug --target
+          metatrader_file_config_include_test
+          metatrader_file_bridge_test
+          bridge_umbrella_include_test
+
+      - name: Run MetaTrader file tests
+        shell: pwsh
+        run: |
+          $env:PATH = "$PWD\build-windows\bin;$PWD\build-windows\Debug;$env:PATH"
+          .\build-windows\Debug\metatrader_paths_test.exe --gtest_brief=1
+          .\build-windows\Debug\metatrader_file_config_include_test.exe --gtest_brief=1
+          .\build-windows\Debug\metatrader_file_bridge_test.exe --gtest_brief=1
+          .\build-windows\Debug\bridge_umbrella_include_test.exe --gtest_brief=1

@@ -3,6 +3,14 @@
 cmake_minimum_required(VERSION 3.18)
 project(optionx_cpp LANGUAGES CXX)
 
+if(MSVC)
+    add_compile_options(/Zc:__cplusplus)
+endif()
+
+if(WIN32)
+    add_compile_definitions(NOMINMAX)
+endif()
+
 set(OPTIONX_TOP_LEVEL OFF)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(OPTIONX_TOP_LEVEL ON)
@@ -45,6 +53,10 @@ endif()
 option(OPTIONX_BUILD_DEPS "Build bundled optionx dependencies" OFF)
 option(OPTIONX_BUILD_EXAMPLES "Build optionx examples" OFF)
 option(OPTIONX_BUILD_TESTS "Build optionx tests" OFF)
+option(
+    OPTIONX_LIGHTWEIGHT_BRIDGE_SMOKE_TESTS
+    "Link selected bridge smoke tests without the full optionx_cpp dependency graph"
+    OFF)
 set(OPTIONX_DEPS_BUILD_DIR "" CACHE PATH "Path to prebuilt optionx dependencies")
 
 if(OPTIONX_TOP_LEVEL)
@@ -118,6 +130,8 @@ set(OPTIONX_WINDOWS_SYSTEM_LIBS
     ws2_32
     wsock32
     crypt32
+    shell32
+    ole32
     ntdll
     bcrypt
 )
@@ -461,6 +475,17 @@ if(OPTIONX_BUILD_TESTS)
         gtest
     )
 
+    set(OPTIONX_LIGHTWEIGHT_TESTS
+        metatrader_paths_test
+    )
+    if(OPTIONX_LIGHTWEIGHT_BRIDGE_SMOKE_TESTS)
+        list(APPEND OPTIONX_LIGHTWEIGHT_TESTS
+            bridge_umbrella_include_test
+            metatrader_file_bridge_test
+            metatrader_file_config_include_test
+        )
+    endif()
+
     file(GLOB_RECURSE PROJECT_HEADERS
         RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
         include/*.hpp
@@ -514,6 +539,7 @@ if(OPTIONX_BUILD_TESTS)
         list(APPEND TEST_TARGET_SOURCES "${test_src}")
 
         add_executable(${test_name} ${test_src})
+        target_compile_features(${test_name} PRIVATE cxx_std_17)
 
         target_include_directories(${test_name} PRIVATE
             ${PROJECT_INCLUDE_DIRS}
@@ -526,10 +552,23 @@ if(OPTIONX_BUILD_TESTS)
             ${PROJECT_DEFINES}
             LOGIT_BASE_PATH="${LOGIT_BASE_PATH_FWD}"
         )
-        target_link_libraries(${test_name} PRIVATE ${PROJECT_LIBS} optionx_cpp)
+        list(FIND OPTIONX_LIGHTWEIGHT_TESTS "${test_name}" lightweight_test_index)
+        if(NOT lightweight_test_index EQUAL -1)
+            target_link_libraries(${test_name} PRIVATE ${PROJECT_LIBS})
+            if(WIN32)
+                target_link_libraries(${test_name} PRIVATE ${OPTIONX_WINDOWS_SYSTEM_LIBS})
+            endif()
+        else()
+            target_link_libraries(${test_name} PRIVATE ${PROJECT_LIBS} optionx_cpp)
+        endif()
 
         if(OPTIONX_BUILD_DEPS)
-            foreach(test_dep mdbx-static AES gtest)
+            if(NOT lightweight_test_index EQUAL -1)
+                set(test_deps gtest)
+            else()
+                set(test_deps mdbx-static AES gtest)
+            endif()
+            foreach(test_dep ${test_deps})
                 if(TARGET ${test_dep})
                     add_dependencies(${test_name} ${test_dep})
                 endif()

@@ -69,20 +69,21 @@ file-transport building blocks:
 - `metatrader_file::detail` helpers for path-safe IDs, NDJSON append/read,
   owner-side log cleanup, JSON-RPC request/response/notification documents,
   atomic state snapshots and bounded JSON reads;
+- `utils::metatrader` helpers for resolving the default MetaQuotes roaming
+  location, Common Files root and terminal data directories;
 - small helpers for `balance.updated` and `trade.updated` notification payloads.
 
 This slice does not yet define a long-running `BaseBridge` polling loop, MQL
 advisor code or a broker execution adapter. Those pieces should use these
 helpers in follow-up implementation PRs.
 
-### Future MetaTrader Discovery Utility
+### MetaTrader Discovery Utility
 
-MetaTrader path discovery should be implemented as a reusable utility in a
-follow-up PR, not as ad-hoc logic inside the file bridge. The utility should be
-usable by the file transport, quote translators, MQL sample tooling and future
-MT4/MT5 adapters.
+MetaTrader path discovery is a reusable utility, not ad-hoc logic inside the
+file bridge. The utility is intended for the file transport, quote translators,
+MQL sample tooling and future MT4/MT5 adapters.
 
-Expected responsibilities:
+Responsibilities:
 
 - resolve the default MetaQuotes roaming directory on Windows through the OS
   known-folder API, with `%APPDATA%` only as a fallback;
@@ -96,6 +97,9 @@ Expected responsibilities:
   guess over them;
 - keep path confinement and reserved-name checks separate from discovery so the
   bridge can validate configured and discovered roots the same way.
+
+C++ entry points live under `optionx::utils::metatrader` and are exposed through
+`optionx_cpp/utils.hpp` and `optionx_cpp/bridges/metatrader_file.hpp`.
 
 The older `mega-connector` code has useful prior art in
 `tools/mt/common/utils.hpp` (`SHGetKnownFolderPath`, terminal enumeration and
@@ -287,7 +291,6 @@ append, checkpoint and clear.
 
 Deferred implementation work:
 
-- MetaTrader terminal discovery utilities for locating `Common\Files`.
 - A concrete polling bridge class built on this protocol helper layer.
 - A runtime writer object or owner queue that serializes append, repair and
   owner-side clear operations per log file.
