@@ -1,0 +1,19 @@
+{
+  // Omit common_files_root to use the default MetaQuotes Common\Files folder.
+  // For portable terminals, set it explicitly, for example:
+  // "common_files_root": "C:/MetaTrader/Terminal/Common/Files",
+
+  "namespace_subdir": "OptionX/Bridge/v1",
+  "bridge_id": 1,
+  "client_id": "smoke",
+  "client_secret": "",
+
+  "poll_interval_ms": 250,
+  "max_line_bytes": 65536,
+  "max_scanned_records_per_poll": 256,
+  "max_returned_records_per_poll": 64,
+  "idempotency_retention_ms": 86400000,
+
+  "enable_events": true,
+  "enable_state_snapshot": true
+}

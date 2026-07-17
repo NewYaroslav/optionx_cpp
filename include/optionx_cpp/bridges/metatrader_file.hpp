@@ -19,7 +19,9 @@
 #include <iomanip>
 #include <limits>
 #include <locale>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -29,7 +31,9 @@
 
 #include <optionx_cpp/data/bridge.hpp>
 #include <optionx_cpp/data/trading.hpp>
+#include <optionx_cpp/utils/Base36.hpp>
 #include <optionx_cpp/utils/metatrader_paths.hpp>
+#include <optionx_cpp/utils/tasks.hpp>
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -39,8 +43,12 @@
 #endif
 
 #include "BaseBridge.hpp"
-#include "metatrader_file/MetaTraderFilePathUtils.hpp"
+#include "metatrader_file/detail/MetaTraderFilePathUtils.hpp"
+#include "metatrader_file/detail/MetaTraderFileOperationKey.hpp"
 #include "metatrader_file/MetaTraderFileBridgeConfig.hpp"
 #include "metatrader_file/detail/MetaTraderFileProtocol.hpp"
+#include "metatrader_file/detail/MetaTraderFileIdempotencyStore.hpp"
+#include "metatrader_file/detail/MetaTraderFileBridgeUtils.hpp"
+#include "metatrader_file/MetaTraderFileBridge.hpp"
 
 #endif // OPTIONX_HEADER_BRIDGES_METATRADER_FILE_HPP_INCLUDED
