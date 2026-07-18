@@ -381,6 +381,14 @@ Deferred implementation work:
 - Higher-level MQL helpers for writing and compacting these logs.
 - Runtime writer object or owner queue that serializes append, repair and
   owner-side clear operations per log file.
+- Canonical idempotency fingerprints for trade commands: validate and normalize
+  business payloads into a protocol-level canonical JSON form before
+  deterministic serialization or hashing. This should cover decimal
+  representations, identifiers, supported enum aliases, defaults, routing,
+  identity fields and expiry semantics while excluding transport/retry metadata.
+- MetaEditor compilation smoke tests for the MQL5 header/example. MQL4
+  compilation should be added separately once a reproducible MT4 compiler setup
+  is available.
 - Optional `log_generation`/file identity support if persisted byte-offset
   optimization becomes necessary.
 - Callback/visitor NDJSON reader if future logs need very large scans without
