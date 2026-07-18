@@ -54,9 +54,10 @@ than one-file-per-message. Each append log has one writer:
 - the bridge is the only writer of `events.ndjson`;
 - the bridge is the only writer of `state.json`.
 
-This avoids writer/writer locking while keeping the format easy to implement in
-MQL4/MQL5. Readers keep their own checkpoint and never rewrite another side's
-append log.
+This keeps the format easy to implement in MQL4/MQL5. Readers keep their own
+checkpoint and never rewrite another side's append log. When several runtime
+objects or processes can write the same logical log, they must share a per-log
+exclusive lock.
 
 ### C++ MVP Surface
 
@@ -283,10 +284,24 @@ the file to the last complete LF-terminated record, or to an empty file when no
 complete record exists. This prevents a crashed half-record from being glued to
 the next valid record.
 
-The single-writer rule is per log file and includes all threads/tasks inside
-that writer. Repair, append and owner-side clear operations for the same log
-must be serialized by the caller, for example through one owner queue or a
-per-log mutex. The low-level append helper is intentionally unlocked.
+The single-writer rule is per logical log and includes all threads/tasks inside
+that writer. Repair, sequence recovery, append and owner-side clear operations
+for the same log must be serialized. If more than one runtime object or process
+can touch the same path, use a per-log lock file or equivalent OS file lock; an
+in-process mutex alone is not sufficient. The low-level append helper is
+intentionally unlocked.
+
+Before appending, a writer must serialize the exact UTF-8 bytes that will be
+written, including the trailing LF, and check:
+
+```text
+current_log_size + encoded_record_bytes <= max_command_log_bytes
+```
+
+If there is not enough space, the writer may first clear its own log only when
+the reader checkpoint confirms that all currently visible records were consumed.
+Otherwise it must fail before append; it must not publish a record that pushes
+the log beyond the configured bridge read limit.
 
 Readers must enforce `max_line_bytes` while streaming the file, not after
 loading the full tail into memory. A complete malformed line may be skipped and

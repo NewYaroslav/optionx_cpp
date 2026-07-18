@@ -10,7 +10,7 @@ private:
    string m_client_id;
    string m_namespace_subdir;
    int    m_default_valid_for_ms;
-   int    m_max_line_chars;
+   int    m_max_line_bytes;
    int    m_max_command_log_bytes;
    long   m_next_file_seq;
    long   m_operation_counter;
@@ -152,16 +152,6 @@ private:
          FILE_SHARE_READ | FILE_SHARE_WRITE;
    }
 
-   int TextWriteFlags() const {
-      return FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON |
-         FILE_SHARE_READ | FILE_SHARE_WRITE;
-   }
-
-   int TextReadWriteFlags() const {
-      return FILE_READ | FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON |
-         FILE_SHARE_READ | FILE_SHARE_WRITE;
-   }
-
    int BinaryReadFlags() const {
       return FILE_READ | FILE_BIN | FILE_COMMON |
          FILE_SHARE_READ | FILE_SHARE_WRITE;
@@ -170,6 +160,75 @@ private:
    int BinaryWriteFlags() const {
       return FILE_WRITE | FILE_BIN | FILE_COMMON |
          FILE_SHARE_READ | FILE_SHARE_WRITE;
+   }
+
+   int ExclusiveBinaryLockFlags() const {
+      return FILE_READ | FILE_WRITE | FILE_BIN | FILE_COMMON;
+   }
+
+   string CommandsLockPath() const {
+      return JoinPath(ClientRoot(), "commands.ndjson.lock");
+   }
+
+   int AcquireCommandLock() const {
+      if (!EnsureClientRoot()) return INVALID_HANDLE;
+
+      for (int attempt = 0; attempt < 256; ++attempt) {
+         ResetLastError();
+         int handle = FileOpen(CommandsLockPath(), ExclusiveBinaryLockFlags());
+         if (handle != INVALID_HANDLE)
+            return handle;
+      }
+
+      Print("OptionX: could not acquire command log lock: ", CommandsLockPath(),
+            ", error=", GetLastError());
+      return INVALID_HANDLE;
+   }
+
+   void ReleaseCommandLock(const int handle) const {
+      if (handle != INVALID_HANDLE)
+         FileClose(handle);
+   }
+
+   bool EncodeUtf8Bytes(const string text, uchar &bytes[], int &byte_count) const {
+      ArrayResize(bytes, 0);
+      byte_count = StringToCharArray(text, bytes, 0, StringLen(text), CP_UTF8);
+      if (byte_count < 0) {
+         Print("OptionX: could not encode command line as UTF-8.");
+         return false;
+      }
+      ArrayResize(bytes, byte_count);
+      return true;
+   }
+
+   bool CurrentCommandLogSize(long &size) const {
+      size = 0;
+      if (!FileIsExist(CommandsPath(), FILE_COMMON))
+         return true;
+
+      ResetLastError();
+      int handle = FileOpen(CommandsPath(), BinaryReadFlags());
+      if (handle == INVALID_HANDLE) {
+         Print("OptionX: could not inspect command log size: ", CommandsPath(),
+               ", error=", GetLastError());
+         return false;
+      }
+      size = (long)FileSize(handle);
+      FileClose(handle);
+      return true;
+   }
+
+   bool ClearCommandsUnlocked() const {
+      ResetLastError();
+      int handle = FileOpen(CommandsPath(), BinaryWriteFlags());
+      if (handle == INVALID_HANDLE) {
+         Print("OptionX: could not clear command log: ", CommandsPath(),
+               ", error=", GetLastError());
+         return false;
+      }
+      FileFlush(handle);
+      FileClose(handle);
+      return true;
    }
 
    bool RepairIncompleteTail(const string relative_path) const {
@@ -195,8 +254,24 @@ private:
          return false;
       }
 
+      uchar tail[];
+      ArrayResize(tail, 1);
+      FileSeek(handle, size - 1, SEEK_SET);
+      uint tail_read = FileReadArray(handle, tail, 0, 1);
+      if (tail_read != 1) {
+         FileClose(handle);
+         Print("OptionX: could not read command log tail byte: ", relative_path,
+               ", read=", tail_read);
+         return false;
+      }
+      if (tail[0] == 10) {
+         FileClose(handle);
+         return true;
+      }
+
       uchar bytes[];
       ArrayResize(bytes, (int)size);
+      FileSeek(handle, 0, SEEK_SET);
       uint read = FileReadArray(handle, bytes, 0, (int)size);
       FileClose(handle);
       if (read != (uint)size) {
@@ -223,37 +298,70 @@ private:
                relative_path, ", error=", GetLastError());
          return false;
       }
-      if (keep > 0)
-         FileWriteArray(handle, bytes, 0, keep);
+      if (keep > 0) {
+         uint written = FileWriteArray(handle, bytes, 0, keep);
+         if (written != (uint)keep) {
+            FileClose(handle);
+            Print("OptionX: could not rewrite command log after tail repair: ",
+                  relative_path, ", written=", written, ", expected=", keep);
+            return false;
+         }
+      }
       FileFlush(handle);
       FileClose(handle);
       Print("OptionX: repaired incomplete command log tail, kept bytes=", keep);
       return true;
    }
 
-   bool AppendLine(const string relative_path, const string line) const {
-      if (!EnsureClientRoot()) return false;
-      if (StringLen(line) > m_max_line_chars) {
-         Print("OptionX: command line exceeds configured character limit: ",
-               StringLen(line));
+   bool EnsureCommandLogCapacityUnlocked(
+         const int append_bytes,
+         const long visible_max,
+         const long checkpoint) {
+      if (append_bytes > m_max_command_log_bytes) {
+         Print("OptionX: command line would exceed configured command log byte limit: ",
+               append_bytes);
          return false;
       }
-      if (!RepairIncompleteTail(relative_path))
+
+      long current_size = 0;
+      if (!CurrentCommandLogSize(current_size))
          return false;
+      if (current_size > m_max_command_log_bytes) {
+         Print("OptionX: command log is larger than configured limit: ", current_size);
+         return false;
+      }
+      if (current_size + append_bytes <= m_max_command_log_bytes)
+         return true;
+
+      if (visible_max > 0 && checkpoint >= visible_max) {
+         if (!ClearCommandsUnlocked())
+            return false;
+         current_size = 0;
+         if (current_size + append_bytes <= m_max_command_log_bytes)
+            return true;
+      }
+
+      Print("OptionX: command log would exceed configured byte limit; ",
+            "wait for bridge checkpoint or clean up commands.ndjson.");
+      return false;
+   }
+
+   bool AppendLineBytesUnlocked(
+         const string relative_path,
+         uchar &payload[],
+         const int payload_size) const {
+      if (!EnsureClientRoot()) return false;
 
       ResetLastError();
       int handle = FileOpen(
          relative_path,
-         TextReadWriteFlags(),
-         0,
-         CP_UTF8);
+         FILE_READ | FILE_WRITE | FILE_BIN | FILE_COMMON |
+            FILE_SHARE_READ | FILE_SHARE_WRITE);
       if (handle == INVALID_HANDLE) {
          ResetLastError();
          handle = FileOpen(
             relative_path,
-            TextWriteFlags(),
-            0,
-            CP_UTF8);
+            BinaryWriteFlags());
       }
       if (handle == INVALID_HANDLE) {
          Print("OptionX: could not open command log: ", relative_path,
@@ -262,7 +370,13 @@ private:
       }
 
       FileSeek(handle, 0, SEEK_END);
-      FileWriteString(handle, line + "\n");
+      uint written = FileWriteArray(handle, payload, 0, payload_size);
+      if (written != (uint)payload_size) {
+         FileClose(handle);
+         Print("OptionX: incomplete command log write: written=", written,
+               ", expected=", payload_size);
+         return false;
+      }
       FileFlush(handle);
       FileClose(handle);
       return true;
@@ -416,27 +530,56 @@ private:
          Print("OptionX: file bridge is not configured.");
          return false;
       }
-      if (m_next_file_seq <= 0) {
+
+      int lock_handle = AcquireCommandLock();
+      if (lock_handle == INVALID_HANDLE)
+         return false;
+
+      bool ok = false;
+      do {
          if (!RepairIncompleteTail(CommandsPath()))
-            return false;
+            break;
+
          long visible_max = 0;
          long checkpoint = 0;
          if (!TryMaxFileSeqInCommands(visible_max) ||
              !TryLastCheckpointSeq(checkpoint)) {
             Print("OptionX: command sequence recovery failed; command was not written.");
-            return false;
+            break;
          }
-         m_next_file_seq = MathMax(visible_max, checkpoint) + 1;
-      }
 
-      string line = RequestEnvelope(m_next_file_seq, id, method, params);
-      if (!AppendLine(CommandsPath(), line))
-         return false;
+         long recovered_next = MathMax(visible_max, checkpoint) + 1;
+         if (m_next_file_seq <= 0 || recovered_next > m_next_file_seq)
+            m_next_file_seq = recovered_next;
 
-      Print("OptionX: wrote ", method, " file_seq=", m_next_file_seq,
-            " id=", id);
-      ++m_next_file_seq;
-      return true;
+         string line = RequestEnvelope(m_next_file_seq, id, method, params);
+         uchar line_bytes[];
+         int line_byte_count = 0;
+         if (!EncodeUtf8Bytes(line, line_bytes, line_byte_count))
+            break;
+         if (line_byte_count > m_max_line_bytes) {
+            Print("OptionX: command line exceeds configured byte limit: ",
+                  line_byte_count);
+            break;
+         }
+
+         uchar payload[];
+         int payload_size = 0;
+         if (!EncodeUtf8Bytes(line + "\n", payload, payload_size))
+            break;
+         if (!EnsureCommandLogCapacityUnlocked(payload_size, visible_max, checkpoint))
+            break;
+         if (!AppendLineBytesUnlocked(CommandsPath(), payload, payload_size))
+            break;
+
+         Print("OptionX: wrote ", method, " file_seq=", m_next_file_seq,
+               " id=", id);
+         ++m_next_file_seq;
+         ok = true;
+      } while (false);
+
+      ReleaseCommandLock(lock_handle);
+      return ok;
    }
 
 public:
@@ -445,7 +588,7 @@ public:
       m_client_id = "default";
       m_namespace_subdir = "OptionX\\Bridge\\v1";
       m_default_valid_for_ms = 60000;
-      m_max_line_chars = 65536;
+      m_max_line_bytes = 65536;
       m_max_command_log_bytes = 8 * 1024 * 1024;
       m_next_file_seq = 0;
       m_operation_counter = 0;
@@ -456,7 +599,9 @@ public:
          const int bridge_id,
          const string client_id,
          const string namespace_subdir = "OptionX\\Bridge\\v1",
-         const int default_valid_for_ms = 60000) {
+         const int default_valid_for_ms = 60000,
+         const int max_line_bytes = 65536,
+         const int max_command_log_bytes = 8388608) {
       if (bridge_id <= 0) {
          Print("OptionX: bridge_id must be positive.");
          m_configured = false;
@@ -477,10 +622,22 @@ public:
          m_configured = false;
          return false;
       }
+      if (max_line_bytes <= 0) {
+         Print("OptionX: max_line_bytes must be positive.");
+         m_configured = false;
+         return false;
+      }
+      if (max_command_log_bytes < max_line_bytes) {
+         Print("OptionX: max_command_log_bytes must be at least max_line_bytes.");
+         m_configured = false;
+         return false;
+      }
       m_bridge_id = bridge_id;
       m_client_id = client_id;
       m_namespace_subdir = NormalizePath(namespace_subdir);
       m_default_valid_for_ms = default_valid_for_ms;
+      m_max_line_bytes = max_line_bytes;
+      m_max_command_log_bytes = max_command_log_bytes;
       m_next_file_seq = 0;
       m_configured = true;
       return true;
@@ -575,35 +732,39 @@ public:
       return AppendRequest(operation_key, "trade.open", params);
    }
 
-   bool CleanupCommandsIfCheckpointCaughtUp() const {
-      long max_seq = 0;
-      if (!TryMaxFileSeqInCommands(max_seq))
-         return false;
-      if (max_seq <= 0)
+   bool CleanupCommandsIfCheckpointCaughtUp() {
+      int lock_handle = AcquireCommandLock();
+      if (lock_handle == INVALID_HANDLE)
          return false;
 
-      long checkpoint = 0;
-      if (!TryLastCheckpointSeq(checkpoint))
-         return false;
-      if (checkpoint < max_seq) {
-         Print("OptionX: command cleanup skipped, checkpoint=", checkpoint,
-               ", visible_max=", max_seq);
-         return false;
-      }
+      bool ok = false;
+      do {
+         if (!RepairIncompleteTail(CommandsPath()))
+            break;
+         long max_seq = 0;
+         if (!TryMaxFileSeqInCommands(max_seq))
+            break;
+         if (max_seq <= 0)
+            break;
 
-      int handle = FileOpen(
-         CommandsPath(),
-         TextWriteFlags(),
-         0,
-         CP_UTF8);
-      if (handle == INVALID_HANDLE) {
-         Print("OptionX: could not clear command log: ", CommandsPath(),
-               ", error=", GetLastError());
-         return false;
-      }
-      FileClose(handle);
-      Print("OptionX: cleared commands.ndjson after checkpoint ", checkpoint);
-      return true;
+         long checkpoint = 0;
+         if (!TryLastCheckpointSeq(checkpoint))
+            break;
+         if (checkpoint < max_seq) {
+            Print("OptionX: command cleanup skipped, checkpoint=", checkpoint,
+                  ", visible_max=", max_seq);
+            break;
+         }
+
+         if (!ClearCommandsUnlocked())
+            break;
+         m_next_file_seq = checkpoint + 1;
+         Print("OptionX: cleared commands.ndjson after checkpoint ", checkpoint);
+         ok = true;
+      } while (false);
+
+      ReleaseCommandLock(lock_handle);
+      return ok;
    }
 };
 

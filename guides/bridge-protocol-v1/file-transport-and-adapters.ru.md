@@ -53,6 +53,10 @@ one-file-per-message. У каждого append-log только один writer:
 
 Reader хранит свой checkpoint и не переписывает append-log другой стороны.
 
+Если несколько runtime-объектов или процессов могут писать в один логический
+лог, они обязаны использовать общий per-log exclusive lock. Reader всё равно
+хранит свой checkpoint и не переписывает append-log другой стороны.
+
 ### C++ MVP Surface
 
 Первый C++ implementation slice открывает только reusable building blocks:
@@ -258,10 +262,24 @@ file ends with an incomplete line: truncate to the last complete LF-terminated
 record, or to an empty file when no complete record exists. This prevents a
 crashed half-record from being glued to the next valid record.
 
-Single-writer rule is per log file and includes all threads/tasks inside that
-writer. Repair, append and owner-side clear operations for the same log must be
-serialized by caller, for example through one owner queue or a per-log mutex.
-Low-level append helper is intentionally unlocked.
+Single-writer rule действует на уровне логического лога и включает все
+threads/tasks внутри writer'а. Repair, sequence recovery, append и owner-side
+clear для одного и того же лога должны быть сериализованы. Если один и тот же
+path может трогать больше одного runtime-объекта или процесса, нужен per-log
+lock file или эквивалентный OS file lock; одного in-process mutex
+недостаточно. Low-level append helper намеренно остаётся unlocked.
+
+Перед append writer обязан сериализовать точные UTF-8 bytes, включая trailing
+LF, и проверить:
+
+```text
+current_log_size + encoded_record_bytes <= max_command_log_bytes
+```
+
+Если места не хватает, writer может сначала очистить свой лог только когда
+reader checkpoint подтверждает, что все текущие видимые records уже consumed.
+Иначе он должен fail before append и не публиковать record, который выведет лог
+за настроенный bridge read limit.
 
 Reader must enforce `max_line_bytes` while streaming the file, not after loading
 the full tail into memory. A complete malformed line may be skipped and reported

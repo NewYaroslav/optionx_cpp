@@ -41,8 +41,10 @@ namespace optionx::bridges::metatrader_file {
     /// It owns `commands.ndjson`: it assigns monotonic `file_seq`, appends one
     /// compact JSON-RPC request per line, and may clear the command log only after
     /// the bridge checkpoint confirms that all visible commands were consumed.
-    /// Public methods serialize initialization, sequence allocation, append and
-    /// cleanup with an internal mutex.
+    /// Public methods serialize object state with an internal mutex. Mutations
+    /// of `commands.ndjson` additionally take a sibling lock file so several
+    /// writer objects/processes can share the same client root without assigning
+    /// duplicate `file_seq` values or clearing each other's records.
     class MetaTraderFileCommandWriter {
     public:
         /// \brief Creates a command writer from a validated bridge file configuration.
@@ -53,6 +55,7 @@ namespace optionx::bridges::metatrader_file {
         /// \brief Ensures directories exist and initializes the next `file_seq`.
         void initialize() {
             std::lock_guard<std::mutex> lock(m_mutex);
+            detail::ScopedLogFileLock log_lock(m_layout.commands_log());
             initialize_locked();
         }
 
@@ -64,7 +67,9 @@ namespace optionx::bridges::metatrader_file {
         /// \brief Returns the next writer sequence, initializing the writer if needed.
         std::uint64_t next_file_seq() {
             std::lock_guard<std::mutex> lock(m_mutex);
+            detail::ScopedLogFileLock log_lock(m_layout.commands_log());
             ensure_initialized_locked();
+            refresh_next_file_seq_locked();
             return m_next_file_seq;
         }
 
@@ -109,32 +114,27 @@ namespace optionx::bridges::metatrader_file {
         /// \return True when the log was cleared; false when cleanup is not safe yet.
         bool clear_commands_if_checkpoint_caught_up() {
             std::lock_guard<std::mutex> lock(m_mutex);
+            detail::ScopedLogFileLock log_lock(m_layout.commands_log());
             ensure_initialized_locked();
-            const auto checkpoint = read_reader_checkpoint();
-            const auto visible_max = detail::max_file_seq_in_ndjson(
-                m_layout.commands_log(),
-                m_config.max_line_bytes);
-            if (visible_max == 0 || checkpoint < visible_max) {
-                return false;
-            }
-
-            detail::clear_file_atomic(m_layout.commands_log());
-            if (checkpoint == std::numeric_limits<std::uint64_t>::max()) {
-                throw std::overflow_error("MetaTrader file command writer file_seq overflow.");
-            }
-            m_next_file_seq = checkpoint + 1;
-            return true;
+            return clear_commands_if_checkpoint_caught_up_locked();
         }
 
     private:
         void initialize_locked() {
             detail::ensure_runtime_directories(m_layout);
+            refresh_next_file_seq_locked();
+            m_initialized = true;
+        }
+
+        void refresh_next_file_seq_locked() {
             const auto checkpoint = read_reader_checkpoint();
-            m_next_file_seq = detail::next_file_seq_after_checkpoint(
+            const auto recovered = detail::next_file_seq_after_checkpoint(
                 m_layout.commands_log(),
                 checkpoint,
                 m_config.max_line_bytes);
-            m_initialized = true;
+            if (!m_initialized || recovered > m_next_file_seq) {
+                m_next_file_seq = recovered;
+            }
         }
 
         void ensure_initialized_locked() {
@@ -169,6 +169,49 @@ namespace optionx::bridges::metatrader_file {
                 }
             }
             throw std::runtime_error("MetaTrader command checkpoint last_file_seq must be a non-negative integer.");
+        }
+
+        bool clear_commands_if_checkpoint_caught_up_locked() {
+            const auto checkpoint = read_reader_checkpoint();
+            const auto visible_max = detail::max_file_seq_in_ndjson(
+                m_layout.commands_log(),
+                m_config.max_line_bytes);
+            if (visible_max == 0 || checkpoint < visible_max) {
+                return false;
+            }
+
+            detail::clear_file_atomic(m_layout.commands_log());
+            if (checkpoint == std::numeric_limits<std::uint64_t>::max()) {
+                throw std::overflow_error("MetaTrader file command writer file_seq overflow.");
+            }
+            m_next_file_seq = checkpoint + 1;
+            return true;
+        }
+
+        void ensure_command_log_capacity_locked(const std::size_t appended_bytes) {
+            if (appended_bytes > m_config.max_command_log_bytes) {
+                throw std::runtime_error(
+                    "MetaTrader file command would exceed configured command log byte limit.");
+            }
+
+            detail::repair_incomplete_ndjson_tail(m_layout.commands_log());
+            auto current_size = detail::file_size_or_zero(m_layout.commands_log());
+            if (current_size <= m_config.max_command_log_bytes &&
+                appended_bytes <= m_config.max_command_log_bytes - current_size) {
+                return;
+            }
+
+            if (clear_commands_if_checkpoint_caught_up_locked()) {
+                current_size = detail::file_size_or_zero(m_layout.commands_log());
+                if (current_size <= m_config.max_command_log_bytes &&
+                    appended_bytes <= m_config.max_command_log_bytes - current_size) {
+                    return;
+                }
+            }
+
+            throw std::runtime_error(
+                "MetaTrader command log would exceed configured byte limit; "
+                "wait for bridge checkpoint or clean up commands.ndjson.");
         }
 
         static void prepare_trade_command(
@@ -233,16 +276,20 @@ namespace optionx::bridges::metatrader_file {
                 nlohmann::json id,
                 std::string method,
                 nlohmann::json params) {
+            detail::ScopedLogFileLock log_lock(m_layout.commands_log());
             ensure_initialized_locked();
+            refresh_next_file_seq_locked();
             const auto file_seq = m_next_file_seq;
             const auto document = detail::make_file_jsonrpc_request(
                 file_seq,
                 std::move(id),
                 std::move(method),
                 std::move(params));
-            detail::append_json_line(
+            const auto line = document.dump(-1);
+            ensure_command_log_capacity_locked(line.size() + 1);
+            detail::append_serialized_json_line(
                 m_layout.commands_log(),
-                document,
+                line,
                 m_config.max_line_bytes);
 
             if (m_next_file_seq == std::numeric_limits<std::uint64_t>::max()) {

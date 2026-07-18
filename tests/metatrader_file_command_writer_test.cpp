@@ -42,6 +42,27 @@ optionx::bridges::metatrader_file::MetaTraderFileBridgeConfig make_config(
     return config;
 }
 
+std::string make_filler_line(
+        const std::uint64_t file_seq,
+        const std::size_t target_line_bytes) {
+    const std::string prefix =
+        "{\"file_seq\":" + std::to_string(file_seq) +
+        ",\"jsonrpc\":\"2.0\",\"id\":\"fill\",\"method\":\"account.balance.get\",\"params\":{\"padding\":\"";
+    const std::string suffix = "\"}}";
+    if (target_line_bytes <= prefix.size() + suffix.size()) {
+        throw std::runtime_error("filler line target is too small");
+    }
+    return prefix + std::string(target_line_bytes - prefix.size() - suffix.size(), 'x') + suffix;
+}
+
+void write_text_append(
+        const std::filesystem::path& file,
+        const std::string& text) {
+    std::ofstream out(file, std::ios::binary | std::ios::app);
+    ASSERT_TRUE(out);
+    out << text;
+}
+
 } // namespace
 
 TEST(MetaTraderFileCommandWriter, AppendsCanonicalCommands) {
@@ -220,6 +241,110 @@ TEST(MetaTraderFileCommandWriter, SerializesConcurrentAppends) {
         writer.layout().commands_log(),
         0,
         8192);
+    ASSERT_EQ(records.size(), static_cast<std::size_t>(command_count));
+
+    std::set<std::uint64_t> sequences;
+    for (const auto& record : records) {
+        sequences.insert(record.file_seq);
+    }
+    EXPECT_EQ(sequences.size(), static_cast<std::size_t>(command_count));
+    EXPECT_EQ(*sequences.begin(), 1u);
+    EXPECT_EQ(*sequences.rbegin(), static_cast<std::uint64_t>(command_count));
+}
+
+TEST(MetaTraderFileCommandWriter, RejectsAppendThatWouldExceedCommandLogLimit) {
+    namespace mtfile = optionx::bridges::metatrader_file;
+    namespace protocol = optionx::bridges::metatrader_file::detail;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+
+    auto config = make_config(root);
+    config.max_line_bytes = 512;
+    config.max_command_log_bytes = config.max_line_bytes;
+    const auto layout = protocol::make_layout(config);
+    protocol::ensure_runtime_directories(layout);
+    write_text_append(layout.commands_log(), make_filler_line(1, config.max_line_bytes - 1) + "\n");
+    ASSERT_EQ(std::filesystem::file_size(layout.commands_log()), config.max_command_log_bytes);
+
+    mtfile::MetaTraderFileCommandWriter writer(config);
+    EXPECT_THROW(
+        static_cast<void>(writer.account_balance_get({}, "cmd-over-limit")),
+        std::runtime_error);
+
+    const auto records = protocol::read_ndjson_since_file_seq(
+        layout.commands_log(),
+        0,
+        config.max_line_bytes);
+    ASSERT_EQ(records.size(), 1u);
+    EXPECT_EQ(records[0].file_seq, 1u);
+}
+
+TEST(MetaTraderFileCommandWriter, ClearsCaughtUpFullLogBeforeAppend) {
+    namespace mtfile = optionx::bridges::metatrader_file;
+    namespace protocol = optionx::bridges::metatrader_file::detail;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+
+    auto config = make_config(root);
+    config.max_line_bytes = 512;
+    config.max_command_log_bytes = config.max_line_bytes;
+    const auto layout = protocol::make_layout(config);
+    protocol::ensure_runtime_directories(layout);
+    write_text_append(layout.commands_log(), make_filler_line(1, config.max_line_bytes - 1) + "\n");
+    protocol::write_json_file_atomic(layout.commands_checkpoint(), protocol::make_log_checkpoint(1));
+
+    mtfile::MetaTraderFileCommandWriter writer(config);
+    const auto written = writer.account_balance_get({}, "cmd-after-cleanup");
+    EXPECT_EQ(written.file_seq, 2u);
+
+    const auto records = protocol::read_ndjson_since_file_seq(
+        layout.commands_log(),
+        0,
+        config.max_line_bytes);
+    ASSERT_EQ(records.size(), 1u);
+    EXPECT_EQ(records[0].file_seq, 2u);
+    EXPECT_EQ(records[0].document.at("id").get<std::string>(), "cmd-after-cleanup");
+}
+
+TEST(MetaTraderFileCommandWriter, SerializesIndependentWriterInstances) {
+    namespace mtfile = optionx::bridges::metatrader_file;
+    namespace protocol = optionx::bridges::metatrader_file::detail;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+
+    const auto config = make_config(root);
+    std::mutex errors_mutex;
+    std::vector<std::string> errors;
+    std::vector<std::thread> threads;
+
+    constexpr int command_count = 24;
+    threads.reserve(command_count);
+    for (int i = 0; i < command_count; ++i) {
+        threads.emplace_back([config, &errors, &errors_mutex, i]() {
+            try {
+                mtfile::MetaTraderFileCommandWriter writer(config);
+                writer.account_balance_get({}, "cmd-instance-" + std::to_string(i));
+            } catch (const std::exception& ex) {
+                std::lock_guard<std::mutex> lock(errors_mutex);
+                errors.push_back(ex.what());
+            }
+        });
+    }
+    for (auto& thread : threads) {
+        thread.join();
+    }
+
+    if (!errors.empty()) {
+        FAIL() << errors.front();
+    }
+
+    const auto records = protocol::read_ndjson_since_file_seq(
+        protocol::make_layout(config).commands_log(),
+        0,
+        config.max_line_bytes);
     ASSERT_EQ(records.size(), static_cast<std::size_t>(command_count));
 
     std::set<std::uint64_t> sequences;

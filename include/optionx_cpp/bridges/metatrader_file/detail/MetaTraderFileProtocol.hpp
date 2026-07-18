@@ -135,6 +135,141 @@ namespace optionx::bridges::metatrader_file::detail {
 #endif
     }
 
+    /// \brief Returns file size, or zero when the file does not exist.
+    inline std::uint64_t file_size_or_zero(const std::filesystem::path& file) {
+        std::error_code ec;
+        const auto exists = std::filesystem::exists(file, ec);
+        if (ec) {
+            throw std::runtime_error("Failed to inspect file size: " + ec.message());
+        }
+        if (!exists) {
+            return 0;
+        }
+        const auto size = std::filesystem::file_size(file, ec);
+        if (ec) {
+            throw std::runtime_error("Failed to read file size: " + ec.message());
+        }
+        return size;
+    }
+
+    /// \brief Builds the sibling lock-file path used for serialized writer ownership.
+    inline std::filesystem::path log_lock_file_path(const std::filesystem::path& log_file) {
+        return log_file.parent_path() / (log_file.filename().u8string() + ".lock");
+    }
+
+    /// \class ScopedLogFileLock
+    /// \brief Holds an exclusive advisory lock for one NDJSON log mutation.
+    /// \details The file transport still stores data in append-only text files,
+    /// so writers must serialize sequence recovery, tail repair, append and
+    /// cleanup across objects and processes. The lock file is allowed to remain
+    /// on disk; ownership is the OS handle/lock, not the directory entry.
+    class ScopedLogFileLock {
+    public:
+        explicit ScopedLogFileLock(
+                const std::filesystem::path& log_file,
+                const std::chrono::milliseconds timeout = std::chrono::milliseconds(5000))
+            : m_lock_file(log_lock_file_path(log_file)) {
+            const auto parent = m_lock_file.parent_path();
+            if (!parent.empty()) {
+                std::error_code ec;
+                std::filesystem::create_directories(parent, ec);
+                if (ec) {
+                    throw std::runtime_error("Failed to create file transport lock directory: " + ec.message());
+                }
+            }
+
+            const auto deadline = std::chrono::steady_clock::now() + timeout;
+            std::error_code last_error;
+            do {
+                if (try_acquire(last_error)) {
+                    return;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            } while (std::chrono::steady_clock::now() < deadline);
+
+            throw std::runtime_error(
+                "Timed out acquiring MetaTrader file transport log lock: " +
+                m_lock_file.u8string() +
+                (last_error ? ": " + last_error.message() : std::string()));
+        }
+
+        ScopedLogFileLock(const ScopedLogFileLock&) = delete;
+        ScopedLogFileLock& operator=(const ScopedLogFileLock&) = delete;
+
+        ScopedLogFileLock(ScopedLogFileLock&&) = delete;
+        ScopedLogFileLock& operator=(ScopedLogFileLock&&) = delete;
+
+        ~ScopedLogFileLock() {
+#if defined(_WIN32)
+            if (m_handle != INVALID_HANDLE_VALUE) {
+                ::CloseHandle(m_handle);
+            }
+#elif defined(__unix__) || defined(__APPLE__)
+            if (m_fd >= 0) {
+                struct flock lock {};
+                lock.l_type = F_UNLCK;
+                lock.l_whence = SEEK_SET;
+                static_cast<void>(::fcntl(m_fd, F_SETLK, &lock));
+                ::close(m_fd);
+            }
+#else
+            if (m_owns_directory_lock) {
+                std::error_code ec;
+                std::filesystem::remove(m_lock_file, ec);
+            }
+#endif
+        }
+
+    private:
+        bool try_acquire(std::error_code& ec) noexcept {
+            ec.clear();
+#if defined(_WIN32)
+            HANDLE handle = ::CreateFileW(
+                m_lock_file.c_str(),
+                GENERIC_READ | GENERIC_WRITE,
+                0,
+                nullptr,
+                OPEN_ALWAYS,
+                FILE_ATTRIBUTE_NORMAL,
+                nullptr);
+            if (handle == INVALID_HANDLE_VALUE) {
+                ec = std::error_code(static_cast<int>(::GetLastError()), std::system_category());
+                return false;
+            }
+            m_handle = handle;
+            return true;
+#elif defined(__unix__) || defined(__APPLE__)
+            const int fd = ::open(m_lock_file.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+            if (fd < 0) {
+                ec = std::error_code(errno, std::generic_category());
+                return false;
+            }
+            struct flock lock {};
+            lock.l_type = F_WRLCK;
+            lock.l_whence = SEEK_SET;
+            if (::fcntl(fd, F_SETLK, &lock) != 0) {
+                ec = std::error_code(errno, std::generic_category());
+                ::close(fd);
+                return false;
+            }
+            m_fd = fd;
+            return true;
+#else
+            m_owns_directory_lock = std::filesystem::create_directory(m_lock_file, ec);
+            return m_owns_directory_lock;
+#endif
+        }
+
+        std::filesystem::path m_lock_file;
+#if defined(_WIN32)
+        HANDLE m_handle = INVALID_HANDLE_VALUE;
+#elif defined(__unix__) || defined(__APPLE__)
+        int m_fd = -1;
+#else
+        bool m_owns_directory_lock = false;
+#endif
+    };
+
     /// \brief Returns true when an exclusive-create operation failed because the file exists.
     inline bool is_file_exists_error(const std::error_code& ec) noexcept {
 #if defined(_WIN32)
@@ -453,16 +588,13 @@ namespace optionx::bridges::metatrader_file::detail {
         return file_seq;
     }
 
-    /// \brief Appends one compact JSON line and a trailing LF.
-    /// \details One NDJSON file must have exactly one writer. A record is
-    /// visible to readers only after its trailing `\n`. This helper is not
-    /// internally synchronized; callers must serialize all append/repair/clear
-    /// operations for the same log file, typically through one owner queue.
-    inline void append_json_line(
+    /// \brief Appends one already serialized JSON line and a trailing LF.
+    /// \details The caller must repair incomplete tails and enforce any whole-log
+    /// byte limit before calling this helper.
+    inline void append_serialized_json_line(
             const std::filesystem::path& file,
-            const nlohmann::json& document,
+            const std::string& line,
             const std::size_t max_line_bytes) {
-        const auto line = document.dump(-1);
         if (line.size() > max_line_bytes) {
             throw std::runtime_error("MetaTrader file transport NDJSON line exceeds configured byte limit.");
         }
@@ -476,8 +608,6 @@ namespace optionx::bridges::metatrader_file::detail {
             }
         }
 
-        repair_incomplete_ndjson_tail(file);
-
         std::ofstream out(file, std::ios::binary | std::ios::app);
         if (!out) {
             throw std::runtime_error("Failed to open NDJSON log: " + file.u8string());
@@ -487,6 +617,20 @@ namespace optionx::bridges::metatrader_file::detail {
         if (!out) {
             throw std::runtime_error("Failed to append NDJSON log: " + file.u8string());
         }
+    }
+
+    /// \brief Appends one compact JSON line and a trailing LF.
+    /// \details One NDJSON file must have exactly one writer. A record is
+    /// visible to readers only after its trailing `\n`. This helper is not
+    /// internally synchronized; callers must serialize all append/repair/clear
+    /// operations for the same log file, typically through one owner queue or
+    /// `ScopedLogFileLock`.
+    inline void append_json_line(
+            const std::filesystem::path& file,
+            const nlohmann::json& document,
+            const std::size_t max_line_bytes) {
+        repair_incomplete_ndjson_tail(file);
+        append_serialized_json_line(file, document.dump(-1), max_line_bytes);
     }
 
     /// \brief Reads complete NDJSON records starting at a byte offset.
