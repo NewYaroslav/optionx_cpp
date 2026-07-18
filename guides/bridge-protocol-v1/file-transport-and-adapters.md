@@ -141,6 +141,12 @@ send an `account.balance.get` request and submit a simple signal for the current
 chart symbol. `trade.open` is available behind an input flag so the example does
 not open a direct trade accidentally.
 
+The MQL header opens text files with `CP_UTF8` and shared read/write flags. It
+also repairs an incomplete tail before appending the first new command after a
+restart. If `commands.checkpoint.json` exists but is unreadable or malformed, or
+if `commands.ndjson` cannot be scanned safely, the helper fails closed and does
+not write a new command with a reset `file_seq`.
+
 ### MetaTrader Discovery Utility
 
 MetaTrader path discovery is a reusable utility, not ad-hoc logic inside the

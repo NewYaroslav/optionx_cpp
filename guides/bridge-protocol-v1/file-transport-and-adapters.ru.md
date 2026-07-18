@@ -132,6 +132,12 @@ Examples пишут через `Print` resolved client root и command log path,
 `trade.open` доступен через input flag, чтобы example случайно не открывал
 direct trade.
 
+MQL header открывает text files с `CP_UTF8` и shared read/write flags. Он также
+ремонтирует incomplete tail перед первым новым append после restart. Если
+`commands.checkpoint.json` существует, но не читается или malformed, либо если
+`commands.ndjson` нельзя безопасно просканировать, helper fails closed и не
+пишет новую command со сброшенным `file_seq`.
+
 ### MetaTrader Discovery Utility
 
 Поиск путей MetaTrader реализован отдельной reusable utility, а не ad-hoc

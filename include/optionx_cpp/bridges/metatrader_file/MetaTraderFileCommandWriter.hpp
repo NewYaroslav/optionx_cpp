@@ -41,6 +41,8 @@ namespace optionx::bridges::metatrader_file {
     /// It owns `commands.ndjson`: it assigns monotonic `file_seq`, appends one
     /// compact JSON-RPC request per line, and may clear the command log only after
     /// the bridge checkpoint confirms that all visible commands were consumed.
+    /// Public methods serialize initialization, sequence allocation, append and
+    /// cleanup with an internal mutex.
     class MetaTraderFileCommandWriter {
     public:
         /// \brief Creates a command writer from a validated bridge file configuration.
@@ -50,13 +52,8 @@ namespace optionx::bridges::metatrader_file {
 
         /// \brief Ensures directories exist and initializes the next `file_seq`.
         void initialize() {
-            detail::ensure_runtime_directories(m_layout);
-            const auto checkpoint = read_reader_checkpoint();
-            m_next_file_seq = detail::next_file_seq_after_checkpoint(
-                m_layout.commands_log(),
-                checkpoint,
-                m_config.max_line_bytes);
-            m_initialized = true;
+            std::lock_guard<std::mutex> lock(m_mutex);
+            initialize_locked();
         }
 
         /// \brief Returns the resolved file layout.
@@ -66,14 +63,16 @@ namespace optionx::bridges::metatrader_file {
 
         /// \brief Returns the next writer sequence, initializing the writer if needed.
         std::uint64_t next_file_seq() {
-            ensure_initialized();
+            std::lock_guard<std::mutex> lock(m_mutex);
+            ensure_initialized_locked();
             return m_next_file_seq;
         }
 
         /// \brief Appends a `signal.submit` command.
         MetaTraderFileWrittenCommand signal_submit(MetaTraderFileTradeCommand command) {
+            std::lock_guard<std::mutex> lock(m_mutex);
             prepare_trade_command(command, "mql");
-            return append_request(
+            return append_request_locked(
                 command.id,
                 "signal.submit",
                 make_trade_params(command, "signal"));
@@ -81,8 +80,9 @@ namespace optionx::bridges::metatrader_file {
 
         /// \brief Appends a `trade.open` command.
         MetaTraderFileWrittenCommand trade_open(MetaTraderFileTradeCommand command) {
+            std::lock_guard<std::mutex> lock(m_mutex);
             prepare_trade_command(command, "mql");
-            return append_request(
+            return append_request_locked(
                 command.id,
                 "trade.open",
                 make_trade_params(command, "trade"));
@@ -92,7 +92,8 @@ namespace optionx::bridges::metatrader_file {
         MetaTraderFileWrittenCommand account_balance_get(
                 std::string account_id = {},
                 std::string id = {}) {
-            ensure_initialized();
+            std::lock_guard<std::mutex> lock(m_mutex);
+            ensure_initialized_locked();
             if (id.empty()) {
                 id = make_compact_operation_key("mql");
             }
@@ -101,13 +102,14 @@ namespace optionx::bridges::metatrader_file {
             if (!account_id.empty()) {
                 params["account_id"] = std::move(account_id);
             }
-            return append_request(std::move(id), "account.balance.get", std::move(params));
+            return append_request_locked(std::move(id), "account.balance.get", std::move(params));
         }
 
         /// \brief Clears `commands.ndjson` only when the bridge checkpoint caught up.
         /// \return True when the log was cleared; false when cleanup is not safe yet.
         bool clear_commands_if_checkpoint_caught_up() {
-            ensure_initialized();
+            std::lock_guard<std::mutex> lock(m_mutex);
+            ensure_initialized_locked();
             const auto checkpoint = read_reader_checkpoint();
             const auto visible_max = detail::max_file_seq_in_ndjson(
                 m_layout.commands_log(),
@@ -125,9 +127,19 @@ namespace optionx::bridges::metatrader_file {
         }
 
     private:
-        void ensure_initialized() {
+        void initialize_locked() {
+            detail::ensure_runtime_directories(m_layout);
+            const auto checkpoint = read_reader_checkpoint();
+            m_next_file_seq = detail::next_file_seq_after_checkpoint(
+                m_layout.commands_log(),
+                checkpoint,
+                m_config.max_line_bytes);
+            m_initialized = true;
+        }
+
+        void ensure_initialized_locked() {
             if (!m_initialized) {
-                initialize();
+                initialize_locked();
             }
         }
 
@@ -217,11 +229,11 @@ namespace optionx::bridges::metatrader_file {
             return params;
         }
 
-        MetaTraderFileWrittenCommand append_request(
+        MetaTraderFileWrittenCommand append_request_locked(
                 nlohmann::json id,
                 std::string method,
                 nlohmann::json params) {
-            ensure_initialized();
+            ensure_initialized_locked();
             const auto file_seq = m_next_file_seq;
             const auto document = detail::make_file_jsonrpc_request(
                 file_seq,
@@ -254,6 +266,7 @@ namespace optionx::bridges::metatrader_file {
         detail::FileTransportLayout m_layout;
         std::uint64_t m_next_file_seq = 1;
         bool m_initialized = false;
+        mutable std::mutex m_mutex;
     };
 
 } // namespace optionx::bridges::metatrader_file

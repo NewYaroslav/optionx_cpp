@@ -2,8 +2,7 @@
 #define OPTIONX_FILE_BRIDGE_MQH
 
 // Minimal OptionX MetaTrader Common\Files client.
-// Copy this file to MQL4\Include or MQL5\Include, or place it next to an EA,
-// script, or indicator that includes it.
+// Place this file under MQL4\Include\OptionX or MQL5\Include\OptionX.
 
 class COptionXFileBridge {
 private:
@@ -11,8 +10,11 @@ private:
    string m_client_id;
    string m_namespace_subdir;
    int    m_default_valid_for_ms;
+   int    m_max_line_chars;
+   int    m_max_command_log_bytes;
    long   m_next_file_seq;
    long   m_operation_counter;
+   bool   m_configured;
 
    string NormalizePath(string value) const {
       StringReplace(value, "/", "\\");
@@ -24,6 +26,42 @@ private:
              StringSubstr(value, StringLen(value) - 1, 1) == "\\")
          value = StringSubstr(value, 0, StringLen(value) - 1);
       return value;
+   }
+
+   bool IsSafeFileId(const string value) const {
+      if (value == "" || value == "." || value == "..")
+         return false;
+      if (StringSubstr(value, StringLen(value) - 1, 1) == ".")
+         return false;
+
+      for (int i = 0; i < StringLen(value); ++i) {
+         ushort ch = StringGetCharacter(value, i);
+         bool ok =
+            (ch >= 48 && ch <= 57) ||
+            (ch >= 65 && ch <= 90) ||
+            (ch >= 97 && ch <= 122) ||
+            ch == 45 ||
+            ch == 46;
+         if (!ok) return false;
+      }
+      return true;
+   }
+
+   bool IsSafeNamespaceSubdir(const string value) const {
+      string normalized = NormalizePath(value);
+      if (normalized == "") return false;
+      int start = 0;
+      while (start < StringLen(normalized)) {
+         int pos = StringFind(normalized, "\\", start);
+         string part = (pos < 0)
+            ? StringSubstr(normalized, start)
+            : StringSubstr(normalized, start, pos - start);
+         if (!IsSafeFileId(part))
+            return false;
+         if (pos < 0) break;
+         start = pos + 1;
+      }
+      return true;
    }
 
    string JoinPath(const string left, const string right) const {
@@ -104,16 +142,113 @@ private:
       return true;
    }
 
+   int TextReadFlags() const {
+      return FILE_READ | FILE_TXT | FILE_ANSI | FILE_COMMON |
+         FILE_SHARE_READ | FILE_SHARE_WRITE;
+   }
+
+   int TextWriteFlags() const {
+      return FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON |
+         FILE_SHARE_READ | FILE_SHARE_WRITE;
+   }
+
+   int TextReadWriteFlags() const {
+      return FILE_READ | FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON |
+         FILE_SHARE_READ | FILE_SHARE_WRITE;
+   }
+
+   int BinaryReadFlags() const {
+      return FILE_READ | FILE_BIN | FILE_COMMON |
+         FILE_SHARE_READ | FILE_SHARE_WRITE;
+   }
+
+   int BinaryWriteFlags() const {
+      return FILE_WRITE | FILE_BIN | FILE_COMMON |
+         FILE_SHARE_READ | FILE_SHARE_WRITE;
+   }
+
+   bool RepairIncompleteTail(const string relative_path) const {
+      if (!FileIsExist(relative_path, FILE_COMMON))
+         return true;
+
+      ResetLastError();
+      int handle = FileOpen(relative_path, BinaryReadFlags());
+      if (handle == INVALID_HANDLE) {
+         Print("OptionX: could not inspect command log tail: ", relative_path,
+               ", error=", GetLastError());
+         return false;
+      }
+
+      long size = (long)FileSize(handle);
+      if (size <= 0) {
+         FileClose(handle);
+         return true;
+      }
+      if (size > m_max_command_log_bytes) {
+         FileClose(handle);
+         Print("OptionX: command log is larger than configured limit: ", size);
+         return false;
+      }
+
+      uchar bytes[];
+      ArrayResize(bytes, (int)size);
+      int read = FileReadArray(handle, bytes, 0, (int)size);
+      FileClose(handle);
+      if (read != (int)size) {
+         Print("OptionX: could not read command log for tail repair: ", relative_path,
+               ", read=", read, ", expected=", size);
+         return false;
+      }
+
+      if (bytes[(int)size - 1] == 10)
+         return true;
+
+      int keep = 0;
+      for (int i = (int)size - 1; i >= 0; --i) {
+         if (bytes[i] == 10) {
+            keep = i + 1;
+            break;
+         }
+      }
+
+      ResetLastError();
+      handle = FileOpen(relative_path, BinaryWriteFlags());
+      if (handle == INVALID_HANDLE) {
+         Print("OptionX: could not truncate incomplete command log tail: ",
+               relative_path, ", error=", GetLastError());
+         return false;
+      }
+      if (keep > 0)
+         FileWriteArray(handle, bytes, 0, keep);
+      FileFlush(handle);
+      FileClose(handle);
+      Print("OptionX: repaired incomplete command log tail, kept bytes=", keep);
+      return true;
+   }
+
    bool AppendLine(const string relative_path, const string line) const {
       if (!EnsureClientRoot()) return false;
+      if (StringLen(line) > m_max_line_chars) {
+         Print("OptionX: command line exceeds configured character limit: ",
+               StringLen(line));
+         return false;
+      }
+      if (!RepairIncompleteTail(relative_path))
+         return false;
 
+      ResetLastError();
       int handle = FileOpen(
          relative_path,
-         FILE_READ | FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);
+         TextReadWriteFlags(),
+         0,
+         CP_UTF8);
       if (handle == INVALID_HANDLE) {
+         ResetLastError();
          handle = FileOpen(
             relative_path,
-            FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);
+            TextWriteFlags(),
+            0,
+            CP_UTF8);
       }
       if (handle == INVALID_HANDLE) {
          Print("OptionX: could not open command log: ", relative_path,
@@ -128,11 +263,12 @@ private:
       return true;
    }
 
-   long ParseLongField(const string text, const string name) const {
+   bool TryParseLongField(const string text, const string name, long &value) const {
+      value = 0;
       int key = StringFind(text, "\"" + name + "\"");
-      if (key < 0) return 0;
+      if (key < 0) return false;
       int colon = StringFind(text, ":", key);
-      if (colon < 0) return 0;
+      if (colon < 0) return false;
 
       int start = colon + 1;
       while (start < StringLen(text)) {
@@ -147,35 +283,66 @@ private:
          if (ch < 48 || ch > 57) break;
          ++end;
       }
-      if (end <= start) return 0;
-      return (long)StringToInteger(StringSubstr(text, start, end - start));
+      if (end <= start) return false;
+      value = (long)StringToInteger(StringSubstr(text, start, end - start));
+      return true;
    }
 
-   long MaxFileSeqInCommands() const {
-      int handle = FileOpen(CommandsPath(), FILE_READ | FILE_TXT | FILE_ANSI | FILE_COMMON);
-      if (handle == INVALID_HANDLE) return 0;
+   bool TryMaxFileSeqInCommands(long &max_seq) const {
+      max_seq = 0;
+      if (!FileIsExist(CommandsPath(), FILE_COMMON))
+         return true;
 
-      long max_seq = 0;
+      ResetLastError();
+      int handle = FileOpen(CommandsPath(), TextReadFlags(), 0, CP_UTF8);
+      if (handle == INVALID_HANDLE) {
+         Print("OptionX: could not read command log: ", CommandsPath(),
+               ", error=", GetLastError());
+         return false;
+      }
+
       while (!FileIsEnding(handle)) {
          string line = FileReadString(handle);
-         long seq = ParseLongField(line, "file_seq");
+         if (line == "") continue;
+         long seq = 0;
+         if (!TryParseLongField(line, "file_seq", seq) || seq <= 0) {
+            FileClose(handle);
+            Print("OptionX: command log contains a malformed line without positive file_seq.");
+            return false;
+         }
          if (seq > max_seq) max_seq = seq;
       }
       FileClose(handle);
-      return max_seq;
+      return true;
    }
 
-   long LastCheckpointSeq() const {
+   bool TryLastCheckpointSeq(long &checkpoint) const {
+      checkpoint = 0;
+      if (!FileIsExist(CommandsCheckpointPath(), FILE_COMMON))
+         return true;
+
+      ResetLastError();
       int handle = FileOpen(
          CommandsCheckpointPath(),
-         FILE_READ | FILE_TXT | FILE_ANSI | FILE_COMMON);
-      if (handle == INVALID_HANDLE) return 0;
+         TextReadFlags(),
+         0,
+         CP_UTF8);
+      if (handle == INVALID_HANDLE) {
+         Print("OptionX: could not read command checkpoint: ",
+               CommandsCheckpointPath(), ", error=", GetLastError());
+         return false;
+      }
 
       string text = "";
       while (!FileIsEnding(handle))
          text += FileReadString(handle);
       FileClose(handle);
-      return ParseLongField(text, "last_file_seq");
+
+      if (!TryParseLongField(text, "last_file_seq", checkpoint) || checkpoint < 0) {
+         Print("OptionX: command checkpoint is malformed or missing last_file_seq.");
+         return false;
+      }
+      return true;
    }
 
    string RequestEnvelope(
@@ -240,9 +407,20 @@ private:
    }
 
    bool AppendRequest(const string id, const string method, const string params) {
+      if (!m_configured) {
+         Print("OptionX: file bridge is not configured.");
+         return false;
+      }
       if (m_next_file_seq <= 0) {
-         long visible_max = MaxFileSeqInCommands();
-         long checkpoint = LastCheckpointSeq();
+         if (!RepairIncompleteTail(CommandsPath()))
+            return false;
+         long visible_max = 0;
+         long checkpoint = 0;
+         if (!TryMaxFileSeqInCommands(visible_max) ||
+             !TryLastCheckpointSeq(checkpoint)) {
+            Print("OptionX: command sequence recovery failed; command was not written.");
+            return false;
+         }
          m_next_file_seq = MathMax(visible_max, checkpoint) + 1;
       }
 
@@ -262,20 +440,45 @@ public:
       m_client_id = "default";
       m_namespace_subdir = "OptionX\\Bridge\\v1";
       m_default_valid_for_ms = 60000;
+      m_max_line_chars = 65536;
+      m_max_command_log_bytes = 8 * 1024 * 1024;
       m_next_file_seq = 0;
       m_operation_counter = 0;
+      m_configured = true;
    }
 
-   void Configure(
+   bool Configure(
          const int bridge_id,
          const string client_id,
          const string namespace_subdir = "OptionX\\Bridge\\v1",
          const int default_valid_for_ms = 60000) {
+      if (bridge_id <= 0) {
+         Print("OptionX: bridge_id must be positive.");
+         m_configured = false;
+         return false;
+      }
+      if (!IsSafeFileId(client_id)) {
+         Print("OptionX: client_id must be a safe [A-Za-z0-9.-]+ identifier.");
+         m_configured = false;
+         return false;
+      }
+      if (!IsSafeNamespaceSubdir(namespace_subdir)) {
+         Print("OptionX: namespace_subdir must be a safe relative path.");
+         m_configured = false;
+         return false;
+      }
+      if (default_valid_for_ms <= 0) {
+         Print("OptionX: default_valid_for_ms must be positive.");
+         m_configured = false;
+         return false;
+      }
       m_bridge_id = bridge_id;
       m_client_id = client_id;
       m_namespace_subdir = NormalizePath(namespace_subdir);
       m_default_valid_for_ms = default_valid_for_ms;
       m_next_file_seq = 0;
+      m_configured = true;
+      return true;
    }
 
    string ClientRoot() const {
@@ -368,11 +571,15 @@ public:
    }
 
    bool CleanupCommandsIfCheckpointCaughtUp() const {
-      long max_seq = MaxFileSeqInCommands();
+      long max_seq = 0;
+      if (!TryMaxFileSeqInCommands(max_seq))
+         return false;
       if (max_seq <= 0)
          return false;
 
-      long checkpoint = LastCheckpointSeq();
+      long checkpoint = 0;
+      if (!TryLastCheckpointSeq(checkpoint))
+         return false;
       if (checkpoint < max_seq) {
          Print("OptionX: command cleanup skipped, checkpoint=", checkpoint,
                ", visible_max=", max_seq);
@@ -381,7 +588,9 @@ public:
 
       int handle = FileOpen(
          CommandsPath(),
-         FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);
+         TextWriteFlags(),
+         0,
+         CP_UTF8);
       if (handle == INVALID_HANDLE) {
          Print("OptionX: could not clear command log: ", CommandsPath(),
                ", error=", GetLastError());

@@ -17,7 +17,8 @@ COptionXFileBridge g_optionx;
 int OnInit() {
    MathSrand((uint)GetTickCount());
 
-   g_optionx.Configure(InpBridgeId, InpClientId);
+   if (!g_optionx.Configure(InpBridgeId, InpClientId))
+      return INIT_FAILED;
    Print("OptionX MT5 file bridge example");
    Print("OptionX client root under Common\\Files: ", g_optionx.ClientRoot());
    Print("OptionX command log: ", g_optionx.CommandsPath());
