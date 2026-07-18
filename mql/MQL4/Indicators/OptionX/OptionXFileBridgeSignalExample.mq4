@@ -20,6 +20,15 @@ int OnInit() {
    Print("OptionX client root under Common\\Files: ", g_optionx.ClientRoot());
    Print("OptionX command log: ", g_optionx.CommandsPath());
 
+   // Demo keys are visible before append. Production strategies should persist
+   // their operation key and reuse it when retrying the same logical command.
+   string operation_suffix =
+      Symbol() + ":" +
+      IntegerToString((long)TimeCurrent()) + ":" +
+      IntegerToString((long)GetTickCount());
+   string signal_operation_key = "example:mt4:signal:" + operation_suffix;
+   string trade_operation_key = "example:mt4:trade:" + operation_suffix;
+
    bool balance_ok = g_optionx.AccountBalanceGet(InpAccountId);
    bool signal_ok = g_optionx.SignalSubmit(
       Symbol(),
@@ -28,7 +37,8 @@ int OnInit() {
       "USD",
       InpDurationMs,
       "OptionX_MQL4_Example",
-      InpAccountId);
+      InpAccountId,
+      signal_operation_key);
 
    bool trade_ok = true;
    if (InpSendTradeOpen) {
@@ -39,9 +49,12 @@ int OnInit() {
          "USD",
          InpDurationMs,
          "OptionX_MQL4_Example",
-         InpAccountId);
+         InpAccountId,
+         trade_operation_key);
    }
 
+   Print("OptionX operation keys: signal=", signal_operation_key,
+         ", trade=", trade_operation_key);
    Print("OptionX sent commands: balance=", balance_ok,
          ", signal=", signal_ok,
          ", trade=", trade_ok);

@@ -83,9 +83,12 @@ applications, которые формируют MetaTrader-compatible command lo
 ### Writer Helpers And Smoke Generator
 
 C++ client-side writer добавляет в `commands.ndjson` один compact JSON-RPC request
-на строку. Он назначает `file_seq`, генерирует compact Base36 operation keys,
-если caller не передал `id` / `context.idempotency_key`, и добавляет
-`context.valid_until_ms` для commands, влияющих на торговлю.
+на строку. Он назначает `file_seq` и добавляет `context.valid_until_ms` для
+commands, влияющих на торговлю. Caller должен передавать стабильный
+`context.idempotency_key` для `signal.submit` и `trade.open` и сохранять его до
+retry той же логической операции; `file_seq` является transport sequence и не
+заменяет retry identity торговой операции. Одноразовые query commands, например
+`account.balance.get`, могут использовать JSON-RPC `id`, сгенерированный writer.
 
 Supported convenience methods:
 
@@ -96,7 +99,7 @@ Supported convenience methods:
 Example `examples/metatrader_file_command_writer_smoke.cpp` пишет один
 `account.balance.get`, один `signal.submit` и один `trade.open` command. В
 self-test mode используется temporary Common Files root и проверяется, что в log
-есть `file_seq`, JSON-RPC `id`, `context.idempotency_key` и
+есть `file_seq`, JSON-RPC `id`, caller-provided `context.idempotency_key` и
 `context.valid_until_ms`.
 
 Owner-side cleanup должен быть явным: writer может очищать `commands.ndjson`
@@ -138,17 +141,19 @@ Examples пишут через `Print` resolved client root и command log path,
 `trade.open` доступен через input flag, чтобы example случайно не открывал
 direct trade.
 
-Если caller не передал explicit `operation_key`, MQL header генерирует его
-после резервирования `file_seq` под command-log lock:
+`SignalSubmit(...)` и `TradeOpen(...)` требуют explicit `operation_key`. MQL
+caller должен создать этот ключ до append, сохранить его в своем retry state и
+повторно использовать то же значение при retry того же logical signal или
+trade. Header использует этот ключ как JSON-RPC `id`, `context.idempotency_key`
+и, когда нет отдельной domain identity, `identity.unique_hash`.
+
+`AccountBalanceGet(...)` остается one-shot query helper. Если caller не передал
+`operation_key`, MQL header генерирует transport-local request id после
+резервирования `file_seq` под command-log lock:
 
 ```text
 mql:<bridge_id>:<client_id>:<base36(file_seq)>
 ```
-
-Это делает automatically generated JSON-RPC `id`,
-`context.idempotency_key` и `identity.unique_hash` детерминированными для
-конкретной transport record и не зависит от MetaTrader process-local
-`MathRand()` sequence.
 
 MQL header открывает text files с `CP_UTF8` и shared read/write flags. Он также
 ремонтирует incomplete tail перед первым новым append после restart. Если

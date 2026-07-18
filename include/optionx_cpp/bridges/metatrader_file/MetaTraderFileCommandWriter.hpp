@@ -17,10 +17,10 @@ namespace optionx::bridges::metatrader_file {
         std::string currency = "USD"; ///< Amount currency.
         std::uint64_t duration_ms = 60000; ///< Expiry duration for binary-option style trades.
         std::string signal_name; ///< Optional strategy/signal name.
-        std::string unique_hash; ///< Optional domain dedupe key; generated when empty.
+        std::string unique_hash; ///< Optional domain dedupe key; defaults to `idempotency_key`.
         std::string account_id; ///< Optional account routing target.
-        std::string id; ///< Optional JSON-RPC id; generated when empty.
-        std::string idempotency_key; ///< Optional operation key; generated when empty.
+        std::string id; ///< Optional JSON-RPC id; defaults to `idempotency_key`.
+        std::string idempotency_key; ///< Required caller-persisted retry key for trade commands.
         std::int64_t valid_until_ms = 0; ///< Absolute Unix deadline; generated from `valid_for_ms` when zero.
         std::int64_t valid_for_ms = 60000; ///< Relative command lifetime used when `valid_until_ms` is zero.
     };
@@ -75,9 +75,10 @@ namespace optionx::bridges::metatrader_file {
         }
 
         /// \brief Appends a `signal.submit` command.
+        /// \throws std::invalid_argument when `command.idempotency_key` is empty.
         MetaTraderFileWrittenCommand signal_submit(MetaTraderFileTradeCommand command) {
             std::lock_guard<std::mutex> lock(m_mutex);
-            prepare_trade_command(command, "mql");
+            prepare_trade_command(command);
             return append_request_locked(
                 command.id,
                 "signal.submit",
@@ -85,9 +86,10 @@ namespace optionx::bridges::metatrader_file {
         }
 
         /// \brief Appends a `trade.open` command.
+        /// \throws std::invalid_argument when `command.idempotency_key` is empty.
         MetaTraderFileWrittenCommand trade_open(MetaTraderFileTradeCommand command) {
             std::lock_guard<std::mutex> lock(m_mutex);
-            prepare_trade_command(command, "mql");
+            prepare_trade_command(command);
             return append_request_locked(
                 command.id,
                 "trade.open",
@@ -215,11 +217,11 @@ namespace optionx::bridges::metatrader_file {
                 "wait for bridge checkpoint or clean up commands.ndjson.");
         }
 
-        static void prepare_trade_command(
-                MetaTraderFileTradeCommand& command,
-                const std::string& key_prefix) {
+        static void prepare_trade_command(MetaTraderFileTradeCommand& command) {
             if (command.idempotency_key.empty()) {
-                command.idempotency_key = make_compact_operation_key(key_prefix);
+                throw std::invalid_argument(
+                    "MetaTrader file trade commands require a caller-provided "
+                    "idempotency_key that can be reused on retry.");
             }
             if (command.id.empty()) {
                 command.id = command.idempotency_key;

@@ -131,6 +131,21 @@ TEST(MetaTraderFileCommandWriter, AppendsCanonicalCommands) {
     EXPECT_EQ(records[2].document.at("params").at("account_id").get<std::string>(), "7");
 }
 
+TEST(MetaTraderFileCommandWriter, RejectsTradeCommandsWithoutIdempotencyKey) {
+    namespace mtfile = optionx::bridges::metatrader_file;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+
+    auto writer = mtfile::MetaTraderFileCommandWriter(make_config(root));
+
+    mtfile::MetaTraderFileTradeCommand command;
+    command.symbol = "EURUSD";
+
+    EXPECT_THROW(writer.signal_submit(command), std::invalid_argument);
+    EXPECT_THROW(writer.trade_open(command), std::invalid_argument);
+}
+
 TEST(MetaTraderFileCommandWriter, RecoversSequenceAndCleansAfterCheckpoint) {
     namespace mtfile = optionx::bridges::metatrader_file;
     namespace protocol = optionx::bridges::metatrader_file::detail;

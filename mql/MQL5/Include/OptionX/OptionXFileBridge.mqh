@@ -112,9 +112,7 @@ private:
       if (FolderCreate(path, FILE_COMMON))
          return true;
       int error = GetLastError();
-      // MetaTrader reports an existing directory through the common
-      // "file/folder already exists" code on recent MT4/MT5 builds.
-      return error == 5019;
+      return error == 5018;
    }
 
    bool EnsureClientRoot() const {
@@ -703,6 +701,11 @@ private:
          Print("OptionX: file bridge is not configured.");
          return false;
       }
+      if (operation_key == "") {
+         Print("OptionX: trade-affecting commands require an explicit operation_key ",
+               "that the caller can reuse on retry.");
+         return false;
+      }
 
       int lock_handle = AcquireCommandLock();
       if (lock_handle == INVALID_HANDLE)
@@ -712,8 +715,6 @@ private:
       do {
          if (!RecoverNextFileSeqUnlocked())
             break;
-         if (operation_key == "")
-            operation_key = MakeOperationKey(m_next_file_seq);
 
          long visible_max = 0;
          long checkpoint = 0;
