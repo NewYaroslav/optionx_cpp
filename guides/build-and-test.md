@@ -166,9 +166,10 @@ targets.
 - `examples/test_trade_manager_module.cpp`
 - `examples/metatrader_file_bridge_smoke.cpp`
 - `examples/metatrader_file_command_writer_smoke.cpp`
-- `examples/mql/OptionXFileBridge.mqh`
-- `examples/mql/OptionXFileBridgeSignalExample.mq4`
-- `examples/mql/OptionXFileBridgeSignalExample.mq5`
+- `mql/MQL4/Include/OptionX/OptionXFileBridge.mqh`
+- `mql/MQL4/Indicators/OptionX/OptionXFileBridgeSignalExample.mq4`
+- `mql/MQL5/Include/OptionX/OptionXFileBridge.mqh`
+- `mql/MQL5/Indicators/OptionX/OptionXFileBridgeSignalExample.mq5`
 
 Перед изменением user-facing API проверь ближайший example и обнови его, если
 старый сценарий стал недействительным.

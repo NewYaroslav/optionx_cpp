@@ -107,24 +107,34 @@ can drop commands that the bridge has not processed yet.
 
 ### MQL4/MQL5 Client Header
 
-The sample MQL client lives in `examples/mql/OptionXFileBridge.mqh`. It exposes
-a small `COptionXFileBridge` class with the same three command helpers:
+The sample MQL client is laid out like a real terminal data folder. The header
+lives in:
+
+```text
+mql/MQL4/Include/OptionX/OptionXFileBridge.mqh
+mql/MQL5/Include/OptionX/OptionXFileBridge.mqh
+```
+
+It exposes a small `COptionXFileBridge` class with the same three command
+helpers:
 
 - `AccountBalanceGet(...)`;
 - `SignalSubmit(...)`;
 - `TradeOpen(...)`.
 
-Copy `OptionXFileBridge.mqh` to `MQL4\Include` or `MQL5\Include` (or place it
-next to the indicator/advisor/script), then include it from MQL:
+Copy the matching `mql/MQL4` or `mql/MQL5` tree into the terminal data folder,
+or copy only the `OptionX` subfolders into existing `MQL4\Include` /
+`MQL4\Indicators` or `MQL5\Include` / `MQL5\Indicators` directories. Include
+the header from MQL as:
 
 ```mql
-#include <OptionXFileBridge.mqh>
+#include <OptionX/OptionXFileBridge.mqh>
 ```
 
 Ready-to-run examples are provided as:
 
-- `examples/mql/OptionXFileBridgeSignalExample.mq4`;
-- `examples/mql/OptionXFileBridgeSignalExample.mq5`.
+- `mql/MQL4/Indicators/OptionX/OptionXFileBridgeSignalExample.mq4`;
+- `mql/MQL5/Indicators/OptionX/OptionXFileBridgeSignalExample.mq5`.
 
 The examples print the resolved client root and command log path with `Print`,
 send an `account.balance.get` request and submit a simple signal for the current

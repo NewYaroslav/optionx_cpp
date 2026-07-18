@@ -1,23 +1,24 @@
 #property strict
 #property indicator_chart_window
+#property indicator_plots 0
 
-#include <OptionXFileBridge.mqh>
+#include <OptionX/OptionXFileBridge.mqh>
 
-extern int    InpBridgeId = 1;
-extern string InpClientId = "mt4-terminal";
-extern string InpAccountId = "";
-extern double InpAmount = 1.0;
-extern int    InpDurationMs = 60000;
-extern string InpOrderType = "BUY";
-extern bool   InpSendTradeOpen = false;
+input int    InpBridgeId = 1;
+input string InpClientId = "mt5-terminal";
+input string InpAccountId = "";
+input double InpAmount = 1.0;
+input int    InpDurationMs = 60000;
+input string InpOrderType = "BUY";
+input bool   InpSendTradeOpen = false;
 
 COptionXFileBridge g_optionx;
 
 int OnInit() {
-   MathSrand((int)GetTickCount());
+   MathSrand((uint)GetTickCount());
 
    g_optionx.Configure(InpBridgeId, InpClientId);
-   Print("OptionX MT4 file bridge example");
+   Print("OptionX MT5 file bridge example");
    Print("OptionX client root under Common\\Files: ", g_optionx.ClientRoot());
    Print("OptionX command log: ", g_optionx.CommandsPath());
 
@@ -28,7 +29,7 @@ int OnInit() {
       InpAmount,
       "USD",
       InpDurationMs,
-      "OptionX_MQL4_Example",
+      "OptionX_MQL5_Example",
       InpAccountId);
 
    bool trade_ok = true;
@@ -39,7 +40,7 @@ int OnInit() {
          InpAmount,
          "USD",
          InpDurationMs,
-         "OptionX_MQL4_Example",
+         "OptionX_MQL5_Example",
          InpAccountId);
    }
 
