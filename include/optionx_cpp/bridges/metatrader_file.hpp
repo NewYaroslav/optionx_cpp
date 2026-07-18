@@ -22,10 +22,12 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -49,6 +51,7 @@
 #include "metatrader_file/detail/MetaTraderFileProtocol.hpp"
 #include "metatrader_file/detail/MetaTraderFileIdempotencyStore.hpp"
 #include "metatrader_file/detail/MetaTraderFileBridgeUtils.hpp"
+#include "metatrader_file/MetaTraderFileCommandWriter.hpp"
 #include "metatrader_file/MetaTraderFileBridge.hpp"
 
 #endif // OPTIONX_HEADER_BRIDGES_METATRADER_FILE_HPP_INCLUDED

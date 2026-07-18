@@ -53,6 +53,10 @@ one-file-per-message. У каждого append-log только один writer:
 
 Reader хранит свой checkpoint и не переписывает append-log другой стороны.
 
+Если несколько runtime-объектов или процессов могут писать в один логический
+лог, они обязаны использовать общий per-log exclusive lock. Reader всё равно
+хранит свой checkpoint и не переписывает append-log другой стороны.
+
 ### C++ MVP Surface
 
 Первый C++ implementation slice открывает только reusable building blocks:
@@ -60,6 +64,9 @@ Reader хранит свой checkpoint и не переписывает append-
 - `bridges/metatrader_file.hpp` как umbrella include;
 - `MetaTraderFileBridgeConfig` для MetaQuotes Common Files root, client
   directory identity, polling interval и NDJSON line limits;
+- `MetaTraderFileCommandWriter` как C++ client-side counterpart к MQL header
+  `COptionXFileBridge`; он пишет canonical `signal.submit`, `trade.open` и
+  `account.balance.get` requests;
 - helpers в `metatrader_file::detail` для path-safe IDs, NDJSON append/read,
   owner-side cleanup, JSON-RPC request/response/notification documents,
   atomic state snapshots и bounded JSON reads;
@@ -67,9 +74,92 @@ Reader хранит свой checkpoint и не переписывает append-
   Common Files root и terminal data directories;
 - helpers для `balance.updated`, `trade.updated` и `state.json` payloads.
 
-Этот slice еще не задает long-running `BaseBridge` polling loop, MQL advisor
-code или broker execution adapter. Эти части должны использовать helpers в
-следующем implementation PR.
+Bridge-side реализован через `MetaTraderFileBridge`. C++ client-side намеренно
+меньше: `MetaTraderFileCommandWriter` это reusable command writer, аналог MQL
+header `COptionXFileBridge`. Это не background transport loop: он не читает
+events и state snapshots. Его можно использовать в smoke tools, tests и C++
+applications, которые формируют MetaTrader-compatible command logs.
+
+### Writer Helpers And Smoke Generator
+
+C++ client-side writer добавляет в `commands.ndjson` один compact JSON-RPC request
+на строку. Он назначает `file_seq` и добавляет `context.valid_until_ms` для
+commands, влияющих на торговлю. Caller должен передавать стабильный
+`context.idempotency_key` для `signal.submit` и `trade.open` и сохранять его до
+retry той же логической операции; `file_seq` является transport sequence и не
+заменяет retry identity торговой операции. Одноразовые query commands, например
+`account.balance.get`, могут использовать JSON-RPC `id`, сгенерированный writer.
+
+Supported convenience methods:
+
+- `MetaTraderFileCommandWriter::signal_submit(...)`;
+- `MetaTraderFileCommandWriter::trade_open(...)`;
+- `MetaTraderFileCommandWriter::account_balance_get(...)`.
+
+Example `examples/metatrader_file_command_writer_smoke.cpp` пишет один
+`account.balance.get`, один `signal.submit` и один `trade.open` command. В
+self-test mode используется temporary Common Files root и проверяется, что в log
+есть `file_seq`, JSON-RPC `id`, caller-provided `context.idempotency_key` и
+`context.valid_until_ms`.
+
+Owner-side cleanup должен быть явным: writer может очищать `commands.ndjson`
+только после того, как `commands.checkpoint.json.last_file_seq` стал больше или
+равен максимальному visible `file_seq` в command log. Очистка раньше checkpoint
+может удалить commands, которые bridge еще не обработал.
+
+### MQL4/MQL5 Client Header
+
+Sample MQL client разложен как реальный terminal data folder. Header лежит в:
+
+```text
+mql/MQL4/Include/OptionX/OptionXFileBridge.mqh
+mql/MQL5/Include/OptionX/OptionXFileBridge.mqh
+```
+
+Он дает небольшой class `COptionXFileBridge` с теми же тремя helpers:
+
+- `AccountBalanceGet(...)`;
+- `SignalSubmit(...)`;
+- `TradeOpen(...)`.
+
+Скопируй подходящее дерево `mql/MQL4` или `mql/MQL5` в terminal data folder
+или перенеси только subfolders `OptionX` в существующие `MQL4\Include` /
+`MQL4\Indicators` или `MQL5\Include` / `MQL5\Indicators`. Header подключается
+так:
+
+```mql
+#include <OptionX/OptionXFileBridge.mqh>
+```
+
+Ready-to-run examples:
+
+- `mql/MQL4/Indicators/OptionX/OptionXFileBridgeSignalExample.mq4`;
+- `mql/MQL5/Indicators/OptionX/OptionXFileBridgeSignalExample.mq5`.
+
+Examples пишут через `Print` resolved client root и command log path,
+отправляют `account.balance.get` и simple signal для текущего chart symbol.
+`trade.open` доступен через input flag, чтобы example случайно не открывал
+direct trade.
+
+`SignalSubmit(...)` и `TradeOpen(...)` требуют explicit `operation_key`. MQL
+caller должен создать этот ключ до append, сохранить его в своем retry state и
+повторно использовать то же значение при retry того же logical signal или
+trade. Header использует этот ключ как JSON-RPC `id`, `context.idempotency_key`
+и, когда нет отдельной domain identity, `identity.unique_hash`.
+
+`AccountBalanceGet(...)` остается one-shot query helper. Если caller не передал
+`operation_key`, MQL header генерирует transport-local request id после
+резервирования `file_seq` под command-log lock:
+
+```text
+mql:<bridge_id>:<client_id>:<base36(file_seq)>
+```
+
+MQL header открывает text files с `CP_UTF8` и shared read/write flags. Он также
+ремонтирует incomplete tail перед первым новым append после restart. Если
+`commands.checkpoint.json` существует, но не читается или malformed, либо если
+`commands.ndjson` нельзя безопасно просканировать, helper fails closed и не
+пишет новую command со сброшенным `file_seq`.
 
 ### MetaTrader Discovery Utility
 
@@ -191,10 +281,24 @@ file ends with an incomplete line: truncate to the last complete LF-terminated
 record, or to an empty file when no complete record exists. This prevents a
 crashed half-record from being glued to the next valid record.
 
-Single-writer rule is per log file and includes all threads/tasks inside that
-writer. Repair, append and owner-side clear operations for the same log must be
-serialized by caller, for example through one owner queue or a per-log mutex.
-Low-level append helper is intentionally unlocked.
+Single-writer rule действует на уровне логического лога и включает все
+threads/tasks внутри writer'а. Repair, sequence recovery, append и owner-side
+clear для одного и того же лога должны быть сериализованы. Если один и тот же
+path может трогать больше одного runtime-объекта или процесса, нужен per-log
+lock file или эквивалентный OS file lock; одного in-process mutex
+недостаточно. Low-level append helper намеренно остаётся unlocked.
+
+Перед append writer обязан сериализовать точные UTF-8 bytes, включая trailing
+LF, и проверить:
+
+```text
+current_log_size + encoded_record_bytes <= max_command_log_bytes
+```
+
+Если места не хватает, writer может сначала очистить свой лог только когда
+reader checkpoint подтверждает, что все текущие видимые records уже consumed.
+Иначе он должен fail before append и не публиковать record, который выведет лог
+за настроенный bridge read limit.
 
 Reader must enforce `max_line_bytes` while streaming the file, not after loading
 the full tail into memory. A complete malformed line may be skipped and reported
@@ -264,6 +368,10 @@ configured idempotency retention window must return or re-emit the
 original/current operation result, not create a second trade. After that
 retention window duplicate suppression is no longer guaranteed; stale retained
 commands should be rejected by `valid_until_ms`.
+Для idempotency comparison `context.valid_until_ms` и
+`context.client_created_at_ms` считаются admission/attempt metadata, а не
+business payload. Они не должны превращать otherwise identical retry в conflict,
+но bridge всё равно валидирует `valid_until_ms` перед принятием новой операции.
 
 This draft intentionally does not define log rotation. Baseline profile is
 append, checkpoint and clear.
@@ -273,6 +381,14 @@ Deferred implementation work:
 - Higher-level MQL helpers for writing and compacting these logs.
 - Runtime writer object or owner queue that serializes append, repair and
   owner-side clear operations per log file.
+- Canonical idempotency fingerprints for trade commands: validate and normalize
+  business payloads into a protocol-level canonical JSON form before
+  deterministic serialization or hashing. This should cover decimal
+  representations, identifiers, supported enum aliases, defaults, routing,
+  identity fields and expiry semantics while excluding transport/retry metadata.
+- MetaEditor compilation smoke tests for the MQL5 header/example. MQL4
+  compilation should be added separately once a reproducible MT4 compiler setup
+  is available.
 - Optional `log_generation`/file identity support if persisted byte-offset
   optimization becomes necessary.
 - Callback/visitor NDJSON reader if future logs need very large scans without

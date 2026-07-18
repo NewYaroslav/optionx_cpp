@@ -133,8 +133,10 @@ $env:OPTIONX_INTRADE_BAR_CONFIG_FILE="tests\intrade_bar_api\intrade_bar_api.loca
 GitHub CI also runs a focused Windows smoke job for MetaTrader file transport
 helpers. It builds and runs `metatrader_paths_test`,
 `metatrader_file_config_include_test`, `metatrader_file_bridge_test` and
-`bridge_umbrella_include_test` on `windows-latest` so Windows filesystem API
-paths such as atomic replacement and exclusive temp creation are covered by CI.
+`bridge_umbrella_include_test` on `windows-latest`, and runs both
+`metatrader_file_bridge_smoke` and `metatrader_file_command_writer_smoke`.
+Windows filesystem API paths such as atomic replacement, exclusive temp
+creation and MetaTrader command-log generation are covered by CI.
 
 При изменении публичных aggregate headers или include policy добавляй или
 обновляй тест, который подключает intended public entry point:
@@ -162,6 +164,12 @@ targets.
 - `examples/test_intrade_bar_http_client_module.cpp`
 - `examples/test_service_session_db.cpp`
 - `examples/test_trade_manager_module.cpp`
+- `examples/metatrader_file_bridge_smoke.cpp`
+- `examples/metatrader_file_command_writer_smoke.cpp`
+- `mql/MQL4/Include/OptionX/OptionXFileBridge.mqh`
+- `mql/MQL4/Indicators/OptionX/OptionXFileBridgeSignalExample.mq4`
+- `mql/MQL5/Include/OptionX/OptionXFileBridge.mqh`
+- `mql/MQL5/Indicators/OptionX/OptionXFileBridgeSignalExample.mq5`
 
 Перед изменением user-facing API проверь ближайший example и обнови его, если
 старый сценарий стал недействительным.

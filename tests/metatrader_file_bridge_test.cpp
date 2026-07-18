@@ -1359,7 +1359,7 @@ TEST(MetaTraderFileBridge, DurableIdempotencySuppressesReplayAfterCheckpointLoss
     EXPECT_EQ(events[0].document.at("result").at("signal_ref").at("signal_id").get<std::string>(), "10");
 }
 
-TEST(MetaTraderFileBridge, DeduplicatesByJsonRpcId) {
+TEST(MetaTraderFileBridge, RejectsJsonRpcIdReuseForDifferentOperation) {
     namespace mtfile = optionx::bridges::metatrader_file;
     namespace protocol = optionx::bridges::metatrader_file::detail;
 
@@ -1410,7 +1410,119 @@ TEST(MetaTraderFileBridge, DeduplicatesByJsonRpcId) {
         config.max_line_bytes);
     ASSERT_EQ(events.size(), 2u);
     EXPECT_EQ(events[0].document.at("result").at("signal_ref").at("signal_id").get<std::string>(), "50");
-    EXPECT_EQ(events[1].document.at("result").at("signal_ref").at("signal_id").get<std::string>(), "50");
+    EXPECT_EQ(events[1].document.at("result").at("status").get<std::string>(), "rejected");
+    EXPECT_EQ(events[1].document.at("result").at("reason").at("code").get<std::string>(), "idempotency_conflict");
+}
+
+TEST(MetaTraderFileBridge, DeduplicatesRetryWhenOnlyDeadlineChanges) {
+    namespace mtfile = optionx::bridges::metatrader_file;
+    namespace protocol = optionx::bridges::metatrader_file::detail;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+
+    mtfile::MetaTraderFileBridgeConfig config;
+    config.common_files_root = root.u8string();
+    config.bridge_id = 40;
+    config.client_id = "terminal-retry-deadline";
+    config.max_line_bytes = 8192;
+
+    const auto layout = protocol::make_layout(config);
+    protocol::ensure_runtime_directories(layout);
+    protocol::append_json_line(
+        layout.commands_log(),
+        protocol::make_file_jsonrpc_request(
+            1,
+            "request-1",
+            "signal.submit",
+            make_signal_submit_params("retry-key", "retry-hash", "EURUSD", "BUY",
+                                      protocol::unix_time_ms() + 60000)),
+        config.max_line_bytes);
+    protocol::append_json_line(
+        layout.commands_log(),
+        protocol::make_file_jsonrpc_request(
+            2,
+            "request-2",
+            "signal.submit",
+            make_signal_submit_params("retry-key", "retry-hash", "EURUSD", "BUY",
+                                      protocol::unix_time_ms() - 1)),
+        config.max_line_bytes);
+
+    mtfile::MetaTraderFileBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<mtfile::MetaTraderFileBridgeConfig>(config)));
+    bridge.on_signal_id() = []() {
+        return optionx::SignalId{51};
+    };
+
+    int signal_count = 0;
+    bridge.on_trade_signal() = [&](std::unique_ptr<optionx::TradeSignal>) {
+        ++signal_count;
+    };
+    bridge.process();
+    EXPECT_EQ(signal_count, 1);
+
+    const auto events = protocol::read_ndjson_since_file_seq(
+        layout.events_log(),
+        0,
+        config.max_line_bytes);
+    ASSERT_EQ(events.size(), 2u);
+    EXPECT_EQ(events[0].document.at("result").at("signal_ref").at("signal_id").get<std::string>(), "51");
+    EXPECT_EQ(events[1].document.at("result").at("signal_ref").at("signal_id").get<std::string>(), "51");
+}
+
+TEST(MetaTraderFileBridge, RejectsSameIdempotencyKeyWithDifferentBusinessPayload) {
+    namespace mtfile = optionx::bridges::metatrader_file;
+    namespace protocol = optionx::bridges::metatrader_file::detail;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+
+    mtfile::MetaTraderFileBridgeConfig config;
+    config.common_files_root = root.u8string();
+    config.bridge_id = 40;
+    config.client_id = "terminal-retry-payload";
+    config.max_line_bytes = 8192;
+
+    const auto layout = protocol::make_layout(config);
+    protocol::ensure_runtime_directories(layout);
+    protocol::append_json_line(
+        layout.commands_log(),
+        protocol::make_file_jsonrpc_request(
+            1,
+            "request-1",
+            "signal.submit",
+            make_signal_submit_params("retry-key", "retry-hash", "EURUSD")),
+        config.max_line_bytes);
+    protocol::append_json_line(
+        layout.commands_log(),
+        protocol::make_file_jsonrpc_request(
+            2,
+            "request-2",
+            "signal.submit",
+            make_signal_submit_params("retry-key", "retry-hash", "GBPUSD")),
+        config.max_line_bytes);
+
+    mtfile::MetaTraderFileBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<mtfile::MetaTraderFileBridgeConfig>(config)));
+    bridge.on_signal_id() = []() {
+        return optionx::SignalId{52};
+    };
+
+    int signal_count = 0;
+    bridge.on_trade_signal() = [&](std::unique_ptr<optionx::TradeSignal>) {
+        ++signal_count;
+    };
+    bridge.process();
+    EXPECT_EQ(signal_count, 1);
+
+    const auto events = protocol::read_ndjson_since_file_seq(
+        layout.events_log(),
+        0,
+        config.max_line_bytes);
+    ASSERT_EQ(events.size(), 2u);
+    EXPECT_EQ(events[0].document.at("result").at("signal_ref").at("signal_id").get<std::string>(), "52");
+    EXPECT_EQ(events[1].document.at("result").at("status").get<std::string>(), "rejected");
+    EXPECT_EQ(events[1].document.at("result").at("reason").at("code").get<std::string>(), "idempotency_conflict");
 }
 
 TEST(MetaTraderFileBridge, InDoubtIdempotencySuppressesReplayAfterCallbackFailure) {

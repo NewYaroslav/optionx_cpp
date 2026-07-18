@@ -54,9 +54,10 @@ than one-file-per-message. Each append log has one writer:
 - the bridge is the only writer of `events.ndjson`;
 - the bridge is the only writer of `state.json`.
 
-This avoids writer/writer locking while keeping the format easy to implement in
-MQL4/MQL5. Readers keep their own checkpoint and never rewrite another side's
-append log.
+This keeps the format easy to implement in MQL4/MQL5. Readers keep their own
+checkpoint and never rewrite another side's append log. When several runtime
+objects or processes can write the same logical log, they must share a per-log
+exclusive lock.
 
 ### C++ MVP Surface
 
@@ -66,6 +67,9 @@ file-transport building blocks:
 - `bridges/metatrader_file.hpp` as the umbrella include;
 - `MetaTraderFileBridgeConfig` for the MetaQuotes Common Files root, client
   directory identity, polling interval and NDJSON line limits;
+- `MetaTraderFileCommandWriter` as the C++ client-side counterpart to the MQL
+  `COptionXFileBridge` header; it appends canonical `signal.submit`,
+  `trade.open` and `account.balance.get` requests;
 - `metatrader_file::detail` helpers for path-safe IDs, NDJSON append/read,
   owner-side log cleanup, JSON-RPC request/response/notification documents,
   atomic state snapshots and bounded JSON reads;
@@ -73,9 +77,97 @@ file-transport building blocks:
   location, Common Files root and terminal data directories;
 - small helpers for `balance.updated` and `trade.updated` notification payloads.
 
-This slice does not yet define a long-running `BaseBridge` polling loop, MQL
-advisor code or a broker execution adapter. Those pieces should use these
-helpers in follow-up implementation PRs.
+The bridge side is implemented by `MetaTraderFileBridge`. The C++ client side is
+intentionally smaller: `MetaTraderFileCommandWriter` is a reusable command
+writer, analogous to the MQL `COptionXFileBridge` header. It is not a background
+transport loop and does not read events or state snapshots. It should be used by
+smoke tools, tests and C++ applications that need to create
+MetaTrader-compatible command logs.
+
+### Writer Helpers And Smoke Generator
+
+The C++ client-side writer appends one compact JSON-RPC request per line to
+`commands.ndjson`. It assigns `file_seq` and adds `context.valid_until_ms` for
+trade-affecting commands. The caller must provide a stable
+`context.idempotency_key` for `signal.submit` and `trade.open` and persist it
+before retrying the same logical operation; `file_seq` is a transport sequence
+and must not be used as the retry identity of a trade-affecting operation.
+One-shot query commands such as `account.balance.get` may use a writer-generated
+JSON-RPC `id`.
+
+Supported convenience methods:
+
+- `MetaTraderFileCommandWriter::signal_submit(...)`;
+- `MetaTraderFileCommandWriter::trade_open(...)`;
+- `MetaTraderFileCommandWriter::account_balance_get(...)`.
+
+The example `examples/metatrader_file_command_writer_smoke.cpp` writes one
+`account.balance.get`, one `signal.submit` and one `trade.open` command. In
+self-test mode it uses a temporary Common Files root and verifies that the
+generated log contains `file_seq`, JSON-RPC `id`, caller-provided
+`context.idempotency_key` and `context.valid_until_ms`.
+
+Owner-side cleanup is explicit: the writer may clear `commands.ndjson` only
+after `commands.checkpoint.json.last_file_seq` is greater than or equal to the
+greatest visible `file_seq` in the command log. Clearing before that checkpoint
+can drop commands that the bridge has not processed yet.
+
+### MQL4/MQL5 Client Header
+
+The sample MQL client is laid out like a real terminal data folder. The header
+lives in:
+
+```text
+mql/MQL4/Include/OptionX/OptionXFileBridge.mqh
+mql/MQL5/Include/OptionX/OptionXFileBridge.mqh
+```
+
+It exposes a small `COptionXFileBridge` class with the same three command
+helpers:
+
+- `AccountBalanceGet(...)`;
+- `SignalSubmit(...)`;
+- `TradeOpen(...)`.
+
+Copy the matching `mql/MQL4` or `mql/MQL5` tree into the terminal data folder,
+or copy only the `OptionX` subfolders into existing `MQL4\Include` /
+`MQL4\Indicators` or `MQL5\Include` / `MQL5\Indicators` directories. Include
+the header from MQL as:
+
+```mql
+#include <OptionX/OptionXFileBridge.mqh>
+```
+
+Ready-to-run examples are provided as:
+
+- `mql/MQL4/Indicators/OptionX/OptionXFileBridgeSignalExample.mq4`;
+- `mql/MQL5/Indicators/OptionX/OptionXFileBridgeSignalExample.mq5`.
+
+The examples print the resolved client root and command log path with `Print`,
+send an `account.balance.get` request and submit a simple signal for the current
+chart symbol. `trade.open` is available behind an input flag so the example does
+not open a direct trade accidentally.
+
+`SignalSubmit(...)` and `TradeOpen(...)` require an explicit `operation_key`.
+The MQL caller should create that key before appending the command, persist it
+as part of its own retry state, and reuse the same value when retrying the same
+logical signal or trade. The header uses this key as JSON-RPC `id`,
+`context.idempotency_key` and, when no separate domain identity is available,
+`identity.unique_hash`.
+
+`AccountBalanceGet(...)` remains a one-shot query helper. If the caller does not
+provide an `operation_key`, the MQL header generates a transport-local request
+id after reserving `file_seq` under the command-log lock:
+
+```text
+mql:<bridge_id>:<client_id>:<base36(file_seq)>
+```
+
+The MQL header opens text files with `CP_UTF8` and shared read/write flags. It
+also repairs an incomplete tail before appending the first new command after a
+restart. If `commands.checkpoint.json` exists but is unreadable or malformed, or
+if `commands.ndjson` cannot be scanned safely, the helper fails closed and does
+not write a new command with a reset `file_seq`.
 
 ### MetaTrader Discovery Utility
 
@@ -213,10 +305,24 @@ the file to the last complete LF-terminated record, or to an empty file when no
 complete record exists. This prevents a crashed half-record from being glued to
 the next valid record.
 
-The single-writer rule is per log file and includes all threads/tasks inside
-that writer. Repair, append and owner-side clear operations for the same log
-must be serialized by the caller, for example through one owner queue or a
-per-log mutex. The low-level append helper is intentionally unlocked.
+The single-writer rule is per logical log and includes all threads/tasks inside
+that writer. Repair, sequence recovery, append and owner-side clear operations
+for the same log must be serialized. If more than one runtime object or process
+can touch the same path, use a per-log lock file or equivalent OS file lock; an
+in-process mutex alone is not sufficient. The low-level append helper is
+intentionally unlocked.
+
+Before appending, a writer must serialize the exact UTF-8 bytes that will be
+written, including the trailing LF, and check:
+
+```text
+current_log_size + encoded_record_bytes <= max_command_log_bytes
+```
+
+If there is not enough space, the writer may first clear its own log only when
+the reader checkpoint confirms that all currently visible records were consumed.
+Otherwise it must fail before append; it must not publish a record that pushes
+the log beyond the configured bridge read limit.
 
 Readers must enforce `max_line_bytes` while streaming the file, not after
 loading the full tail into memory. A complete malformed line may be skipped and
@@ -287,6 +393,10 @@ seen again within the configured idempotency retention window, the bridge must
 return or re-emit the original/current operation result instead of creating a
 second trade. After that retention window, duplicate suppression is no longer
 guaranteed; stale retained commands should be rejected by `valid_until_ms`.
+For idempotency comparison, `context.valid_until_ms` and
+`context.client_created_at_ms` are admission/attempt metadata rather than
+business payload. They must not make an otherwise identical retry conflict, but
+the bridge still validates `valid_until_ms` before accepting a new operation.
 
 This draft intentionally does not define log rotation. Production
 implementations may add owner-side compaction later, but the baseline profile is
@@ -297,6 +407,14 @@ Deferred implementation work:
 - Higher-level MQL helpers for writing and compacting these logs.
 - A runtime writer object or owner queue that serializes append, repair and
   owner-side clear operations per log file.
+- Canonical idempotency fingerprints for trade commands: validate and normalize
+  business payloads into a protocol-level canonical JSON form before
+  deterministic serialization or hashing. This should cover decimal
+  representations, identifiers, supported enum aliases, defaults, routing,
+  identity fields and expiry semantics while excluding transport/retry metadata.
+- MetaEditor compilation smoke tests for the MQL5 header/example. MQL4
+  compilation should be added separately once a reproducible MT4 compiler setup
+  is available.
 - Optional `log_generation`/file identity support if persisted byte-offset
   optimization becomes necessary.
 - A callback/visitor NDJSON reader if future logs need very large scans without
