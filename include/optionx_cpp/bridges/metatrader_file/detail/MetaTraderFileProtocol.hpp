@@ -218,11 +218,45 @@ namespace optionx::bridges::metatrader_file::detail {
                 std::filesystem::remove(m_lock_file, ec);
             }
 #endif
+            release_process_lock();
         }
 
     private:
-        bool try_acquire(std::error_code& ec) noexcept {
+        bool try_acquire_process_lock() {
+            std::lock_guard<std::mutex> lock(process_lock_mutex());
+            if (process_locks().count(m_process_lock_key) != 0) {
+                return false;
+            }
+            process_locks().insert(m_process_lock_key);
+            m_process_lock_acquired = true;
+            return true;
+        }
+
+        void release_process_lock() noexcept {
+            if (!m_process_lock_acquired) {
+                return;
+            }
+            std::lock_guard<std::mutex> lock(process_lock_mutex());
+            process_locks().erase(m_process_lock_key);
+            m_process_lock_acquired = false;
+        }
+
+        static std::mutex& process_lock_mutex() {
+            static std::mutex mutex;
+            return mutex;
+        }
+
+        static std::set<std::string>& process_locks() {
+            static std::set<std::string> locks;
+            return locks;
+        }
+
+        bool try_acquire(std::error_code& ec) {
             ec.clear();
+            if (!try_acquire_process_lock()) {
+                ec = std::make_error_code(std::errc::resource_unavailable_try_again);
+                return false;
+            }
 #if defined(_WIN32)
             HANDLE handle = ::CreateFileW(
                 m_lock_file.c_str(),
@@ -234,6 +268,7 @@ namespace optionx::bridges::metatrader_file::detail {
                 nullptr);
             if (handle == INVALID_HANDLE_VALUE) {
                 ec = std::error_code(static_cast<int>(::GetLastError()), std::system_category());
+                release_process_lock();
                 return false;
             }
             m_handle = handle;
@@ -242,6 +277,7 @@ namespace optionx::bridges::metatrader_file::detail {
             const int fd = ::open(m_lock_file.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
             if (fd < 0) {
                 ec = std::error_code(errno, std::generic_category());
+                release_process_lock();
                 return false;
             }
             struct flock lock {};
@@ -250,17 +286,23 @@ namespace optionx::bridges::metatrader_file::detail {
             if (::fcntl(fd, F_SETLK, &lock) != 0) {
                 ec = std::error_code(errno, std::generic_category());
                 ::close(fd);
+                release_process_lock();
                 return false;
             }
             m_fd = fd;
             return true;
 #else
             m_owns_directory_lock = std::filesystem::create_directory(m_lock_file, ec);
+            if (!m_owns_directory_lock) {
+                release_process_lock();
+            }
             return m_owns_directory_lock;
 #endif
         }
 
         std::filesystem::path m_lock_file;
+        std::string m_process_lock_key = m_lock_file.lexically_normal().u8string();
+        bool m_process_lock_acquired = false;
 #if defined(_WIN32)
         HANDLE m_handle = INVALID_HANDLE_VALUE;
 #elif defined(__unix__) || defined(__APPLE__)
