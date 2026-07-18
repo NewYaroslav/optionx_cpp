@@ -737,17 +737,14 @@ namespace optionx::bridges::metatrader_file {
             return method + "\n" + id.dump(-1);
         }
 
-        static std::string payload_fingerprint(const nlohmann::json& params) {
-            auto canonical = params;
-            auto context_it = canonical.find("context");
-            if (context_it != canonical.end() && context_it->is_object()) {
-                // Admission metadata may legitimately change between retries.
-                // The idempotency fingerprint must describe the business
-                // operation, not the transport attempt envelope.
-                context_it->erase("valid_until_ms");
-                context_it->erase("client_created_at_ms");
-            }
-            return canonical.dump(-1);
+        static std::string payload_fingerprint(
+                const std::string& method,
+                const nlohmann::json& params) {
+            // Compare the normalized business operation, not retry/admission
+            // metadata or the caller's incidental JSON spelling.
+            return detail::canonical_trade_command_payload(
+                params,
+                method == "trade.open").dump(-1);
         }
 
         static nlohmann::json make_in_doubt_result(
@@ -1013,7 +1010,7 @@ namespace optionx::bridges::metatrader_file {
             }
 
             const auto storage_key = idempotency_storage_key(method, idempotency_key);
-            const auto fingerprint = payload_fingerprint(params);
+            const auto fingerprint = payload_fingerprint(method, params);
             if (!rpc_request_key.empty()) {
                 const auto request_it = m_request_id_index.find(rpc_request_key);
                 if (request_it != m_request_id_index.end()) {

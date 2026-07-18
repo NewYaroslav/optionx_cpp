@@ -1525,6 +1525,207 @@ TEST(MetaTraderFileBridge, RejectsSameIdempotencyKeyWithDifferentBusinessPayload
     EXPECT_EQ(events[1].document.at("result").at("reason").at("code").get<std::string>(), "idempotency_conflict");
 }
 
+TEST(MetaTraderFileBridge, DeduplicatesRetryWithCanonicalBusinessPayload) {
+    namespace mtfile = optionx::bridges::metatrader_file;
+    namespace protocol = optionx::bridges::metatrader_file::detail;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+
+    mtfile::MetaTraderFileBridgeConfig config;
+    config.common_files_root = root.u8string();
+    config.bridge_id = 40;
+    config.client_id = "terminal-canonical-payload";
+    config.max_line_bytes = 8192;
+
+    auto first_params = make_signal_submit_params(
+        "canonical-key",
+        "canonical-hash",
+        "EURUSD",
+        "PUT",
+        protocol::unix_time_ms() + 60000);
+    first_params["identity"]["unique_id"] = 42;
+    first_params["routing"]["selector"]["kind"] = "DEFAULT";
+    first_params["routing"]["selector"]["account_id"] = 7;
+    first_params["signal"]["option_type"] = "sprint";
+    first_params["signal"]["amount"]["value"] = "1.2500";
+    first_params["signal"]["amount"]["currency"] = "usd";
+    first_params["signal"]["expiry"]["duration_ms"] = "60000";
+
+    auto retry_params = make_signal_submit_params(
+        "canonical-key",
+        "canonical-hash",
+        "EURUSD",
+        "BUY",
+        protocol::unix_time_ms() + 120000);
+    retry_params["identity"]["unique_id"] = "42";
+    retry_params["routing"]["selector"]["kind"] = "default";
+    retry_params["routing"]["selector"]["account_id"] = "7";
+    retry_params["signal"]["option_type"] = "SPRINT";
+    retry_params["signal"]["amount"]["value"] = 1.25;
+    retry_params["signal"]["amount"]["currency"] = "USD";
+    retry_params["signal"]["expiry"]["duration_ms"] = 60000;
+
+    const auto layout = protocol::make_layout(config);
+    protocol::ensure_runtime_directories(layout);
+    protocol::append_json_line(
+        layout.commands_log(),
+        protocol::make_file_jsonrpc_request(
+            1,
+            "request-1",
+            "signal.submit",
+            first_params),
+        config.max_line_bytes);
+    protocol::append_json_line(
+        layout.commands_log(),
+        protocol::make_file_jsonrpc_request(
+            2,
+            "request-2",
+            "signal.submit",
+            retry_params),
+        config.max_line_bytes);
+
+    mtfile::MetaTraderFileBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<mtfile::MetaTraderFileBridgeConfig>(config)));
+    bridge.on_signal_id() = []() {
+        return optionx::SignalId{53};
+    };
+
+    int signal_count = 0;
+    bridge.on_trade_signal() = [&](std::unique_ptr<optionx::TradeSignal>) {
+        ++signal_count;
+    };
+    bridge.process();
+    EXPECT_EQ(signal_count, 1);
+
+    const auto events = protocol::read_ndjson_since_file_seq(
+        layout.events_log(),
+        0,
+        config.max_line_bytes);
+    ASSERT_EQ(events.size(), 2u);
+    EXPECT_EQ(events[0].document.at("result").at("signal_ref").at("signal_id").get<std::string>(), "53");
+    EXPECT_EQ(events[1].document.at("result").at("signal_ref").at("signal_id").get<std::string>(), "53");
+}
+
+TEST(MetaTraderFileBridge, RejectsJsonRpcIdReuseWhenBusinessPayloadChanges) {
+    namespace mtfile = optionx::bridges::metatrader_file;
+    namespace protocol = optionx::bridges::metatrader_file::detail;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+
+    mtfile::MetaTraderFileBridgeConfig config;
+    config.common_files_root = root.u8string();
+    config.bridge_id = 40;
+    config.client_id = "terminal-rpc-id-payload-change";
+    config.max_line_bytes = 8192;
+
+    auto changed_params = make_signal_submit_params("same-key", "same-hash");
+    changed_params["signal"]["amount"]["value"] = "2.00";
+
+    const auto layout = protocol::make_layout(config);
+    protocol::ensure_runtime_directories(layout);
+    protocol::append_json_line(
+        layout.commands_log(),
+        protocol::make_file_jsonrpc_request(
+            1,
+            "request-1",
+            "signal.submit",
+            make_signal_submit_params("same-key", "same-hash")),
+        config.max_line_bytes);
+    protocol::append_json_line(
+        layout.commands_log(),
+        protocol::make_file_jsonrpc_request(
+            2,
+            "request-1",
+            "signal.submit",
+            changed_params),
+        config.max_line_bytes);
+
+    mtfile::MetaTraderFileBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<mtfile::MetaTraderFileBridgeConfig>(config)));
+    bridge.on_signal_id() = []() {
+        return optionx::SignalId{54};
+    };
+
+    int signal_count = 0;
+    bridge.on_trade_signal() = [&](std::unique_ptr<optionx::TradeSignal>) {
+        ++signal_count;
+    };
+    bridge.process();
+    EXPECT_EQ(signal_count, 1);
+
+    const auto events = protocol::read_ndjson_since_file_seq(
+        layout.events_log(),
+        0,
+        config.max_line_bytes);
+    ASSERT_EQ(events.size(), 2u);
+    EXPECT_EQ(events[0].document.at("result").at("signal_ref").at("signal_id").get<std::string>(), "54");
+    EXPECT_EQ(events[1].document.at("result").at("status").get<std::string>(), "rejected");
+    EXPECT_EQ(events[1].document.at("result").at("reason").at("code").get<std::string>(), "idempotency_conflict");
+}
+
+TEST(MetaTraderFileBridge, KeepsDurationAndAbsoluteExpiryDistinctForIdempotency) {
+    namespace mtfile = optionx::bridges::metatrader_file;
+    namespace protocol = optionx::bridges::metatrader_file::detail;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+
+    mtfile::MetaTraderFileBridgeConfig config;
+    config.common_files_root = root.u8string();
+    config.bridge_id = 40;
+    config.client_id = "terminal-expiry-kind";
+    config.max_line_bytes = 8192;
+
+    auto absolute_params = make_signal_submit_params("expiry-key", "expiry-hash");
+    absolute_params["signal"]["expiry"] = {
+        {"kind", "absolute"},
+        {"expires_at_ms", 60000}
+    };
+
+    const auto layout = protocol::make_layout(config);
+    protocol::ensure_runtime_directories(layout);
+    protocol::append_json_line(
+        layout.commands_log(),
+        protocol::make_file_jsonrpc_request(
+            1,
+            "request-1",
+            "signal.submit",
+            make_signal_submit_params("expiry-key", "expiry-hash")),
+        config.max_line_bytes);
+    protocol::append_json_line(
+        layout.commands_log(),
+        protocol::make_file_jsonrpc_request(
+            2,
+            "request-2",
+            "signal.submit",
+            absolute_params),
+        config.max_line_bytes);
+
+    mtfile::MetaTraderFileBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<mtfile::MetaTraderFileBridgeConfig>(config)));
+    bridge.on_signal_id() = []() {
+        return optionx::SignalId{55};
+    };
+
+    int signal_count = 0;
+    bridge.on_trade_signal() = [&](std::unique_ptr<optionx::TradeSignal>) {
+        ++signal_count;
+    };
+    bridge.process();
+    EXPECT_EQ(signal_count, 1);
+
+    const auto events = protocol::read_ndjson_since_file_seq(
+        layout.events_log(),
+        0,
+        config.max_line_bytes);
+    ASSERT_EQ(events.size(), 2u);
+    EXPECT_EQ(events[0].document.at("result").at("signal_ref").at("signal_id").get<std::string>(), "55");
+    EXPECT_EQ(events[1].document.at("result").at("status").get<std::string>(), "rejected");
+    EXPECT_EQ(events[1].document.at("result").at("reason").at("code").get<std::string>(), "idempotency_conflict");
+}
+
 TEST(MetaTraderFileBridge, InDoubtIdempotencySuppressesReplayAfterCallbackFailure) {
     namespace mtfile = optionx::bridges::metatrader_file;
     namespace protocol = optionx::bridges::metatrader_file::detail;

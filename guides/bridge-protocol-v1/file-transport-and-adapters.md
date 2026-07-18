@@ -393,10 +393,14 @@ seen again within the configured idempotency retention window, the bridge must
 return or re-emit the original/current operation result instead of creating a
 second trade. After that retention window, duplicate suppression is no longer
 guaranteed; stale retained commands should be rejected by `valid_until_ms`.
-For idempotency comparison, `context.valid_until_ms` and
-`context.client_created_at_ms` are admission/attempt metadata rather than
-business payload. They must not make an otherwise identical retry conflict, but
-the bridge still validates `valid_until_ms` before accepting a new operation.
+For idempotency comparison, polling bridges compare a canonical protocol-level
+business payload. The canonical form excludes `context.idempotency_key`,
+`context.valid_until_ms`, `context.client_created_at_ms`, transport metadata and
+authentication metadata; it normalizes supported enum aliases, string/numeric
+identifiers, decimal input scale, routing/account identity aliases and expiry
+aliases within the same expiry kind. Duration and absolute expiry remain
+distinct business payloads. The bridge still validates `valid_until_ms` before
+accepting a new operation.
 
 This draft intentionally does not define log rotation. Production
 implementations may add owner-side compaction later, but the baseline profile is
@@ -407,11 +411,6 @@ Deferred implementation work:
 - Higher-level MQL helpers for writing and compacting these logs.
 - A runtime writer object or owner queue that serializes append, repair and
   owner-side clear operations per log file.
-- Canonical idempotency fingerprints for trade commands: validate and normalize
-  business payloads into a protocol-level canonical JSON form before
-  deterministic serialization or hashing. This should cover decimal
-  representations, identifiers, supported enum aliases, defaults, routing,
-  identity fields and expiry semantics while excluding transport/retry metadata.
 - MetaEditor compilation smoke tests for the MQL5 header/example. MQL4
   compilation should be added separately once a reproducible MT4 compiler setup
   is available.

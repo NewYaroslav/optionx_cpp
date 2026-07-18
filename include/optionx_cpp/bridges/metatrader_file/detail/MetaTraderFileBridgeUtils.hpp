@@ -212,6 +212,484 @@ namespace optionx::bridges::metatrader_file::detail {
         return fallback;
     }
 
+    inline std::int64_t int64_value(
+            const nlohmann::json& object,
+            const char* key,
+            std::int64_t fallback);
+    inline CurrencyType currency_value(const std::string& value);
+    inline AccountType account_type_value(const std::string& value);
+    inline OptionType option_type_value(const std::string& value);
+    inline OrderType order_type_value(const std::string& value);
+
+    /// \brief Trims ASCII whitespace without changing protocol text otherwise.
+    inline std::string trim_ascii_copy(const std::string& value) {
+        auto first = value.begin();
+        while (first != value.end() &&
+               std::isspace(static_cast<unsigned char>(*first)) != 0) {
+            ++first;
+        }
+
+        auto last = value.end();
+        while (last != first &&
+               std::isspace(static_cast<unsigned char>(*(last - 1))) != 0) {
+            --last;
+        }
+
+        return std::string(first, last);
+    }
+
+    /// \brief Uppercases ASCII protocol tokens.
+    inline std::string upper_ascii_copy(std::string value) {
+        std::transform(
+            value.begin(),
+            value.end(),
+            value.begin(),
+            [](const unsigned char ch) {
+                return static_cast<char>(std::toupper(ch));
+            });
+        return value;
+    }
+
+    /// \brief Lowercases ASCII protocol tokens.
+    inline std::string lower_ascii_copy(std::string value) {
+        std::transform(
+            value.begin(),
+            value.end(),
+            value.begin(),
+            [](const unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+        return value;
+    }
+
+    /// \brief Converts string/number identity values into canonical strings.
+    inline nlohmann::json canonical_identifier_value(const nlohmann::json& value) {
+        if (value.is_string()) {
+            return value.get<std::string>();
+        }
+        if (value.is_number_integer()) {
+            return std::to_string(value.get<std::int64_t>());
+        }
+        if (value.is_number_unsigned()) {
+            return std::to_string(value.get<std::uint64_t>());
+        }
+        return value;
+    }
+
+    /// \brief Normalizes a decimal text by removing non-semantic scale.
+    inline std::string canonical_decimal_text(std::string text) {
+        text = trim_ascii_copy(text);
+        if (text.empty()) {
+            return text;
+        }
+
+        if (text.find_first_of("eE") != std::string::npos) {
+            try {
+                std::ostringstream out;
+                out.imbue(std::locale::classic());
+                out << std::fixed << std::setprecision(12) << std::stold(text);
+                return canonical_decimal_text(out.str());
+            } catch (...) {
+                return text;
+            }
+        }
+
+        bool negative = false;
+        if (text.front() == '+' || text.front() == '-') {
+            negative = text.front() == '-';
+            text.erase(text.begin());
+        }
+
+        const auto dot = text.find('.');
+        auto integer = dot == std::string::npos ? text : text.substr(0, dot);
+        auto fraction = dot == std::string::npos ? std::string() : text.substr(dot + 1);
+
+        const auto is_digits = [](const std::string& part) {
+            return std::all_of(part.begin(), part.end(), [](const unsigned char ch) {
+                return std::isdigit(ch) != 0;
+            });
+        };
+        if ((!integer.empty() && !is_digits(integer)) ||
+            (!fraction.empty() && !is_digits(fraction)) ||
+            (integer.empty() && fraction.empty())) {
+            return (negative ? "-" : "") + text;
+        }
+
+        const auto non_zero = integer.find_first_not_of('0');
+        integer = non_zero == std::string::npos ? "0" : integer.substr(non_zero);
+        while (!fraction.empty() && fraction.back() == '0') {
+            fraction.pop_back();
+        }
+
+        if (integer == "0" && fraction.empty()) {
+            negative = false;
+        }
+
+        auto normalized = (negative ? "-" : "") + integer;
+        if (!fraction.empty()) {
+            normalized += "." + fraction;
+        }
+        return normalized;
+    }
+
+    /// \brief Converts string/number decimal values into canonical decimal text.
+    inline nlohmann::json canonical_decimal_value(const nlohmann::json& value) {
+        if (value.is_string()) {
+            return canonical_decimal_text(value.get<std::string>());
+        }
+        if (value.is_number_integer()) {
+            return std::to_string(value.get<std::int64_t>());
+        }
+        if (value.is_number_unsigned()) {
+            return std::to_string(value.get<std::uint64_t>());
+        }
+        if (value.is_number_float()) {
+            const auto numeric = value.get<double>();
+            if (!std::isfinite(numeric)) {
+                return value;
+            }
+            std::ostringstream out;
+            out.imbue(std::locale::classic());
+            out << std::fixed << std::setprecision(12) << numeric;
+            return canonical_decimal_text(out.str());
+        }
+        return value;
+    }
+
+    /// \brief Converts string/number millisecond fields into canonical strings.
+    inline nlohmann::json canonical_integer_text_value(const nlohmann::json& value) {
+        if (value.is_string()) {
+            return canonical_decimal_text(value.get<std::string>());
+        }
+        if (value.is_number_integer()) {
+            return std::to_string(value.get<std::int64_t>());
+        }
+        if (value.is_number_unsigned()) {
+            return std::to_string(value.get<std::uint64_t>());
+        }
+        return value;
+    }
+
+    /// \brief Converts second-based expiry aliases to millisecond text without throwing.
+    inline nlohmann::json canonical_milliseconds_from_seconds_value(
+            const nlohmann::json& value) {
+        try {
+            std::int64_t seconds = 0;
+            if (value.is_number_integer()) {
+                seconds = value.get<std::int64_t>();
+            } else if (value.is_number_unsigned()) {
+                const auto unsigned_seconds = value.get<std::uint64_t>();
+                if (unsigned_seconds >
+                    static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max() / 1000)) {
+                    return canonical_integer_text_value(value);
+                }
+                return std::to_string(unsigned_seconds * 1000);
+            } else if (value.is_string()) {
+                seconds = std::stoll(trim_ascii_copy(value.get<std::string>()));
+            } else {
+                return value;
+            }
+
+            if (seconds > std::numeric_limits<std::int64_t>::max() / 1000 ||
+                seconds < std::numeric_limits<std::int64_t>::min() / 1000) {
+                return canonical_integer_text_value(value);
+            }
+            return std::to_string(seconds * 1000);
+        } catch (...) {
+            return canonical_integer_text_value(value);
+        }
+    }
+
+    /// \brief Converts order direction aliases to the canonical protocol spelling.
+    inline void normalize_order_type_member(nlohmann::json& object, const char* key) {
+        if (!object.is_object() || !object.contains(key) || !object.at(key).is_string()) {
+            return;
+        }
+
+        try {
+            const auto value = order_type_value(trim_ascii_copy(object.at(key).get<std::string>()));
+            object[key] = to_str(value);
+        } catch (...) {
+            object[key] = upper_ascii_copy(trim_ascii_copy(object.at(key).get<std::string>()));
+        }
+    }
+
+    /// \brief Converts option type aliases to the canonical protocol spelling.
+    inline void normalize_option_type_member(nlohmann::json& object, const char* key) {
+        if (!object.is_object() || !object.contains(key) || !object.at(key).is_string()) {
+            return;
+        }
+
+        try {
+            const auto value = option_type_value(trim_ascii_copy(object.at(key).get<std::string>()));
+            object[key] = to_str(value);
+        } catch (...) {
+            object[key] = upper_ascii_copy(trim_ascii_copy(object.at(key).get<std::string>()));
+        }
+    }
+
+    /// \brief Converts known currency aliases to the canonical protocol spelling.
+    inline void normalize_currency_member(nlohmann::json& object, const char* key) {
+        if (!object.is_object() || !object.contains(key) || !object.at(key).is_string()) {
+            return;
+        }
+
+        try {
+            const auto value = currency_value(trim_ascii_copy(object.at(key).get<std::string>()));
+            object[key] = to_str(value);
+        } catch (...) {
+            object[key] = upper_ascii_copy(trim_ascii_copy(object.at(key).get<std::string>()));
+        }
+    }
+
+    /// \brief Normalizes an amount object/scalar without depending on input scale.
+    inline void normalize_amount_member(nlohmann::json& trade) {
+        if (!trade.is_object() || !trade.contains("amount")) {
+            return;
+        }
+
+        nlohmann::json amount = nlohmann::json::object();
+        if (trade.at("amount").is_object()) {
+            amount = trade.at("amount");
+        } else {
+            amount["value"] = trade.at("amount");
+        }
+
+        if (amount.contains("value")) {
+            amount["value"] = canonical_decimal_value(amount.at("value"));
+        }
+
+        if (amount.contains("currency")) {
+            normalize_currency_member(amount, "currency");
+        } else if (trade.contains("currency")) {
+            amount["currency"] = trade.at("currency");
+            normalize_currency_member(amount, "currency");
+        }
+
+        trade["amount"] = std::move(amount);
+        trade.erase("currency");
+    }
+
+    /// \brief Normalizes expiry aliases while keeping duration and absolute forms distinct.
+    inline void normalize_expiry_member(nlohmann::json& trade) {
+        if (!trade.is_object()) {
+            return;
+        }
+
+        nlohmann::json expiry = trade.contains("expiry") && trade.at("expiry").is_object()
+            ? trade.at("expiry")
+            : nlohmann::json::object();
+
+        const auto kind = expiry.contains("kind") && expiry.at("kind").is_string()
+            ? lower_ascii_copy(trim_ascii_copy(expiry.at("kind").get<std::string>()))
+            : std::string();
+
+        const bool has_duration =
+            expiry.contains("duration_ms") ||
+            trade.contains("duration_ms") ||
+            trade.contains("duration") ||
+            trade.contains("duration_sec") ||
+            kind == "duration";
+        const bool has_absolute =
+            expiry.contains("expires_at_ms") ||
+            trade.contains("expires_at_ms") ||
+            trade.contains("expiry_time") ||
+            kind == "absolute";
+
+        if (has_duration && !has_absolute) {
+            nlohmann::json duration_ms;
+            if (expiry.contains("duration_ms")) {
+                duration_ms = expiry.at("duration_ms");
+            } else if (trade.contains("duration_ms")) {
+                duration_ms = trade.at("duration_ms");
+            } else if (trade.contains("duration")) {
+                duration_ms = canonical_milliseconds_from_seconds_value(trade.at("duration"));
+            } else if (trade.contains("duration_sec")) {
+                duration_ms = canonical_milliseconds_from_seconds_value(trade.at("duration_sec"));
+            }
+
+            expiry = nlohmann::json::object();
+            expiry["kind"] = "duration";
+            if (!duration_ms.is_null()) {
+                expiry["duration_ms"] = canonical_integer_text_value(duration_ms);
+            }
+            trade["expiry"] = std::move(expiry);
+        } else if (has_absolute) {
+            nlohmann::json expires_at_ms;
+            if (expiry.contains("expires_at_ms")) {
+                expires_at_ms = expiry.at("expires_at_ms");
+            } else if (trade.contains("expires_at_ms")) {
+                expires_at_ms = trade.at("expires_at_ms");
+            } else if (trade.contains("expiry_time")) {
+                expires_at_ms = canonical_milliseconds_from_seconds_value(trade.at("expiry_time"));
+            }
+
+            expiry = nlohmann::json::object();
+            expiry["kind"] = "absolute";
+            if (!expires_at_ms.is_null()) {
+                expiry["expires_at_ms"] = canonical_integer_text_value(expires_at_ms);
+            }
+            trade["expiry"] = std::move(expiry);
+        } else if (trade.contains("expiry") && trade.at("expiry").is_object()) {
+            if (trade.at("expiry").contains("kind") &&
+                trade.at("expiry").at("kind").is_string()) {
+                trade["expiry"]["kind"] =
+                    lower_ascii_copy(trim_ascii_copy(trade.at("expiry").at("kind").get<std::string>()));
+            }
+        }
+
+        trade.erase("duration_ms");
+        trade.erase("duration");
+        trade.erase("duration_sec");
+        trade.erase("expires_at_ms");
+        trade.erase("expiry_time");
+    }
+
+    /// \brief Moves trade identity aliases to a single canonical identity object.
+    inline void normalize_identity_aliases(nlohmann::json& canonical, nlohmann::json& trade) {
+        if (!canonical.is_object() || !trade.is_object()) {
+            return;
+        }
+
+        if (!canonical.contains("identity") || !canonical.at("identity").is_object()) {
+            canonical["identity"] = nlohmann::json::object();
+        }
+        auto& identity = canonical["identity"];
+
+        const char* text_keys[] = {"unique_hash", "signal_name", "user_data"};
+        for (const auto* key : text_keys) {
+            if (!identity.contains(key) && trade.contains(key)) {
+                identity[key] = canonical_identifier_value(trade.at(key));
+            } else if (identity.contains(key)) {
+                identity[key] = canonical_identifier_value(identity.at(key));
+            }
+            trade.erase(key);
+        }
+
+        if (!identity.contains("unique_id") && trade.contains("unique_id")) {
+            identity["unique_id"] = canonical_identifier_value(trade.at("unique_id"));
+        } else if (identity.contains("unique_id")) {
+            identity["unique_id"] = canonical_identifier_value(identity.at("unique_id"));
+        }
+        trade.erase("unique_id");
+
+        if (identity.empty()) {
+            canonical.erase("identity");
+        }
+    }
+
+    /// \brief Normalizes routing and account identity aliases.
+    inline void normalize_routing_aliases(nlohmann::json& canonical, nlohmann::json& trade) {
+        if (!canonical.is_object() || !trade.is_object()) {
+            return;
+        }
+
+        if (!canonical.contains("routing") || !canonical.at("routing").is_object()) {
+            canonical["routing"] = nlohmann::json::object();
+        }
+        auto& routing = canonical["routing"];
+        if (!routing.contains("selector") || !routing.at("selector").is_object()) {
+            routing["selector"] = nlohmann::json::object();
+        }
+        auto& selector = routing["selector"];
+
+        if (selector.contains("kind") && selector.at("kind").is_string()) {
+            selector["kind"] = lower_ascii_copy(trim_ascii_copy(selector.at("kind").get<std::string>()));
+        }
+
+        if (selector.contains("account_id")) {
+            selector["account_id"] = canonical_identifier_value(selector.at("account_id"));
+        } else if (trade.contains("account_id")) {
+            selector["account_id"] = canonical_identifier_value(trade.at("account_id"));
+        }
+        trade.erase("account_id");
+
+        if (selector.empty()) {
+            routing.erase("selector");
+        }
+        if (routing.empty()) {
+            canonical.erase("routing");
+        }
+    }
+
+    /// \brief Normalizes a trade/signal business object for idempotency comparison.
+    inline void normalize_trade_business_object(nlohmann::json& trade) {
+        if (!trade.is_object()) {
+            return;
+        }
+
+        if (!trade.contains("order_type")) {
+            if (trade.contains("direction")) {
+                trade["order_type"] = trade.at("direction");
+            } else if (trade.contains("action")) {
+                trade["order_type"] = trade.at("action");
+            }
+        }
+        trade.erase("direction");
+        trade.erase("action");
+
+        if (trade.contains("symbol")) {
+            trade["symbol"] = canonical_identifier_value(trade.at("symbol"));
+        }
+        if (trade.contains("account_type") && trade.at("account_type").is_string()) {
+            try {
+                const auto value = account_type_value(trim_ascii_copy(trade.at("account_type").get<std::string>()));
+                trade["account_type"] = to_str(value);
+            } catch (...) {
+                trade["account_type"] =
+                    upper_ascii_copy(trim_ascii_copy(trade.at("account_type").get<std::string>()));
+            }
+        }
+
+        normalize_order_type_member(trade, "order_type");
+        normalize_option_type_member(trade, "option_type");
+        normalize_currency_member(trade, "currency");
+        normalize_amount_member(trade);
+        normalize_expiry_member(trade);
+
+        if (trade.contains("refund")) {
+            trade["refund"] = canonical_decimal_value(trade.at("refund"));
+        }
+        if (trade.contains("min_payout")) {
+            trade["min_payout"] = canonical_decimal_value(trade.at("min_payout"));
+        }
+    }
+
+    /// \brief Builds canonical business JSON for trade-command idempotency.
+    inline nlohmann::json canonical_trade_command_payload(
+            const nlohmann::json& params,
+            const bool direct_trade_open) {
+        auto canonical = params.is_object() ? params : nlohmann::json::object();
+
+        if (canonical.contains("context") && canonical.at("context").is_object()) {
+            auto& context = canonical["context"];
+            context.erase("idempotency_key");
+            context.erase("valid_until_ms");
+            context.erase("client_created_at_ms");
+            context.erase("file_seq");
+            context.erase("auth");
+            context.erase("authorization");
+            context.erase("api_key");
+            context.erase("client_secret");
+            context.erase("transport");
+            if (context.empty()) {
+                canonical.erase("context");
+            }
+        }
+
+        const auto trade_key = direct_trade_open ? "trade" : "signal";
+        if (canonical.contains(trade_key) && canonical.at(trade_key).is_object()) {
+            auto& trade = canonical[trade_key];
+            normalize_identity_aliases(canonical, trade);
+            normalize_routing_aliases(canonical, trade);
+            normalize_trade_business_object(trade);
+        } else {
+            normalize_trade_business_object(canonical);
+        }
+
+        return canonical;
+    }
+
     /// \brief Reads a decimal-like JSON member.
     inline double double_value(
             const nlohmann::json& object,

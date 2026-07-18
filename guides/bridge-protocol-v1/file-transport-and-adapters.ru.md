@@ -368,10 +368,15 @@ configured idempotency retention window must return or re-emit the
 original/current operation result, not create a second trade. After that
 retention window duplicate suppression is no longer guaranteed; stale retained
 commands should be rejected by `valid_until_ms`.
-Для idempotency comparison `context.valid_until_ms` и
-`context.client_created_at_ms` считаются admission/attempt metadata, а не
-business payload. Они не должны превращать otherwise identical retry в conflict,
-но bridge всё равно валидирует `valid_until_ms` перед принятием новой операции.
+Для idempotency comparison polling bridges сравнивают canonical
+protocol-level business payload. Эта форма исключает
+`context.idempotency_key`, `context.valid_until_ms`,
+`context.client_created_at_ms`, transport metadata и authentication metadata;
+она нормализует поддерживаемые enum aliases, string/numeric identifiers,
+decimal input scale, routing/account identity aliases и expiry aliases внутри
+одного expiry kind. Duration и absolute expiry остаются разными business
+payload. Bridge всё равно валидирует `valid_until_ms` перед принятием новой
+операции.
 
 This draft intentionally does not define log rotation. Baseline profile is
 append, checkpoint and clear.
@@ -381,11 +386,6 @@ Deferred implementation work:
 - Higher-level MQL helpers for writing and compacting these logs.
 - Runtime writer object or owner queue that serializes append, repair and
   owner-side clear operations per log file.
-- Canonical idempotency fingerprints for trade commands: validate and normalize
-  business payloads into a protocol-level canonical JSON form before
-  deterministic serialization or hashing. This should cover decimal
-  representations, identifiers, supported enum aliases, defaults, routing,
-  identity fields and expiry semantics while excluding transport/retry metadata.
 - MetaEditor compilation smoke tests for the MQL5 header/example. MQL4
   compilation should be added separately once a reproducible MT4 compiler setup
   is available.
