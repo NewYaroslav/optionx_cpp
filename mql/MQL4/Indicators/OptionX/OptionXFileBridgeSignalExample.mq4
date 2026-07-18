@@ -14,8 +14,6 @@ extern bool   InpSendTradeOpen = false;
 COptionXFileBridge g_optionx;
 
 int OnInit() {
-   MathSrand((int)GetTickCount());
-
    if (!g_optionx.Configure(InpBridgeId, InpClientId))
       return INIT_FAILED;
    Print("OptionX MT4 file bridge example");

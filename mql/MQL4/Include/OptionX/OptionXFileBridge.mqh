@@ -13,7 +13,6 @@ private:
    int    m_max_line_bytes;
    int    m_max_command_log_bytes;
    long   m_next_file_seq;
-   long   m_operation_counter;
    bool   m_configured;
 
    string NormalizePath(string value) const {
@@ -99,15 +98,6 @@ private:
          int index = (int)(value % 36);
          out = StringSubstr(digits, index, 1) + out;
          value /= 36;
-      }
-      return out;
-   }
-
-   string RandomBase36(const int length) const {
-      string digits = "0123456789abcdefghijklmnopqrstuvwxyz";
-      string out = "";
-      for (int i = 0; i < length; ++i) {
-         out += StringSubstr(digits, MathRand() % 36, 1);
       }
       return out;
    }
@@ -525,7 +515,66 @@ private:
       return params;
    }
 
-   bool AppendRequest(const string id, const string method, const string params) {
+   string MakeOperationKey(const long file_seq, const string prefix = "mql") const {
+      return prefix + ":" +
+         IntegerToString(m_bridge_id) + ":" +
+         m_client_id + ":" +
+         Base36Encode(file_seq);
+   }
+
+   bool RecoverNextFileSeqUnlocked() {
+      if (!RepairIncompleteTail(CommandsPath()))
+         return false;
+
+      long visible_max = 0;
+      long checkpoint = 0;
+      if (!TryMaxFileSeqInCommands(visible_max) ||
+          !TryLastCheckpointSeq(checkpoint)) {
+         Print("OptionX: command sequence recovery failed; command was not written.");
+         return false;
+      }
+
+      long recovered_next = MathMax(visible_max, checkpoint) + 1;
+      if (m_next_file_seq <= 0 || recovered_next > m_next_file_seq)
+         m_next_file_seq = recovered_next;
+      return true;
+   }
+
+   bool AppendPreparedRequestUnlocked(
+         const string id,
+         const string method,
+         const string params,
+         const long visible_max,
+         const long checkpoint) {
+      string line = RequestEnvelope(m_next_file_seq, id, method, params);
+      uchar line_bytes[];
+      int line_byte_count = 0;
+      if (!EncodeUtf8Bytes(line, line_bytes, line_byte_count))
+         return false;
+      if (line_byte_count > m_max_line_bytes) {
+         Print("OptionX: command line exceeds configured byte limit: ",
+               line_byte_count);
+         return false;
+      }
+
+      uchar payload[];
+      int payload_size = 0;
+      if (!EncodeUtf8Bytes(line + "\n", payload, payload_size))
+         return false;
+      if (!EnsureCommandLogCapacityUnlocked(payload_size, visible_max, checkpoint))
+         return false;
+      if (!AppendLineBytesUnlocked(CommandsPath(), payload, payload_size))
+         return false;
+
+      Print("OptionX: wrote ", method, " file_seq=", m_next_file_seq,
+            " id=", id);
+      ++m_next_file_seq;
+      return true;
+   }
+
+   bool AppendAccountBalanceGetRequest(
+         const string account_id,
+         string operation_key) {
       if (!m_configured) {
          Print("OptionX: file bridge is not configured.");
          return false;
@@ -537,45 +586,26 @@ private:
 
       bool ok = false;
       do {
-         if (!RepairIncompleteTail(CommandsPath()))
+         if (!RecoverNextFileSeqUnlocked())
             break;
+         if (operation_key == "")
+            operation_key = MakeOperationKey(m_next_file_seq);
 
          long visible_max = 0;
          long checkpoint = 0;
          if (!TryMaxFileSeqInCommands(visible_max) ||
-             !TryLastCheckpointSeq(checkpoint)) {
-            Print("OptionX: command sequence recovery failed; command was not written.");
-            break;
-         }
-
-         long recovered_next = MathMax(visible_max, checkpoint) + 1;
-         if (m_next_file_seq <= 0 || recovered_next > m_next_file_seq)
-            m_next_file_seq = recovered_next;
-
-         string line = RequestEnvelope(m_next_file_seq, id, method, params);
-         uchar line_bytes[];
-         int line_byte_count = 0;
-         if (!EncodeUtf8Bytes(line, line_bytes, line_byte_count))
-            break;
-         if (line_byte_count > m_max_line_bytes) {
-            Print("OptionX: command line exceeds configured byte limit: ",
-                  line_byte_count);
-            break;
-         }
-
-         uchar payload[];
-         int payload_size = 0;
-         if (!EncodeUtf8Bytes(line + "\n", payload, payload_size))
-            break;
-         if (!EnsureCommandLogCapacityUnlocked(payload_size, visible_max, checkpoint))
-            break;
-         if (!AppendLineBytesUnlocked(CommandsPath(), payload, payload_size))
+             !TryLastCheckpointSeq(checkpoint))
             break;
 
-         Print("OptionX: wrote ", method, " file_seq=", m_next_file_seq,
-               " id=", id);
-         ++m_next_file_seq;
-         ok = true;
+         string params = "{}";
+         if (account_id != "")
+            params = "{\"account_id\":" + JsonString(account_id) + "}";
+         ok = AppendPreparedRequestUnlocked(
+            operation_key,
+            "account.balance.get",
+            params,
+            visible_max,
+            checkpoint);
       } while (false);
 
       ReleaseCommandLock(lock_handle);
@@ -591,7 +621,6 @@ public:
       m_max_line_bytes = 65536;
       m_max_command_log_bytes = 8 * 1024 * 1024;
       m_next_file_seq = 0;
-      m_operation_counter = 0;
       m_configured = true;
    }
 
@@ -657,23 +686,69 @@ public:
       return JoinPath(ClientRoot(), "commands.checkpoint.json");
    }
 
-   string MakeOperationKey(const string prefix = "mql") {
-      string key = prefix + "_" +
-         Base36Encode(UnixTimeMs()) + "_" +
-         RandomBase36(16) + "_" +
-         Base36Encode(m_operation_counter);
-      ++m_operation_counter;
-      return key;
+private:
+   bool AppendTradeRequest(
+         const string method,
+         const string section_name,
+         const string symbol,
+         const string order_type,
+         const double amount,
+         const string currency,
+         const int duration_ms,
+         const string signal_name,
+         const string account_id,
+         string operation_key,
+         const int valid_for_ms) {
+      if (!m_configured) {
+         Print("OptionX: file bridge is not configured.");
+         return false;
+      }
+
+      int lock_handle = AcquireCommandLock();
+      if (lock_handle == INVALID_HANDLE)
+         return false;
+
+      bool ok = false;
+      do {
+         if (!RecoverNextFileSeqUnlocked())
+            break;
+         if (operation_key == "")
+            operation_key = MakeOperationKey(m_next_file_seq);
+
+         long visible_max = 0;
+         long checkpoint = 0;
+         if (!TryMaxFileSeqInCommands(visible_max) ||
+             !TryLastCheckpointSeq(checkpoint))
+            break;
+
+         int lifetime = valid_for_ms > 0 ? valid_for_ms : m_default_valid_for_ms;
+         long valid_until_ms = UnixTimeMs() + lifetime;
+         string params = TradeParams(
+            section_name,
+            symbol,
+            order_type,
+            amount,
+            currency,
+            duration_ms,
+            signal_name,
+            account_id,
+            operation_key,
+            valid_until_ms);
+         ok = AppendPreparedRequestUnlocked(
+            operation_key,
+            method,
+            params,
+            visible_max,
+            checkpoint);
+      } while (false);
+
+      ReleaseCommandLock(lock_handle);
+      return ok;
    }
 
+public:
    bool AccountBalanceGet(const string account_id = "", string operation_key = "") {
-      if (operation_key == "")
-         operation_key = MakeOperationKey();
-
-      string params = "{}";
-      if (account_id != "")
-         params = "{\"account_id\":" + JsonString(account_id) + "}";
-      return AppendRequest(operation_key, "account.balance.get", params);
+      return AppendAccountBalanceGetRequest(account_id, operation_key);
    }
 
    bool SignalSubmit(
@@ -686,11 +761,8 @@ public:
          const string account_id = "",
          string operation_key = "",
          const int valid_for_ms = 0) {
-      if (operation_key == "")
-         operation_key = MakeOperationKey();
-      int lifetime = valid_for_ms > 0 ? valid_for_ms : m_default_valid_for_ms;
-      long valid_until_ms = UnixTimeMs() + lifetime;
-      string params = TradeParams(
+      return AppendTradeRequest(
+         "signal.submit",
          "signal",
          symbol,
          order_type,
@@ -700,8 +772,7 @@ public:
          signal_name,
          account_id,
          operation_key,
-         valid_until_ms);
-      return AppendRequest(operation_key, "signal.submit", params);
+         valid_for_ms);
    }
 
    bool TradeOpen(
@@ -714,11 +785,8 @@ public:
          const string account_id = "",
          string operation_key = "",
          const int valid_for_ms = 0) {
-      if (operation_key == "")
-         operation_key = MakeOperationKey();
-      int lifetime = valid_for_ms > 0 ? valid_for_ms : m_default_valid_for_ms;
-      long valid_until_ms = UnixTimeMs() + lifetime;
-      string params = TradeParams(
+      return AppendTradeRequest(
+         "trade.open",
          "trade",
          symbol,
          order_type,
@@ -728,8 +796,7 @@ public:
          signal_name,
          account_id,
          operation_key,
-         valid_until_ms);
-      return AppendRequest(operation_key, "trade.open", params);
+         valid_for_ms);
    }
 
    bool CleanupCommandsIfCheckpointCaughtUp() {

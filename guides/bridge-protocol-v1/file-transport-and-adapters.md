@@ -142,6 +142,17 @@ send an `account.balance.get` request and submit a simple signal for the current
 chart symbol. `trade.open` is available behind an input flag so the example does
 not open a direct trade accidentally.
 
+When the caller does not pass an explicit `operation_key`, the MQL header
+generates it after reserving `file_seq` under the command-log lock:
+
+```text
+mql:<bridge_id>:<client_id>:<base36(file_seq)>
+```
+
+This makes automatically generated JSON-RPC `id`, `context.idempotency_key` and
+`identity.unique_hash` deterministic for the exact transport record and avoids
+depending on MetaTrader's process-local `MathRand()` sequence.
+
 The MQL header opens text files with `CP_UTF8` and shared read/write flags. It
 also repairs an incomplete tail before appending the first new command after a
 restart. If `commands.checkpoint.json` exists but is unreadable or malformed, or

@@ -15,8 +15,6 @@ input bool   InpSendTradeOpen = false;
 COptionXFileBridge g_optionx;
 
 int OnInit() {
-   MathSrand((uint)GetTickCount());
-
    if (!g_optionx.Configure(InpBridgeId, InpClientId))
       return INIT_FAILED;
    Print("OptionX MT5 file bridge example");

@@ -136,6 +136,18 @@ Examples пишут через `Print` resolved client root и command log path,
 `trade.open` доступен через input flag, чтобы example случайно не открывал
 direct trade.
 
+Если caller не передал explicit `operation_key`, MQL header генерирует его
+после резервирования `file_seq` под command-log lock:
+
+```text
+mql:<bridge_id>:<client_id>:<base36(file_seq)>
+```
+
+Это делает automatically generated JSON-RPC `id`,
+`context.idempotency_key` и `identity.unique_hash` детерминированными для
+конкретной transport record и не зависит от MetaTrader process-local
+`MathRand()` sequence.
+
 MQL header открывает text files с `CP_UTF8` и shared read/write flags. Он также
 ремонтирует incomplete tail перед первым новым append после restart. Если
 `commands.checkpoint.json` существует, но не читается или malformed, либо если
