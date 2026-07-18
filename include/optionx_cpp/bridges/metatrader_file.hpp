@@ -49,6 +49,7 @@
 #include "metatrader_file/detail/MetaTraderFileProtocol.hpp"
 #include "metatrader_file/detail/MetaTraderFileIdempotencyStore.hpp"
 #include "metatrader_file/detail/MetaTraderFileBridgeUtils.hpp"
+#include "metatrader_file/MetaTraderFileCommandWriter.hpp"
 #include "metatrader_file/MetaTraderFileBridge.hpp"
 
 #endif // OPTIONX_HEADER_BRIDGES_METATRADER_FILE_HPP_INCLUDED

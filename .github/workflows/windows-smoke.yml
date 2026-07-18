@@ -32,10 +32,14 @@ jobs:
           cmake --build build-windows --config Debug --target
           metatrader_file_config_include_test
           metatrader_file_bridge_test
+          metatrader_file_command_writer_test
           bridge_umbrella_include_test
 
       - name: Build MetaTrader file smoke example
         run: cmake --build build-windows --config Debug --target metatrader_file_bridge_smoke
+
+      - name: Build MetaTrader file command writer smoke example
+        run: cmake --build build-windows --config Debug --target metatrader_file_command_writer_smoke
 
       - name: Run MetaTrader file tests
         shell: pwsh
@@ -44,5 +48,7 @@ jobs:
           .\build-windows\Debug\metatrader_paths_test.exe --gtest_brief=1
           .\build-windows\Debug\metatrader_file_config_include_test.exe --gtest_brief=1
           .\build-windows\Debug\metatrader_file_bridge_test.exe --gtest_brief=1
+          .\build-windows\Debug\metatrader_file_command_writer_test.exe --gtest_brief=1
           .\build-windows\Debug\bridge_umbrella_include_test.exe --gtest_brief=1
           .\build-windows\Debug\metatrader_file_bridge_smoke.exe --self-test
+          .\build-windows\Debug\metatrader_file_command_writer_smoke.exe --self-test

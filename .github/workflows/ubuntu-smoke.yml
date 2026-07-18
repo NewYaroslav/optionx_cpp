@@ -54,11 +54,23 @@ jobs:
       - name: Run metatrader_file_bridge_test
         run: ./build-linux/metatrader_file_bridge_test --gtest_brief=1
 
+      - name: Build metatrader_file_command_writer_test
+        run: cmake --build build-linux --target metatrader_file_command_writer_test -j
+
+      - name: Run metatrader_file_command_writer_test
+        run: ./build-linux/metatrader_file_command_writer_test --gtest_brief=1
+
       - name: Build metatrader_file_bridge_smoke
         run: cmake --build build-linux --target metatrader_file_bridge_smoke -j
 
       - name: Run metatrader_file_bridge_smoke
         run: ./build-linux/metatrader_file_bridge_smoke --self-test
+
+      - name: Build metatrader_file_command_writer_smoke
+        run: cmake --build build-linux --target metatrader_file_command_writer_smoke -j
+
+      - name: Run metatrader_file_command_writer_smoke
+        run: ./build-linux/metatrader_file_command_writer_smoke --self-test
 
       - name: Build market_data_subscription_contract_test
         run: cmake --build build-linux --target market_data_subscription_contract_test -j

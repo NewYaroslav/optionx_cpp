@@ -66,6 +66,8 @@ file-transport building blocks:
 - `bridges/metatrader_file.hpp` as the umbrella include;
 - `MetaTraderFileBridgeConfig` for the MetaQuotes Common Files root, client
   directory identity, polling interval and NDJSON line limits;
+- `MetaTraderFileCommandWriter` for C++/tooling clients that need to append
+  canonical `signal.submit`, `trade.open` and `account.balance.get` requests;
 - `metatrader_file::detail` helpers for path-safe IDs, NDJSON append/read,
   owner-side log cleanup, JSON-RPC request/response/notification documents,
   atomic state snapshots and bounded JSON reads;
@@ -73,9 +75,61 @@ file-transport building blocks:
   location, Common Files root and terminal data directories;
 - small helpers for `balance.updated` and `trade.updated` notification payloads.
 
-This slice does not yet define a long-running `BaseBridge` polling loop, MQL
-advisor code or a broker execution adapter. Those pieces should use these
-helpers in follow-up implementation PRs.
+The bridge side is implemented by `MetaTraderFileBridge`. The writer side is
+kept smaller on purpose: `MetaTraderFileCommandWriter` is a reusable command
+generator, not a background transport loop. It should be used by smoke tools,
+tests and C++ applications that need to create MetaTrader-compatible command
+logs.
+
+### Writer Helpers And Smoke Generator
+
+The C++ writer helper appends one compact JSON-RPC request per line to
+`commands.ndjson`. It assigns `file_seq`, generates compact Base36 operation
+keys when the caller does not provide `id` / `context.idempotency_key`, and
+adds `context.valid_until_ms` for trade-affecting commands.
+
+Supported convenience methods:
+
+- `MetaTraderFileCommandWriter::signal_submit(...)`;
+- `MetaTraderFileCommandWriter::trade_open(...)`;
+- `MetaTraderFileCommandWriter::account_balance_get(...)`.
+
+The example `examples/metatrader_file_command_writer_smoke.cpp` writes one
+`account.balance.get`, one `signal.submit` and one `trade.open` command. In
+self-test mode it uses a temporary Common Files root and verifies that the
+generated log contains `file_seq`, JSON-RPC `id`, `context.idempotency_key` and
+`context.valid_until_ms`.
+
+Owner-side cleanup is explicit: the writer may clear `commands.ndjson` only
+after `commands.checkpoint.json.last_file_seq` is greater than or equal to the
+greatest visible `file_seq` in the command log. Clearing before that checkpoint
+can drop commands that the bridge has not processed yet.
+
+### MQL4/MQL5 Client Header
+
+The sample MQL client lives in `examples/mql/OptionXFileBridge.mqh`. It exposes
+a small `COptionXFileBridge` class with the same three command helpers:
+
+- `AccountBalanceGet(...)`;
+- `SignalSubmit(...)`;
+- `TradeOpen(...)`.
+
+Copy `OptionXFileBridge.mqh` to `MQL4\Include` or `MQL5\Include` (or place it
+next to the indicator/advisor/script), then include it from MQL:
+
+```mql
+#include <OptionXFileBridge.mqh>
+```
+
+Ready-to-run examples are provided as:
+
+- `examples/mql/OptionXFileBridgeSignalExample.mq4`;
+- `examples/mql/OptionXFileBridgeSignalExample.mq5`.
+
+The examples print the resolved client root and command log path with `Print`,
+send an `account.balance.get` request and submit a simple signal for the current
+chart symbol. `trade.open` is available behind an input flag so the example does
+not open a direct trade accidentally.
 
 ### MetaTrader Discovery Utility
 

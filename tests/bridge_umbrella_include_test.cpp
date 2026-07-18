@@ -23,11 +23,15 @@ TEST(BridgeUmbrellaIncludeTest, ExposesTradingViewBridgeFamily) {
 
 TEST(BridgeUmbrellaIncludeTest, ExposesMetaTraderFileBridgeFamily) {
     optionx::bridges::metatrader_file::MetaTraderFileBridgeConfig config;
+    optionx::bridges::metatrader_file::MetaTraderFileCommandWriter writer(config);
+    optionx::bridges::metatrader_file::MetaTraderFileTradeCommand command;
     optionx::bridges::metatrader_file::MetaTraderFileBridge bridge;
 
     EXPECT_EQ(
         config.bridge_type(),
         optionx::BridgeType::METATRADER_FILE_TRANSPORT);
+    EXPECT_EQ(writer.layout().commands_log().filename(), "commands.ndjson");
+    EXPECT_EQ(command.amount_value, "1.00");
     EXPECT_EQ(bridge.client_root(), std::filesystem::path());
 }
 
