@@ -64,8 +64,9 @@ Reader хранит свой checkpoint и не переписывает append-
 - `bridges/metatrader_file.hpp` как umbrella include;
 - `MetaTraderFileBridgeConfig` для MetaQuotes Common Files root, client
   directory identity, polling interval и NDJSON line limits;
-- `MetaTraderFileCommandWriter` для C++/tooling clients, которым нужно писать
-  canonical `signal.submit`, `trade.open` и `account.balance.get` requests;
+- `MetaTraderFileCommandWriter` как C++ client-side counterpart к MQL header
+  `COptionXFileBridge`; он пишет canonical `signal.submit`, `trade.open` и
+  `account.balance.get` requests;
 - helpers в `metatrader_file::detail` для path-safe IDs, NDJSON append/read,
   owner-side cleanup, JSON-RPC request/response/notification documents,
   atomic state snapshots и bounded JSON reads;
@@ -73,14 +74,15 @@ Reader хранит свой checkpoint и не переписывает append-
   Common Files root и terminal data directories;
 - helpers для `balance.updated`, `trade.updated` и `state.json` payloads.
 
-Bridge-side реализован через `MetaTraderFileBridge`. Writer-side намеренно
-меньше: `MetaTraderFileCommandWriter` это reusable command generator, а не
-background transport loop. Его можно использовать в smoke tools, tests и C++
+Bridge-side реализован через `MetaTraderFileBridge`. C++ client-side намеренно
+меньше: `MetaTraderFileCommandWriter` это reusable command writer, аналог MQL
+header `COptionXFileBridge`. Это не background transport loop: он не читает
+events и state snapshots. Его можно использовать в smoke tools, tests и C++
 applications, которые формируют MetaTrader-compatible command logs.
 
 ### Writer Helpers And Smoke Generator
 
-C++ writer helper добавляет в `commands.ndjson` один compact JSON-RPC request
+C++ client-side writer добавляет в `commands.ndjson` один compact JSON-RPC request
 на строку. Он назначает `file_seq`, генерирует compact Base36 operation keys,
 если caller не передал `id` / `context.idempotency_key`, и добавляет
 `context.valid_until_ms` для commands, влияющих на торговлю.

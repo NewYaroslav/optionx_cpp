@@ -67,8 +67,9 @@ file-transport building blocks:
 - `bridges/metatrader_file.hpp` as the umbrella include;
 - `MetaTraderFileBridgeConfig` for the MetaQuotes Common Files root, client
   directory identity, polling interval and NDJSON line limits;
-- `MetaTraderFileCommandWriter` for C++/tooling clients that need to append
-  canonical `signal.submit`, `trade.open` and `account.balance.get` requests;
+- `MetaTraderFileCommandWriter` as the C++ client-side counterpart to the MQL
+  `COptionXFileBridge` header; it appends canonical `signal.submit`,
+  `trade.open` and `account.balance.get` requests;
 - `metatrader_file::detail` helpers for path-safe IDs, NDJSON append/read,
   owner-side log cleanup, JSON-RPC request/response/notification documents,
   atomic state snapshots and bounded JSON reads;
@@ -76,15 +77,16 @@ file-transport building blocks:
   location, Common Files root and terminal data directories;
 - small helpers for `balance.updated` and `trade.updated` notification payloads.
 
-The bridge side is implemented by `MetaTraderFileBridge`. The writer side is
-kept smaller on purpose: `MetaTraderFileCommandWriter` is a reusable command
-generator, not a background transport loop. It should be used by smoke tools,
-tests and C++ applications that need to create MetaTrader-compatible command
-logs.
+The bridge side is implemented by `MetaTraderFileBridge`. The C++ client side is
+intentionally smaller: `MetaTraderFileCommandWriter` is a reusable command
+writer, analogous to the MQL `COptionXFileBridge` header. It is not a background
+transport loop and does not read events or state snapshots. It should be used by
+smoke tools, tests and C++ applications that need to create
+MetaTrader-compatible command logs.
 
 ### Writer Helpers And Smoke Generator
 
-The C++ writer helper appends one compact JSON-RPC request per line to
+The C++ client-side writer appends one compact JSON-RPC request per line to
 `commands.ndjson`. It assigns `file_seq`, generates compact Base36 operation
 keys when the caller does not provide `id` / `context.idempotency_key`, and
 adds `context.valid_until_ms` for trade-affecting commands.

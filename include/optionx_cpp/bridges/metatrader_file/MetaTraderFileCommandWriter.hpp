@@ -3,7 +3,7 @@
 #define OPTIONX_HEADER_BRIDGES_METATRADER_FILE_META_TRADER_FILE_COMMAND_WRITER_HPP_INCLUDED
 
 /// \file MetaTraderFileCommandWriter.hpp
-/// \brief Defines writer-side helpers for MetaTrader Common\Files commands.
+/// \brief Defines the C++ client-side command writer for the MetaTrader file bridge.
 
 namespace optionx::bridges::metatrader_file {
 
@@ -36,11 +36,12 @@ namespace optionx::bridges::metatrader_file {
     };
 
     /// \class MetaTraderFileCommandWriter
-    /// \brief Appends canonical OptionX file-transport commands for MQL/C++ clients.
-    /// \details This helper is the writer-side counterpart to `MetaTraderFileBridge`.
-    /// It owns `commands.ndjson`: it assigns monotonic `file_seq`, appends one
-    /// compact JSON-RPC request per line, and may clear the command log only after
-    /// the bridge checkpoint confirms that all visible commands were consumed.
+    /// \brief Writes canonical client commands for `MetaTraderFileBridge`.
+    /// \details This is the C++ counterpart to the MQL `COptionXFileBridge`
+    /// header: a lightweight client-side writer, not a bridge runtime. It owns
+    /// `commands.ndjson`, assigns monotonic `file_seq`, appends one compact
+    /// JSON-RPC request per line, and may clear the command log only after the
+    /// bridge checkpoint confirms that all visible commands were consumed.
     /// Public methods serialize object state with an internal mutex. Mutations
     /// of `commands.ndjson` additionally take a sibling lock file so several
     /// writer objects/processes can share the same client root without assigning
