@@ -738,7 +738,16 @@ namespace optionx::bridges::metatrader_file {
         }
 
         static std::string payload_fingerprint(const nlohmann::json& params) {
-            return params.dump(-1);
+            auto canonical = params;
+            auto context_it = canonical.find("context");
+            if (context_it != canonical.end() && context_it->is_object()) {
+                // Admission metadata may legitimately change between retries.
+                // The idempotency fingerprint must describe the business
+                // operation, not the transport attempt envelope.
+                context_it->erase("valid_until_ms");
+                context_it->erase("client_created_at_ms");
+            }
+            return canonical.dump(-1);
         }
 
         static nlohmann::json make_in_doubt_result(
@@ -985,23 +994,6 @@ namespace optionx::bridges::metatrader_file {
                 std::vector<PendingSignalDispatch>& pending_signals) {
             prune_expired_idempotency_tombstones_locked(config);
             const auto rpc_request_key = request_storage_key(method, id);
-            if (!rpc_request_key.empty()) {
-                const auto request_it = m_request_id_index.find(rpc_request_key);
-                if (request_it != m_request_id_index.end()) {
-                    const auto record_it = m_idempotency_records.find(request_it->second);
-                    if (record_it != m_idempotency_records.end()) {
-                        append_rpc_result_locked(id, record_it->second.result);
-                        return;
-                    }
-                    const auto tombstone_it =
-                        m_idempotency_tombstones.find(request_it->second);
-                    if (tombstone_it != m_idempotency_tombstones.end()) {
-                        append_rpc_result_locked(id, tombstone_it->second.result);
-                        return;
-                    }
-                    m_request_id_index.erase(request_it);
-                }
-            }
 
             const auto idempotency_key = detail::context_idempotency_key(params);
             if (idempotency_key.empty()) {
@@ -1022,6 +1014,40 @@ namespace optionx::bridges::metatrader_file {
 
             const auto storage_key = idempotency_storage_key(method, idempotency_key);
             const auto fingerprint = payload_fingerprint(params);
+            if (!rpc_request_key.empty()) {
+                const auto request_it = m_request_id_index.find(rpc_request_key);
+                if (request_it != m_request_id_index.end()) {
+                    if (request_it->second != storage_key) {
+                        const nlohmann::json conflict = {
+                            {"status", "rejected"},
+                            {"final", true},
+                            {"reason", {
+                                {"code", "idempotency_conflict"},
+                                {"message", "The same JSON-RPC id was used with a different operation."}
+                            }}
+                        };
+                        append_rpc_result_locked(id, conflict);
+                        reports.push_back(detail::make_signal_report(
+                            config,
+                            BridgeSignalReportStatus::REJECTED,
+                            "idempotency_conflict",
+                            "MetaTrader file command JSON-RPC id conflicts with an earlier operation.",
+                            record.document,
+                            params,
+                            detail::json_id_to_string(id),
+                            idempotency_key));
+                        return;
+                    }
+
+                    const auto record_it = m_idempotency_records.find(request_it->second);
+                    const auto tombstone_it =
+                        m_idempotency_tombstones.find(request_it->second);
+                    if (record_it == m_idempotency_records.end() &&
+                        tombstone_it == m_idempotency_tombstones.end()) {
+                        m_request_id_index.erase(request_it);
+                    }
+                }
+            }
 
             std::unique_ptr<TradeSignal> signal;
             try {

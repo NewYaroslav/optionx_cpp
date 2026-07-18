@@ -393,6 +393,10 @@ seen again within the configured idempotency retention window, the bridge must
 return or re-emit the original/current operation result instead of creating a
 second trade. After that retention window, duplicate suppression is no longer
 guaranteed; stale retained commands should be rejected by `valid_until_ms`.
+For idempotency comparison, `context.valid_until_ms` and
+`context.client_created_at_ms` are admission/attempt metadata rather than
+business payload. They must not make an otherwise identical retry conflict, but
+the bridge still validates `valid_until_ms` before accepting a new operation.
 
 This draft intentionally does not define log rotation. Production
 implementations may add owner-side compaction later, but the baseline profile is

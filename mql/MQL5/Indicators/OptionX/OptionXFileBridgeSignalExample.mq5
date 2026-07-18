@@ -25,6 +25,7 @@ int OnInit() {
    // their operation key and reuse it when retrying the same logical command.
    string operation_suffix =
       Symbol() + ":" +
+      IntegerToString((long)ChartID()) + ":" +
       IntegerToString((long)TimeCurrent()) + ":" +
       IntegerToString((long)GetTickCount());
    string signal_operation_key = "example:mt5:signal:" + operation_suffix;
