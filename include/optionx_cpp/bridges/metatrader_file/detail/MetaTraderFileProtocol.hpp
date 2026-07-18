@@ -28,6 +28,7 @@ namespace optionx::bridges::metatrader_file::detail {
         std::filesystem::path state_snapshot() const { return root / "state.json"; }
         std::filesystem::path commands_checkpoint() const { return root / "commands.checkpoint.json"; }
         std::filesystem::path events_checkpoint() const { return root / "events.checkpoint.json"; }
+        std::filesystem::path idempotency_state() const { return root / "idempotency.json"; }
     };
 
     /// \struct NdjsonRecord

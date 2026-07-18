@@ -23,10 +23,12 @@ TEST(BridgeUmbrellaIncludeTest, ExposesTradingViewBridgeFamily) {
 
 TEST(BridgeUmbrellaIncludeTest, ExposesMetaTraderFileBridgeFamily) {
     optionx::bridges::metatrader_file::MetaTraderFileBridgeConfig config;
+    optionx::bridges::metatrader_file::MetaTraderFileBridge bridge;
 
     EXPECT_EQ(
         config.bridge_type(),
         optionx::BridgeType::METATRADER_FILE_TRANSPORT);
+    EXPECT_EQ(bridge.client_root(), std::filesystem::path());
 }
 
 TEST(BridgeUmbrellaIncludeTest, ExposesSignalReportApi) {

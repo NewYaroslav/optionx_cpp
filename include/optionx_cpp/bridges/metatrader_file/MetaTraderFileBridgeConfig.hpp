@@ -22,6 +22,12 @@ namespace optionx::bridges::metatrader_file {
                 {"client_secret", client_secret},
                 {"poll_interval_ms", poll_interval_ms},
                 {"max_line_bytes", max_line_bytes},
+                {"max_command_log_bytes", max_command_log_bytes},
+                {"max_scanned_records_per_poll", max_scanned_records_per_poll},
+                {"max_returned_records_per_poll", max_returned_records_per_poll},
+                {"max_idempotency_state_bytes", max_idempotency_state_bytes},
+                {"max_idempotency_records", max_idempotency_records},
+                {"idempotency_retention_ms", idempotency_retention_ms},
                 {"enable_events", enable_events},
                 {"enable_state_snapshot", enable_state_snapshot}
             };
@@ -50,6 +56,29 @@ namespace optionx::bridges::metatrader_file {
             }
             if (j.contains("max_line_bytes")) {
                 max_line_bytes = j.at("max_line_bytes").get<std::size_t>();
+            }
+            if (j.contains("max_command_log_bytes")) {
+                max_command_log_bytes = j.at("max_command_log_bytes").get<std::size_t>();
+            }
+            if (j.contains("max_scanned_records_per_poll")) {
+                max_scanned_records_per_poll =
+                    j.at("max_scanned_records_per_poll").get<std::size_t>();
+            }
+            if (j.contains("max_returned_records_per_poll")) {
+                max_returned_records_per_poll =
+                    j.at("max_returned_records_per_poll").get<std::size_t>();
+            }
+            if (j.contains("max_idempotency_state_bytes")) {
+                max_idempotency_state_bytes =
+                    j.at("max_idempotency_state_bytes").get<std::size_t>();
+            }
+            if (j.contains("max_idempotency_records")) {
+                max_idempotency_records =
+                    j.at("max_idempotency_records").get<std::size_t>();
+            }
+            if (j.contains("idempotency_retention_ms")) {
+                idempotency_retention_ms =
+                    j.at("idempotency_retention_ms").get<std::uint64_t>();
             }
             if (j.contains("enable_events")) {
                 enable_events = j.at("enable_events").get<bool>();
@@ -88,6 +117,42 @@ namespace optionx::bridges::metatrader_file {
             }
             if (max_line_bytes == 0) {
                 return {false, "MetaTrader file bridge max_line_bytes must be positive."};
+            }
+            if (max_command_log_bytes < max_line_bytes) {
+                return {
+                    false,
+                    "MetaTrader file bridge max_command_log_bytes must be at least max_line_bytes."
+                };
+            }
+            if (max_scanned_records_per_poll < 2) {
+                return {
+                    false,
+                    "MetaTrader file bridge max_scanned_records_per_poll must be at least 2."
+                };
+            }
+            if (max_returned_records_per_poll == 0) {
+                return {
+                    false,
+                    "MetaTrader file bridge max_returned_records_per_poll must be positive."
+                };
+            }
+            if (max_idempotency_state_bytes < max_line_bytes) {
+                return {
+                    false,
+                    "MetaTrader file bridge max_idempotency_state_bytes must be at least max_line_bytes."
+                };
+            }
+            if (max_idempotency_records == 0) {
+                return {
+                    false,
+                    "MetaTrader file bridge max_idempotency_records must be positive."
+                };
+            }
+            if (idempotency_retention_ms == 0) {
+                return {
+                    false,
+                    "MetaTrader file bridge idempotency_retention_ms must be positive."
+                };
             }
             const auto root = std::filesystem::u8path(common_files_root);
             if (!path_is_within_or_equal(root, client_root())) {
@@ -133,6 +198,12 @@ namespace optionx::bridges::metatrader_file {
         std::string client_secret; ///< Optional directory-level shared secret metadata.
         std::int64_t poll_interval_ms = 250; ///< Recommended bridge polling interval.
         std::size_t max_line_bytes = 64 * 1024; ///< Maximum complete NDJSON line size.
+        std::size_t max_command_log_bytes = 8 * 1024 * 1024; ///< Maximum commands.ndjson size scanned by bridge.
+        std::size_t max_scanned_records_per_poll = 256; ///< Max complete lines scanned per poll; minimum is 2.
+        std::size_t max_returned_records_per_poll = 64; ///< Max valid commands handled per poll.
+        std::size_t max_idempotency_state_bytes = 1024 * 1024; ///< Maximum idempotency state file size.
+        std::size_t max_idempotency_records = 4096; ///< Maximum retained idempotency records.
+        std::uint64_t idempotency_retention_ms = 24ull * 60ull * 60ull * 1000ull; ///< Completed-operation dedupe retention window.
         bool enable_events = true; ///< Append bridge events to events.ndjson.
         bool enable_state_snapshot = true; ///< Atomically publish state.json snapshots.
     };

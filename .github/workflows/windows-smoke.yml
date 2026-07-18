@@ -21,6 +21,7 @@ jobs:
           cmake -S . -B build-windows
           -DOPTIONX_BUILD_DEPS=ON
           -DOPTIONX_BUILD_TESTS=ON
+          -DOPTIONX_BUILD_EXAMPLES=ON
           -DOPTIONX_LIGHTWEIGHT_BRIDGE_SMOKE_TESTS=ON
 
       - name: Build MetaTrader path discovery test
@@ -33,6 +34,9 @@ jobs:
           metatrader_file_bridge_test
           bridge_umbrella_include_test
 
+      - name: Build MetaTrader file smoke example
+        run: cmake --build build-windows --config Debug --target metatrader_file_bridge_smoke
+
       - name: Run MetaTrader file tests
         shell: pwsh
         run: |
@@ -41,3 +45,4 @@ jobs:
           .\build-windows\Debug\metatrader_file_config_include_test.exe --gtest_brief=1
           .\build-windows\Debug\metatrader_file_bridge_test.exe --gtest_brief=1
           .\build-windows\Debug\bridge_umbrella_include_test.exe --gtest_brief=1
+          .\build-windows\Debug\metatrader_file_bridge_smoke.exe --self-test

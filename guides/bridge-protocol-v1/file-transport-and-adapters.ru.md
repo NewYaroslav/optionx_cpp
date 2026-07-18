@@ -256,18 +256,21 @@ records per poll. Scan limit counts accepted, already-seen and malformed
 complete lines so malformed input cannot make one poll accumulate unbounded
 diagnostics.
 
-Trade-affecting commands still require `context.idempotency_key`.
-`context.valid_until_ms` is strongly recommended because file polling can add
-latency. Repeated command with the same JSON-RPC `id` or idempotency key must
-return or re-emit the original/current operation result, not create a second
-trade.
+Trade-affecting commands still require `context.idempotency_key`. Concrete
+polling bridges should also require `context.valid_until_ms`, because file
+polling can add latency and append logs may be retained longer than dedupe
+window. Repeated command with the same JSON-RPC `id` or idempotency key within
+configured idempotency retention window must return or re-emit the
+original/current operation result, not create a second trade. After that
+retention window duplicate suppression is no longer guaranteed; stale retained
+commands should be rejected by `valid_until_ms`.
 
 This draft intentionally does not define log rotation. Baseline profile is
 append, checkpoint and clear.
 
 Deferred implementation work:
 
-- Concrete polling bridge class built on this protocol helper layer.
+- Higher-level MQL helpers for writing and compacting these logs.
 - Runtime writer object or owner queue that serializes append, repair and
   owner-side clear operations per log file.
 - Optional `log_generation`/file identity support if persisted byte-offset

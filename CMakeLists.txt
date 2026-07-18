@@ -439,6 +439,52 @@ if(OPTIONX_BUILD_EXAMPLES)
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy_runtime_dlls.cmake"
         )
     endif()
+
+    add_executable(metatrader_file_bridge_smoke examples/metatrader_file_bridge_smoke.cpp)
+    target_compile_features(metatrader_file_bridge_smoke PRIVATE cxx_std_17)
+
+    target_include_directories(metatrader_file_bridge_smoke PRIVATE
+        ${EXAMPLE_INCLUDE_DIRS}
+        ${EXAMPLE_DEPS_INCLUDE_DIRS}
+    )
+
+    target_link_directories(metatrader_file_bridge_smoke PRIVATE ${EXAMPLE_LIBRARY_DIRS})
+    target_compile_definitions(
+        metatrader_file_bridge_smoke PRIVATE
+        ${EXAMPLE_DEFINES}
+        LOGIT_BASE_PATH="${LOGIT_BASE_PATH_FWD}"
+    )
+    if(MINGW)
+        target_compile_options(metatrader_file_bridge_smoke PRIVATE -Wa,-mbig-obj)
+    endif()
+    if(OPTIONX_LIGHTWEIGHT_BRIDGE_SMOKE_TESTS)
+        target_link_libraries(metatrader_file_bridge_smoke PRIVATE ${EXAMPLE_LIBS})
+        if(WIN32)
+            target_link_libraries(metatrader_file_bridge_smoke PRIVATE ${OPTIONX_WINDOWS_SYSTEM_LIBS})
+        endif()
+    else()
+        target_link_libraries(metatrader_file_bridge_smoke PRIVATE ${EXAMPLE_LIBS} optionx_cpp)
+    endif()
+
+    if(OPTIONX_BUILD_DEPS AND NOT OPTIONX_LIGHTWEIGHT_BRIDGE_SMOKE_TESTS)
+        add_dependencies(metatrader_file_bridge_smoke mdbx-static AES)
+    endif()
+
+    foreach(dll ${EXAMPLE_DLL_FILES})
+        add_custom_command(TARGET metatrader_file_bridge_smoke POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${dll}" "$<TARGET_FILE_DIR:metatrader_file_bridge_smoke>"
+        )
+    endforeach()
+
+    if(WIN32)
+        add_custom_command(TARGET metatrader_file_bridge_smoke POST_BUILD
+            COMMAND ${CMAKE_COMMAND}
+                -DOPTIONX_RUNTIME_DLL_DIR="${EXAMPLE_BUILD_LIBS_DIR}/bin"
+                -DOPTIONX_RUNTIME_TARGET_DIR="$<TARGET_FILE_DIR:metatrader_file_bridge_smoke>"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy_runtime_dlls.cmake"
+        )
+    endif()
 endif()
 
 if(OPTIONX_BUILD_TESTS)
