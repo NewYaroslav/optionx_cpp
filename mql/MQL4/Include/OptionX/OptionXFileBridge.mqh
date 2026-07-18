@@ -118,8 +118,13 @@ private:
 
    bool EnsureDirectory(const string path) const {
       if (path == "") return true;
-      if (FolderIsExist(path, FILE_COMMON)) return true;
-      return FolderCreate(path, FILE_COMMON);
+      ResetLastError();
+      if (FolderCreate(path, FILE_COMMON))
+         return true;
+      int error = GetLastError();
+      // MetaTrader reports an existing directory through the common
+      // "file/folder already exists" code on recent MT4/MT5 builds.
+      return error == 5019;
    }
 
    bool EnsureClientRoot() const {
@@ -192,9 +197,9 @@ private:
 
       uchar bytes[];
       ArrayResize(bytes, (int)size);
-      int read = FileReadArray(handle, bytes, 0, (int)size);
+      uint read = FileReadArray(handle, bytes, 0, (int)size);
       FileClose(handle);
-      if (read != (int)size) {
+      if (read != (uint)size) {
          Print("OptionX: could not read command log for tail repair: ", relative_path,
                ", read=", read, ", expected=", size);
          return false;
