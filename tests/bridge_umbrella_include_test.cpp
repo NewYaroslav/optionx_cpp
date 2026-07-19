@@ -35,6 +35,18 @@ TEST(BridgeUmbrellaIncludeTest, ExposesMetaTraderFileBridgeFamily) {
     EXPECT_EQ(bridge.client_root(), std::filesystem::path());
 }
 
+TEST(BridgeUmbrellaIncludeTest, ExposesBotBinaryAdapterHelpers) {
+    const auto prepared = optionx::bridges::bot_binary::prepare_bot_binary_command(
+        optionx::bridges::bot_binary::bot_binary_duration_command(
+            "R_25",
+            optionx::OrderType::BUY,
+            "1.00",
+            60,
+            "umbrella-idem"));
+
+    EXPECT_EQ(prepared.request_query_value, "R_25=CALL=1.00=duration=1=m=");
+}
+
 TEST(BridgeUmbrellaIncludeTest, ExposesSignalReportApi) {
     optionx::BridgeSignalReport report;
     report.status = optionx::BridgeSignalReportStatus::REJECTED;

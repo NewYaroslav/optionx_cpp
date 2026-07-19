@@ -20,6 +20,9 @@ Currently maintained examples:
 - `tradingview_extension_bridge_smoke.cpp` starts the local TradingView
   browser-extension HTTP bridge and can run `--self-test` to POST a sample
   indicator signal to itself.
+- `bot_binary_command_builder_smoke.cpp` demonstrates the BotBinary/BinaryBot
+  adapter helper that turns an OptionX trade request into the observed
+  `request=...` WebRequest value and file-signal name.
 - `metatrader_file_bridge_smoke.cpp` runs the C++ side of the MetaTrader
   Common\Files bridge against a temporary command/event layout.
 - `metatrader_file_command_writer_smoke.cpp` demonstrates the C++ command-writer
