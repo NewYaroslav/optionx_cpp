@@ -427,10 +427,6 @@ namespace optionx::bridges::bot_binary {
             result.reserve(value.size());
             for (std::size_t i = 0; i < value.size(); ++i) {
                 const char ch = value[i];
-                if (ch == '+') {
-                    result.push_back(' ');
-                    continue;
-                }
                 if (ch != '%') {
                     result.push_back(ch);
                     continue;
@@ -552,17 +548,18 @@ namespace optionx::bridges::bot_binary {
         TradeSignal signal;
         signal.symbol = command.symbol;
         signal.signal_name = std::move(signal_name);
-        signal.unique_hash = command.transport_suffix;
         signal.order_type = command.order_type;
         signal.amount = std::stod(command.amount_value);
 
         if (command.expiry_kind == BotBinaryExpiryKind::DURATION) {
+            signal.option_type = OptionType::SPRINT;
             const auto seconds = bot_binary_duration_seconds(command);
             if (seconds > (std::numeric_limits<std::uint32_t>::max)()) {
                 throw std::invalid_argument("BotBinary duration is too large for TradeSignal.");
             }
             signal.duration = static_cast<std::uint32_t>(seconds);
         } else {
+            signal.option_type = OptionType::CLASSIC;
             if (command.expiry_value > static_cast<std::uint64_t>(
                     (std::numeric_limits<std::int64_t>::max)())) {
                 throw std::invalid_argument("BotBinary endtime is too large for TradeSignal.");

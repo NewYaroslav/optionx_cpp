@@ -165,6 +165,10 @@ TEST(BotBinaryProtocol, ParsesRawHttpAndFileSignals) {
     EXPECT_EQ(file.expiry_value, 5u);
     EXPECT_EQ(file.expiry_unit, bot::BotBinaryTimeUnit::MINUTES);
     EXPECT_EQ(file.transport_suffix, "2018.09.29=1538190215");
+
+    const auto plus_suffix = bot::parse_bot_binary_http_request(
+        "http://127.0.0.2/?request=R_25=CALL=1=duration=1=m=legacy+signal");
+    EXPECT_EQ(plus_suffix.transport_suffix, "legacy+signal");
 }
 
 TEST(BotBinaryProtocol, IgnoresNonRequestQueryParameterNames) {
@@ -185,11 +189,30 @@ TEST(BotBinaryProtocol, ConvertsParsedCommandToTradeSignal) {
 
     EXPECT_EQ(signal.symbol, "R_50");
     EXPECT_EQ(signal.signal_name, "legacy_binarybot");
-    EXPECT_EQ(signal.unique_hash, "legacy-signal");
+    EXPECT_TRUE(signal.unique_hash.empty());
+    EXPECT_EQ(parsed.transport_suffix, "legacy-signal");
+    EXPECT_EQ(signal.option_type, optionx::OptionType::SPRINT);
     EXPECT_EQ(signal.order_type, optionx::OrderType::BUY);
     EXPECT_DOUBLE_EQ(signal.amount, 0.50);
     EXPECT_EQ(signal.duration, 30u);
     EXPECT_EQ(signal.expiry_time, 0);
+}
+
+TEST(BotBinaryProtocol, ConvertsEndTimeCommandToClassicTradeRequest) {
+    namespace bot = optionx::bridges::bot_binary;
+
+    const auto parsed = bot::parse_bot_binary_file_signal_name(
+        "R_50=PUT=1=endtime=1538264736=s=legacy-endtime.txt");
+    const auto request = bot::bot_binary_to_trade_request(parsed, "legacy_binarybot");
+
+    EXPECT_EQ(request.symbol, "R_50");
+    EXPECT_EQ(request.signal_name, "legacy_binarybot");
+    EXPECT_TRUE(request.unique_hash.empty());
+    EXPECT_EQ(request.option_type, optionx::OptionType::CLASSIC);
+    EXPECT_EQ(request.order_type, optionx::OrderType::SELL);
+    EXPECT_DOUBLE_EQ(request.amount, 1.0);
+    EXPECT_EQ(request.duration, 0u);
+    EXPECT_EQ(request.expiry_time, 1538264736);
 }
 
 TEST(BotBinaryProtocol, RejectsInvalidCommands) {

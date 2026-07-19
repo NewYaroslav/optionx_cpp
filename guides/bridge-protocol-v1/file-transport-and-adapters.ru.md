@@ -530,8 +530,9 @@ deduplication.
 Он также парсит legacy BotBinary HTTP `request` values и file-signal filenames
 обратно в neutral command snapshot, который будущий inbound bridge сможет
 превратить в OptionX trade signal. Parser сохраняет trailing BotBinary suffix
-как transport identity; он не считает этот suffix OptionX idempotency key, пока
-higher-level bridge явно не задаст такое отображение.
+как transport identity; он не считает этот suffix OptionX idempotency key или
+`identity.unique_hash`, пока higher-level bridge явно не задаст такое
+отображение.
 
 Если explicit BotBinary transport suffix не задан, formatter выводит
 deterministic file-safe suffix из OptionX `idempotency_key`. Runtime delivery
