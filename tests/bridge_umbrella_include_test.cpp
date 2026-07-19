@@ -3,6 +3,7 @@
 #include <optionx_cpp/bridges.hpp>
 #include <optionx_cpp/bridges/metatrader_file.hpp>
 #include <optionx_cpp/bridges/named_pipe.hpp>
+#include <optionx_cpp/bridges/protocol_v1.hpp>
 #include <optionx_cpp/bridges/trading_view.hpp>
 
 TEST(BridgeUmbrellaIncludeTest, ExposesNamedPipeBridgeFamily) {
@@ -50,6 +51,17 @@ TEST(BridgeUmbrellaIncludeTest, ExposesBotBinaryAdapterHelpers) {
         prepared.request_query_value);
     EXPECT_EQ(parsed.symbol, "R_25");
     EXPECT_EQ(parsed.order_type, optionx::OrderType::BUY);
+}
+
+TEST(BridgeUmbrellaIncludeTest, ExposesBridgeProtocolV1ServerFamily) {
+    optionx::bridges::protocol_v1::BridgeProtocolServerConfig config;
+    optionx::bridges::protocol_v1::BridgeProtocolServerBridge bridge;
+
+    EXPECT_EQ(
+        config.bridge_type(),
+        optionx::BridgeType::BRIDGE_PROTOCOL_V1_HTTP_WEBSOCKET);
+    EXPECT_EQ(bridge.bound_http_port(), 0);
+    EXPECT_EQ(bridge.bound_websocket_port(), 0);
 }
 
 TEST(BridgeUmbrellaIncludeTest, ExposesSignalReportApi) {
