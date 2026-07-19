@@ -386,9 +386,8 @@ Deferred implementation work:
 - Higher-level MQL helpers for writing and compacting these logs.
 - Runtime writer object or owner queue that serializes append, repair and
   owner-side clear operations per log file.
-- MetaEditor compilation smoke tests for the MQL5 header/example. MQL4
-  compilation should be added separately once a reproducible MT4 compiler setup
-  is available.
+- Mandatory MetaEditor MQL4 CI после появления воспроизводимого `.mq4`
+  compiler setup.
 - Optional `log_generation`/file identity support if persisted byte-offset
   optimization becomes necessary.
 - Callback/visitor NDJSON reader if future logs need very large scans without

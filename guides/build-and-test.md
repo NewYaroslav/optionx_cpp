@@ -132,11 +132,33 @@ $env:OPTIONX_INTRADE_BAR_CONFIG_FILE="tests\intrade_bar_api\intrade_bar_api.loca
 
 GitHub CI also runs a focused Windows smoke job for MetaTrader file transport
 helpers. It builds and runs `metatrader_paths_test`,
-`metatrader_file_config_include_test`, `metatrader_file_bridge_test` and
-`bridge_umbrella_include_test` on `windows-latest`, and runs both
+`metatrader_file_config_include_test`, `metatrader_file_bridge_test`,
+`metatrader_file_command_writer_test` and `bridge_umbrella_include_test` on
+`windows-latest`, and runs both
 `metatrader_file_bridge_smoke` and `metatrader_file_command_writer_smoke`.
 Windows filesystem API paths such as atomic replacement, exclusive temp
 creation and MetaTrader command-log generation are covered by CI.
+
+The Windows smoke job also runs `scripts/test-metaeditor-compile-smoke.ps1` with
+a fake MetaEditor command, then invokes `scripts/compile-metatrader-mql.ps1` for
+real compilers. On hosted GitHub runners the real compiler step is best-effort
+and skips when MetaEditor is not installed. Local or self-hosted runs can make
+it a real compiler smoke by setting `OPTIONX_METAEDITOR5_PATH` and/or
+`OPTIONX_METAEDITOR4_PATH`, or by passing paths explicitly:
+
+```powershell
+.\scripts\compile-metatrader-mql.ps1 `
+  -MetaEditor5Path "E:\Program Files\MetaTrader 5\MetaEditor64.exe" `
+  -TimeoutSeconds 60 `
+  -RequireMql5
+```
+
+An explicit MetaEditor path is authoritative: if it is set but missing, the
+script fails instead of falling back to another installed terminal.
+
+Use `-RequireMql4` only with a MetaEditor installation that supports `.mq4`
+compilation; some broker folders are MT5-family installations even when their
+directory name mentions MetaTrader 4.
 
 При изменении публичных aggregate headers или include policy добавляй или
 обновляй тест, который подключает intended public entry point:

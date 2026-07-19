@@ -20,7 +20,21 @@ Currently maintained examples:
 - `tradingview_extension_bridge_smoke.cpp` starts the local TradingView
   browser-extension HTTP bridge and can run `--self-test` to POST a sample
   indicator signal to itself.
+- `metatrader_file_bridge_smoke.cpp` runs the C++ side of the MetaTrader
+  Common\Files bridge against a temporary command/event layout.
+- `metatrader_file_command_writer_smoke.cpp` demonstrates the C++ command-writer
+  companion used by tests and non-MQL clients to append file commands.
 - `trade_record_db_example.cpp` demonstrates basic `TradeRecordDB` usage.
+
+MetaTrader-facing examples live under `mql/` in terminal-like layouts:
+
+- `mql/MQL5/Include/OptionX/OptionXFileBridge.mqh`
+- `mql/MQL5/Indicators/OptionX/OptionXFileBridgeSignalExample.mq5`
+- `mql/MQL4/Include/OptionX/OptionXFileBridge.mqh`
+- `mql/MQL4/Indicators/OptionX/OptionXFileBridgeSignalExample.mq4`
+
+Use `scripts/compile-metatrader-mql.ps1` to compile those MQL examples with a
+local MetaEditor installation.
 
 Old exploratory broker and component probes were removed because they referenced
 pre-refactor include paths and contained local credentials. Broker smoke flows
