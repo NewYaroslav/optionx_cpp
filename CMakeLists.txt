@@ -70,26 +70,40 @@ set(LOGIT_BASE_PATH "${CMAKE_CURRENT_SOURCE_DIR}" CACHE PATH "Base path for LOGI
 file(TO_CMAKE_PATH "${LOGIT_BASE_PATH}" LOGIT_BASE_PATH_FWD)
 
 function(optionx_get_network_link_libraries out_var)
-    if(TARGET OpenSSL::SSL AND TARGET OpenSSL::Crypto AND TARGET CURL::libcurl)
-        set(network_libs
+    set(network_libs)
+
+    if(TARGET OpenSSL::SSL AND TARGET OpenSSL::Crypto)
+        list(APPEND network_libs
             OpenSSL::SSL
             OpenSSL::Crypto
-            CURL::libcurl
+        )
+    elseif(WIN32 AND MSVC)
+        list(APPEND network_libs
+            libssl
+            libcrypto
         )
     elseif(WIN32)
-        set(network_libs
+        list(APPEND network_libs
             ssl
             crypto
-            curl
         )
     else()
         find_package(OpenSSL REQUIRED)
-        find_package(CURL REQUIRED)
-
-        set(network_libs
+        list(APPEND network_libs
             OpenSSL::SSL
             OpenSSL::Crypto
-            CURL::libcurl
+        )
+    endif()
+
+    if(TARGET CURL::libcurl)
+        list(APPEND network_libs CURL::libcurl)
+    elseif(NOT WIN32)
+        find_package(CURL REQUIRED)
+        list(APPEND network_libs CURL::libcurl)
+    elseif(NOT MSVC)
+        set(network_libs
+            ${network_libs}
+            curl
         )
     endif()
 
@@ -641,6 +655,8 @@ if(OPTIONX_BUILD_EXAMPLES)
     )
     if(MINGW)
         target_compile_options(protocol_v1_bridge_smoke PRIVATE -Wa,-mbig-obj)
+    elseif(MSVC)
+        target_compile_options(protocol_v1_bridge_smoke PRIVATE /bigobj)
     endif()
     if(OPTIONX_LIGHTWEIGHT_BRIDGE_SMOKE_TESTS)
         target_link_libraries(
@@ -720,8 +736,14 @@ if(OPTIONX_BUILD_TESTS)
             metatrader_file_bridge_test
             metatrader_file_command_writer_test
             metatrader_file_config_include_test
+            protocol_v1_bridge_test
         )
     endif()
+
+    set(OPTIONX_LIGHTWEIGHT_NETWORK_TESTS
+        bridge_umbrella_include_test
+        protocol_v1_bridge_test
+    )
 
     file(GLOB_RECURSE PROJECT_HEADERS
         RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
@@ -789,13 +811,19 @@ if(OPTIONX_BUILD_TESTS)
             ${PROJECT_DEFINES}
             LOGIT_BASE_PATH="${LOGIT_BASE_PATH_FWD}"
         )
+        if(MSVC)
+            target_compile_options(${test_name} PRIVATE /bigobj)
+        endif()
         list(FIND OPTIONX_LIGHTWEIGHT_TESTS "${test_name}" lightweight_test_index)
         if(NOT lightweight_test_index EQUAL -1)
             target_link_libraries(
                 ${test_name} PRIVATE
                 ${PROJECT_LIBS}
-                ${OPTIONX_NETWORK_LIBS}
             )
+            list(FIND OPTIONX_LIGHTWEIGHT_NETWORK_TESTS "${test_name}" lightweight_network_test_index)
+            if(NOT lightweight_network_test_index EQUAL -1)
+                target_link_libraries(${test_name} PRIVATE ${OPTIONX_NETWORK_LIBS})
+            endif()
             if(WIN32)
                 target_link_libraries(${test_name} PRIVATE ${OPTIONX_WINDOWS_SYSTEM_LIBS})
             endif()
