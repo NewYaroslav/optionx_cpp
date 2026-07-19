@@ -520,6 +520,25 @@ BotBinary filename suffix можно копировать в `identity.unique_ha
 который просто делает один файл уникальным, это transport identity, а не domain
 deduplication.
 
+Текущий C++ surface для этого profile - stateless compatibility helper из
+`<optionx_cpp/bridges/bot_binary.hpp>`. Он готовит:
+
+- raw BotBinary `request` query value;
+- convenience HTTP URL;
+- file-signal filename.
+
+Он также парсит legacy BotBinary HTTP `request` values и file-signal filenames
+обратно в neutral command snapshot, который будущий inbound bridge сможет
+превратить в OptionX trade signal. Parser сохраняет trailing BotBinary suffix
+как transport identity; он не считает этот suffix OptionX idempotency key или
+`identity.unique_hash`, пока higher-level bridge явно не задаст такое
+отображение.
+
+Если explicit BotBinary transport suffix не задан, formatter выводит
+deterministic file-safe suffix из OptionX `idempotency_key`. Runtime delivery
+bridge все равно должен сохранять prepared command до отправки, чтобы retry
+мог повторно использовать точно тот же BotBinary request или filename.
+
 ### MT2Trading File Signals
 
 MT2Trading не публикует stable public file API в наблюдаемых материалах.
