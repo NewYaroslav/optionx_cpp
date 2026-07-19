@@ -690,6 +690,16 @@ namespace optionx::bridges::metatrader_file::detail {
         return canonical;
     }
 
+    /// \brief Serializes the canonical trade-command business payload.
+    /// \details Retry/admission metadata is excluded before serialization, and
+    /// supported protocol aliases are normalized so equivalent command forms
+    /// share the same idempotency fingerprint.
+    inline std::string canonical_trade_command_fingerprint(
+            const nlohmann::json& params,
+            const bool direct_trade_open) {
+        return canonical_trade_command_payload(params, direct_trade_open).dump(-1);
+    }
+
     /// \brief Reads a decimal-like JSON member.
     inline double double_value(
             const nlohmann::json& object,

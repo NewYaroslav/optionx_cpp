@@ -258,6 +258,107 @@ TEST(BridgeProtocolServerBridge, AcceptsHttpJsonRpcCommands) {
     bridge.shutdown();
 }
 
+TEST(BridgeProtocolServerBridge, DeduplicatesHttpRetryWithCanonicalBusinessPayload) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    std::atomic<optionx::SignalId> next_signal_id{20};
+    std::atomic<int> signal_count{0};
+    bridge.on_signal_id() = [&next_signal_id]() {
+        return next_signal_id.fetch_add(1);
+    };
+    bridge.on_trade_signal() = [&signal_count](std::unique_ptr<optionx::TradeSignal> signal) {
+        ASSERT_EQ(signal->symbol, "EURUSD");
+        ++signal_count;
+    };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    auto first = trade_command("canonical-1", "canonical-key");
+    auto& first_params = first["params"];
+    first_params["context"]["client_created_at_ms"] =
+        optionx::bridges::metatrader_file::detail::unix_time_ms();
+    first_params["routing"]["selector"]["kind"] = "DEFAULT";
+    first_params["routing"]["selector"]["account_id"] = 99;
+    first_params["identity"]["unique_id"] = 42;
+    first_params["trade"]["order_type"] = "PUT";
+    first_params["trade"]["option_type"] = "sprint";
+    first_params["trade"]["amount"]["value"] = "1.2500";
+    first_params["trade"]["amount"]["currency"] = "usd";
+    first_params["trade"]["expiry"]["duration_ms"] = "60000";
+
+    auto retry = trade_command("canonical-2", "canonical-key");
+    auto& retry_params = retry["params"];
+    retry_params["context"]["client_created_at_ms"] =
+        optionx::bridges::metatrader_file::detail::unix_time_ms() + 5000;
+    retry_params["context"]["valid_until_ms"] =
+        optionx::bridges::metatrader_file::detail::unix_time_ms() - 1;
+    retry_params["routing"]["selector"]["kind"] = "default";
+    retry_params["routing"]["selector"]["account_id"] = "99";
+    retry_params["identity"]["unique_id"] = "42";
+    retry_params["trade"]["order_type"] = "BUY";
+    retry_params["trade"]["option_type"] = "SPRINT";
+    retry_params["trade"]["amount"]["value"] = 1.25;
+    retry_params["trade"]["amount"]["currency"] = "USD";
+    retry_params["trade"]["expiry"]["duration_ms"] = 60000;
+
+    const auto accepted = post_json(config, bridge.bound_http_port(), first);
+    EXPECT_EQ(accepted.at("result").at("signal_ref").at("signal_id").get<std::string>(), "20");
+    EXPECT_EQ(signal_count.load(), 1);
+
+    const auto duplicate = post_json(config, bridge.bound_http_port(), retry);
+    EXPECT_EQ(duplicate.at("result").at("signal_ref").at("signal_id").get<std::string>(), "20");
+    EXPECT_EQ(signal_count.load(), 1);
+
+    bridge.shutdown();
+}
+
+TEST(BridgeProtocolServerBridge, RejectsHttpRpcIdReuseForDifferentOperation) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    std::atomic<optionx::SignalId> next_signal_id{30};
+    std::atomic<int> signal_count{0};
+    bridge.on_signal_id() = [&next_signal_id]() {
+        return next_signal_id.fetch_add(1);
+    };
+    bridge.on_trade_signal() = [&signal_count](std::unique_ptr<optionx::TradeSignal>) {
+        ++signal_count;
+    };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    const auto accepted = post_json(
+        config,
+        bridge.bound_http_port(),
+        trade_command("reused-rpc-id", "first-key"));
+    EXPECT_EQ(accepted.at("result").at("status").get<std::string>(), "accepted");
+
+    const auto conflict = post_json(
+        config,
+        bridge.bound_http_port(),
+        trade_command("reused-rpc-id", "second-key"));
+    EXPECT_EQ(conflict.at("result").at("status").get<std::string>(), "rejected");
+    EXPECT_EQ(
+        conflict.at("result").at("reason").at("code").get<std::string>(),
+        "idempotency_conflict");
+    EXPECT_EQ(signal_count.load(), 1);
+
+    bridge.shutdown();
+}
+
 TEST(BridgeProtocolServerBridge, AcceptsWebSocketJsonRpcCommands) {
     namespace proto = optionx::bridges::protocol_v1;
 

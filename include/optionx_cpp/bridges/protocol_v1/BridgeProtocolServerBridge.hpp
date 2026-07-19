@@ -652,9 +652,9 @@ namespace optionx::bridges::protocol_v1 {
                 ? std::string()
                 : method + "\n" + detail::json_id_to_key(id);
             const auto fingerprint =
-                metatrader_file::detail::canonical_trade_command_payload(
+                metatrader_file::detail::canonical_trade_command_fingerprint(
                     params,
-                    direct_trade_open).dump(-1);
+                    direct_trade_open);
 
             {
                 std::lock_guard<std::mutex> lock(m_state->mutex);

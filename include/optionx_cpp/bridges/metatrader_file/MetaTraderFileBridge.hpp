@@ -742,9 +742,9 @@ namespace optionx::bridges::metatrader_file {
                 const nlohmann::json& params) {
             // Compare the normalized business operation, not retry/admission
             // metadata or the caller's incidental JSON spelling.
-            return detail::canonical_trade_command_payload(
+            return detail::canonical_trade_command_fingerprint(
                 params,
-                method == "trade.open").dump(-1);
+                method == "trade.open");
         }
 
         static nlohmann::json make_in_doubt_result(
