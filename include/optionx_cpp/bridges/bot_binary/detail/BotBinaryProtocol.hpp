@@ -451,21 +451,31 @@ namespace optionx::bridges::bot_binary {
 
         inline std::string extract_request_query_value(const std::string& value) {
             const auto query_start = value.find('?');
-            const auto query = query_start == std::string::npos
+            auto query = query_start == std::string::npos
                 ? value
                 : value.substr(query_start + 1u);
-            static const std::string key = "request=";
-            const auto request_pos = query.find(key);
-            if (request_pos == std::string::npos) {
-                return value;
+            const auto fragment_start = query.find('#');
+            if (fragment_start != std::string::npos) {
+                query = query.substr(0, fragment_start);
             }
 
-            const auto value_start = request_pos + key.size();
-            const auto value_end = query.find('&', value_start);
-            const auto request_value = value_end == std::string::npos
-                ? query.substr(value_start)
-                : query.substr(value_start, value_end - value_start);
-            return percent_decode_query_value(request_value);
+            static const std::string key = "request=";
+            std::size_t part_start = 0;
+            while (part_start <= query.size()) {
+                const auto part_end = query.find('&', part_start);
+                const auto part = part_end == std::string::npos
+                    ? query.substr(part_start)
+                    : query.substr(part_start, part_end - part_start);
+                if (part.compare(0u, key.size(), key) == 0) {
+                    return percent_decode_query_value(part.substr(key.size()));
+                }
+                if (part_end == std::string::npos) {
+                    break;
+                }
+                part_start = part_end + 1u;
+            }
+
+            return value;
         }
 
         inline std::string file_leaf_name(const std::string& path) {

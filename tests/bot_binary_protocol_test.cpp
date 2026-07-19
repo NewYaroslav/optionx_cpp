@@ -167,6 +167,15 @@ TEST(BotBinaryProtocol, ParsesRawHttpAndFileSignals) {
     EXPECT_EQ(file.transport_suffix, "2018.09.29=1538190215");
 }
 
+TEST(BotBinaryProtocol, IgnoresNonRequestQueryParameterNames) {
+    namespace bot = optionx::bridges::bot_binary;
+
+    EXPECT_THROW(
+        bot::parse_bot_binary_http_request(
+            "http://127.0.0.2/?xrequest=R_25%3DCALL%3D1%3Dduration%3D1%3Dm%3D"),
+        std::invalid_argument);
+}
+
 TEST(BotBinaryProtocol, ConvertsParsedCommandToTradeSignal) {
     namespace bot = optionx::bridges::bot_binary;
 
