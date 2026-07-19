@@ -52,3 +52,13 @@ jobs:
           .\build-windows\Debug\bridge_umbrella_include_test.exe --gtest_brief=1
           .\build-windows\Debug\metatrader_file_bridge_smoke.exe --self-test
           .\build-windows\Debug\metatrader_file_command_writer_smoke.exe --self-test
+
+      - name: Test MetaEditor compile smoke script
+        shell: pwsh
+        timeout-minutes: 2
+        run: .\scripts\test-metaeditor-compile-smoke.ps1 -OutputDir build-windows\metaeditor-script-self-test
+
+      - name: Compile MetaTrader MQL examples when MetaEditor is available
+        shell: pwsh
+        timeout-minutes: 3
+        run: .\scripts\compile-metatrader-mql.ps1 -OutputDir build-windows\metaeditor-smoke -TimeoutSeconds 60

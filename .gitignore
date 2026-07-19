@@ -17,3 +17,7 @@
 
 # Local broker smoke-test credentials. Keep real auth/proxy data out of git.
 /tests/intrade_bar_api/*.local.env
+
+# MetaEditor compile outputs are generated next to MQL sources.
+/mql/**/*.ex4
+/mql/**/*.ex5
