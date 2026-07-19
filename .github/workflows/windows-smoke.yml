@@ -58,6 +58,11 @@ jobs:
         timeout-minutes: 2
         run: .\scripts\test-metaeditor-compile-smoke.ps1 -OutputDir build-windows\metaeditor-script-self-test
 
+      - name: Test MetaTrader MQL installer script
+        shell: pwsh
+        timeout-minutes: 2
+        run: .\scripts\test-metatrader-mql-install.ps1 -OutputDir build-windows\metatrader-mql-install-self-test
+
       - name: Compile MetaTrader MQL examples when MetaEditor is available
         shell: pwsh
         timeout-minutes: 3

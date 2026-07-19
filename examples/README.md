@@ -33,6 +33,11 @@ MetaTrader-facing examples live under `mql/` in terminal-like layouts:
 - `mql/MQL4/Include/OptionX/OptionXFileBridge.mqh`
 - `mql/MQL4/Indicators/OptionX/OptionXFileBridgeSignalExample.mq4`
 
+Use `scripts/install-metatrader-mql.ps1` to copy the matching `OptionX` include
+and indicator trees into a terminal data folder. Portable terminals are
+supported by passing the path from MetaTrader's `File -> Open Data Folder` via
+`-TargetPath`.
+
 Use `scripts/compile-metatrader-mql.ps1` to compile those MQL examples with a
 local MetaEditor installation.
 
