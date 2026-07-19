@@ -463,8 +463,12 @@ Bridge Protocol v1 HTTP/WebSocket server bridge. Это application adapter на
   best-effort live notifications;
 - `protocol.hello`, `protocol.capabilities.get`, `account.balance.get`,
   `signal.submit` и `trade.open`;
-- bearer-token или `X-OptionX-Secret` transport authentication, если она задана;
-- in-memory idempotency dedupe для trade-affecting commands.
+- bearer-token или `X-OptionX-Secret` transport authentication. Режим с пустым
+  secret отклоняется, если `allow_unauthenticated_local` не включен явно на
+  loopback-адресе;
+- bounded in-memory idempotency dedupe для trade-affecting commands. Когда cache
+  заполнен удерживаемыми операциями, новые уникальные trade-affecting commands
+  отклоняются fail-closed вместо вытеснения accepted operations.
 
-Текущая реализация пока не даёт durable operation storage, subscription
-management и event replay для HTTP/WebSocket transports.
+Текущая реализация пока не даёт durable operation storage, fan-out routing,
+subscription management и event replay для HTTP/WebSocket transports.

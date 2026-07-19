@@ -17,7 +17,7 @@ namespace optionx::bridges::protocol_v1 {
         std::string command_path = "/api/v1/bridge/command"; ///< HTTP JSON-RPC command endpoint.
         std::string health_path = "/api/v1/bridge/health"; ///< HTTP health endpoint.
         std::string websocket_path = "/api/v1/bridge/ws"; ///< WebSocket JSON-RPC endpoint.
-        std::string secret; ///< Optional shared secret accepted in `X-OptionX-Secret`.
+        std::string secret; ///< Shared secret accepted in `X-OptionX-Secret`.
         BridgeId bridge_id = 0; ///< Source bridge ID assigned to emitted signals.
         std::string installation_id = "optionx-local"; ///< Stable installation identifier.
         std::string server_instance_id = "optionx-bridge-server"; ///< Runtime server identifier.
@@ -25,7 +25,8 @@ namespace optionx::bridges::protocol_v1 {
         std::size_t dedupe_cache_size = 4096; ///< In-memory idempotency/result cache size.
         bool enable_http = true; ///< Start the HTTP command server.
         bool enable_websocket = true; ///< Start the WebSocket command server.
-        bool allow_cors = true; ///< Emit CORS headers for browser clients.
+        bool allow_unauthenticated_local = false; ///< Allow no-secret loopback dev mode.
+        bool allow_cors = false; ///< Emit CORS headers for browser clients.
         std::string allowed_origin = "*"; ///< CORS `Access-Control-Allow-Origin` value.
 
         /// \brief Serializes configuration to JSON.
@@ -45,6 +46,7 @@ namespace optionx::bridges::protocol_v1 {
                 {"dedupe_cache_size", dedupe_cache_size},
                 {"enable_http", enable_http},
                 {"enable_websocket", enable_websocket},
+                {"allow_unauthenticated_local", allow_unauthenticated_local},
                 {"allow_cors", allow_cors},
                 {"allowed_origin", allowed_origin}
             };
@@ -77,6 +79,9 @@ namespace optionx::bridges::protocol_v1 {
             if (j.contains("enable_http")) enable_http = j.at("enable_http").get<bool>();
             if (j.contains("enable_websocket")) {
                 enable_websocket = j.at("enable_websocket").get<bool>();
+            }
+            if (j.contains("allow_unauthenticated_local")) {
+                allow_unauthenticated_local = j.at("allow_unauthenticated_local").get<bool>();
             }
             if (j.contains("allow_cors")) allow_cors = j.at("allow_cors").get<bool>();
             if (j.contains("allowed_origin")) {
@@ -131,8 +136,31 @@ namespace optionx::bridges::protocol_v1 {
             if (server_instance_id.empty()) {
                 return {false, "Bridge Protocol v1 server_instance_id must not be empty."};
             }
+            const auto is_loopback =
+                address == "127.0.0.1" ||
+                address == "localhost" ||
+                address == "::1" ||
+                address.rfind("127.", 0) == 0;
+            if (secret.empty() && !allow_unauthenticated_local) {
+                return {
+                    false,
+                    "Bridge Protocol v1 secret is required unless allow_unauthenticated_local is enabled."
+                };
+            }
+            if (secret.empty() && allow_unauthenticated_local && !is_loopback) {
+                return {
+                    false,
+                    "Bridge Protocol v1 unauthenticated mode is only allowed on loopback addresses."
+                };
+            }
             if (allow_cors && allowed_origin.empty()) {
                 return {false, "Bridge Protocol v1 allowed_origin must not be empty when CORS is enabled."};
+            }
+            if (secret.empty() && allow_cors && allowed_origin == "*") {
+                return {
+                    false,
+                    "Bridge Protocol v1 wildcard CORS is not allowed without authentication."
+                };
             }
             return {true, {}};
         }

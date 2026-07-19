@@ -42,10 +42,7 @@ namespace optionx::bridges::protocol_v1::detail {
         if (id.is_null()) {
             return {};
         }
-        if (id.is_string()) {
-            return id.get<std::string>();
-        }
-        return id.dump(-1);
+        return std::string(id.type_name()) + ":" + id.dump(-1);
     }
 
     inline std::string header_value(
@@ -59,7 +56,7 @@ namespace optionx::bridges::protocol_v1::detail {
             const BridgeProtocolServerConfig& config,
             const SimpleWeb::CaseInsensitiveMultimap& headers) {
         if (config.secret.empty()) {
-            return true;
+            return config.allow_unauthenticated_local;
         }
         const auto secret = header_value(headers, "X-OptionX-Secret");
         if (secret == config.secret) {

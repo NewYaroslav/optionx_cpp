@@ -887,7 +887,7 @@ namespace optionx::bridges::metatrader_file::detail {
         signal->unique_hash = string_value(
             identity,
             "unique_hash",
-            string_value(trade, "unique_hash", string_value(context, "idempotency_key")));
+            string_value(trade, "unique_hash"));
         signal->unique_id = int64_value(identity, "unique_id", int64_value(trade, "unique_id", 0));
         signal->user_data = string_value(identity, "user_data", string_value(trade, "user_data"));
         signal->comment = string_value(trade, "comment");

@@ -233,11 +233,16 @@ The first implementation supports:
   best-effort live notifications;
 - `protocol.hello`, `protocol.capabilities.get`, `account.balance.get`,
   `signal.submit` and `trade.open`;
-- bearer-token or `X-OptionX-Secret` transport authentication when configured;
-- in-memory idempotency dedupe for trade-affecting commands.
+- bearer-token or `X-OptionX-Secret` transport authentication. Empty-secret
+  mode is rejected unless `allow_unauthenticated_local` is explicitly enabled
+  on a loopback address;
+- bounded in-memory idempotency dedupe for trade-affecting commands. When the
+  cache is full of retained operations, new unique trade-affecting commands are
+  rejected fail-closed instead of evicting accepted operations.
 
 The current implementation does not yet provide durable operation storage,
-subscription management or event replay for the HTTP/WebSocket transports.
+subscription management, fan-out routing or event replay for the HTTP/WebSocket
+transports.
 - Unknown external/broker identifiers should be treated as opaque strings and
   compared lexically, not numerically.
 
