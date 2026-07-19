@@ -664,6 +664,7 @@ if(OPTIONX_BUILD_TESTS)
     )
     if(OPTIONX_LIGHTWEIGHT_BRIDGE_SMOKE_TESTS)
         list(APPEND OPTIONX_LIGHTWEIGHT_TESTS
+            bot_binary_protocol_test
             bridge_umbrella_include_test
             metatrader_file_bridge_test
             metatrader_file_command_writer_test
