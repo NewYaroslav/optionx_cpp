@@ -131,6 +131,19 @@ mql/MQL5/Include/OptionX/OptionXFileBridge.mqh
 #include <OptionX/OptionXFileBridge.mqh>
 ```
 
+В репозитории есть `scripts/install-metatrader-mql.ps1` для этого copy step.
+Default installations можно найти через `%APPDATA%\MetaQuotes\Terminal`;
+portable terminals лучше передавать явно:
+
+```powershell
+.\scripts\install-metatrader-mql.ps1 `
+  -TargetPath "E:\Program Files\MetaTrader 5" `
+  -Platform MQL5 `
+  -RequireTarget
+```
+
+Сначала запускай с `-DryRun`, чтобы проверить destination paths без записи.
+
 Ready-to-run examples:
 
 - `mql/MQL4/Indicators/OptionX/OptionXFileBridgeSignalExample.mq4`;

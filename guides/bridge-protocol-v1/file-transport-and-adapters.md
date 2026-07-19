@@ -138,6 +138,20 @@ the header from MQL as:
 #include <OptionX/OptionXFileBridge.mqh>
 ```
 
+The repository includes `scripts/install-metatrader-mql.ps1` for this copy
+step. Default installations can be discovered from
+`%APPDATA%\MetaQuotes\Terminal`; portable terminals should be passed
+explicitly:
+
+```powershell
+.\scripts\install-metatrader-mql.ps1 `
+  -TargetPath "E:\Program Files\MetaTrader 5" `
+  -Platform MQL5 `
+  -RequireTarget
+```
+
+Run with `-DryRun` first to inspect the destination paths without writing.
+
 Ready-to-run examples are provided as:
 
 - `mql/MQL4/Indicators/OptionX/OptionXFileBridgeSignalExample.mq4`;

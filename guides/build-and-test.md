@@ -160,6 +160,28 @@ Use `-RequireMql4` only with a MetaEditor installation that supports `.mq4`
 compilation; some broker folders are MT5-family installations even when their
 directory name mentions MetaTrader 4.
 
+The Windows smoke job also runs `scripts/test-metatrader-mql-install.ps1`,
+which verifies the installer script against fake terminal data folders. To
+install the MQL client header and sample indicators into a real terminal, pass
+the terminal data folder shown by MetaTrader's `File -> Open Data Folder`:
+
+```powershell
+.\scripts\install-metatrader-mql.ps1 `
+  -TargetPath "E:\Program Files\MetaTrader 5\MQL5" `
+  -Platform MQL5 `
+  -DryRun
+
+.\scripts\install-metatrader-mql.ps1 `
+  -TargetPath "E:\Program Files\MetaTrader 5" `
+  -Platform MQL5 `
+  -RequireTarget
+```
+
+`-TargetPath` accepts either a terminal data folder containing `MQL4`/`MQL5`
+or a direct `MQL4`/`MQL5` root. Omitting `-TargetPath` scans
+`%APPDATA%\MetaQuotes\Terminal`, which covers default installations but not
+portable terminals outside the MetaQuotes profile tree.
+
 При изменении публичных aggregate headers или include policy добавляй или
 обновляй тест, который подключает intended public entry point:
 
