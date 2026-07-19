@@ -45,6 +45,11 @@ TEST(BridgeUmbrellaIncludeTest, ExposesBotBinaryAdapterHelpers) {
             "umbrella-idem"));
 
     EXPECT_EQ(prepared.request_query_value, "R_25=CALL=1.00=duration=1=m=");
+
+    const auto parsed = optionx::bridges::bot_binary::parse_bot_binary_request_value(
+        prepared.request_query_value);
+    EXPECT_EQ(parsed.symbol, "R_25");
+    EXPECT_EQ(parsed.order_type, optionx::OrderType::BUY);
 }
 
 TEST(BridgeUmbrellaIncludeTest, ExposesSignalReportApi) {

@@ -78,6 +78,21 @@ TEST(BotBinaryProtocol, DerivesStableDefaultSuffixFromIdempotencyKey) {
     EXPECT_EQ(first.file_name.rfind("R_25=CALL=2.50=duration=1=m=ox_", 0), 0u);
 }
 
+TEST(BotBinaryProtocol, AcceptsOptionXIdempotencyKeySyntax) {
+    namespace bot = optionx::bridges::bot_binary;
+
+    const auto prepared = bot::prepare_bot_binary_command(
+        bot::bot_binary_duration_command(
+            "R_25",
+            optionx::OrderType::BUY,
+            "1.00",
+            60,
+            "manual:client-trade-1"));
+
+    EXPECT_FALSE(prepared.transport_suffix.empty());
+    EXPECT_EQ(prepared.file_name.rfind("R_25=CALL=1.00=duration=1=m=ox_", 0), 0u);
+}
+
 TEST(BotBinaryProtocol, CanIncludeSuffixInHttpRequestWhenConfigured) {
     namespace bot = optionx::bridges::bot_binary;
 
@@ -120,6 +135,54 @@ TEST(BotBinaryProtocol, ConvertsTradeRequestSnapshot) {
         "frxEURUSD=CALL=3.00=duration=2=m=");
 }
 
+TEST(BotBinaryProtocol, ParsesRawHttpAndFileSignals) {
+    namespace bot = optionx::bridges::bot_binary;
+
+    const auto raw = bot::parse_bot_binary_request_value(
+        "frxEURAUD=CALL=1.00=duration=5=m=");
+    EXPECT_EQ(raw.symbol, "frxEURAUD");
+    EXPECT_EQ(raw.order_type, optionx::OrderType::BUY);
+    EXPECT_EQ(raw.amount_value, "1.00");
+    EXPECT_EQ(raw.expiry_kind, bot::BotBinaryExpiryKind::DURATION);
+    EXPECT_EQ(raw.expiry_value, 5u);
+    EXPECT_EQ(raw.expiry_unit, bot::BotBinaryTimeUnit::MINUTES);
+    EXPECT_TRUE(raw.transport_suffix.empty());
+
+    const auto http = bot::parse_bot_binary_http_request(
+        "http://127.0.0.2/?request=R_50%3DPUT%3D1%3Dendtime%3D1538264736%3Ds%3D&ignored=1");
+    EXPECT_EQ(http.symbol, "R_50");
+    EXPECT_EQ(http.order_type, optionx::OrderType::SELL);
+    EXPECT_EQ(http.expiry_kind, bot::BotBinaryExpiryKind::END_TIME);
+    EXPECT_EQ(http.expiry_value, 1538264736u);
+    EXPECT_EQ(http.expiry_unit, bot::BotBinaryTimeUnit::SECONDS);
+
+    const auto file = bot::parse_bot_binary_file_signal_name(
+        R"(C:\Common\Files\Signal\R_25=PUT=1=duration=5=m=2018.09.29=1538190215.txt)");
+    EXPECT_EQ(file.symbol, "R_25");
+    EXPECT_EQ(file.order_type, optionx::OrderType::SELL);
+    EXPECT_EQ(file.amount_value, "1");
+    EXPECT_EQ(file.expiry_kind, bot::BotBinaryExpiryKind::DURATION);
+    EXPECT_EQ(file.expiry_value, 5u);
+    EXPECT_EQ(file.expiry_unit, bot::BotBinaryTimeUnit::MINUTES);
+    EXPECT_EQ(file.transport_suffix, "2018.09.29=1538190215");
+}
+
+TEST(BotBinaryProtocol, ConvertsParsedCommandToTradeSignal) {
+    namespace bot = optionx::bridges::bot_binary;
+
+    const auto parsed = bot::parse_bot_binary_file_signal_name(
+        "R_50=CALL=0.50=duration=30=s=legacy-signal.txt");
+    const auto signal = bot::bot_binary_to_trade_signal(parsed, "legacy_binarybot");
+
+    EXPECT_EQ(signal.symbol, "R_50");
+    EXPECT_EQ(signal.signal_name, "legacy_binarybot");
+    EXPECT_EQ(signal.unique_hash, "legacy-signal");
+    EXPECT_EQ(signal.order_type, optionx::OrderType::BUY);
+    EXPECT_DOUBLE_EQ(signal.amount, 0.50);
+    EXPECT_EQ(signal.duration, 30u);
+    EXPECT_EQ(signal.expiry_time, 0);
+}
+
 TEST(BotBinaryProtocol, RejectsInvalidCommands) {
     namespace bot = optionx::bridges::bot_binary;
 
@@ -150,6 +213,56 @@ TEST(BotBinaryProtocol, RejectsInvalidCommands) {
             "1.00",
             0,
             "idem"),
+        std::invalid_argument);
+
+    EXPECT_THROW(
+        bot::prepare_bot_binary_command(
+            bot::bot_binary_duration_command(
+                "R_25",
+                optionx::OrderType::BUY,
+                "NaN",
+                60,
+                "idem")),
+        std::invalid_argument);
+
+    EXPECT_THROW(
+        bot::prepare_bot_binary_command(
+            bot::bot_binary_duration_command(
+                "R_25",
+                optionx::OrderType::BUY,
+                "-1",
+                60,
+                "idem")),
+        std::invalid_argument);
+
+    EXPECT_THROW(
+        bot::prepare_bot_binary_command(
+            bot::bot_binary_duration_command(
+                "R_25",
+                optionx::OrderType::BUY,
+                "0",
+                60,
+                "idem")),
+        std::invalid_argument);
+
+    EXPECT_THROW(
+        bot::prepare_bot_binary_command(
+            bot::bot_binary_duration_command(
+                "R_25",
+                optionx::OrderType::BUY,
+                "1,50",
+                60,
+                "idem")),
+        std::invalid_argument);
+
+    EXPECT_THROW(
+        bot::parse_bot_binary_request_value(
+            "R_25=BUY=1=duration=1=m="),
+        std::invalid_argument);
+
+    EXPECT_THROW(
+        bot::parse_bot_binary_file_signal_name(
+            "R_25=CALL=1=duration=1=m=.txt"),
         std::invalid_argument);
 }
 

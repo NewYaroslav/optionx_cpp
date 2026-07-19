@@ -68,6 +68,13 @@ int main(int argc, char** argv) {
                   << prepared.transport_suffix << '\n';
 
         if (has_arg(argc, argv, "--self-test")) {
+            const auto parsed_request =
+                bot::parse_bot_binary_request_value(prepared.request_query_value);
+            const auto parsed_file =
+                bot::parse_bot_binary_file_signal_name(prepared.file_name);
+            const auto signal =
+                bot::bot_binary_to_trade_signal(parsed_file, "bot_binary_smoke");
+
             const bool ok =
                 prepared.request_query_value ==
                     "frxEURAUD=CALL=1.00=duration=5=m=" &&
@@ -77,7 +84,14 @@ int main(int argc, char** argv) {
                     "frxEURAUD=CALL=1.00=duration=5=m=ox_",
                     0) == 0u &&
                 prepared.file_name.size() > 4 &&
-                prepared.file_name.substr(prepared.file_name.size() - 4) == ".txt";
+                prepared.file_name.substr(prepared.file_name.size() - 4) == ".txt" &&
+                parsed_request.symbol == "frxEURAUD" &&
+                parsed_request.order_type == optionx::OrderType::BUY &&
+                parsed_request.transport_suffix.empty() &&
+                parsed_file.transport_suffix == prepared.transport_suffix &&
+                signal.symbol == "frxEURAUD" &&
+                signal.signal_name == "bot_binary_smoke" &&
+                signal.duration == 5u * 60u;
             if (!ok) {
                 std::cerr << "Self-test did not produce expected BotBinary fields.\n";
                 return 3;

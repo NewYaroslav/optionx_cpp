@@ -552,12 +552,18 @@ it is confirmed to be a stable domain identity of the signal or trade. A suffix
 that merely makes one file unique is transport identity, not domain
 deduplication.
 
-The current C++ surface for this profile is a stateless formatter exposed from
-`<optionx_cpp/bridges/bot_binary.hpp>`. It prepares:
+The current C++ surface for this profile is a stateless compatibility helper
+exposed from `<optionx_cpp/bridges/bot_binary.hpp>`. It prepares:
 
 - the raw BotBinary `request` query value;
 - a convenience HTTP URL;
 - the file-signal filename.
+
+It also parses legacy BotBinary HTTP `request` values and file-signal filenames
+back into a neutral command snapshot that a future inbound bridge can convert to
+an OptionX trade signal. The parser preserves the trailing BotBinary suffix as
+transport identity; it does not treat that suffix as an OptionX idempotency key
+unless a higher-level bridge explicitly maps it.
 
 If no explicit BotBinary transport suffix is supplied, the formatter derives a
 deterministic file-safe suffix from the OptionX `idempotency_key`. A runtime
