@@ -623,6 +623,57 @@ if(OPTIONX_BUILD_EXAMPLES)
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy_runtime_dlls.cmake"
         )
     endif()
+
+    add_executable(protocol_v1_bridge_smoke examples/protocol_v1_bridge_smoke.cpp)
+    target_compile_features(protocol_v1_bridge_smoke PRIVATE cxx_std_17)
+
+    target_include_directories(protocol_v1_bridge_smoke PRIVATE
+        ${EXAMPLE_INCLUDE_DIRS}
+        ${EXAMPLE_DEPS_INCLUDE_DIRS}
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/Simple-Web-Server
+    )
+
+    target_link_directories(protocol_v1_bridge_smoke PRIVATE ${EXAMPLE_LIBRARY_DIRS})
+    target_compile_definitions(
+        protocol_v1_bridge_smoke PRIVATE
+        ${EXAMPLE_DEFINES}
+        LOGIT_BASE_PATH="${LOGIT_BASE_PATH_FWD}"
+    )
+    if(MINGW)
+        target_compile_options(protocol_v1_bridge_smoke PRIVATE -Wa,-mbig-obj)
+    endif()
+    if(OPTIONX_LIGHTWEIGHT_BRIDGE_SMOKE_TESTS)
+        target_link_libraries(
+            protocol_v1_bridge_smoke PRIVATE
+            ${EXAMPLE_LIBS}
+            ${OPTIONX_NETWORK_LIBS}
+        )
+        if(WIN32)
+            target_link_libraries(protocol_v1_bridge_smoke PRIVATE ${OPTIONX_WINDOWS_SYSTEM_LIBS})
+        endif()
+    else()
+        target_link_libraries(protocol_v1_bridge_smoke PRIVATE ${EXAMPLE_LIBS} optionx_cpp)
+    endif()
+
+    if(OPTIONX_BUILD_DEPS AND NOT OPTIONX_LIGHTWEIGHT_BRIDGE_SMOKE_TESTS)
+        add_dependencies(protocol_v1_bridge_smoke mdbx-static AES)
+    endif()
+
+    foreach(dll ${EXAMPLE_DLL_FILES})
+        add_custom_command(TARGET protocol_v1_bridge_smoke POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${dll}" "$<TARGET_FILE_DIR:protocol_v1_bridge_smoke>"
+        )
+    endforeach()
+
+    if(WIN32)
+        add_custom_command(TARGET protocol_v1_bridge_smoke POST_BUILD
+            COMMAND ${CMAKE_COMMAND}
+                -DOPTIONX_RUNTIME_DLL_DIR="${EXAMPLE_BUILD_LIBS_DIR}/bin"
+                -DOPTIONX_RUNTIME_TARGET_DIR="$<TARGET_FILE_DIR:protocol_v1_bridge_smoke>"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy_runtime_dlls.cmake"
+        )
+    endif()
 endif()
 
 if(OPTIONX_BUILD_TESTS)
@@ -740,7 +791,11 @@ if(OPTIONX_BUILD_TESTS)
         )
         list(FIND OPTIONX_LIGHTWEIGHT_TESTS "${test_name}" lightweight_test_index)
         if(NOT lightweight_test_index EQUAL -1)
-            target_link_libraries(${test_name} PRIVATE ${PROJECT_LIBS})
+            target_link_libraries(
+                ${test_name} PRIVATE
+                ${PROJECT_LIBS}
+                ${OPTIONX_NETWORK_LIBS}
+            )
             if(WIN32)
                 target_link_libraries(${test_name} PRIVATE ${OPTIONX_WINDOWS_SYSTEM_LIBS})
             endif()

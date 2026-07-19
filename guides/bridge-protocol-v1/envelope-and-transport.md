@@ -218,6 +218,26 @@ Identifier compatibility rules:
 - Do not accept floating-point, fractional or scientific-notation IDs.
 - Numeric input loses leading zeros by definition; clients that need leading
   zeros must send a string.
+
+## Current C++ Server Support
+
+The header `<optionx_cpp/bridges/protocol_v1.hpp>` exposes the current
+header-only Bridge Protocol v1 HTTP/WebSocket server bridge. It is an application
+adapter over `BaseBridge`, not a broker platform implementation.
+
+The first implementation supports:
+
+- HTTP `POST /api/v1/bridge/command` for JSON-RPC commands;
+- HTTP `GET /api/v1/bridge/health`;
+- WebSocket `/api/v1/bridge/ws` for JSON-RPC request/response messages and
+  best-effort live notifications;
+- `protocol.hello`, `protocol.capabilities.get`, `account.balance.get`,
+  `signal.submit` and `trade.open`;
+- bearer-token or `X-OptionX-Secret` transport authentication when configured;
+- in-memory idempotency dedupe for trade-affecting commands.
+
+The current implementation does not yet provide durable operation storage,
+subscription management or event replay for the HTTP/WebSocket transports.
 - Unknown external/broker identifiers should be treated as opaque strings and
   compared lexically, not numerically.
 

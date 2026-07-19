@@ -448,3 +448,23 @@ REST status mapping:
 - `422 Unprocessable Content`: valid syntax, но invalid trading parameters.
 - `429 Too Many Requests`: rate limit.
 - `503 Service Unavailable`: bridge/platform temporarily unavailable.
+
+## Текущая C++-поддержка server
+
+Header `<optionx_cpp/bridges/protocol_v1.hpp>` открывает текущий header-only
+Bridge Protocol v1 HTTP/WebSocket server bridge. Это application adapter над
+`BaseBridge`, а не broker platform implementation.
+
+Первая реализация поддерживает:
+
+- HTTP `POST /api/v1/bridge/command` для JSON-RPC commands;
+- HTTP `GET /api/v1/bridge/health`;
+- WebSocket `/api/v1/bridge/ws` для JSON-RPC request/response messages и
+  best-effort live notifications;
+- `protocol.hello`, `protocol.capabilities.get`, `account.balance.get`,
+  `signal.submit` и `trade.open`;
+- bearer-token или `X-OptionX-Secret` transport authentication, если она задана;
+- in-memory idempotency dedupe для trade-affecting commands.
+
+Текущая реализация пока не даёт durable operation storage, subscription
+management и event replay для HTTP/WebSocket transports.
