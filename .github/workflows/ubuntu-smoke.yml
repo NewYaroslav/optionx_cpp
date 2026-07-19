@@ -72,6 +72,12 @@ jobs:
       - name: Run metatrader_file_command_writer_smoke
         run: ./build-linux/metatrader_file_command_writer_smoke --self-test
 
+      - name: Build metatrader_file_end_to_end_smoke
+        run: cmake --build build-linux --target metatrader_file_end_to_end_smoke -j
+
+      - name: Run metatrader_file_end_to_end_smoke
+        run: ./build-linux/metatrader_file_end_to_end_smoke --self-test
+
       - name: Build market_data_subscription_contract_test
         run: cmake --build build-linux --target market_data_subscription_contract_test -j
 

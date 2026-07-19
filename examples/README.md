@@ -24,6 +24,10 @@ Currently maintained examples:
   Common\Files bridge against a temporary command/event layout.
 - `metatrader_file_command_writer_smoke.cpp` demonstrates the C++ command-writer
   companion used by tests and non-MQL clients to append file commands.
+- `metatrader_file_end_to_end_smoke.cpp` runs a local loopback where the command
+  writer appends `account.balance.get`, `signal.submit` and `trade.open`, then
+  `MetaTraderFileBridge` processes the same `commands.ndjson` and emits
+  `events.ndjson`.
 - `trade_record_db_example.cpp` demonstrates basic `TradeRecordDB` usage.
 
 MetaTrader-facing examples live under `mql/` in terminal-like layouts:
