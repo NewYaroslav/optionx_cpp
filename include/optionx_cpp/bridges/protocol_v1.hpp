@@ -8,10 +8,12 @@
 #include <atomic>
 #include <charconv>
 #include <chrono>
+#include <condition_variable>
 #include <cmath>
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <future>
 #include <limits>
 #include <memory>
 #include <mutex>

@@ -958,11 +958,25 @@ namespace optionx::bridges::metatrader_file::detail {
         if (trade.is_object() && trade.contains("expiry") && trade.at("expiry").is_object()) {
             const auto& expiry = trade.at("expiry");
             const auto kind = string_value(expiry, "kind");
-            if (expiry.contains("duration_ms") && expiry.contains("expires_at_ms")) {
+            const bool has_duration = expiry.contains("duration_ms");
+            const bool has_absolute = expiry.contains("expires_at_ms");
+            if (has_duration && has_absolute) {
                 throw std::invalid_argument("expiry must not mix duration and absolute fields.");
             }
-            if (kind == "duration" || expiry.contains("duration_ms")) {
+            if (!kind.empty() && kind != "duration" && kind != "absolute") {
+                throw std::invalid_argument("expiry.kind is unsupported.");
+            }
+            if (kind == "duration" && has_absolute) {
+                throw std::invalid_argument("expiry.kind does not match expires_at_ms.");
+            }
+            if (kind == "absolute" && has_duration) {
+                throw std::invalid_argument("expiry.kind does not match duration_ms.");
+            }
+            if (kind == "duration" || has_duration) {
                 mark_expiry_form();
+                if (!has_duration) {
+                    throw std::invalid_argument("expiry.duration_ms is required.");
+                }
                 const auto duration_ms = int64_value(expiry, "duration_ms", 0);
                 if (duration_ms <= 0) {
                     throw std::invalid_argument("expiry.duration_ms must be positive.");
@@ -973,8 +987,11 @@ namespace optionx::bridges::metatrader_file::detail {
                 signal.duration = checked_positive_duration_seconds(
                     duration_ms / 1000,
                     "expiry.duration_ms");
-            } else if (kind == "absolute" || expiry.contains("expires_at_ms")) {
+            } else if (kind == "absolute" || has_absolute) {
                 mark_expiry_form();
+                if (!has_absolute) {
+                    throw std::invalid_argument("expiry.expires_at_ms is required.");
+                }
                 const auto expires_at_ms = int64_value(expiry, "expires_at_ms", 0);
                 if (expires_at_ms <= 0) {
                     throw std::invalid_argument("expiry.expires_at_ms must be positive.");
@@ -984,40 +1001,50 @@ namespace optionx::bridges::metatrader_file::detail {
                 }
                 signal.expiry_time = expires_at_ms / 1000;
                 validate_absolute_seconds(signal.expiry_time, "expiry.expires_at_ms");
-            } else if (!kind.empty()) {
-                throw std::invalid_argument("expiry.kind is unsupported.");
             }
         }
-        const auto duration_ms = int64_value(trade, "duration_ms", 0);
-        if (duration_ms > 0) {
+        if (trade.contains("duration_ms")) {
             mark_expiry_form();
+            const auto duration_ms = int64_value(trade, "duration_ms", 0);
+            if (duration_ms <= 0) {
+                throw std::invalid_argument("duration_ms must be positive.");
+            }
             if (duration_ms < 1000 || duration_ms % 1000 != 0) {
                 throw std::invalid_argument("duration_ms must be whole seconds.");
             }
             signal.duration = checked_positive_duration_seconds(duration_ms / 1000, "duration_ms");
         }
-        const auto duration = int64_value(trade, "duration", 0);
-        if (duration > 0) {
+        if (trade.contains("duration")) {
             mark_expiry_form();
+            const auto duration = int64_value(trade, "duration", 0);
+            if (duration <= 0) {
+                throw std::invalid_argument("duration must be positive.");
+            }
             signal.duration = checked_positive_duration_seconds(duration, "duration");
         }
-        const auto duration_sec = int64_value(trade, "duration_sec", 0);
-        if (duration_sec > 0) {
+        if (trade.contains("duration_sec")) {
             mark_expiry_form();
+            const auto duration_sec = int64_value(trade, "duration_sec", 0);
+            if (duration_sec <= 0) {
+                throw std::invalid_argument("duration_sec must be positive.");
+            }
             signal.duration = checked_positive_duration_seconds(duration_sec, "duration_sec");
         }
-        const auto expires_at_ms = int64_value(trade, "expires_at_ms", 0);
-        if (expires_at_ms > 0) {
+        if (trade.contains("expires_at_ms")) {
             mark_expiry_form();
+            const auto expires_at_ms = int64_value(trade, "expires_at_ms", 0);
+            if (expires_at_ms <= 0) {
+                throw std::invalid_argument("expires_at_ms must be positive.");
+            }
             if (expires_at_ms < 1000 || expires_at_ms % 1000 != 0) {
                 throw std::invalid_argument("expires_at_ms must be whole seconds.");
             }
             signal.expiry_time = expires_at_ms / 1000;
             validate_absolute_seconds(signal.expiry_time, "expires_at_ms");
         }
-        const auto expiry_time = int64_value(trade, "expiry_time", 0);
-        if (expiry_time > 0) {
+        if (trade.contains("expiry_time")) {
             mark_expiry_form();
+            const auto expiry_time = int64_value(trade, "expiry_time", 0);
             validate_absolute_seconds(expiry_time, "expiry_time");
             signal.expiry_time = expiry_time;
         }

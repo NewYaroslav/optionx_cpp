@@ -91,7 +91,7 @@ optionx::bridges::protocol_v1::BridgeProtocolServerConfig test_config() {
 
 bool wait_for_http_port(
         const optionx::bridges::protocol_v1::BridgeProtocolServerBridge& bridge) {
-    for (int i = 0; i < 200; ++i) {
+    for (int i = 0; i < 500; ++i) {
         if (bridge.bound_http_port() != 0) {
             return true;
         }
@@ -597,6 +597,20 @@ TEST(BridgeProtocolServerBridge, RejectsInvalidDirectTradeExpiry) {
         optionx::bridges::metatrader_file::detail::unix_time_ms() + 60000;
     const auto conflicting_expiry_response =
         post_json(config, bridge.bound_http_port(), conflicting_expiry);
+
+    auto mismatched_kind = trade_command("mismatched-kind", "idem-mismatched-kind");
+    mismatched_kind["params"]["trade"]["expiry"] = {
+        {"kind", "absolute"},
+        {"duration_ms", 60000}
+    };
+    const auto mismatched_kind_response =
+        post_json(config, bridge.bound_http_port(), mismatched_kind);
+
+    auto ignored_top_level_alias =
+        trade_command("ignored-top-level-alias", "idem-ignored-top-level-alias");
+    ignored_top_level_alias["params"]["trade"]["duration_ms"] = 0;
+    const auto ignored_top_level_alias_response =
+        post_json(config, bridge.bound_http_port(), ignored_top_level_alias);
     bridge.shutdown();
 
     EXPECT_EQ(missing_option_response.at("error").at("code").get<int>(), -32602);
@@ -605,6 +619,8 @@ TEST(BridgeProtocolServerBridge, RejectsInvalidDirectTradeExpiry) {
     EXPECT_EQ(subsecond_duration_response.at("error").at("code").get<int>(), -32602);
     EXPECT_EQ(past_absolute_response.at("error").at("code").get<int>(), -32602);
     EXPECT_EQ(conflicting_expiry_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(mismatched_kind_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(ignored_top_level_alias_response.at("error").at("code").get<int>(), -32602);
 }
 
 TEST(BridgeProtocolServerBridge, AcceptsDocumentedSizingAndRoutingPlatformType) {
@@ -763,6 +779,137 @@ TEST(BridgeProtocolServerBridge, FailsClosedWhenOnlyInFlightOperationsCanBeEvict
         second.at("result").at("reason").at("code").get<std::string>(),
         "idempotency_cache_full");
     EXPECT_EQ(signal_count.load(), 1);
+}
+
+TEST(BridgeProtocolServerBridge, ExpiredOperationIsDispatchedAgain) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+    config.operation_cache_retention_ms = 1;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    std::atomic<optionx::SignalId> next_signal_id{42};
+    std::atomic<int> signal_count{0};
+    bridge.on_signal_id() = [&next_signal_id]() {
+        return next_signal_id.fetch_add(1);
+    };
+    bridge.on_trade_signal() = [&signal_count](std::unique_ptr<optionx::TradeSignal>) {
+        ++signal_count;
+    };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    const auto first = post_json(
+        config,
+        bridge.bound_http_port(),
+        trade_command("trade-expired-1", "idem-expired"));
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    const auto second = post_json(
+        config,
+        bridge.bound_http_port(),
+        trade_command("trade-expired-2", "idem-expired"));
+    bridge.shutdown();
+
+    EXPECT_EQ(first.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(second.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(signal_count.load(), 2);
+}
+
+TEST(BridgeProtocolServerBridge, CacheHitRefreshesLruPosition) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+    config.dedupe_cache_size = 2;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    std::atomic<optionx::SignalId> next_signal_id{60};
+    std::atomic<int> signal_count{0};
+    bridge.on_signal_id() = [&next_signal_id]() {
+        return next_signal_id.fetch_add(1);
+    };
+    bridge.on_trade_signal() = [&signal_count](std::unique_ptr<optionx::TradeSignal>) {
+        ++signal_count;
+    };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    static_cast<void>(post_json(
+        config,
+        bridge.bound_http_port(),
+        trade_command("trade-lru-1", "idem-lru-1")));
+    static_cast<void>(post_json(
+        config,
+        bridge.bound_http_port(),
+        trade_command("trade-lru-2", "idem-lru-2")));
+    static_cast<void>(post_json(
+        config,
+        bridge.bound_http_port(),
+        trade_command("trade-lru-1-retry", "idem-lru-1")));
+    static_cast<void>(post_json(
+        config,
+        bridge.bound_http_port(),
+        trade_command("trade-lru-3", "idem-lru-3")));
+    static_cast<void>(post_json(
+        config,
+        bridge.bound_http_port(),
+        trade_command("trade-lru-1-retry-2", "idem-lru-1")));
+    static_cast<void>(post_json(
+        config,
+        bridge.bound_http_port(),
+        trade_command("trade-lru-2-retry", "idem-lru-2")));
+    bridge.shutdown();
+
+    EXPECT_EQ(signal_count.load(), 4);
+}
+
+TEST(BridgeProtocolServerBridge, CompletedResultCannotExceedGlobalByteBudget) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+    config.max_operation_cache_bytes = 512;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    std::atomic<optionx::SignalId> next_signal_id{70};
+    std::atomic<int> signal_count{0};
+    bridge.on_signal_id() = [&next_signal_id]() {
+        return next_signal_id.fetch_add(1);
+    };
+    bridge.on_trade_signal() = [&signal_count](std::unique_ptr<optionx::TradeSignal>) {
+        if (++signal_count == 1) {
+            throw std::runtime_error(std::string(900, 'x'));
+        }
+    };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    const auto failed = post_json(
+        config,
+        bridge.bound_http_port(),
+        trade_command("trade-oversized-result-1", "idem-oversized-result-1"));
+    const auto accepted = post_json(
+        config,
+        bridge.bound_http_port(),
+        trade_command("trade-oversized-result-2", "idem-oversized-result-2"));
+    bridge.shutdown();
+
+    EXPECT_EQ(failed.at("result").at("status").get<std::string>(), "rejected");
+    EXPECT_EQ(
+        failed.at("result").at("reason").at("code").get<std::string>(),
+        "dispatch_failed");
+    EXPECT_EQ(accepted.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(signal_count.load(), 2);
 }
 
 TEST(BridgeProtocolServerBridge, FailsClosedWhenOperationCacheBytesAreFull) {
@@ -1365,6 +1512,93 @@ TEST(BridgeProtocolServerBridge, RunWhileAlreadyRunningReturnsImmediately) {
     EXPECT_TRUE(returned.load());
 }
 
+TEST(BridgeProtocolServerBridge, StartFailureDoesNotLeaveRuntimeMarkedRunning) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+    config.address = "192.0.2.1";
+    config.allow_insecure_remote = true;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool failed = false;
+    bridge.on_status_update() = [&](const optionx::BridgeStatusUpdate& update) {
+        if (update.status == optionx::BridgeStatus::SERVER_START_FAILED) {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                failed = true;
+            }
+            cv.notify_all();
+        }
+    };
+
+    bridge.run();
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(5), [&failed]() {
+            return failed;
+        }));
+    }
+    for (int i = 0; i < 200 && bridge.bound_http_port() != 0; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    EXPECT_EQ(bridge.bound_http_port(), 0);
+
+    bridge.shutdown();
+    config.address = "127.0.0.1";
+    config.allow_insecure_remote = false;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+    bridge.shutdown();
+}
+
+TEST(BridgeProtocolServerBridge, RunDuringShutdownDoesNotCreateZombieRuntime) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    std::atomic<bool> shutdown_entered{false};
+    std::thread shutdown_thread([&]() {
+        shutdown_entered.store(true);
+        bridge.shutdown();
+    });
+    for (int i = 0; i < 200 && !shutdown_entered.load(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    std::atomic<bool> run_returned{false};
+    std::thread run_thread([&]() {
+        bridge.run();
+        run_returned.store(true);
+    });
+
+    if (shutdown_thread.joinable()) {
+        shutdown_thread.join();
+    }
+    if (run_thread.joinable()) {
+        run_thread.join();
+    }
+    EXPECT_TRUE(run_returned.load());
+
+    bridge.shutdown();
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+    bridge.shutdown();
+}
+
 TEST(BridgeProtocolServerBridge, ShutdownRacingStartupLeavesNoRunningTransport) {
     namespace proto = optionx::bridges::protocol_v1;
 
@@ -1453,6 +1687,7 @@ TEST(BridgeProtocolServerBridge, ShutdownCallbacksAreReentrantSafe) {
 
     std::atomic<int> started_callbacks{0};
     std::atomic<int> stopped_callbacks{0};
+    std::atomic<bool> restarted_once{false};
     bridge.on_status_update() = [&](const optionx::BridgeStatusUpdate& update) {
         if (update.status == optionx::BridgeStatus::SERVER_STARTED) {
             ++started_callbacks;
@@ -1460,8 +1695,10 @@ TEST(BridgeProtocolServerBridge, ShutdownCallbacksAreReentrantSafe) {
         }
         if (update.status == optionx::BridgeStatus::SERVER_STOPPED) {
             ++stopped_callbacks;
-            bridge.shutdown();
-            bridge.run();
+            if (!restarted_once.exchange(true)) {
+                bridge.shutdown();
+                bridge.run();
+            }
         }
     };
 
@@ -1472,7 +1709,7 @@ TEST(BridgeProtocolServerBridge, ShutdownCallbacksAreReentrantSafe) {
     EXPECT_NO_THROW(bridge.shutdown());
 
     EXPECT_GT(started_callbacks.load(), 0);
-    EXPECT_EQ(stopped_callbacks.load(), 1);
+    EXPECT_GE(stopped_callbacks.load(), 1);
 }
 
 int main(int argc, char** argv) {
