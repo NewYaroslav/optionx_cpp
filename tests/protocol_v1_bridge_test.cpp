@@ -1763,6 +1763,53 @@ TEST(BridgeProtocolServerBridge, ReentrantLifecycleFromHttpWorkerDuringShutdownD
     bridge.shutdown();
 }
 
+TEST(BridgeProtocolServerBridge, ShutdownInitiatedByHttpWorkerDoesNotDeadlock) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    std::atomic<bool> shutdown_returned{false};
+    std::atomic<bool> request_failed{false};
+    bridge.on_signal_id() = []() { return optionx::SignalId{93}; };
+    bridge.on_trade_signal() = [&](std::unique_ptr<optionx::TradeSignal>) {
+        bridge.shutdown();
+        shutdown_returned.store(true);
+    };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    nlohmann::json response;
+    std::thread request_thread([&]() {
+        try {
+            response = post_json(
+                config,
+                bridge.bound_http_port(),
+                trade_command("trade-worker-shutdown", "idem-worker-shutdown"));
+        } catch (...) {
+            request_failed.store(true);
+        }
+    });
+    if (request_thread.joinable()) {
+        request_thread.join();
+    }
+
+    EXPECT_TRUE(shutdown_returned.load());
+    EXPECT_FALSE(request_failed.load());
+    if (!request_failed.load()) {
+        EXPECT_EQ(response.at("result").at("status").get<std::string>(), "accepted");
+    }
+
+    bridge.shutdown();
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+    bridge.shutdown();
+}
+
 TEST(BridgeProtocolServerBridge, ShutdownRacingStartupLeavesNoRunningTransport) {
     namespace proto = optionx::bridges::protocol_v1;
 
@@ -1841,7 +1888,7 @@ TEST(BridgeProtocolServerBridge, ShutdownCanBeRequestedFromStatusCallback) {
     EXPECT_TRUE(requested_shutdown.load());
 }
 
-TEST(BridgeProtocolServerBridge, ShutdownCallbacksAreReentrantSafe) {
+TEST(BridgeProtocolServerBridge, LifecycleCallsFromStoppedCallbackAreSafeNoOps) {
     namespace proto = optionx::bridges::protocol_v1;
 
     auto config = test_config();
@@ -1851,7 +1898,6 @@ TEST(BridgeProtocolServerBridge, ShutdownCallbacksAreReentrantSafe) {
 
     std::atomic<int> started_callbacks{0};
     std::atomic<int> stopped_callbacks{0};
-    std::atomic<bool> restarted_once{false};
     bridge.on_status_update() = [&](const optionx::BridgeStatusUpdate& update) {
         if (update.status == optionx::BridgeStatus::SERVER_STARTED) {
             ++started_callbacks;
@@ -1859,10 +1905,8 @@ TEST(BridgeProtocolServerBridge, ShutdownCallbacksAreReentrantSafe) {
         }
         if (update.status == optionx::BridgeStatus::SERVER_STOPPED) {
             ++stopped_callbacks;
-            if (!restarted_once.exchange(true)) {
-                bridge.shutdown();
-                bridge.run();
-            }
+            bridge.shutdown();
+            bridge.run();
         }
     };
 
@@ -1872,8 +1916,13 @@ TEST(BridgeProtocolServerBridge, ShutdownCallbacksAreReentrantSafe) {
     }
     EXPECT_NO_THROW(bridge.shutdown());
 
-    EXPECT_GT(started_callbacks.load(), 0);
-    EXPECT_GE(stopped_callbacks.load(), 1);
+    EXPECT_EQ(started_callbacks.load(), 1);
+    EXPECT_EQ(stopped_callbacks.load(), 1);
+
+    bridge.on_status_update() = {};
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+    bridge.shutdown();
 }
 
 int main(int argc, char** argv) {
