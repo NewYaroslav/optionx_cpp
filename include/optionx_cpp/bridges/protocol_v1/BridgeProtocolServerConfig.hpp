@@ -23,9 +23,14 @@ namespace optionx::bridges::protocol_v1 {
         std::string server_instance_id = "optionx-bridge-server"; ///< Runtime server identifier.
         std::size_t request_body_limit = 1024 * 1024; ///< Maximum JSON-RPC body/message size.
         std::size_t dedupe_cache_size = 4096; ///< In-memory idempotency/result cache size.
+        std::size_t max_request_id_aliases_per_operation = 16; ///< Retry request IDs stored per operation.
+        std::size_t max_ws_pending_messages = 64; ///< Pending outbound WebSocket messages per client.
+        std::size_t max_ws_pending_bytes = 1024 * 1024; ///< Pending outbound WebSocket bytes per client.
+        long content_timeout_seconds = 30; ///< HTTP content read timeout.
         bool enable_http = true; ///< Start the HTTP command server.
         bool enable_websocket = true; ///< Start the WebSocket command server.
         bool allow_unauthenticated_local = false; ///< Allow no-secret loopback dev mode.
+        bool allow_insecure_remote = false; ///< Allow plaintext remote bind with a shared secret.
         bool allow_cors = false; ///< Emit CORS headers for browser clients.
         std::string allowed_origin = "*"; ///< CORS `Access-Control-Allow-Origin` value.
 
@@ -44,9 +49,14 @@ namespace optionx::bridges::protocol_v1 {
                 {"server_instance_id", server_instance_id},
                 {"request_body_limit", request_body_limit},
                 {"dedupe_cache_size", dedupe_cache_size},
+                {"max_request_id_aliases_per_operation", max_request_id_aliases_per_operation},
+                {"max_ws_pending_messages", max_ws_pending_messages},
+                {"max_ws_pending_bytes", max_ws_pending_bytes},
+                {"content_timeout_seconds", content_timeout_seconds},
                 {"enable_http", enable_http},
                 {"enable_websocket", enable_websocket},
                 {"allow_unauthenticated_local", allow_unauthenticated_local},
+                {"allow_insecure_remote", allow_insecure_remote},
                 {"allow_cors", allow_cors},
                 {"allowed_origin", allowed_origin}
             };
@@ -76,12 +86,28 @@ namespace optionx::bridges::protocol_v1 {
             if (j.contains("dedupe_cache_size")) {
                 dedupe_cache_size = j.at("dedupe_cache_size").get<std::size_t>();
             }
+            if (j.contains("max_request_id_aliases_per_operation")) {
+                max_request_id_aliases_per_operation =
+                    j.at("max_request_id_aliases_per_operation").get<std::size_t>();
+            }
+            if (j.contains("max_ws_pending_messages")) {
+                max_ws_pending_messages = j.at("max_ws_pending_messages").get<std::size_t>();
+            }
+            if (j.contains("max_ws_pending_bytes")) {
+                max_ws_pending_bytes = j.at("max_ws_pending_bytes").get<std::size_t>();
+            }
+            if (j.contains("content_timeout_seconds")) {
+                content_timeout_seconds = j.at("content_timeout_seconds").get<long>();
+            }
             if (j.contains("enable_http")) enable_http = j.at("enable_http").get<bool>();
             if (j.contains("enable_websocket")) {
                 enable_websocket = j.at("enable_websocket").get<bool>();
             }
             if (j.contains("allow_unauthenticated_local")) {
                 allow_unauthenticated_local = j.at("allow_unauthenticated_local").get<bool>();
+            }
+            if (j.contains("allow_insecure_remote")) {
+                allow_insecure_remote = j.at("allow_insecure_remote").get<bool>();
             }
             if (j.contains("allow_cors")) allow_cors = j.at("allow_cors").get<bool>();
             if (j.contains("allowed_origin")) {
@@ -127,6 +153,21 @@ namespace optionx::bridges::protocol_v1 {
             if (dedupe_cache_size == 0) {
                 return {false, "Bridge Protocol v1 dedupe_cache_size must be positive."};
             }
+            if (max_request_id_aliases_per_operation == 0) {
+                return {
+                    false,
+                    "Bridge Protocol v1 max_request_id_aliases_per_operation must be positive."
+                };
+            }
+            if (max_ws_pending_messages == 0) {
+                return {false, "Bridge Protocol v1 max_ws_pending_messages must be positive."};
+            }
+            if (max_ws_pending_bytes == 0) {
+                return {false, "Bridge Protocol v1 max_ws_pending_bytes must be positive."};
+            }
+            if (content_timeout_seconds <= 0) {
+                return {false, "Bridge Protocol v1 content_timeout_seconds must be positive."};
+            }
             if (bridge_id == 0) {
                 return {false, "Bridge Protocol v1 bridge_id is required."};
             }
@@ -151,6 +192,12 @@ namespace optionx::bridges::protocol_v1 {
                 return {
                     false,
                     "Bridge Protocol v1 unauthenticated mode is only allowed on loopback addresses."
+                };
+            }
+            if (!secret.empty() && !allow_insecure_remote && !is_loopback) {
+                return {
+                    false,
+                    "Bridge Protocol v1 remote plaintext bind requires allow_insecure_remote=true."
                 };
             }
             if (allow_cors && allowed_origin.empty()) {

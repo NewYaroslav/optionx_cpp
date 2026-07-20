@@ -235,10 +235,22 @@ The first implementation supports:
   `signal.submit` and `trade.open`;
 - bearer-token or `X-OptionX-Secret` transport authentication. Empty-secret
   mode is rejected unless `allow_unauthenticated_local` is explicitly enabled
-  on a loopback address;
+  on a loopback address. Plain HTTP/WebSocket binds on non-loopback addresses
+  also require explicit `allow_insecure_remote=true` because the shared secret
+  is otherwise sent over an unencrypted transport;
+- strict JSON-RPC envelope validation. Request IDs must be strings, integers or
+  `null`; `params` must be an object; `protocol.hello` rejects requests that do
+  not include v1 in `requested_protocol_versions`;
 - bounded in-memory idempotency dedupe for trade-affecting commands. When the
   cache is full of retained operations, new unique trade-affecting commands are
-  rejected fail-closed instead of evicting accepted operations.
+  rejected fail-closed instead of evicting accepted operations. Concurrent
+  retries of an operation already in dispatch wait for the original dispatch
+  result instead of returning a provisional accepted response;
+- transport resource limits are applied before full buffering when the
+  underlying server supports it. WebSocket outbound notifications are bounded
+  per connection by `max_ws_pending_messages` and `max_ws_pending_bytes`; slow
+  clients are closed fail-closed instead of accumulating an unbounded send
+  queue.
 
 The current implementation does not yet provide durable operation storage,
 subscription management, fan-out routing or event replay for the HTTP/WebSocket

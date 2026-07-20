@@ -8,8 +8,10 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <limits>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -154,6 +156,14 @@ nlohmann::json ws_trade_command(std::string id, std::string idempotency_key) {
     return trade_command(std::move(id), std::move(idempotency_key));
 }
 
+nlohmann::json signal_command(std::string id, std::string idempotency_key) {
+    auto request = trade_command(std::move(id), std::move(idempotency_key));
+    request["method"] = "signal.submit";
+    request["params"]["signal"] = request["params"]["trade"];
+    request["params"].erase("trade");
+    return request;
+}
+
 nlohmann::json post_json(
         const optionx::bridges::protocol_v1::BridgeProtocolServerConfig& config,
         const unsigned short port,
@@ -195,7 +205,12 @@ TEST(BridgeProtocolServerConfig, RoundTripsAndValidates) {
     EXPECT_EQ(restored.bridge_type(), optionx::BridgeType::BRIDGE_PROTOCOL_V1_HTTP_WEBSOCKET);
     EXPECT_EQ(restored.command_path, "/api/v1/bridge/command");
     EXPECT_FALSE(restored.allow_unauthenticated_local);
+    EXPECT_FALSE(restored.allow_insecure_remote);
     EXPECT_FALSE(restored.allow_cors);
+    EXPECT_GT(restored.max_request_id_aliases_per_operation, 0u);
+    EXPECT_GT(restored.max_ws_pending_messages, 0u);
+    EXPECT_GT(restored.max_ws_pending_bytes, 0u);
+    EXPECT_GT(restored.content_timeout_seconds, 0);
 
     restored.enable_http = false;
     restored.enable_websocket = false;
@@ -210,6 +225,12 @@ TEST(BridgeProtocolServerConfig, RoundTripsAndValidates) {
 
     unsafe.address = "0.0.0.0";
     EXPECT_FALSE(unsafe.validate().first);
+
+    auto remote_secret = test_config();
+    remote_secret.address = "0.0.0.0";
+    EXPECT_FALSE(remote_secret.validate().first);
+    remote_secret.allow_insecure_remote = true;
+    EXPECT_TRUE(remote_secret.validate().first);
 
     unsafe.address = "127.0.0.1";
     unsafe.allow_cors = true;
@@ -276,7 +297,11 @@ TEST(BridgeProtocolServerBridge, AcceptsHttpJsonRpcCommands) {
         config,
         bridge.bound_http_port(),
         trade_command("trade-1-retry", "idem-1"));
-    EXPECT_EQ(retry.at("result").at("signal_ref").at("signal_id").get<std::string>(), "10");
+    EXPECT_EQ(
+        retry.at("result").at("operation_id").get<std::string>(),
+        accepted.at("result").at("operation_id").get<std::string>());
+    EXPECT_TRUE(retry.at("result").contains("trade_refs"));
+    EXPECT_FALSE(retry.at("result").contains("signal_ref"));
     EXPECT_EQ(signal_count.load(), 1);
 
     const auto conflict = post_json(
@@ -289,6 +314,103 @@ TEST(BridgeProtocolServerBridge, AcceptsHttpJsonRpcCommands) {
         "idempotency_conflict");
 
     bridge.shutdown();
+}
+
+TEST(BridgeProtocolServerBridge, ReturnsMethodSpecificAcceptedShapes) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    std::atomic<optionx::SignalId> next_signal_id{100};
+    bridge.on_signal_id() = [&next_signal_id]() {
+        return next_signal_id.fetch_add(1);
+    };
+    bridge.on_trade_signal() = [](std::unique_ptr<optionx::TradeSignal>) {};
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    const auto signal = post_json(
+        config,
+        bridge.bound_http_port(),
+        signal_command("shape-signal", "shape-signal-key"));
+    const auto trade = post_json(
+        config,
+        bridge.bound_http_port(),
+        trade_command("shape-trade", "shape-trade-key"));
+    bridge.shutdown();
+
+    ASSERT_EQ(signal.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_TRUE(signal.at("result").contains("signal_ref"));
+    EXPECT_TRUE(signal.at("result").contains("trade_refs"));
+
+    ASSERT_EQ(trade.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_FALSE(trade.at("result").contains("signal_ref"));
+    EXPECT_TRUE(trade.at("result").contains("trade_refs"));
+}
+
+TEST(BridgeProtocolServerBridge, RejectsInvalidEnvelopeAndUnsupportedHelloVersion) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    const auto bad_jsonrpc = post_json(
+        config,
+        bridge.bound_http_port(),
+        nlohmann::json{
+            {"jsonrpc", 2},
+            {"id", "bad-jsonrpc"},
+            {"method", "protocol.hello"},
+            {"params", nlohmann::json::object()}
+        });
+    const auto bad_id = post_json(
+        config,
+        bridge.bound_http_port(),
+        nlohmann::json{
+            {"jsonrpc", "2.0"},
+            {"id", nlohmann::json::array({"not", "valid"})},
+            {"method", "protocol.hello"},
+            {"params", nlohmann::json::object()}
+        });
+    const auto bad_params = post_json(
+        config,
+        bridge.bound_http_port(),
+        nlohmann::json{
+            {"jsonrpc", "2.0"},
+            {"id", "bad-params"},
+            {"method", "protocol.hello"},
+            {"params", nlohmann::json::array()}
+        });
+    const auto unsupported_hello = post_json(
+        config,
+        bridge.bound_http_port(),
+        nlohmann::json{
+            {"jsonrpc", "2.0"},
+            {"id", "hello-v2"},
+            {"method", "protocol.hello"},
+            {"params", {
+                {"requested_protocol_versions", nlohmann::json::array({"2"})}
+            }}
+        });
+    bridge.shutdown();
+
+    EXPECT_EQ(bad_jsonrpc.at("error").at("code").get<int>(), -32600);
+    EXPECT_EQ(bad_id.at("error").at("code").get<int>(), -32600);
+    EXPECT_EQ(bad_params.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(unsupported_hello.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(
+        unsupported_hello.at("error").at("data").at("code").get<std::string>(),
+        "unsupported_protocol_version");
 }
 
 TEST(BridgeProtocolServerBridge, RejectsMissingHttpAuthorization) {
@@ -377,6 +499,47 @@ TEST(BridgeProtocolServerBridge, RejectsUnsupportedRoutingShapes) {
     EXPECT_EQ(signal_response.at("error").at("code").get<int>(), -32602);
 }
 
+TEST(BridgeProtocolServerBridge, RejectsUnknownAndNonFiniteTradeFields) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+    bridge.on_signal_id() = []() { return optionx::SignalId{35}; };
+    bridge.on_trade_signal() = [](std::unique_ptr<optionx::TradeSignal>) {};
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    auto typo = trade_command("trade-typo", "idem-typo");
+    typo["params"]["trade"]["min_payuot"] = "0.80";
+    const auto typo_response = post_json(config, bridge.bound_http_port(), typo);
+
+    auto nan_amount = trade_command("trade-nan", "idem-nan");
+    nan_amount["params"]["trade"]["amount"]["value"] = "NaN";
+    const auto nan_response = post_json(config, bridge.bound_http_port(), nan_amount);
+
+    auto partial_amount = trade_command("trade-partial", "idem-partial");
+    partial_amount["params"]["trade"]["amount"]["value"] = "1.00junk";
+    const auto partial_response = post_json(config, bridge.bound_http_port(), partial_amount);
+
+    auto huge_duration = trade_command("trade-huge-duration", "idem-huge-duration");
+    huge_duration["params"]["trade"]["expiry"]["duration_ms"] =
+        std::to_string(
+            static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max()) *
+            1000ull +
+            1000ull);
+    const auto huge_duration_response = post_json(config, bridge.bound_http_port(), huge_duration);
+    bridge.shutdown();
+
+    EXPECT_EQ(typo_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(nan_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(partial_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(huge_duration_response.at("error").at("code").get<int>(), -32602);
+}
+
 TEST(BridgeProtocolServerBridge, FailsClosedWhenIdempotencyCacheIsFull) {
     namespace proto = optionx::bridges::protocol_v1;
 
@@ -418,7 +581,9 @@ TEST(BridgeProtocolServerBridge, FailsClosedWhenIdempotencyCacheIsFull) {
     EXPECT_EQ(
         second.at("result").at("reason").at("code").get<std::string>(),
         "idempotency_cache_full");
-    EXPECT_EQ(retry.at("result").at("signal_ref").at("signal_id").get<std::string>(), "40");
+    EXPECT_EQ(
+        retry.at("result").at("operation_id").get<std::string>(),
+        first.at("result").at("operation_id").get<std::string>());
     EXPECT_EQ(signal_count.load(), 1);
 }
 
@@ -493,6 +658,122 @@ TEST(BridgeProtocolServerBridge, RegeneratesStreamIdOnRestart) {
     EXPECT_NE(
         first.at("result").at("session_id").get<std::string>(),
         second.at("result").at("session_id").get<std::string>());
+}
+
+TEST(BridgeProtocolServerBridge, DuplicateRetryWaitsForDispatchFailure) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool callback_entered = false;
+    bool release_callback = false;
+    std::atomic<int> signal_count{0};
+
+    bridge.on_signal_id() = []() { return optionx::SignalId{70}; };
+    bridge.on_trade_signal() =
+        [&](std::unique_ptr<optionx::TradeSignal>) {
+            ++signal_count;
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                callback_entered = true;
+            }
+            cv.notify_all();
+            std::unique_lock<std::mutex> lock(mutex);
+            cv.wait_for(lock, std::chrono::seconds(5), [&release_callback]() {
+                return release_callback;
+            });
+            throw std::runtime_error("dispatch boom");
+        };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+    ASSERT_TRUE(wait_for_ws_port(bridge));
+
+    nlohmann::json http_response;
+    std::thread http_thread([&]() {
+        http_response = post_json(
+            config,
+            bridge.bound_http_port(),
+            trade_command("dispatch-fail-http", "idem-dispatch-fail"));
+    });
+
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(5), [&callback_entered]() {
+            return callback_entered;
+        }));
+    }
+
+    std::vector<nlohmann::json> ws_messages;
+    bool opened = false;
+    WsClient client(
+        config.address + ":" +
+        std::to_string(bridge.bound_websocket_port()) +
+        config.websocket_path);
+    client.config.header.emplace("X-OptionX-Secret", config.secret);
+    client.on_open = [&](std::shared_ptr<WsClient::Connection> connection) {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            opened = true;
+        }
+        cv.notify_all();
+        connection->send(ws_trade_command("dispatch-fail-ws", "idem-dispatch-fail").dump(-1));
+    };
+    client.on_message = [&](std::shared_ptr<WsClient::Connection> connection,
+                            std::shared_ptr<WsClient::InMessage> message) {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            ws_messages.push_back(nlohmann::json::parse(message->string()));
+        }
+        connection->send_close(1000);
+        cv.notify_all();
+    };
+    client.on_error = [&](std::shared_ptr<WsClient::Connection>,
+                          const SimpleWeb::error_code&) {
+        cv.notify_all();
+    };
+
+    std::thread client_thread([&client]() {
+        client.start();
+    });
+
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(5), [&opened]() {
+            return opened;
+        }));
+        release_callback = true;
+    }
+    cv.notify_all();
+
+    if (http_thread.joinable()) {
+        http_thread.join();
+    }
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(5), [&ws_messages]() {
+            return !ws_messages.empty();
+        }));
+    }
+    client.stop();
+    if (client_thread.joinable()) {
+        client_thread.join();
+    }
+    bridge.shutdown();
+
+    ASSERT_EQ(ws_messages.size(), 1u);
+    EXPECT_EQ(
+        http_response.at("result").at("reason").at("code").get<std::string>(),
+        "dispatch_failed");
+    EXPECT_EQ(
+        ws_messages[0].at("result").at("reason").at("code").get<std::string>(),
+        "dispatch_failed");
+    EXPECT_EQ(signal_count.load(), 1);
 }
 
 TEST(BridgeProtocolServerBridge, DedupesConcurrentHttpAndWebSocketTradeRetry) {
@@ -652,6 +933,49 @@ TEST(BridgeProtocolServerBridge, AcceptsWebSocketJsonRpcCommands) {
     ASSERT_EQ(messages.size(), 1u);
     EXPECT_EQ(messages[0].at("id").get<std::string>(), "ws-hello");
     EXPECT_EQ(messages[0].at("result").at("selected_protocol_version").get<std::string>(), "1");
+}
+
+TEST(BridgeProtocolServerBridge, StatusCallbackExceptionDoesNotStopLifecycle) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+    bridge.on_status_update() = [](const optionx::BridgeStatusUpdate&) {
+        throw std::runtime_error("status callback boom");
+    };
+
+    EXPECT_NO_THROW(bridge.run());
+    ASSERT_TRUE(wait_for_http_port(bridge));
+    EXPECT_NO_THROW(bridge.shutdown());
+}
+
+TEST(BridgeProtocolServerBridge, ShutdownCanBeRequestedFromStatusCallback) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    std::atomic<bool> requested_shutdown{false};
+    bridge.on_status_update() = [&](const optionx::BridgeStatusUpdate& update) {
+        if (update.status == optionx::BridgeStatus::SERVER_STARTED &&
+            !requested_shutdown.exchange(true)) {
+            bridge.shutdown();
+        }
+    };
+
+    bridge.run();
+    for (int i = 0; i < 200 && !requested_shutdown.load(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    bridge.shutdown();
+
+    EXPECT_TRUE(requested_shutdown.load());
 }
 
 int main(int argc, char** argv) {

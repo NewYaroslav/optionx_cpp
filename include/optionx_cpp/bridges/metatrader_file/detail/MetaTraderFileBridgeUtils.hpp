@@ -238,6 +238,48 @@ namespace optionx::bridges::metatrader_file::detail {
         return std::string(first, last);
     }
 
+    inline double strict_decimal_text_to_double(
+            const std::string& value,
+            const char* field_name) {
+        const auto trimmed = trim_ascii_copy(value);
+        if (trimmed.empty()) {
+            throw std::invalid_argument(std::string(field_name) + " must not be empty.");
+        }
+        std::size_t consumed = 0;
+        const auto parsed = std::stod(trimmed, &consumed);
+        if (consumed != trimmed.size() || !std::isfinite(parsed)) {
+            throw std::invalid_argument(std::string(field_name) + " must be a finite decimal value.");
+        }
+        return parsed;
+    }
+
+    inline std::int64_t strict_text_to_int64(
+            const std::string& value,
+            const char* field_name) {
+        const auto trimmed = trim_ascii_copy(value);
+        if (trimmed.empty()) {
+            throw std::invalid_argument(std::string(field_name) + " must not be empty.");
+        }
+        std::size_t consumed = 0;
+        const auto parsed = std::stoll(trimmed, &consumed);
+        if (consumed != trimmed.size()) {
+            throw std::invalid_argument(std::string(field_name) + " must be an integer value.");
+        }
+        return parsed;
+    }
+
+    inline std::uint32_t checked_positive_duration_seconds(
+            const std::int64_t seconds,
+            const char* field_name) {
+        if (seconds <= 0) {
+            return 0;
+        }
+        if (seconds > static_cast<std::int64_t>(std::numeric_limits<std::uint32_t>::max())) {
+            throw std::out_of_range(std::string(field_name) + " exceeds uint32 seconds.");
+        }
+        return static_cast<std::uint32_t>(seconds);
+    }
+
     /// \brief Uppercases ASCII protocol tokens.
     inline std::string upper_ascii_copy(std::string value) {
         std::transform(
@@ -385,7 +427,7 @@ namespace optionx::bridges::metatrader_file::detail {
                 }
                 return std::to_string(unsigned_seconds * 1000);
             } else if (value.is_string()) {
-                seconds = std::stoll(trim_ascii_copy(value.get<std::string>()));
+                seconds = strict_text_to_int64(value.get<std::string>(), "expiry seconds");
             } else {
                 return value;
             }
@@ -700,12 +742,16 @@ namespace optionx::bridges::metatrader_file::detail {
         }
         const auto& value = object.at(key);
         if (value.is_number()) {
-            return value.get<double>();
+            const auto parsed = value.get<double>();
+            if (!std::isfinite(parsed)) {
+                throw std::invalid_argument(std::string(key) + " must be a finite decimal value.");
+            }
+            return parsed;
         }
         if (value.is_string()) {
-            return std::stod(value.get<std::string>());
+            return strict_decimal_text_to_double(value.get<std::string>(), key);
         }
-        return fallback;
+        throw std::invalid_argument(std::string(key) + " must be a decimal value.");
     }
 
     /// \brief Reads a signed integer-like JSON member.
@@ -721,12 +767,16 @@ namespace optionx::bridges::metatrader_file::detail {
             return value.get<std::int64_t>();
         }
         if (value.is_number_unsigned()) {
-            return static_cast<std::int64_t>(value.get<std::uint64_t>());
+            const auto parsed = value.get<std::uint64_t>();
+            if (parsed > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+                throw std::out_of_range(std::string(key) + " exceeds int64.");
+            }
+            return static_cast<std::int64_t>(parsed);
         }
         if (value.is_string()) {
-            return std::stoll(value.get<std::string>());
+            return strict_text_to_int64(value.get<std::string>(), key);
         }
-        return fallback;
+        throw std::invalid_argument(std::string(key) + " must be an integer value.");
     }
 
     /// \brief Reads an unsigned integer-like JSON member.
@@ -743,13 +793,19 @@ namespace optionx::bridges::metatrader_file::detail {
         }
         if (value.is_number_integer()) {
             const auto signed_value = value.get<std::int64_t>();
-            return signed_value >= 0 ? static_cast<std::uint64_t>(signed_value) : fallback;
+            if (signed_value < 0) {
+                throw std::invalid_argument(std::string(key) + " must be non-negative.");
+            }
+            return static_cast<std::uint64_t>(signed_value);
         }
         if (value.is_string()) {
-            const auto parsed = std::stoll(value.get<std::string>());
-            return parsed >= 0 ? static_cast<std::uint64_t>(parsed) : fallback;
+            const auto parsed = strict_text_to_int64(value.get<std::string>(), key);
+            if (parsed < 0) {
+                throw std::invalid_argument(std::string(key) + " must be non-negative.");
+            }
+            return static_cast<std::uint64_t>(parsed);
         }
-        return fallback;
+        throw std::invalid_argument(std::string(key) + " must be an unsigned integer value.");
     }
 
     /// \brief Converts optional protocol text to a currency enum.
@@ -798,8 +854,13 @@ namespace optionx::bridges::metatrader_file::detail {
             }
         } else if (amount.is_number()) {
             signal.amount = amount.get<double>();
+            if (!std::isfinite(signal.amount)) {
+                throw std::invalid_argument("amount must be a finite decimal value.");
+            }
         } else if (amount.is_string()) {
-            signal.amount = std::stod(amount.get<std::string>());
+            signal.amount = strict_decimal_text_to_double(amount.get<std::string>(), "amount");
+        } else {
+            throw std::invalid_argument("amount must be a decimal value or object.");
         }
     }
 
@@ -811,7 +872,9 @@ namespace optionx::bridges::metatrader_file::detail {
             if (kind == "duration" || expiry.contains("duration_ms")) {
                 const auto duration_ms = int64_value(expiry, "duration_ms", 0);
                 if (duration_ms > 0) {
-                    signal.duration = static_cast<std::uint32_t>(duration_ms / 1000);
+                    signal.duration = checked_positive_duration_seconds(
+                        duration_ms / 1000,
+                        "expiry.duration_ms");
                 }
             } else if (kind == "absolute" || expiry.contains("expires_at_ms")) {
                 const auto expires_at_ms = int64_value(expiry, "expires_at_ms", 0);
@@ -822,15 +885,15 @@ namespace optionx::bridges::metatrader_file::detail {
         }
         const auto duration_ms = int64_value(trade, "duration_ms", 0);
         if (duration_ms > 0) {
-            signal.duration = static_cast<std::uint32_t>(duration_ms / 1000);
+            signal.duration = checked_positive_duration_seconds(duration_ms / 1000, "duration_ms");
         }
         const auto duration = int64_value(trade, "duration", 0);
         if (duration > 0) {
-            signal.duration = static_cast<std::uint32_t>(duration);
+            signal.duration = checked_positive_duration_seconds(duration, "duration");
         }
         const auto duration_sec = int64_value(trade, "duration_sec", 0);
         if (duration_sec > 0) {
-            signal.duration = static_cast<std::uint32_t>(duration_sec);
+            signal.duration = checked_positive_duration_seconds(duration_sec, "duration_sec");
         }
         const auto expires_at_ms = int64_value(trade, "expires_at_ms", 0);
         if (expires_at_ms > 0) {
@@ -912,6 +975,9 @@ namespace optionx::bridges::metatrader_file::detail {
         }
         if (signal->order_type == OrderType::UNKNOWN) {
             throw std::invalid_argument("Command order_type is required.");
+        }
+        if (!std::isfinite(signal->amount)) {
+            throw std::invalid_argument("Command amount must be finite.");
         }
         if (direct_trade_open && signal->amount <= 0.0) {
             throw std::invalid_argument("trade.open amount must be positive.");

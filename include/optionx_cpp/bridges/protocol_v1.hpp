@@ -7,6 +7,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -19,6 +21,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <algorithm>
 #include <utility>
 #include <vector>

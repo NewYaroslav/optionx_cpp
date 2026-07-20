@@ -48,8 +48,15 @@ namespace optionx::bridges::protocol_v1 {
             bool dispatching = false;
         };
 
+        struct WsConnectionState {
+            std::shared_ptr<WsServer::Connection> connection;
+            std::size_t pending_messages = 0;
+            std::size_t pending_bytes = 0;
+        };
+
         struct RuntimeState {
             std::mutex mutex;
+            std::condition_variable operation_cv;
             std::shared_ptr<BridgeProtocolServerConfig> config;
             bridge_status_callback_t status_callback;
             BaseBridge::trade_signal_callback_t trade_signal_callback;
@@ -60,10 +67,12 @@ namespace optionx::bridges::protocol_v1 {
             std::shared_ptr<WsServer> ws_server;
             std::thread http_thread;
             std::thread ws_thread;
-            std::set<std::shared_ptr<WsServer::Connection>> ws_connections;
+            std::unordered_map<WsServer::Connection*, WsConnectionState> ws_connections;
             std::unordered_map<std::string, StoredOperation> operations;
             std::unordered_map<std::string, std::string> request_id_index;
+            std::unordered_map<std::string, std::uint64_t> event_revisions;
             std::deque<std::string> operation_order;
+            std::string stream_id;
             std::uint64_t event_seq = 0;
             bool running = false;
         };
@@ -104,7 +113,7 @@ namespace optionx::bridges::protocol_v1 {
                 return false;
             }
             m_state->config = std::move(next_config);
-            m_stream_id = make_stream_id();
+            m_state->stream_id = make_stream_id();
             return true;
         }
 
@@ -166,22 +175,26 @@ namespace optionx::bridges::protocol_v1 {
                 return;
             }
             const auto now = metatrader_file::detail::unix_time_ms();
-            const auto seq = next_event_seq();
+            const auto coord = next_event_coordinate(trade_revision_key(request, result));
             auto notification = metatrader_file::detail::make_trade_updated_notification(
-                make_event_id("trade", seq),
+                make_event_id("trade", coord.stream_id, coord.seq),
                 source_uri(*config),
-                m_stream_id,
-                seq,
+                coord.stream_id,
+                coord.seq,
                 result.close_date > 0 ? result.close_date : now,
                 now,
                 request,
-                result);
+                result,
+                coord.revision);
             broadcast_ws_notification(std::move(notification));
         }
 
         /// \brief Starts configured HTTP and WebSocket transports.
         void run() override {
             auto config = get_config_or_throw();
+
+            std::lock_guard<std::mutex> lifecycle_lock(m_lifecycle_mutex);
+            join_stopped_threads_locked();
 
             {
                 std::lock_guard<std::mutex> lock(m_state->mutex);
@@ -192,8 +205,10 @@ namespace optionx::bridges::protocol_v1 {
                 m_state->operations.clear();
                 m_state->request_id_index.clear();
                 m_state->operation_order.clear();
+                m_state->event_revisions.clear();
+                m_state->ws_connections.clear();
                 m_state->event_seq = 0;
-                m_stream_id = make_stream_id();
+                m_state->stream_id = make_stream_id();
             }
 
             if (config->enable_http) {
@@ -206,11 +221,13 @@ namespace optionx::bridges::protocol_v1 {
 
         /// \brief Stops configured HTTP and WebSocket transports.
         void shutdown() override {
+            std::lock_guard<std::mutex> lifecycle_lock(m_lifecycle_mutex);
             std::shared_ptr<HttpServer> http_server;
             std::shared_ptr<WsServer> ws_server;
             std::thread http_thread;
             std::thread ws_thread;
             bool was_running = false;
+            const auto current_id = std::this_thread::get_id();
 
             {
                 std::lock_guard<std::mutex> lock(m_state->mutex);
@@ -226,10 +243,13 @@ namespace optionx::bridges::protocol_v1 {
                 m_state->ws_server.reset();
                 m_state->ws_connections.clear();
                 m_state->running = false;
-                if (m_state->http_thread.joinable()) {
+                m_state->operation_cv.notify_all();
+                if (m_state->http_thread.joinable() &&
+                    m_state->http_thread.get_id() != current_id) {
                     http_thread = std::move(m_state->http_thread);
                 }
-                if (m_state->ws_thread.joinable()) {
+                if (m_state->ws_thread.joinable() &&
+                    m_state->ws_thread.get_id() != current_id) {
                     ws_thread = std::move(m_state->ws_thread);
                 }
             }
@@ -240,12 +260,10 @@ namespace optionx::bridges::protocol_v1 {
             if (ws_server) {
                 ws_server->stop();
             }
-            if (http_thread.joinable() &&
-                http_thread.get_id() != std::this_thread::get_id()) {
+            if (http_thread.joinable()) {
                 http_thread.join();
             }
-            if (ws_thread.joinable() &&
-                ws_thread.get_id() != std::this_thread::get_id()) {
+            if (ws_thread.joinable()) {
                 ws_thread.join();
             }
 
@@ -256,7 +274,7 @@ namespace optionx::bridges::protocol_v1 {
 
     private:
         std::shared_ptr<RuntimeState> m_state;
-        std::string m_stream_id;
+        mutable std::mutex m_lifecycle_mutex;
 
         std::shared_ptr<BridgeProtocolServerConfig> get_config() const {
             std::lock_guard<std::mutex> lock(m_state->mutex);
@@ -269,6 +287,34 @@ namespace optionx::bridges::protocol_v1 {
                 throw std::invalid_argument("Bridge Protocol v1 server is not configured.");
             }
             return config;
+        }
+
+        std::string current_stream_id() const {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            return m_state->stream_id;
+        }
+
+        void join_stopped_threads_locked() {
+            std::thread http_thread;
+            std::thread ws_thread;
+            const auto current_id = std::this_thread::get_id();
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                if (m_state->http_thread.joinable() &&
+                    m_state->http_thread.get_id() != current_id) {
+                    http_thread = std::move(m_state->http_thread);
+                }
+                if (m_state->ws_thread.joinable() &&
+                    m_state->ws_thread.get_id() != current_id) {
+                    ws_thread = std::move(m_state->ws_thread);
+                }
+            }
+            if (http_thread.joinable()) {
+                http_thread.join();
+            }
+            if (ws_thread.joinable()) {
+                ws_thread.join();
+            }
         }
 
         static std::string regex_path(const std::string& path) {
@@ -301,7 +347,12 @@ namespace optionx::bridges::protocol_v1 {
         }
 
         static std::string source_uri(const BridgeProtocolServerConfig& config) {
-            return "optionx://bridge/protocol_v1/" + std::to_string(config.bridge_id);
+            return "optionx://bridge/protocol_v1/" +
+                   config.installation_id +
+                   "/" +
+                   config.server_instance_id +
+                   "/" +
+                   std::to_string(config.bridge_id);
         }
 
         static std::string make_stream_id() {
@@ -315,30 +366,61 @@ namespace optionx::bridges::protocol_v1 {
 
         static std::string make_event_id(
                 const std::string& prefix,
+                const std::string& stream_id,
                 const std::uint64_t seq) {
-            return "evt-" + prefix + "-" + std::to_string(seq);
+            return "evt-" + stream_id + "-" + prefix + "-" + std::to_string(seq);
         }
 
-        std::uint64_t next_event_seq() {
+        struct EventCoordinate {
+            std::string stream_id;
+            std::uint64_t seq = 0;
+            std::uint64_t revision = 1;
+        };
+
+        EventCoordinate next_event_coordinate(const std::string& subject_key) {
             std::lock_guard<std::mutex> lock(m_state->mutex);
-            return ++m_state->event_seq;
+            EventCoordinate coordinate;
+            coordinate.stream_id = m_state->stream_id;
+            coordinate.seq = ++m_state->event_seq;
+            if (!subject_key.empty()) {
+                coordinate.revision = ++m_state->event_revisions[subject_key];
+            }
+            return coordinate;
+        }
+
+        static std::string trade_revision_key(
+                const TradeRequest& request,
+                const TradeResult& result) {
+            const auto trade_id = result.trade_id != 0 ? result.trade_id : request.trade_id;
+            if (trade_id != 0) {
+                return "trade:" + std::to_string(trade_id);
+            }
+            if (request.signal_id != 0) {
+                return "signal:" + std::to_string(request.signal_id);
+            }
+            if (!request.unique_hash.empty()) {
+                return "unique_hash:" + request.unique_hash;
+            }
+            return "trade:unknown";
         }
 
         nlohmann::json make_balance_updated_notification(
                 const BridgeProtocolServerConfig& config,
                 const BaseAccountInfoData& account) {
             const auto now = metatrader_file::detail::unix_time_ms();
-            const auto seq = next_event_seq();
+            const auto account_id = metatrader_file::detail::account_id_string(account);
+            const auto coord = next_event_coordinate("account:" + account_id);
             return metatrader_file::detail::make_balance_updated_notification(
-                make_event_id("balance", seq),
+                make_event_id("balance", coord.stream_id, coord.seq),
                 source_uri(config),
-                m_stream_id,
-                seq,
+                coord.stream_id,
+                coord.seq,
                 now,
                 now,
-                metatrader_file::detail::account_id_string(account),
+                account_id,
                 metatrader_file::detail::safe_account_balance(account),
-                metatrader_file::detail::safe_account_currency(account));
+                metatrader_file::detail::safe_account_currency(account),
+                coord.revision);
         }
 
         void notify_status(
@@ -351,11 +433,14 @@ namespace optionx::bridges::protocol_v1 {
                 callback = m_state->status_callback;
             }
             if (callback) {
-                callback(BridgeStatusUpdate{
-                    status,
-                    std::move(connection_id),
-                    std::move(message)
-                });
+                try {
+                    callback(BridgeStatusUpdate{
+                        status,
+                        std::move(connection_id),
+                        std::move(message)
+                    });
+                } catch (...) {
+                }
             }
         }
 
@@ -366,7 +451,10 @@ namespace optionx::bridges::protocol_v1 {
                 callback = m_state->signal_report_callback;
             }
             if (callback) {
-                callback(report);
+                try {
+                    callback(report);
+                } catch (...) {
+                }
             }
         }
 
@@ -375,6 +463,11 @@ namespace optionx::bridges::protocol_v1 {
             server->config.address = config->address;
             server->config.port = config->http_port;
             server->config.thread_pool_size = 1;
+            server->config.max_request_streambuf_size =
+                config->request_body_limit == (std::numeric_limits<std::size_t>::max)()
+                    ? config->request_body_limit
+                    : config->request_body_limit + 1;
+            server->config.timeout_content = config->content_timeout_seconds;
             configure_http_routes(server, config);
 
             std::lock_guard<std::mutex> lock(m_state->mutex);
@@ -395,6 +488,7 @@ namespace optionx::bridges::protocol_v1 {
             server->config.address = config->address;
             server->config.port = config->websocket_port;
             server->config.thread_pool_size = 1;
+            server->config.max_message_size = config->request_body_limit;
             configure_ws_routes(server, config);
 
             std::lock_guard<std::mutex> lock(m_state->mutex);
@@ -460,7 +554,9 @@ namespace optionx::bridges::protocol_v1 {
                     }
                     {
                         std::lock_guard<std::mutex> lock(m_state->mutex);
-                        m_state->ws_connections.insert(connection);
+                        WsConnectionState state;
+                        state.connection = connection;
+                        m_state->ws_connections[connection.get()] = std::move(state);
                     }
                     notify_status(BridgeStatus::CLIENT_CONNECTED, "ws");
                 };
@@ -468,21 +564,33 @@ namespace optionx::bridges::protocol_v1 {
                 [this](std::shared_ptr<WsServer::Connection> connection, int, const std::string&) {
                     {
                         std::lock_guard<std::mutex> lock(m_state->mutex);
-                        m_state->ws_connections.erase(connection);
+                        m_state->ws_connections.erase(connection.get());
                     }
                     notify_status(BridgeStatus::CLIENT_DISCONNECTED, "ws");
                 };
             endpoint.on_error =
-                [this](std::shared_ptr<WsServer::Connection>, const SimpleWeb::error_code& ec) {
+                [this](std::shared_ptr<WsServer::Connection> connection, const SimpleWeb::error_code& ec) {
+                    {
+                        std::lock_guard<std::mutex> lock(m_state->mutex);
+                        m_state->ws_connections.erase(connection.get());
+                    }
                     notify_status(BridgeStatus::CONNECTION_ERROR, "ws", ec.message());
                 };
             endpoint.on_message =
                 [this, config](
                     std::shared_ptr<WsServer::Connection> connection,
                     std::shared_ptr<WsServer::InMessage> message) {
-                    const auto body = message->string();
-                    const auto response = handle_message_body(*config, body);
-                    connection->send(response.dump(-1));
+                    try {
+                        const auto body = message->string();
+                        const auto response = handle_message_body(*config, body);
+                        send_ws_text(config, connection, response.dump(-1));
+                    } catch (const std::exception& ex) {
+                        notify_status(BridgeStatus::CONNECTION_ERROR, "ws", ex.what());
+                        connection->send_close(1011, "handler_failed");
+                    } catch (...) {
+                        notify_status(BridgeStatus::CONNECTION_ERROR, "ws", "handler_failed");
+                        connection->send_close(1011, "handler_failed");
+                    }
                 };
         }
 
@@ -559,13 +667,53 @@ namespace optionx::bridges::protocol_v1 {
             }
         }
 
+        static bool is_valid_jsonrpc_id(const nlohmann::json& id) {
+            return id.is_string() ||
+                   id.is_null() ||
+                   id.is_number_integer() ||
+                   id.is_number_unsigned();
+        }
+
+        static nlohmann::json request_id_or_null(const nlohmann::json& request) {
+            if (!request.is_object() || !request.contains("id")) {
+                return nullptr;
+            }
+            const auto& id = request.at("id");
+            return is_valid_jsonrpc_id(id) ? id : nlohmann::json(nullptr);
+        }
+
+        static bool hello_accepts_v1(const nlohmann::json& params) {
+            if (!params.is_object() || !params.contains("requested_protocol_versions")) {
+                return true;
+            }
+            const auto& versions = params.at("requested_protocol_versions");
+            if (!versions.is_array()) {
+                return false;
+            }
+            for (const auto& version : versions) {
+                if (version.is_string() && version.get<std::string>() == "1") {
+                    return true;
+                }
+                if (version.is_number_integer() && version.get<std::int64_t>() == 1) {
+                    return true;
+                }
+                if (version.is_number_unsigned() && version.get<std::uint64_t>() == 1) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         nlohmann::json handle_jsonrpc_command(
                 const BridgeProtocolServerConfig& config,
                 const nlohmann::json& request) {
-            const auto id = request.contains("id") ? request.at("id") : nlohmann::json(nullptr);
+            const auto id = request_id_or_null(request);
             if (!request.is_object() ||
-                request.value("jsonrpc", std::string()) != "2.0" ||
+                !request.contains("jsonrpc") ||
+                !request.at("jsonrpc").is_string() ||
+                request.at("jsonrpc").get<std::string>() != "2.0" ||
                 !request.contains("id") ||
+                !is_valid_jsonrpc_id(request.at("id")) ||
                 !request.contains("method") ||
                 !request.at("method").is_string()) {
                 return detail::jsonrpc_error(
@@ -577,15 +725,28 @@ namespace optionx::bridges::protocol_v1 {
             const auto method = request.at("method").get<std::string>();
             const auto params =
                 request.contains("params") ? request.at("params") : nlohmann::json::object();
+            if (!params.is_object()) {
+                return detail::jsonrpc_error(
+                    id,
+                    detail::jsonrpc_invalid_params,
+                    "JSON-RPC params must be an object.");
+            }
 
             if (method == "protocol.hello") {
+                if (!hello_accepts_v1(params)) {
+                    return detail::jsonrpc_error(
+                        id,
+                        detail::jsonrpc_invalid_params,
+                        "Unsupported protocol version.",
+                        nlohmann::json{{"code", "unsupported_protocol_version"}});
+                }
                 return detail::jsonrpc_result(
                     id,
                     nlohmann::json{
                         {"selected_protocol_version", "1"},
                         {"installation_id", config.installation_id},
                         {"server_instance_id", config.server_instance_id},
-                        {"session_id", m_stream_id}
+                        {"session_id", current_stream_id()}
                     });
             }
             if (method == "protocol.capabilities.get") {
@@ -594,6 +755,10 @@ namespace optionx::bridges::protocol_v1 {
                 result["features"]["http"] = config.enable_http;
                 result["features"]["websocket"] = config.enable_websocket;
                 result["limits"]["max_message_bytes"] = config.request_body_limit;
+                result["limits"]["max_request_id_aliases_per_operation"] =
+                    config.max_request_id_aliases_per_operation;
+                result["limits"]["max_ws_pending_messages"] = config.max_ws_pending_messages;
+                result["limits"]["max_ws_pending_bytes"] = config.max_ws_pending_bytes;
                 return detail::jsonrpc_result(id, std::move(result));
             }
             if (method == "account.balance.get") {
@@ -642,12 +807,139 @@ namespace optionx::bridges::protocol_v1 {
                 });
         }
 
+        static bool is_known_key(
+                const std::unordered_set<std::string>& keys,
+                const std::string& key) {
+            return keys.find(key) != keys.end();
+        }
+
+        static std::pair<bool, std::string> reject_unknown_keys(
+                const nlohmann::json& object,
+                const std::unordered_set<std::string>& keys,
+                const std::string& path) {
+            if (!object.is_object()) {
+                return {false, path + " must be an object."};
+            }
+            for (const auto& item : object.items()) {
+                if (!is_known_key(keys, item.key())) {
+                    return {
+                        false,
+                        path + " contains unsupported field: " + item.key() + "."
+                    };
+                }
+            }
+            return {true, {}};
+        }
+
+        static std::pair<bool, std::string> validate_known_trade_schema(
+                const nlohmann::json& params,
+                const bool direct_trade_open) {
+            static const std::unordered_set<std::string> top_level_keys{
+                "context", "routing", "identity", "signal", "trade", "metadata", "extensions"
+            };
+            static const std::unordered_set<std::string> context_keys{
+                "idempotency_key",
+                "valid_until_ms",
+                "client_created_at_ms",
+                "file_seq",
+                "transport"
+            };
+            static const std::unordered_set<std::string> identity_keys{
+                "signal_name", "unique_hash", "unique_id", "user_data"
+            };
+            static const std::unordered_set<std::string> trade_keys{
+                "symbol",
+                "order_type",
+                "direction",
+                "action",
+                "option_type",
+                "amount",
+                "currency",
+                "expiry",
+                "duration_ms",
+                "duration",
+                "duration_sec",
+                "expires_at_ms",
+                "expiry_time",
+                "refund",
+                "min_payout",
+                "comment",
+                "account_id",
+                "account_type",
+                "signal_name",
+                "unique_hash",
+                "unique_id",
+                "user_data",
+                "metadata",
+                "extensions"
+            };
+            static const std::unordered_set<std::string> amount_keys{"value", "currency"};
+            static const std::unordered_set<std::string> expiry_keys{
+                "kind", "duration_ms", "expires_at_ms"
+            };
+
+            if (!params.is_object()) {
+                return {false, "Command params must be an object."};
+            }
+            const auto top = reject_unknown_keys(params, top_level_keys, "Command params");
+            if (!top.first) {
+                return top;
+            }
+            if (params.contains("context")) {
+                const auto context = reject_unknown_keys(params.at("context"), context_keys, "Command context");
+                if (!context.first) {
+                    return context;
+                }
+            }
+            if (params.contains("identity")) {
+                const auto identity = reject_unknown_keys(params.at("identity"), identity_keys, "Command identity");
+                if (!identity.first) {
+                    return identity;
+                }
+            }
+
+            const auto trade_key = direct_trade_open ? "trade" : "signal";
+            if (!params.contains(trade_key) || !params.at(trade_key).is_object()) {
+                return {
+                    false,
+                    std::string("Command ") + trade_key + " must be an object."
+                };
+            }
+            const auto& trade = params.at(trade_key);
+            const auto trade_schema = reject_unknown_keys(trade, trade_keys, "Command " + std::string(trade_key));
+            if (!trade_schema.first) {
+                return trade_schema;
+            }
+            if (trade.contains("amount") && trade.at("amount").is_object()) {
+                const auto amount = reject_unknown_keys(trade.at("amount"), amount_keys, "Command amount");
+                if (!amount.first) {
+                    return amount;
+                }
+            }
+            if (trade.contains("expiry")) {
+                const auto expiry = reject_unknown_keys(trade.at("expiry"), expiry_keys, "Command expiry");
+                if (!expiry.first) {
+                    return expiry;
+                }
+            }
+            return {true, {}};
+        }
+
         nlohmann::json handle_trade_affecting_command(
                 const BridgeProtocolServerConfig& config,
                 const nlohmann::json& id,
                 const std::string& method,
                 const nlohmann::json& params,
                 const bool direct_trade_open) {
+            const auto schema_validation =
+                validate_known_trade_schema(params, direct_trade_open);
+            if (!schema_validation.first) {
+                return detail::jsonrpc_error(
+                    id,
+                    detail::jsonrpc_invalid_params,
+                    schema_validation.second);
+            }
+
             const auto routing_validation =
                 validate_supported_routing(params, direct_trade_open);
             if (!routing_validation.first) {
@@ -675,7 +967,7 @@ namespace optionx::bridges::protocol_v1 {
                     direct_trade_open).dump(-1);
 
             {
-                std::lock_guard<std::mutex> lock(m_state->mutex);
+                std::unique_lock<std::mutex> lock(m_state->mutex);
                 if (!request_key.empty()) {
                     const auto it = m_state->request_id_index.find(request_key);
                     if (it != m_state->request_id_index.end()) {
@@ -693,10 +985,19 @@ namespace optionx::bridges::protocol_v1 {
                 if (existing != m_state->operations.end()) {
                     if (existing->second.fingerprint == fingerprint) {
                         if (!request_key.empty()) {
-                            add_request_alias_locked(existing->second, request_key);
-                            m_state->request_id_index[request_key] = operation_key;
+                            if (add_request_alias_locked(
+                                    config,
+                                    existing->second,
+                                    request_key)) {
+                                m_state->request_id_index[request_key] = operation_key;
+                            }
                         }
-                        return detail::jsonrpc_result(id, existing->second.result);
+                        while (m_state->operations.at(operation_key).dispatching) {
+                            m_state->operation_cv.wait(lock);
+                        }
+                        return detail::jsonrpc_result(
+                            id,
+                            m_state->operations.at(operation_key).result);
                     }
                     return detail::jsonrpc_result(id, idempotency_conflict_result(
                         "The same idempotency_key was used with a different payload."));
@@ -763,17 +1064,24 @@ namespace optionx::bridges::protocol_v1 {
 
             signal->bridge_id = config.bridge_id;
             signal->signal_id = signal_id;
-            const auto result = nlohmann::json{
+            auto result = nlohmann::json{
                 {"status", "accepted"},
                 {"final", false},
-                {"operation_id", "mem:" + std::to_string(config.bridge_id) + ":" + idempotency_key},
-                {"signal_ref", {
-                    {"signal_id", std::to_string(signal_id)}
-                }}
+                {"operation_id", "mem:" + std::to_string(config.bridge_id) + ":" + idempotency_key}
             };
+            if (direct_trade_open) {
+                result["trade_refs"] = nlohmann::json::array();
+            } else {
+                result["signal_ref"] = nlohmann::json{
+                    {"signal_id", std::to_string(signal_id)},
+                    {"unique_hash", signal->unique_hash},
+                    {"signal_name", signal->signal_name}
+                };
+                result["trade_refs"] = nlohmann::json::array();
+            }
 
             {
-                std::lock_guard<std::mutex> lock(m_state->mutex);
+                std::unique_lock<std::mutex> lock(m_state->mutex);
                 if (!request_key.empty()) {
                     const auto it = m_state->request_id_index.find(request_key);
                     if (it != m_state->request_id_index.end()) {
@@ -791,10 +1099,19 @@ namespace optionx::bridges::protocol_v1 {
                 if (existing != m_state->operations.end()) {
                     if (existing->second.fingerprint == fingerprint) {
                         if (!request_key.empty()) {
-                            add_request_alias_locked(existing->second, request_key);
-                            m_state->request_id_index[request_key] = operation_key;
+                            if (add_request_alias_locked(
+                                    config,
+                                    existing->second,
+                                    request_key)) {
+                                m_state->request_id_index[request_key] = operation_key;
+                            }
                         }
-                        return detail::jsonrpc_result(id, existing->second.result);
+                        while (m_state->operations.at(operation_key).dispatching) {
+                            m_state->operation_cv.wait(lock);
+                        }
+                        return detail::jsonrpc_result(
+                            id,
+                            m_state->operations.at(operation_key).result);
                     }
                     return detail::jsonrpc_result(id, idempotency_conflict_result(
                         "The same idempotency_key was used with a different payload."));
@@ -814,6 +1131,19 @@ namespace optionx::bridges::protocol_v1 {
                     m_state->request_id_index[request_key] = operation_key;
                 }
                 m_state->operations.emplace(operation_key, std::move(operation));
+            }
+
+            if (metatrader_file::detail::unix_time_ms() > valid_until_ms) {
+                const auto stale = nlohmann::json{
+                    {"status", "rejected"},
+                    {"final", true},
+                    {"reason", {
+                        {"code", "stale_request"},
+                        {"message", "Command valid_until_ms expired before dispatch."}
+                    }}
+                };
+                complete_reserved_operation(operation_key, stale);
+                return detail::jsonrpc_result(id, stale);
             }
 
             try {
@@ -952,18 +1282,24 @@ namespace optionx::bridges::protocol_v1 {
             };
         }
 
-        static void add_request_alias_locked(
+        static bool add_request_alias_locked(
+                const BridgeProtocolServerConfig& config,
                 StoredOperation& operation,
                 const std::string& request_key) {
             if (request_key.empty()) {
-                return;
+                return false;
             }
             if (std::find(
                     operation.request_storage_keys.begin(),
                     operation.request_storage_keys.end(),
                     request_key) == operation.request_storage_keys.end()) {
+                if (operation.request_storage_keys.size() >=
+                    config.max_request_id_aliases_per_operation) {
+                    return false;
+                }
                 operation.request_storage_keys.push_back(request_key);
             }
+            return true;
         }
 
         bool remember_operation(
@@ -984,8 +1320,9 @@ namespace optionx::bridges::protocol_v1 {
             operation.result = result;
             operation.dispatching = false;
             if (!request_key.empty()) {
-                add_request_alias_locked(operation, request_key);
-                m_state->request_id_index[request_key] = operation_key;
+                if (add_request_alias_locked(config, operation, request_key)) {
+                    m_state->request_id_index[request_key] = operation_key;
+                }
             }
             return true;
         }
@@ -999,21 +1336,93 @@ namespace optionx::bridges::protocol_v1 {
                 existing->second.result = result;
                 existing->second.dispatching = false;
             }
+            m_state->operation_cv.notify_all();
+        }
+
+        bool reserve_ws_send(
+                const BridgeProtocolServerConfig& config,
+                const std::shared_ptr<WsServer::Connection>& connection,
+                const std::size_t byte_count) {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            const auto existing = m_state->ws_connections.find(connection.get());
+            if (existing == m_state->ws_connections.end()) {
+                return false;
+            }
+            auto& state = existing->second;
+            if (state.pending_messages >= config.max_ws_pending_messages ||
+                byte_count > config.max_ws_pending_bytes ||
+                state.pending_bytes > config.max_ws_pending_bytes - byte_count) {
+                return false;
+            }
+            ++state.pending_messages;
+            state.pending_bytes += byte_count;
+            return true;
+        }
+
+        static void complete_ws_send(
+                const std::shared_ptr<RuntimeState>& state,
+                const std::shared_ptr<WsServer::Connection>& connection,
+                const std::size_t byte_count,
+                const bool erase_connection) {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            const auto existing = state->ws_connections.find(connection.get());
+            if (existing == state->ws_connections.end()) {
+                return;
+            }
+            auto& ws_state = existing->second;
+            if (ws_state.pending_messages > 0) {
+                --ws_state.pending_messages;
+            }
+            ws_state.pending_bytes =
+                ws_state.pending_bytes > byte_count ? ws_state.pending_bytes - byte_count : 0;
+            if (erase_connection) {
+                state->ws_connections.erase(existing);
+            }
+        }
+
+        void send_ws_text(
+                const std::shared_ptr<BridgeProtocolServerConfig>& config,
+                const std::shared_ptr<WsServer::Connection>& connection,
+                const std::string& text) {
+            if (!connection || !config) {
+                return;
+            }
+            if (!reserve_ws_send(*config, connection, text.size())) {
+                {
+                    std::lock_guard<std::mutex> lock(m_state->mutex);
+                    m_state->ws_connections.erase(connection.get());
+                }
+                connection->send_close(1008, "backpressure");
+                notify_status(BridgeStatus::CONNECTION_ERROR, "ws", "WebSocket send queue limit exceeded.");
+                return;
+            }
+            auto state = m_state;
+            connection->send(
+                text,
+                [state, connection, byte_count = text.size()](const SimpleWeb::error_code& ec) {
+                    BridgeProtocolServerBridge::complete_ws_send(
+                        state,
+                        connection,
+                        byte_count,
+                        static_cast<bool>(ec));
+                });
         }
 
         void broadcast_ws_notification(nlohmann::json notification) {
+            std::shared_ptr<BridgeProtocolServerConfig> config;
             std::vector<std::shared_ptr<WsServer::Connection>> connections;
             {
                 std::lock_guard<std::mutex> lock(m_state->mutex);
-                connections.assign(
-                    m_state->ws_connections.begin(),
-                    m_state->ws_connections.end());
+                config = m_state->config;
+                for (const auto& item : m_state->ws_connections) {
+                    if (item.second.connection) {
+                        connections.push_back(item.second.connection);
+                    }
+                }
             }
             const auto text = notification.dump(-1);
             for (auto& connection : connections) {
-                if (connection) {
-                    connection->send(text);
-                }
+                send_ws_text(config, connection, text);
             }
         }
     };

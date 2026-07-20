@@ -100,6 +100,8 @@ function(optionx_get_network_link_libraries out_var)
     elseif(NOT WIN32)
         find_package(CURL REQUIRED)
         list(APPEND network_libs CURL::libcurl)
+    elseif(MSVC)
+        list(APPEND network_libs libcurl)
     elseif(NOT MSVC)
         set(network_libs
             ${network_libs}

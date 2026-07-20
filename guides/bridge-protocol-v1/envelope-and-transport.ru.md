@@ -465,10 +465,21 @@ Bridge Protocol v1 HTTP/WebSocket server bridge. Это application adapter на
   `signal.submit` и `trade.open`;
 - bearer-token или `X-OptionX-Secret` transport authentication. Режим с пустым
   secret отклоняется, если `allow_unauthenticated_local` не включен явно на
-  loopback-адресе;
+  loopback-адресе. Plain HTTP/WebSocket bind на non-loopback-адреса также
+  требует явного `allow_insecure_remote=true`, потому что shared secret иначе
+  передается по незашифрованному transport;
+- strict JSON-RPC envelope validation. Request IDs должны быть strings,
+  integers или `null`; `params` должен быть object; `protocol.hello`
+  отклоняет requests, где v1 не указан в `requested_protocol_versions`;
 - bounded in-memory idempotency dedupe для trade-affecting commands. Когда cache
   заполнен удерживаемыми операциями, новые уникальные trade-affecting commands
-  отклоняются fail-closed вместо вытеснения accepted operations.
+  отклоняются fail-closed вместо вытеснения accepted operations. Concurrent
+  retries для operation, которая уже находится в dispatch, ждут исходный
+  dispatch result, а не возвращают provisional accepted;
+- transport resource limits применяются до полного buffering, когда underlying
+  server это поддерживает. WebSocket outbound notifications ограничены на
+  connection через `max_ws_pending_messages` и `max_ws_pending_bytes`; slow
+  clients закрываются fail-closed вместо накопления unbounded send queue.
 
 Текущая реализация пока не даёт durable operation storage, fan-out routing,
 subscription management и event replay для HTTP/WebSocket transports.
