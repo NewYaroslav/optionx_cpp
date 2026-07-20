@@ -1688,6 +1688,81 @@ TEST(BridgeProtocolServerBridge, ConcurrentShutdownsDoNotPublishStoppedEarly) {
     bridge.shutdown();
 }
 
+TEST(BridgeProtocolServerBridge, ReentrantLifecycleFromHttpWorkerDuringShutdownDoesNotDeadlock) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool callback_entered = false;
+    bool external_shutdown_started = false;
+    std::atomic<bool> reentrant_returned{false};
+    std::atomic<bool> request_failed{false};
+    bridge.on_signal_id() = []() { return optionx::SignalId{92}; };
+    bridge.on_trade_signal() = [&](std::unique_ptr<optionx::TradeSignal>) {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            callback_entered = true;
+        }
+        cv.notify_all();
+        {
+            std::unique_lock<std::mutex> lock(mutex);
+            cv.wait_for(lock, std::chrono::seconds(5), [&external_shutdown_started]() {
+                return external_shutdown_started;
+            });
+        }
+        bridge.shutdown();
+        bridge.run();
+        reentrant_returned.store(true);
+    };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    std::thread request_thread([&]() {
+        try {
+            static_cast<void>(post_json(
+                config,
+                bridge.bound_http_port(),
+                trade_command("trade-reentrant-shutdown", "idem-reentrant-shutdown")));
+        } catch (...) {
+            request_failed.store(true);
+        }
+    });
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(5), [&callback_entered]() {
+            return callback_entered;
+        }));
+    }
+
+    std::thread shutdown_thread([&]() {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            external_shutdown_started = true;
+        }
+        cv.notify_all();
+        bridge.shutdown();
+    });
+
+    if (request_thread.joinable()) {
+        request_thread.join();
+    }
+    if (shutdown_thread.joinable()) {
+        shutdown_thread.join();
+    }
+
+    EXPECT_TRUE(reentrant_returned.load());
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+    bridge.shutdown();
+}
+
 TEST(BridgeProtocolServerBridge, ShutdownRacingStartupLeavesNoRunningTransport) {
     namespace proto = optionx::bridges::protocol_v1;
 

@@ -90,6 +90,19 @@ namespace optionx::bridges::protocol_v1 {
             bool stop_notified = false;
         };
 
+        inline static thread_local std::size_t s_callback_depth = 0;
+
+        class CallbackScope final {
+        public:
+            CallbackScope() {
+                ++s_callback_depth;
+            }
+
+            ~CallbackScope() {
+                --s_callback_depth;
+            }
+        };
+
     public:
         /// \brief Constructs an unconfigured protocol server.
         BridgeProtocolServerBridge()
@@ -213,6 +226,10 @@ namespace optionx::bridges::protocol_v1 {
                     m_state->phase == RuntimePhase::Starting) {
                     return;
                 }
+                if (m_state->phase == RuntimePhase::Stopping &&
+                    is_inside_callback()) {
+                    return;
+                }
                 while (m_state->phase == RuntimePhase::Stopping) {
                     m_state->lifecycle_cv.wait(lock);
                 }
@@ -287,7 +304,8 @@ namespace optionx::bridges::protocol_v1 {
                 std::unique_lock<std::mutex> lock(m_state->mutex);
                 if (m_state->phase == RuntimePhase::Stopping) {
                     if (current_id == m_state->stopping_http_thread_id ||
-                        current_id == m_state->stopping_ws_thread_id) {
+                        current_id == m_state->stopping_ws_thread_id ||
+                        is_inside_callback()) {
                         return;
                     }
                     while (m_state->phase == RuntimePhase::Stopping) {
@@ -357,6 +375,10 @@ namespace optionx::bridges::protocol_v1 {
                 ws_thread.join();
             }
 
+            if (notify_stopped) {
+                notify_status(BridgeStatus::SERVER_STOPPED, {});
+            }
+
             {
                 std::lock_guard<std::mutex> lock(m_state->mutex);
                 if (m_state->phase == RuntimePhase::Stopping &&
@@ -368,14 +390,14 @@ namespace optionx::bridges::protocol_v1 {
                     m_state->lifecycle_cv.notify_all();
                 }
             }
-
-            if (notify_stopped) {
-                notify_status(BridgeStatus::SERVER_STOPPED, {});
-            }
         }
 
         void shutdown_failed_start(const std::uint64_t generation) {
             shutdown_for_generation(generation, true);
+        }
+
+        static bool is_inside_callback() noexcept {
+            return s_callback_depth != 0;
         }
 
         std::shared_ptr<BridgeProtocolServerConfig> get_config() const {
@@ -557,6 +579,7 @@ namespace optionx::bridges::protocol_v1 {
             }
             if (callback) {
                 try {
+                    CallbackScope scope;
                     callback(BridgeStatusUpdate{
                         status,
                         std::move(connection_id),
@@ -575,6 +598,7 @@ namespace optionx::bridges::protocol_v1 {
             }
             if (callback) {
                 try {
+                    CallbackScope scope;
                     callback(report);
                 } catch (...) {
                 }
@@ -678,6 +702,7 @@ namespace optionx::bridges::protocol_v1 {
                 [this, config](
                     std::shared_ptr<HttpServer::Response> response,
                     std::shared_ptr<HttpServer::Request>) {
+                    CallbackScope scope;
                     write_http_json(
                         response,
                         SimpleWeb::StatusCode::success_ok,
@@ -694,6 +719,7 @@ namespace optionx::bridges::protocol_v1 {
                 [config](
                     std::shared_ptr<HttpServer::Response> response,
                     std::shared_ptr<HttpServer::Request>) {
+                    CallbackScope scope;
                     write_http_json(
                         response,
                         SimpleWeb::StatusCode::success_ok,
@@ -705,6 +731,7 @@ namespace optionx::bridges::protocol_v1 {
                 [this, config](
                     std::shared_ptr<HttpServer::Response> response,
                     std::shared_ptr<HttpServer::Request> request) {
+                    CallbackScope scope;
                     handle_http_command(config, response, request);
                 };
         }
@@ -729,6 +756,7 @@ namespace optionx::bridges::protocol_v1 {
                 };
             endpoint.on_open =
                 [this, config](std::shared_ptr<WsServer::Connection> connection) {
+                    CallbackScope scope;
                     if (!detail::authorized(*config, connection->header)) {
                         connection->send_close(1008, "authorization_failed");
                         return;
@@ -743,6 +771,7 @@ namespace optionx::bridges::protocol_v1 {
                 };
             endpoint.on_close =
                 [this](std::shared_ptr<WsServer::Connection> connection, int, const std::string&) {
+                    CallbackScope scope;
                     {
                         std::lock_guard<std::mutex> lock(m_state->mutex);
                         m_state->ws_connections.erase(connection.get());
@@ -751,6 +780,7 @@ namespace optionx::bridges::protocol_v1 {
                 };
             endpoint.on_error =
                 [this](std::shared_ptr<WsServer::Connection> connection, const SimpleWeb::error_code& ec) {
+                    CallbackScope scope;
                     {
                         std::lock_guard<std::mutex> lock(m_state->mutex);
                         m_state->ws_connections.erase(connection.get());
@@ -761,6 +791,7 @@ namespace optionx::bridges::protocol_v1 {
                 [this, config](
                     std::shared_ptr<WsServer::Connection> connection,
                     std::shared_ptr<WsServer::InMessage> message) {
+                    CallbackScope scope;
                     try {
                         const auto body = message->string();
                         const auto response = handle_message_body(*config, body);
