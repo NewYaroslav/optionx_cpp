@@ -83,6 +83,9 @@ namespace optionx::bridges::protocol_v1 {
             std::size_t operation_cache_bytes = 0;
             std::uint64_t event_seq = 0;
             std::uint64_t lifecycle_generation = 0;
+            std::uint64_t stopping_generation = 0;
+            std::thread::id stopping_http_thread_id;
+            std::thread::id stopping_ws_thread_id;
             RuntimePhase phase = RuntimePhase::Stopped;
             bool stop_notified = false;
         };
@@ -236,13 +239,13 @@ namespace optionx::bridges::protocol_v1 {
             try {
                 if (config->enable_http) {
                     if (!start_http_server(config, generation)) {
-                        shutdown();
+                        shutdown_for_generation(generation, true);
                         return;
                     }
                 }
                 if (is_runtime_running() && config->enable_websocket) {
                     if (!start_ws_server(config, generation)) {
-                        shutdown();
+                        shutdown_for_generation(generation, true);
                         return;
                     }
                 }
@@ -255,41 +258,70 @@ namespace optionx::bridges::protocol_v1 {
                     }
                 }
             } catch (...) {
-                shutdown();
+                shutdown_for_generation(generation, true);
                 throw;
             }
         }
 
         /// \brief Stops configured HTTP and WebSocket transports.
         void shutdown() override {
+            shutdown_for_generation(0, false);
+        }
+
+    private:
+        std::shared_ptr<RuntimeState> m_state;
+
+        void shutdown_for_generation(
+                const std::uint64_t expected_generation,
+                const bool require_generation) {
             std::shared_ptr<HttpServer> http_server;
             std::shared_ptr<WsServer> ws_server;
             std::thread http_thread;
             std::thread ws_thread;
-            bool was_running = false;
             bool notify_stopped = false;
+            bool owns_shutdown = false;
+            std::uint64_t stopping_generation = 0;
             const auto current_id = std::this_thread::get_id();
 
             {
-                std::lock_guard<std::mutex> lock(m_state->mutex);
-                was_running =
-                    m_state->phase != RuntimePhase::Stopped ||
-                    static_cast<bool>(m_state->http_server) ||
-                    static_cast<bool>(m_state->ws_server) ||
-                    m_state->http_thread.joinable() ||
-                    m_state->ws_thread.joinable();
+                std::unique_lock<std::mutex> lock(m_state->mutex);
+                if (m_state->phase == RuntimePhase::Stopping) {
+                    if (current_id == m_state->stopping_http_thread_id ||
+                        current_id == m_state->stopping_ws_thread_id) {
+                        return;
+                    }
+                    while (m_state->phase == RuntimePhase::Stopping) {
+                        m_state->lifecycle_cv.wait(lock);
+                    }
+                    return;
+                }
+                if (m_state->phase == RuntimePhase::Stopped) {
+                    return;
+                }
+                if (require_generation &&
+                    m_state->lifecycle_generation != expected_generation) {
+                    return;
+                }
+
+                owns_shutdown = true;
+                stopping_generation = m_state->lifecycle_generation;
+                m_state->phase = RuntimePhase::Stopping;
+                m_state->stopping_generation = stopping_generation;
+                m_state->stopping_http_thread_id = m_state->http_thread.joinable()
+                    ? m_state->http_thread.get_id()
+                    : std::thread::id{};
+                m_state->stopping_ws_thread_id = m_state->ws_thread.joinable()
+                    ? m_state->ws_thread.get_id()
+                    : std::thread::id{};
                 http_server = m_state->http_server;
                 ws_server = m_state->ws_server;
                 m_state->http_server.reset();
                 m_state->ws_server.reset();
                 m_state->ws_connections.clear();
-                if (was_running) {
-                    m_state->phase = RuntimePhase::Stopping;
-                }
                 if (m_state->config) {
                     fail_dispatching_operations_locked(*m_state->config, server_stopped_result());
                 }
-                if (!m_state->stop_notified && was_running) {
+                if (!m_state->stop_notified) {
                     m_state->stop_notified = true;
                     notify_stopped = true;
                 }
@@ -309,6 +341,9 @@ namespace optionx::bridges::protocol_v1 {
                 }
             }
 
+            if (!owns_shutdown) {
+                return;
+            }
             if (http_server) {
                 http_server->stop();
             }
@@ -324,8 +359,14 @@ namespace optionx::bridges::protocol_v1 {
 
             {
                 std::lock_guard<std::mutex> lock(m_state->mutex);
-                m_state->phase = RuntimePhase::Stopped;
-                m_state->lifecycle_cv.notify_all();
+                if (m_state->phase == RuntimePhase::Stopping &&
+                    m_state->stopping_generation == stopping_generation) {
+                    m_state->phase = RuntimePhase::Stopped;
+                    m_state->stopping_generation = 0;
+                    m_state->stopping_http_thread_id = std::thread::id{};
+                    m_state->stopping_ws_thread_id = std::thread::id{};
+                    m_state->lifecycle_cv.notify_all();
+                }
             }
 
             if (notify_stopped) {
@@ -333,18 +374,8 @@ namespace optionx::bridges::protocol_v1 {
             }
         }
 
-    private:
-        std::shared_ptr<RuntimeState> m_state;
-
         void shutdown_failed_start(const std::uint64_t generation) {
-            {
-                std::lock_guard<std::mutex> lock(m_state->mutex);
-                if (m_state->lifecycle_generation != generation ||
-                    m_state->phase == RuntimePhase::Stopped) {
-                    return;
-                }
-            }
-            shutdown();
+            shutdown_for_generation(generation, true);
         }
 
         std::shared_ptr<BridgeProtocolServerConfig> get_config() const {
@@ -567,30 +598,34 @@ namespace optionx::bridges::protocol_v1 {
             server->config.timeout_content = config->content_timeout_seconds;
             configure_http_routes(server, config);
 
-            std::lock_guard<std::mutex> lock(m_state->mutex);
-            if (m_state->phase != RuntimePhase::Starting ||
-                m_state->lifecycle_generation != generation) {
-                return false;
-            }
-            m_state->http_server = server;
-            m_state->http_thread = std::thread([this, server, generation, ready, ready_set]() {
-                try {
-                    server->start([this, ready, ready_set](unsigned short port) {
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                if (m_state->phase != RuntimePhase::Starting ||
+                    m_state->lifecycle_generation != generation) {
+                    return false;
+                }
+                m_state->http_server = server;
+                m_state->http_thread = std::thread([this, server, generation, ready, ready_set]() {
+                    try {
+                        server->start([this, ready, ready_set](unsigned short port) {
+                            bool expected = false;
+                            if (ready_set->compare_exchange_strong(expected, true)) {
+                                ready->set_value(true);
+                            }
+                            notify_status(
+                                BridgeStatus::SERVER_STARTED,
+                                "http:" + std::to_string(port));
+                        });
+                    } catch (const std::exception& ex) {
                         bool expected = false;
                         if (ready_set->compare_exchange_strong(expected, true)) {
-                            ready->set_value(true);
+                            ready->set_value(false);
                         }
-                        notify_status(BridgeStatus::SERVER_STARTED, "http:" + std::to_string(port));
-                    });
-                } catch (const std::exception& ex) {
-                    bool expected = false;
-                    if (ready_set->compare_exchange_strong(expected, true)) {
-                        ready->set_value(false);
+                        notify_status(BridgeStatus::SERVER_START_FAILED, "http", ex.what());
+                        shutdown_failed_start(generation);
                     }
-                    notify_status(BridgeStatus::SERVER_START_FAILED, "http", ex.what());
-                    shutdown_failed_start(generation);
-                }
-            });
+                });
+            }
             return ready_future.get();
         }
 
@@ -607,30 +642,32 @@ namespace optionx::bridges::protocol_v1 {
             server->config.max_message_size = config->request_body_limit;
             configure_ws_routes(server, config);
 
-            std::lock_guard<std::mutex> lock(m_state->mutex);
-            if (m_state->phase != RuntimePhase::Starting ||
-                m_state->lifecycle_generation != generation) {
-                return false;
-            }
-            m_state->ws_server = server;
-            m_state->ws_thread = std::thread([this, server, generation, ready, ready_set]() {
-                try {
-                    server->start([this, ready, ready_set](unsigned short port) {
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                if (m_state->phase != RuntimePhase::Starting ||
+                    m_state->lifecycle_generation != generation) {
+                    return false;
+                }
+                m_state->ws_server = server;
+                m_state->ws_thread = std::thread([this, server, generation, ready, ready_set]() {
+                    try {
+                        server->start([this, ready, ready_set](unsigned short port) {
+                            bool expected = false;
+                            if (ready_set->compare_exchange_strong(expected, true)) {
+                                ready->set_value(true);
+                            }
+                            notify_status(BridgeStatus::SERVER_STARTED, "ws:" + std::to_string(port));
+                        });
+                    } catch (const std::exception& ex) {
                         bool expected = false;
                         if (ready_set->compare_exchange_strong(expected, true)) {
-                            ready->set_value(true);
+                            ready->set_value(false);
                         }
-                        notify_status(BridgeStatus::SERVER_STARTED, "ws:" + std::to_string(port));
-                    });
-                } catch (const std::exception& ex) {
-                    bool expected = false;
-                    if (ready_set->compare_exchange_strong(expected, true)) {
-                        ready->set_value(false);
+                        notify_status(BridgeStatus::SERVER_START_FAILED, "ws", ex.what());
+                        shutdown_failed_start(generation);
                     }
-                    notify_status(BridgeStatus::SERVER_START_FAILED, "ws", ex.what());
-                    shutdown_failed_start(generation);
-                }
-            });
+                });
+            }
             return ready_future.get();
         }
 

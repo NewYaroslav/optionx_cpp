@@ -1599,6 +1599,95 @@ TEST(BridgeProtocolServerBridge, RunDuringShutdownDoesNotCreateZombieRuntime) {
     bridge.shutdown();
 }
 
+TEST(BridgeProtocolServerBridge, ConcurrentShutdownsDoNotPublishStoppedEarly) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool callback_entered = false;
+    bool release_callback = false;
+    bridge.on_signal_id() = []() { return optionx::SignalId{91}; };
+    bridge.on_trade_signal() = [&](std::unique_ptr<optionx::TradeSignal>) {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            callback_entered = true;
+        }
+        cv.notify_all();
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait_for(lock, std::chrono::seconds(5), [&release_callback]() {
+            return release_callback;
+        });
+    };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    nlohmann::json response;
+    std::atomic<bool> request_failed{false};
+    std::thread request_thread([&]() {
+        try {
+            response = post_json(
+                config,
+                bridge.bound_http_port(),
+                trade_command("trade-concurrent-shutdown", "idem-concurrent-shutdown"));
+        } catch (...) {
+            request_failed.store(true);
+        }
+    });
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(5), [&callback_entered]() {
+            return callback_entered;
+        }));
+    }
+
+    std::thread shutdown_one([&]() {
+        bridge.shutdown();
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    std::thread shutdown_two([&]() {
+        bridge.shutdown();
+    });
+
+    std::atomic<bool> run_returned{false};
+    std::thread run_thread([&]() {
+        bridge.run();
+        run_returned.store(true);
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    EXPECT_FALSE(run_returned.load());
+
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        release_callback = true;
+    }
+    cv.notify_all();
+
+    if (request_thread.joinable()) {
+        request_thread.join();
+    }
+    if (shutdown_one.joinable()) {
+        shutdown_one.join();
+    }
+    if (shutdown_two.joinable()) {
+        shutdown_two.join();
+    }
+    if (run_thread.joinable()) {
+        run_thread.join();
+    }
+
+    EXPECT_TRUE(run_returned.load());
+    ASSERT_TRUE(wait_for_http_port(bridge));
+    bridge.shutdown();
+}
+
 TEST(BridgeProtocolServerBridge, ShutdownRacingStartupLeavesNoRunningTransport) {
     namespace proto = optionx::bridges::protocol_v1;
 
