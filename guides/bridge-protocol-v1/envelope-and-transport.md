@@ -231,6 +231,8 @@ The first implementation supports:
 - HTTP `GET /api/v1/bridge/health`;
 - WebSocket `/api/v1/bridge/ws` for JSON-RPC request/response messages and
   best-effort live notifications;
+- WebSocket handshake subprotocol `Sec-WebSocket-Protocol:
+  optionx.bridge.v1`, selected by the server when the client offers it;
 - `protocol.hello`, `protocol.capabilities.get`, `account.balance.get`,
   `signal.submit` and `trade.open`;
 - bearer-token or `X-OptionX-Secret` transport authentication. Empty-secret
@@ -244,8 +246,9 @@ The first implementation supports:
 - bounded in-memory idempotency dedupe for trade-affecting commands. When the
   cache is full of retained operations, new unique trade-affecting commands are
   rejected fail-closed instead of evicting accepted operations. Concurrent
-  retries of an operation already in dispatch wait for the original dispatch
-  result instead of returning a provisional accepted response;
+  retries of an operation already in dispatch return `processing` with
+  `reason.code = "operation_in_progress"` without blocking the transport
+  handler;
 - transport resource limits are applied before full buffering when the
   underlying server supports it. WebSocket outbound notifications are bounded
   per connection by `max_ws_pending_messages` and `max_ws_pending_bytes`; slow
@@ -301,8 +304,8 @@ WebSocket:
 - Commands and responses use JSON-RPC on one socket.
 - Events are pushed to subscribed clients as JSON-RPC notifications.
 - A response must repeat the command `id`.
-- WebSocket bridges should use the subprotocol
-  `Sec-WebSocket-Protocol: optionx.bridge.v1` once the wire contract is stable.
+- WebSocket bridges use the subprotocol
+  `Sec-WebSocket-Protocol: optionx.bridge.v1`.
 
 Named Pipe:
 

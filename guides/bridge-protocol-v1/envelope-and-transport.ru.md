@@ -267,9 +267,8 @@ WebSocket:
 - Commands и responses используют JSON-RPC на одном socket.
 - Events пушатся subscribed clients как JSON-RPC notifications.
 - Response должен повторять command `id`.
-- WebSocket bridges должны использовать subprotocol
-  `Sec-WebSocket-Protocol: optionx.bridge.v1`, когда wire contract станет
-  стабильным.
+- WebSocket bridges используют subprotocol
+  `Sec-WebSocket-Protocol: optionx.bridge.v1`.
 
 Named Pipe:
 
@@ -461,6 +460,8 @@ Bridge Protocol v1 HTTP/WebSocket server bridge. Это application adapter на
 - HTTP `GET /api/v1/bridge/health`;
 - WebSocket `/api/v1/bridge/ws` для JSON-RPC request/response messages и
   best-effort live notifications;
+- WebSocket handshake subprotocol `Sec-WebSocket-Protocol:
+  optionx.bridge.v1`, selected by the server when the client offers it;
 - `protocol.hello`, `protocol.capabilities.get`, `account.balance.get`,
   `signal.submit` и `trade.open`;
 - bearer-token или `X-OptionX-Secret` transport authentication. Режим с пустым
@@ -474,8 +475,8 @@ Bridge Protocol v1 HTTP/WebSocket server bridge. Это application adapter на
 - bounded in-memory idempotency dedupe для trade-affecting commands. Когда cache
   заполнен удерживаемыми операциями, новые уникальные trade-affecting commands
   отклоняются fail-closed вместо вытеснения accepted operations. Concurrent
-  retries для operation, которая уже находится в dispatch, ждут исходный
-  dispatch result, а не возвращают provisional accepted;
+  retries return `processing` with `reason.code = "operation_in_progress"` without blocking
+  the transport handler;
 - transport resource limits применяются до полного buffering, когда underlying
   server это поддерживает. WebSocket outbound notifications ограничены на
   connection через `max_ws_pending_messages` и `max_ws_pending_bytes`; slow

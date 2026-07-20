@@ -13,6 +13,7 @@ namespace optionx::bridges::protocol_v1::detail {
     inline constexpr int jsonrpc_invalid_params = -32602;
     inline constexpr int jsonrpc_internal_error = -32603;
     inline constexpr int jsonrpc_authorization_failed = -32001;
+    inline constexpr int jsonrpc_unsupported_protocol_version = -32010;
 
     inline nlohmann::json jsonrpc_result(nlohmann::json id, nlohmann::json result) {
         return nlohmann::json{

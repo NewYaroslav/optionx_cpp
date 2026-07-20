@@ -8,7 +8,6 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
-#include <condition_variable>
 #include <cstdint>
 #include <deque>
 #include <functional>

@@ -23,10 +23,15 @@ namespace optionx::bridges::protocol_v1 {
         std::string server_instance_id = "optionx-bridge-server"; ///< Runtime server identifier.
         std::size_t request_body_limit = 1024 * 1024; ///< Maximum JSON-RPC body/message size.
         std::size_t dedupe_cache_size = 4096; ///< In-memory idempotency/result cache size.
-        std::size_t max_request_id_aliases_per_operation = 16; ///< Retry request IDs stored per operation.
+        std::size_t max_jsonrpc_id_bytes = 256; ///< Maximum serialized JSON-RPC `id` size.
+        std::size_t max_idempotency_key_bytes = 512; ///< Maximum logical idempotency key size.
+        std::size_t max_operation_fingerprint_bytes = 64 * 1024; ///< Maximum canonical payload bytes.
+        std::size_t max_operation_cache_bytes = 4 * 1024 * 1024; ///< Maximum in-memory result cache bytes.
         std::size_t max_ws_pending_messages = 64; ///< Pending outbound WebSocket messages per client.
         std::size_t max_ws_pending_bytes = 1024 * 1024; ///< Pending outbound WebSocket bytes per client.
         long content_timeout_seconds = 30; ///< HTTP content read timeout.
+        std::string websocket_subprotocol = "optionx.bridge.v1"; ///< Expected WebSocket subprotocol.
+        bool require_websocket_subprotocol = true; ///< Reject clients that omit the protocol token.
         bool enable_http = true; ///< Start the HTTP command server.
         bool enable_websocket = true; ///< Start the WebSocket command server.
         bool allow_unauthenticated_local = false; ///< Allow no-secret loopback dev mode.
@@ -49,10 +54,15 @@ namespace optionx::bridges::protocol_v1 {
                 {"server_instance_id", server_instance_id},
                 {"request_body_limit", request_body_limit},
                 {"dedupe_cache_size", dedupe_cache_size},
-                {"max_request_id_aliases_per_operation", max_request_id_aliases_per_operation},
+                {"max_jsonrpc_id_bytes", max_jsonrpc_id_bytes},
+                {"max_idempotency_key_bytes", max_idempotency_key_bytes},
+                {"max_operation_fingerprint_bytes", max_operation_fingerprint_bytes},
+                {"max_operation_cache_bytes", max_operation_cache_bytes},
                 {"max_ws_pending_messages", max_ws_pending_messages},
                 {"max_ws_pending_bytes", max_ws_pending_bytes},
                 {"content_timeout_seconds", content_timeout_seconds},
+                {"websocket_subprotocol", websocket_subprotocol},
+                {"require_websocket_subprotocol", require_websocket_subprotocol},
                 {"enable_http", enable_http},
                 {"enable_websocket", enable_websocket},
                 {"allow_unauthenticated_local", allow_unauthenticated_local},
@@ -86,9 +96,20 @@ namespace optionx::bridges::protocol_v1 {
             if (j.contains("dedupe_cache_size")) {
                 dedupe_cache_size = j.at("dedupe_cache_size").get<std::size_t>();
             }
-            if (j.contains("max_request_id_aliases_per_operation")) {
-                max_request_id_aliases_per_operation =
-                    j.at("max_request_id_aliases_per_operation").get<std::size_t>();
+            if (j.contains("max_jsonrpc_id_bytes")) {
+                max_jsonrpc_id_bytes = j.at("max_jsonrpc_id_bytes").get<std::size_t>();
+            }
+            if (j.contains("max_idempotency_key_bytes")) {
+                max_idempotency_key_bytes =
+                    j.at("max_idempotency_key_bytes").get<std::size_t>();
+            }
+            if (j.contains("max_operation_fingerprint_bytes")) {
+                max_operation_fingerprint_bytes =
+                    j.at("max_operation_fingerprint_bytes").get<std::size_t>();
+            }
+            if (j.contains("max_operation_cache_bytes")) {
+                max_operation_cache_bytes =
+                    j.at("max_operation_cache_bytes").get<std::size_t>();
             }
             if (j.contains("max_ws_pending_messages")) {
                 max_ws_pending_messages = j.at("max_ws_pending_messages").get<std::size_t>();
@@ -98,6 +119,13 @@ namespace optionx::bridges::protocol_v1 {
             }
             if (j.contains("content_timeout_seconds")) {
                 content_timeout_seconds = j.at("content_timeout_seconds").get<long>();
+            }
+            if (j.contains("websocket_subprotocol")) {
+                websocket_subprotocol = j.at("websocket_subprotocol").get<std::string>();
+            }
+            if (j.contains("require_websocket_subprotocol")) {
+                require_websocket_subprotocol =
+                    j.at("require_websocket_subprotocol").get<bool>();
             }
             if (j.contains("enable_http")) enable_http = j.at("enable_http").get<bool>();
             if (j.contains("enable_websocket")) {
@@ -153,11 +181,20 @@ namespace optionx::bridges::protocol_v1 {
             if (dedupe_cache_size == 0) {
                 return {false, "Bridge Protocol v1 dedupe_cache_size must be positive."};
             }
-            if (max_request_id_aliases_per_operation == 0) {
+            if (max_jsonrpc_id_bytes == 0) {
+                return {false, "Bridge Protocol v1 max_jsonrpc_id_bytes must be positive."};
+            }
+            if (max_idempotency_key_bytes == 0) {
+                return {false, "Bridge Protocol v1 max_idempotency_key_bytes must be positive."};
+            }
+            if (max_operation_fingerprint_bytes == 0) {
                 return {
                     false,
-                    "Bridge Protocol v1 max_request_id_aliases_per_operation must be positive."
+                    "Bridge Protocol v1 max_operation_fingerprint_bytes must be positive."
                 };
+            }
+            if (max_operation_cache_bytes == 0) {
+                return {false, "Bridge Protocol v1 max_operation_cache_bytes must be positive."};
             }
             if (max_ws_pending_messages == 0) {
                 return {false, "Bridge Protocol v1 max_ws_pending_messages must be positive."};
@@ -167,6 +204,12 @@ namespace optionx::bridges::protocol_v1 {
             }
             if (content_timeout_seconds <= 0) {
                 return {false, "Bridge Protocol v1 content_timeout_seconds must be positive."};
+            }
+            if (enable_websocket && require_websocket_subprotocol && websocket_subprotocol.empty()) {
+                return {
+                    false,
+                    "Bridge Protocol v1 websocket_subprotocol must not be empty when required."
+                };
             }
             if (bridge_id == 0) {
                 return {false, "Bridge Protocol v1 bridge_id is required."};

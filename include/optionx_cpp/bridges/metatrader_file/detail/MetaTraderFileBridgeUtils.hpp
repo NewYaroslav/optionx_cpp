@@ -327,9 +327,16 @@ namespace optionx::bridges::metatrader_file::detail {
 
         if (text.find_first_of("eE") != std::string::npos) {
             try {
+                std::size_t consumed = 0;
+                const auto numeric = std::stold(text, &consumed);
+                if (consumed != text.size() || !std::isfinite(numeric)) {
+                    return text;
+                }
                 std::ostringstream out;
                 out.imbue(std::locale::classic());
-                out << std::fixed << std::setprecision(12) << std::stold(text);
+                out << std::fixed
+                    << std::setprecision(std::numeric_limits<long double>::max_digits10)
+                    << numeric;
                 return canonical_decimal_text(out.str());
             } catch (...) {
                 return text;
@@ -392,7 +399,9 @@ namespace optionx::bridges::metatrader_file::detail {
             }
             std::ostringstream out;
             out.imbue(std::locale::classic());
-            out << std::fixed << std::setprecision(12) << numeric;
+            out << std::fixed
+                << std::setprecision(std::numeric_limits<double>::max_digits10)
+                << numeric;
             return canonical_decimal_text(out.str());
         }
         return value;
@@ -824,6 +833,26 @@ namespace optionx::bridges::metatrader_file::detail {
         return to_enum<AccountType>(value);
     }
 
+    /// \brief Converts optional protocol text to a platform enum.
+    inline PlatformType platform_type_value(const std::string& value) {
+        if (value.empty()) {
+            return PlatformType::UNKNOWN;
+        }
+        auto normalized = upper_ascii_copy(trim_ascii_copy(value));
+        std::replace(normalized.begin(), normalized.end(), '.', '_');
+        std::replace(normalized.begin(), normalized.end(), '-', '_');
+        std::replace(normalized.begin(), normalized.end(), ' ', '_');
+        return to_enum<PlatformType>(normalized);
+    }
+
+    /// \brief Converts optional protocol text to a money-management enum.
+    inline MmSystemType mm_system_type_value(const std::string& value) {
+        if (value.empty()) {
+            return MmSystemType::NONE;
+        }
+        return to_enum<MmSystemType>(value);
+    }
+
     /// \brief Converts optional protocol text to an option type enum.
     inline OptionType option_type_value(const std::string& value) {
         if (value.empty()) {
@@ -871,20 +900,33 @@ namespace optionx::bridges::metatrader_file::detail {
             const auto kind = string_value(expiry, "kind");
             if (kind == "duration" || expiry.contains("duration_ms")) {
                 const auto duration_ms = int64_value(expiry, "duration_ms", 0);
-                if (duration_ms > 0) {
-                    signal.duration = checked_positive_duration_seconds(
-                        duration_ms / 1000,
-                        "expiry.duration_ms");
+                if (duration_ms <= 0) {
+                    throw std::invalid_argument("expiry.duration_ms must be positive.");
                 }
+                if (duration_ms < 1000 || duration_ms % 1000 != 0) {
+                    throw std::invalid_argument("expiry.duration_ms must be whole seconds.");
+                }
+                signal.duration = checked_positive_duration_seconds(
+                    duration_ms / 1000,
+                    "expiry.duration_ms");
             } else if (kind == "absolute" || expiry.contains("expires_at_ms")) {
                 const auto expires_at_ms = int64_value(expiry, "expires_at_ms", 0);
-                if (expires_at_ms > 0) {
-                    signal.expiry_time = expires_at_ms / 1000;
+                if (expires_at_ms <= 0) {
+                    throw std::invalid_argument("expiry.expires_at_ms must be positive.");
                 }
+                if (expires_at_ms < 1000 || expires_at_ms % 1000 != 0) {
+                    throw std::invalid_argument("expiry.expires_at_ms must be whole seconds.");
+                }
+                signal.expiry_time = expires_at_ms / 1000;
+            } else if (!kind.empty()) {
+                throw std::invalid_argument("expiry.kind is unsupported.");
             }
         }
         const auto duration_ms = int64_value(trade, "duration_ms", 0);
         if (duration_ms > 0) {
+            if (duration_ms < 1000 || duration_ms % 1000 != 0) {
+                throw std::invalid_argument("duration_ms must be whole seconds.");
+            }
             signal.duration = checked_positive_duration_seconds(duration_ms / 1000, "duration_ms");
         }
         const auto duration = int64_value(trade, "duration", 0);
@@ -897,6 +939,9 @@ namespace optionx::bridges::metatrader_file::detail {
         }
         const auto expires_at_ms = int64_value(trade, "expires_at_ms", 0);
         if (expires_at_ms > 0) {
+            if (expires_at_ms < 1000 || expires_at_ms % 1000 != 0) {
+                throw std::invalid_argument("expires_at_ms must be whole seconds.");
+            }
             signal.expiry_time = expires_at_ms / 1000;
         }
         const auto expiry_time = int64_value(trade, "expiry_time", 0);
@@ -908,11 +953,52 @@ namespace optionx::bridges::metatrader_file::detail {
     /// \brief Applies routing selector fields to a signal.
     inline void apply_routing(TradeSignal& signal, const nlohmann::json& params) {
         const auto& routing = object_member_or_empty(params, "routing");
+        const auto platform_type = string_value(routing, "platform_type");
+        if (!platform_type.empty()) {
+            signal.platform_type = platform_type_value(platform_type);
+        }
         const auto& selector = object_member_or_empty(routing, "selector");
         const auto account_id = int64_value(selector, "account_id", 0);
         if (account_id != 0) {
             signal.account_id = account_id;
         }
+    }
+
+    /// \brief Applies optional protocol sizing fields to a signal.
+    inline void apply_sizing(TradeSignal& signal, const nlohmann::json& params) {
+        const auto& sizing = object_member_or_empty(params, "sizing");
+        if (!sizing.is_object() || sizing.empty()) {
+            return;
+        }
+
+        const auto mode = string_value(sizing, "mode", string_value(sizing, "type"));
+        if (!mode.empty()) {
+            signal.mm_type = mm_system_type_value(mode);
+        }
+        const auto& trade_payload = params.contains("trade")
+            ? object_member_or_empty(params, "trade")
+            : object_member_or_empty(params, "signal");
+        if (sizing.contains("amount") && !trade_payload.contains("amount")) {
+            nlohmann::json trade = nlohmann::json::object();
+            trade["amount"] = sizing.at("amount");
+            if (sizing.contains("currency")) {
+                trade["currency"] = sizing.at("currency");
+            }
+            apply_amount(signal, trade);
+        }
+        const auto currency = string_value(sizing, "currency");
+        if (!currency.empty() && signal.currency == CurrencyType::UNKNOWN) {
+            signal.currency = currency_value(currency);
+        }
+        const auto step = int64_value(sizing, "step", signal.mm_step);
+        if (step < std::numeric_limits<std::int32_t>::min() ||
+            step > std::numeric_limits<std::int32_t>::max()) {
+            throw std::invalid_argument("sizing.step is out of range.");
+        }
+        signal.mm_step = static_cast<std::int32_t>(step);
+        signal.mm_group_id = int64_value(sizing, "group_id", signal.mm_group_id);
+        signal.mm_group_hash = string_value(sizing, "group_hash", signal.mm_group_hash);
+        signal.mm_group_name = string_value(sizing, "group_name", signal.mm_group_name);
     }
 
     /// \brief Reads the optional command deadline from context.
@@ -969,6 +1055,7 @@ namespace optionx::bridges::metatrader_file::detail {
         apply_amount(*signal, trade);
         apply_expiry(*signal, trade);
         apply_routing(*signal, params);
+        apply_sizing(*signal, params);
 
         if (signal->symbol.empty()) {
             throw std::invalid_argument("Command trade symbol is required.");
@@ -981,6 +1068,12 @@ namespace optionx::bridges::metatrader_file::detail {
         }
         if (direct_trade_open && signal->amount <= 0.0) {
             throw std::invalid_argument("trade.open amount must be positive.");
+        }
+        if (direct_trade_open && signal->option_type == OptionType::UNKNOWN) {
+            throw std::invalid_argument("trade.open option_type is required.");
+        }
+        if (direct_trade_open && signal->duration == 0 && signal->expiry_time <= 0) {
+            throw std::invalid_argument("trade.open expiry is required.");
         }
         return signal;
     }
