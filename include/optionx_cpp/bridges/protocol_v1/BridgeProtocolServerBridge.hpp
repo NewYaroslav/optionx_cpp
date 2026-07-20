@@ -44,6 +44,7 @@ namespace optionx::bridges::protocol_v1 {
         struct StoredOperation {
             std::string fingerprint;
             nlohmann::json result;
+            std::int64_t completed_at_ms = 0;
             std::size_t byte_size = 0;
             bool dispatching = false;
         };
@@ -194,6 +195,12 @@ namespace optionx::bridges::protocol_v1 {
         void run() override {
             auto config = get_config_or_throw();
 
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                if (m_state->running) {
+                    return;
+                }
+            }
             join_stopped_threads();
 
             {
@@ -214,10 +221,12 @@ namespace optionx::bridges::protocol_v1 {
 
             try {
                 if (config->enable_http) {
-                    start_http_server(config);
+                    if (!start_http_server(config)) {
+                        return;
+                    }
                 }
                 if (is_runtime_running() && config->enable_websocket) {
-                    start_ws_server(config);
+                    static_cast<void>(start_ws_server(config));
                 }
             } catch (...) {
                 shutdown();
@@ -331,6 +340,9 @@ namespace optionx::bridges::protocol_v1 {
             const auto current_id = std::this_thread::get_id();
             {
                 std::lock_guard<std::mutex> lock(m_state->mutex);
+                if (m_state->running || !m_state->stopping) {
+                    return;
+                }
                 if (m_state->http_thread.joinable() &&
                     m_state->http_thread.get_id() != current_id) {
                     http_thread = std::move(m_state->http_thread);
@@ -496,11 +508,11 @@ namespace optionx::bridges::protocol_v1 {
             }
         }
 
-        void start_http_server(const std::shared_ptr<BridgeProtocolServerConfig>& config) {
+        bool start_http_server(const std::shared_ptr<BridgeProtocolServerConfig>& config) {
             auto server = std::make_shared<HttpServer>();
             server->config.address = config->address;
             server->config.port = config->http_port;
-            server->config.thread_pool_size = 1;
+            server->config.thread_pool_size = 2;
             server->config.max_request_streambuf_size =
                 config->request_body_limit == (std::numeric_limits<std::size_t>::max)()
                     ? config->request_body_limit
@@ -509,6 +521,9 @@ namespace optionx::bridges::protocol_v1 {
             configure_http_routes(server, config);
 
             std::lock_guard<std::mutex> lock(m_state->mutex);
+            if (!m_state->running || m_state->stopping) {
+                return false;
+            }
             m_state->http_server = server;
             m_state->http_thread = std::thread([this, server]() {
                 try {
@@ -519,9 +534,10 @@ namespace optionx::bridges::protocol_v1 {
                     notify_status(BridgeStatus::SERVER_START_FAILED, "http", ex.what());
                 }
             });
+            return true;
         }
 
-        void start_ws_server(const std::shared_ptr<BridgeProtocolServerConfig>& config) {
+        bool start_ws_server(const std::shared_ptr<BridgeProtocolServerConfig>& config) {
             auto server = std::make_shared<WsServer>();
             server->config.address = config->address;
             server->config.port = config->websocket_port;
@@ -530,6 +546,9 @@ namespace optionx::bridges::protocol_v1 {
             configure_ws_routes(server, config);
 
             std::lock_guard<std::mutex> lock(m_state->mutex);
+            if (!m_state->running || m_state->stopping) {
+                return false;
+            }
             m_state->ws_server = server;
             m_state->ws_thread = std::thread([this, server]() {
                 try {
@@ -540,6 +559,7 @@ namespace optionx::bridges::protocol_v1 {
                     notify_status(BridgeStatus::SERVER_START_FAILED, "ws", ex.what());
                 }
             });
+            return true;
         }
 
         void configure_http_routes(
@@ -839,6 +859,8 @@ namespace optionx::bridges::protocol_v1 {
                     config.max_operation_fingerprint_bytes;
                 result["limits"]["max_operation_cache_bytes"] =
                     config.max_operation_cache_bytes;
+                result["limits"]["operation_cache_retention_ms"] =
+                    config.operation_cache_retention_ms;
                 result["limits"]["max_ws_pending_messages"] = config.max_ws_pending_messages;
                 result["limits"]["max_ws_pending_bytes"] = config.max_ws_pending_bytes;
                 result["websocket"]["subprotocol"] = config.websocket_subprotocol;
@@ -1207,9 +1229,15 @@ namespace optionx::bridges::protocol_v1 {
                 }
 
                 if (m_state->operations.size() >= config.dedupe_cache_size) {
+                    prune_completed_operations_locked(config);
+                }
+                if (m_state->operations.size() >= config.dedupe_cache_size) {
                     return detail::jsonrpc_result(id, idempotency_cache_full_result());
                 }
                 const auto byte_size = operation_byte_size(operation_key, fingerprint, result);
+                if (byte_size <= config.max_operation_cache_bytes) {
+                    prune_completed_operations_locked(config, byte_size);
+                }
                 if (byte_size > config.max_operation_cache_bytes ||
                     m_state->operation_cache_bytes >
                         config.max_operation_cache_bytes - byte_size) {
@@ -1221,6 +1249,7 @@ namespace optionx::bridges::protocol_v1 {
                 operation.fingerprint = fingerprint;
                 operation.result = result;
                 operation.byte_size = byte_size;
+                operation.completed_at_ms = 0;
                 operation.dispatching = true;
                 m_state->operations.emplace(operation_key, std::move(operation));
                 m_state->operation_cache_bytes += byte_size;
@@ -1417,6 +1446,7 @@ namespace optionx::bridges::protocol_v1 {
                 const nlohmann::json& result) {
             std::lock_guard<std::mutex> lock(m_state->mutex);
             const auto byte_size = operation_byte_size(operation_key, fingerprint, result);
+            prune_completed_operations_locked(config, byte_size);
             auto existing = m_state->operations.find(operation_key);
             const auto old_size = existing == m_state->operations.end()
                 ? std::size_t{0}
@@ -1438,6 +1468,7 @@ namespace optionx::bridges::protocol_v1 {
             operation.fingerprint = fingerprint;
             operation.result = result;
             operation.byte_size = byte_size;
+            operation.completed_at_ms = metatrader_file::detail::unix_time_ms();
             operation.dispatching = false;
             return true;
         }
@@ -1454,6 +1485,7 @@ namespace optionx::bridges::protocol_v1 {
                     m_state->operation_cache_bytes - existing->second.byte_size + byte_size;
                 existing->second.result = result;
                 existing->second.byte_size = byte_size;
+                existing->second.completed_at_ms = metatrader_file::detail::unix_time_ms();
                 existing->second.dispatching = false;
             }
         }
@@ -1472,7 +1504,65 @@ namespace optionx::bridges::protocol_v1 {
                     m_state->operation_cache_bytes - operation.byte_size + byte_size;
                 operation.result = result;
                 operation.byte_size = byte_size;
+                operation.completed_at_ms = metatrader_file::detail::unix_time_ms();
                 operation.dispatching = false;
+            }
+        }
+
+        bool evict_oldest_completed_operation_locked() {
+            for (auto it = m_state->operation_order.begin();
+                 it != m_state->operation_order.end();) {
+                const auto& key = *it;
+                auto existing = m_state->operations.find(key);
+                if (existing == m_state->operations.end()) {
+                    it = m_state->operation_order.erase(it);
+                    continue;
+                }
+                if (existing->second.dispatching) {
+                    ++it;
+                    continue;
+                }
+                m_state->operation_cache_bytes -= existing->second.byte_size;
+                m_state->operations.erase(existing);
+                m_state->operation_order.erase(it);
+                return true;
+            }
+            return false;
+        }
+
+        void prune_completed_operations_locked(
+                const BridgeProtocolServerConfig& config,
+                const std::size_t required_bytes = 0) {
+            const auto now = metatrader_file::detail::unix_time_ms();
+            for (auto it = m_state->operation_order.begin(); it != m_state->operation_order.end();) {
+                auto existing = m_state->operations.find(*it);
+                if (existing == m_state->operations.end()) {
+                    it = m_state->operation_order.erase(it);
+                    continue;
+                }
+                const auto& operation = existing->second;
+                if (!operation.dispatching &&
+                    operation.completed_at_ms > 0 &&
+                    now - operation.completed_at_ms >= config.operation_cache_retention_ms) {
+                    m_state->operation_cache_bytes -= operation.byte_size;
+                    m_state->operations.erase(existing);
+                    it = m_state->operation_order.erase(it);
+                    continue;
+                }
+                ++it;
+            }
+
+            while (m_state->operations.size() >= config.dedupe_cache_size) {
+                if (!evict_oldest_completed_operation_locked()) {
+                    break;
+                }
+            }
+            while (required_bytes <= config.max_operation_cache_bytes &&
+                   m_state->operation_cache_bytes >
+                       config.max_operation_cache_bytes - required_bytes) {
+                if (!evict_oldest_completed_operation_locked()) {
+                    break;
+                }
             }
         }
 

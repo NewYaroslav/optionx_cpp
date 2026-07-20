@@ -472,11 +472,12 @@ Bridge Protocol v1 HTTP/WebSocket server bridge. Это application adapter на
 - strict JSON-RPC envelope validation. Request IDs должны быть strings,
   integers или `null`; `params` должен быть object; `protocol.hello`
   отклоняет requests, где v1 не указан в `requested_protocol_versions`;
-- bounded in-memory idempotency dedupe для trade-affecting commands. Когда cache
-  заполнен удерживаемыми операциями, новые уникальные trade-affecting commands
-  отклоняются fail-closed вместо вытеснения accepted operations. Concurrent
-  retries return `processing` with `reason.code = "operation_in_progress"` without blocking
-  the transport handler;
+- bounded in-memory idempotency dedupe для trade-affecting commands. Completed
+  operations удерживаются в ограниченном окне и могут вытесняться по TTL/LRU;
+  in-flight operations никогда не вытесняются. Если остались только in-flight
+  operations или один result превышает лимиты, новые уникальные commands
+  отклоняются fail-closed. Concurrent retries return `processing` with
+  `reason.code = "operation_in_progress"` without blocking the transport handler;
 - transport resource limits применяются до полного buffering, когда underlying
   server это поддерживает. WebSocket outbound notifications ограничены на
   connection через `max_ws_pending_messages` и `max_ws_pending_bytes`; slow

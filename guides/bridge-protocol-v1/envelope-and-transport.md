@@ -243,10 +243,12 @@ The first implementation supports:
 - strict JSON-RPC envelope validation. Request IDs must be strings, integers or
   `null`; `params` must be an object; `protocol.hello` rejects requests that do
   not include v1 in `requested_protocol_versions`;
-- bounded in-memory idempotency dedupe for trade-affecting commands. When the
-  cache is full of retained operations, new unique trade-affecting commands are
-  rejected fail-closed instead of evicting accepted operations. Concurrent
-  retries of an operation already in dispatch return `processing` with
+- bounded in-memory idempotency dedupe for trade-affecting commands. Completed
+  operations are retained for a bounded horizon and may be evicted by TTL/LRU
+  pressure; operations currently in dispatch are never evicted. If only
+  in-flight operations remain or a single result exceeds configured limits, new
+  unique trade-affecting commands are rejected fail-closed. Concurrent retries
+  of an operation already in dispatch return `processing` with
   `reason.code = "operation_in_progress"` without blocking the transport
   handler;
 - transport resource limits are applied before full buffering when the

@@ -325,58 +325,98 @@ namespace optionx::bridges::metatrader_file::detail {
             return text;
         }
 
-        if (text.find_first_of("eE") != std::string::npos) {
-            try {
-                std::size_t consumed = 0;
-                const auto numeric = std::stold(text, &consumed);
-                if (consumed != text.size() || !std::isfinite(numeric)) {
-                    return text;
-                }
-                std::ostringstream out;
-                out.imbue(std::locale::classic());
-                out << std::fixed
-                    << std::setprecision(std::numeric_limits<long double>::max_digits10)
-                    << numeric;
-                return canonical_decimal_text(out.str());
-            } catch (...) {
-                return text;
-            }
-        }
-
+        const auto original = text;
         bool negative = false;
-        if (text.front() == '+' || text.front() == '-') {
-            negative = text.front() == '-';
-            text.erase(text.begin());
+        std::size_t pos = 0;
+        if (text[pos] == '+' || text[pos] == '-') {
+            negative = text[pos] == '-';
+            ++pos;
         }
 
-        const auto dot = text.find('.');
-        auto integer = dot == std::string::npos ? text : text.substr(0, dot);
-        auto fraction = dot == std::string::npos ? std::string() : text.substr(dot + 1);
-
-        const auto is_digits = [](const std::string& part) {
-            return std::all_of(part.begin(), part.end(), [](const unsigned char ch) {
-                return std::isdigit(ch) != 0;
-            });
-        };
-        if ((!integer.empty() && !is_digits(integer)) ||
-            (!fraction.empty() && !is_digits(fraction)) ||
-            (integer.empty() && fraction.empty())) {
-            return (negative ? "-" : "") + text;
+        std::string digits;
+        std::int64_t scale = 0;
+        bool saw_digit = false;
+        bool saw_dot = false;
+        for (; pos < text.size(); ++pos) {
+            const auto ch = static_cast<unsigned char>(text[pos]);
+            if (std::isdigit(ch) != 0) {
+                digits.push_back(static_cast<char>(ch));
+                saw_digit = true;
+                if (saw_dot) {
+                    ++scale;
+                }
+                continue;
+            }
+            if (text[pos] == '.' && !saw_dot) {
+                saw_dot = true;
+                continue;
+            }
+            break;
+        }
+        if (!saw_digit) {
+            return original;
         }
 
-        const auto non_zero = integer.find_first_not_of('0');
-        integer = non_zero == std::string::npos ? "0" : integer.substr(non_zero);
-        while (!fraction.empty() && fraction.back() == '0') {
-            fraction.pop_back();
+        if (pos < text.size() && (text[pos] == 'e' || text[pos] == 'E')) {
+            ++pos;
+            bool exponent_negative = false;
+            if (pos < text.size() && (text[pos] == '+' || text[pos] == '-')) {
+                exponent_negative = text[pos] == '-';
+                ++pos;
+            }
+            if (pos == text.size()) {
+                return original;
+            }
+            std::int64_t exponent = 0;
+            for (; pos < text.size(); ++pos) {
+                const auto ch = static_cast<unsigned char>(text[pos]);
+                if (std::isdigit(ch) == 0) {
+                    return original;
+                }
+                if (exponent < 10000) {
+                    exponent = exponent * 10 + (text[pos] - '0');
+                } else {
+                    return original;
+                }
+            }
+            scale += exponent_negative ? exponent : -exponent;
+        }
+        if (pos != text.size()) {
+            return original;
         }
 
-        if (integer == "0" && fraction.empty()) {
-            negative = false;
+        const auto first_non_zero = digits.find_first_not_of('0');
+        if (first_non_zero == std::string::npos) {
+            return "0";
+        }
+        digits.erase(0, first_non_zero);
+
+        while (scale > 0 && !digits.empty() && digits.back() == '0') {
+            digits.pop_back();
+            --scale;
+        }
+        if (digits.empty()) {
+            return "0";
         }
 
-        auto normalized = (negative ? "-" : "") + integer;
-        if (!fraction.empty()) {
-            normalized += "." + fraction;
+        std::string normalized;
+        if (negative) {
+            normalized.push_back('-');
+        }
+        if (scale <= 0) {
+            normalized += digits;
+            normalized.append(static_cast<std::size_t>(-scale), '0');
+        } else if (static_cast<std::uint64_t>(scale) >= digits.size()) {
+            normalized += "0.";
+            normalized.append(
+                static_cast<std::size_t>(scale) - digits.size(),
+                '0');
+            normalized += digits;
+        } else {
+            const auto split = digits.size() - static_cast<std::size_t>(scale);
+            normalized += digits.substr(0, split);
+            normalized.push_back('.');
+            normalized += digits.substr(split);
         }
         return normalized;
     }
@@ -397,12 +437,16 @@ namespace optionx::bridges::metatrader_file::detail {
             if (!std::isfinite(numeric)) {
                 return value;
             }
-            std::ostringstream out;
-            out.imbue(std::locale::classic());
-            out << std::fixed
-                << std::setprecision(std::numeric_limits<double>::max_digits10)
-                << numeric;
-            return canonical_decimal_text(out.str());
+            std::array<char, 64> buffer{};
+            const auto converted = std::to_chars(
+                buffer.data(),
+                buffer.data() + buffer.size(),
+                numeric,
+                std::chars_format::general);
+            if (converted.ec != std::errc{}) {
+                return value;
+            }
+            return canonical_decimal_text(std::string(buffer.data(), converted.ptr));
         }
         return value;
     }
@@ -895,10 +939,30 @@ namespace optionx::bridges::metatrader_file::detail {
 
     /// \brief Applies duration or absolute expiration fields to a signal.
     inline void apply_expiry(TradeSignal& signal, const nlohmann::json& trade) {
+        int expiry_forms = 0;
+        const auto mark_expiry_form = [&expiry_forms]() {
+            ++expiry_forms;
+            if (expiry_forms > 1) {
+                throw std::invalid_argument("Exactly one expiry form must be provided.");
+            }
+        };
+        const auto validate_absolute_seconds = [](const std::int64_t seconds, const char* field) {
+            if (seconds <= 0) {
+                throw std::invalid_argument(std::string(field) + " must be positive.");
+            }
+            if (seconds <= unix_time_ms() / 1000) {
+                throw std::invalid_argument(std::string(field) + " must be in the future.");
+            }
+        };
+
         if (trade.is_object() && trade.contains("expiry") && trade.at("expiry").is_object()) {
             const auto& expiry = trade.at("expiry");
             const auto kind = string_value(expiry, "kind");
+            if (expiry.contains("duration_ms") && expiry.contains("expires_at_ms")) {
+                throw std::invalid_argument("expiry must not mix duration and absolute fields.");
+            }
             if (kind == "duration" || expiry.contains("duration_ms")) {
+                mark_expiry_form();
                 const auto duration_ms = int64_value(expiry, "duration_ms", 0);
                 if (duration_ms <= 0) {
                     throw std::invalid_argument("expiry.duration_ms must be positive.");
@@ -910,6 +974,7 @@ namespace optionx::bridges::metatrader_file::detail {
                     duration_ms / 1000,
                     "expiry.duration_ms");
             } else if (kind == "absolute" || expiry.contains("expires_at_ms")) {
+                mark_expiry_form();
                 const auto expires_at_ms = int64_value(expiry, "expires_at_ms", 0);
                 if (expires_at_ms <= 0) {
                     throw std::invalid_argument("expiry.expires_at_ms must be positive.");
@@ -918,12 +983,14 @@ namespace optionx::bridges::metatrader_file::detail {
                     throw std::invalid_argument("expiry.expires_at_ms must be whole seconds.");
                 }
                 signal.expiry_time = expires_at_ms / 1000;
+                validate_absolute_seconds(signal.expiry_time, "expiry.expires_at_ms");
             } else if (!kind.empty()) {
                 throw std::invalid_argument("expiry.kind is unsupported.");
             }
         }
         const auto duration_ms = int64_value(trade, "duration_ms", 0);
         if (duration_ms > 0) {
+            mark_expiry_form();
             if (duration_ms < 1000 || duration_ms % 1000 != 0) {
                 throw std::invalid_argument("duration_ms must be whole seconds.");
             }
@@ -931,21 +998,27 @@ namespace optionx::bridges::metatrader_file::detail {
         }
         const auto duration = int64_value(trade, "duration", 0);
         if (duration > 0) {
+            mark_expiry_form();
             signal.duration = checked_positive_duration_seconds(duration, "duration");
         }
         const auto duration_sec = int64_value(trade, "duration_sec", 0);
         if (duration_sec > 0) {
+            mark_expiry_form();
             signal.duration = checked_positive_duration_seconds(duration_sec, "duration_sec");
         }
         const auto expires_at_ms = int64_value(trade, "expires_at_ms", 0);
         if (expires_at_ms > 0) {
+            mark_expiry_form();
             if (expires_at_ms < 1000 || expires_at_ms % 1000 != 0) {
                 throw std::invalid_argument("expires_at_ms must be whole seconds.");
             }
             signal.expiry_time = expires_at_ms / 1000;
+            validate_absolute_seconds(signal.expiry_time, "expires_at_ms");
         }
         const auto expiry_time = int64_value(trade, "expiry_time", 0);
         if (expiry_time > 0) {
+            mark_expiry_form();
+            validate_absolute_seconds(expiry_time, "expiry_time");
             signal.expiry_time = expiry_time;
         }
     }

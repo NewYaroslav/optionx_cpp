@@ -211,6 +211,7 @@ TEST(BridgeProtocolServerConfig, RoundTripsAndValidates) {
     EXPECT_GT(restored.max_idempotency_key_bytes, 0u);
     EXPECT_GT(restored.max_operation_fingerprint_bytes, 0u);
     EXPECT_GT(restored.max_operation_cache_bytes, 0u);
+    EXPECT_GT(restored.operation_cache_retention_ms, 0);
     EXPECT_FALSE(restored.websocket_subprotocol.empty());
     EXPECT_TRUE(restored.require_websocket_subprotocol);
     EXPECT_GT(restored.max_ws_pending_messages, 0u);
@@ -582,12 +583,28 @@ TEST(BridgeProtocolServerBridge, RejectsInvalidDirectTradeExpiry) {
     subsecond_duration["params"]["trade"]["expiry"]["duration_ms"] = 500;
     const auto subsecond_duration_response =
         post_json(config, bridge.bound_http_port(), subsecond_duration);
+
+    auto past_absolute = trade_command("past-absolute", "idem-past-absolute");
+    past_absolute["params"]["trade"]["expiry"] = {
+        {"kind", "absolute"},
+        {"expires_at_ms", 1000}
+    };
+    const auto past_absolute_response =
+        post_json(config, bridge.bound_http_port(), past_absolute);
+
+    auto conflicting_expiry = trade_command("conflicting-expiry", "idem-conflicting-expiry");
+    conflicting_expiry["params"]["trade"]["expiry"]["expires_at_ms"] =
+        optionx::bridges::metatrader_file::detail::unix_time_ms() + 60000;
+    const auto conflicting_expiry_response =
+        post_json(config, bridge.bound_http_port(), conflicting_expiry);
     bridge.shutdown();
 
     EXPECT_EQ(missing_option_response.at("error").at("code").get<int>(), -32602);
     EXPECT_EQ(missing_expiry_response.at("error").at("code").get<int>(), -32602);
     EXPECT_EQ(zero_duration_response.at("error").at("code").get<int>(), -32602);
     EXPECT_EQ(subsecond_duration_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(past_absolute_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(conflicting_expiry_response.at("error").at("code").get<int>(), -32602);
 }
 
 TEST(BridgeProtocolServerBridge, AcceptsDocumentedSizingAndRoutingPlatformType) {
@@ -641,7 +658,7 @@ TEST(BridgeProtocolServerBridge, AcceptsDocumentedSizingAndRoutingPlatformType) 
     EXPECT_EQ(mm_group_name, "group-a");
 }
 
-TEST(BridgeProtocolServerBridge, FailsClosedWhenIdempotencyCacheIsFull) {
+TEST(BridgeProtocolServerBridge, EvictsCompletedOperationsWhenIdempotencyCacheIsFull) {
     namespace proto = optionx::bridges::protocol_v1;
 
     auto config = test_config();
@@ -671,10 +688,73 @@ TEST(BridgeProtocolServerBridge, FailsClosedWhenIdempotencyCacheIsFull) {
         config,
         bridge.bound_http_port(),
         trade_command("trade-cache-2", "idem-cache-2"));
-    const auto retry = post_json(
+    bridge.shutdown();
+
+    EXPECT_EQ(first.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(second.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(signal_count.load(), 2);
+}
+
+TEST(BridgeProtocolServerBridge, FailsClosedWhenOnlyInFlightOperationsCanBeEvicted) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+    config.dedupe_cache_size = 1;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool callback_entered = false;
+    bool release_callback = false;
+    std::atomic<int> signal_count{0};
+    bridge.on_signal_id() = []() { return optionx::SignalId{41}; };
+    bridge.on_trade_signal() = [&](std::unique_ptr<optionx::TradeSignal>) {
+        ++signal_count;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            callback_entered = true;
+        }
+        cv.notify_all();
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait_for(lock, std::chrono::seconds(5), [&release_callback]() {
+            return release_callback;
+        });
+    };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    nlohmann::json first;
+    std::thread first_thread([&]() {
+        first = post_json(
+            config,
+            bridge.bound_http_port(),
+            trade_command("trade-cache-1", "idem-cache-1"));
+    });
+
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(5), [&callback_entered]() {
+            return callback_entered;
+        }));
+    }
+
+    const auto second = post_json(
         config,
         bridge.bound_http_port(),
-        trade_command("trade-cache-1-retry", "idem-cache-1"));
+        trade_command("trade-cache-2", "idem-cache-2"));
+
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        release_callback = true;
+    }
+    cv.notify_all();
+    if (first_thread.joinable()) {
+        first_thread.join();
+    }
     bridge.shutdown();
 
     EXPECT_EQ(first.at("result").at("status").get<std::string>(), "accepted");
@@ -682,9 +762,6 @@ TEST(BridgeProtocolServerBridge, FailsClosedWhenIdempotencyCacheIsFull) {
     EXPECT_EQ(
         second.at("result").at("reason").at("code").get<std::string>(),
         "idempotency_cache_full");
-    EXPECT_EQ(
-        retry.at("result").at("operation_id").get<std::string>(),
-        first.at("result").at("operation_id").get<std::string>());
     EXPECT_EQ(signal_count.load(), 1);
 }
 
@@ -817,6 +894,50 @@ TEST(BridgeProtocolServerBridge, DistinguishesSmallScientificDecimalsInFingerpri
     EXPECT_EQ(
         second.at("result").at("reason").at("code").get<std::string>(),
         "idempotency_conflict");
+}
+
+TEST(BridgeProtocolServerBridge, CanonicalizesEquivalentDecimalRepresentations) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+    bridge.on_signal_id() = []() { return optionx::SignalId{57}; };
+    std::atomic<int> signal_count{0};
+    bridge.on_trade_signal() = [&signal_count](std::unique_ptr<optionx::TradeSignal>) {
+        ++signal_count;
+    };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    auto first_command = trade_command("decimal-a", "idem-decimal");
+    first_command["params"]["trade"]["amount"]["value"] = "0.10";
+    auto second_command = trade_command("decimal-b", "idem-decimal");
+    second_command["params"]["trade"]["amount"]["value"] = 0.1;
+    auto third_command = trade_command("decimal-c", "idem-decimal-one");
+    third_command["params"]["trade"]["amount"]["value"] = "1e0";
+    auto fourth_command = trade_command("decimal-d", "idem-decimal-one");
+    fourth_command["params"]["trade"]["amount"]["value"] = 1.0;
+
+    const auto first = post_json(config, bridge.bound_http_port(), first_command);
+    const auto second = post_json(config, bridge.bound_http_port(), second_command);
+    const auto third = post_json(config, bridge.bound_http_port(), third_command);
+    const auto fourth = post_json(config, bridge.bound_http_port(), fourth_command);
+    bridge.shutdown();
+
+    EXPECT_EQ(first.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(second.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(
+        second.at("result").at("operation_id").get<std::string>(),
+        first.at("result").at("operation_id").get<std::string>());
+    EXPECT_EQ(third.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(
+        fourth.at("result").at("operation_id").get<std::string>(),
+        third.at("result").at("operation_id").get<std::string>());
+    EXPECT_EQ(signal_count.load(), 2);
 }
 
 TEST(BridgeProtocolServerBridge, RegeneratesStreamIdOnRestart) {
@@ -1210,6 +1331,73 @@ TEST(BridgeProtocolServerBridge, RejectsUnsupportedWebSocketSubprotocol) {
 
     EXPECT_FALSE(opened);
     EXPECT_TRUE(failed);
+}
+
+TEST(BridgeProtocolServerBridge, RunWhileAlreadyRunningReturnsImmediately) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    std::atomic<bool> returned{false};
+    std::thread run_thread([&]() {
+        bridge.run();
+        returned.store(true);
+    });
+
+    for (int i = 0; i < 50 && !returned.load(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (!returned.load()) {
+        bridge.shutdown();
+    }
+    if (run_thread.joinable()) {
+        run_thread.join();
+    }
+    bridge.shutdown();
+
+    EXPECT_TRUE(returned.load());
+}
+
+TEST(BridgeProtocolServerBridge, ShutdownRacingStartupLeavesNoRunningTransport) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        proto::BridgeProtocolServerBridge bridge;
+        ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+        std::atomic<bool> run_entered{false};
+        std::thread run_thread([&]() {
+            run_entered.store(true);
+            bridge.run();
+        });
+        for (int i = 0; i < 50 && !run_entered.load(); ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+        bridge.shutdown();
+        if (run_thread.joinable()) {
+            run_thread.join();
+        }
+        for (int i = 0; i < 50 && bridge.bound_http_port() != 0; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        EXPECT_EQ(bridge.bound_http_port(), 0);
+
+        bridge.run();
+        ASSERT_TRUE(wait_for_http_port(bridge));
+        bridge.shutdown();
+    }
 }
 
 TEST(BridgeProtocolServerBridge, StatusCallbackExceptionDoesNotStopLifecycle) {

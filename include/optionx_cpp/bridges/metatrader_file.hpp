@@ -6,8 +6,10 @@
 /// \brief Includes MetaTrader file-transport bridge headers.
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cerrno>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cctype>

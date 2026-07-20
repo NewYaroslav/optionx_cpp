@@ -6,6 +6,7 @@
 /// \brief Includes Bridge Protocol v1 HTTP/WebSocket server headers.
 
 #include <atomic>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cstdint>

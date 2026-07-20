@@ -27,6 +27,7 @@ namespace optionx::bridges::protocol_v1 {
         std::size_t max_idempotency_key_bytes = 512; ///< Maximum logical idempotency key size.
         std::size_t max_operation_fingerprint_bytes = 64 * 1024; ///< Maximum canonical payload bytes.
         std::size_t max_operation_cache_bytes = 4 * 1024 * 1024; ///< Maximum in-memory result cache bytes.
+        std::int64_t operation_cache_retention_ms = 15 * 60 * 1000; ///< Completed result TTL.
         std::size_t max_ws_pending_messages = 64; ///< Pending outbound WebSocket messages per client.
         std::size_t max_ws_pending_bytes = 1024 * 1024; ///< Pending outbound WebSocket bytes per client.
         long content_timeout_seconds = 30; ///< HTTP content read timeout.
@@ -58,6 +59,7 @@ namespace optionx::bridges::protocol_v1 {
                 {"max_idempotency_key_bytes", max_idempotency_key_bytes},
                 {"max_operation_fingerprint_bytes", max_operation_fingerprint_bytes},
                 {"max_operation_cache_bytes", max_operation_cache_bytes},
+                {"operation_cache_retention_ms", operation_cache_retention_ms},
                 {"max_ws_pending_messages", max_ws_pending_messages},
                 {"max_ws_pending_bytes", max_ws_pending_bytes},
                 {"content_timeout_seconds", content_timeout_seconds},
@@ -110,6 +112,10 @@ namespace optionx::bridges::protocol_v1 {
             if (j.contains("max_operation_cache_bytes")) {
                 max_operation_cache_bytes =
                     j.at("max_operation_cache_bytes").get<std::size_t>();
+            }
+            if (j.contains("operation_cache_retention_ms")) {
+                operation_cache_retention_ms =
+                    j.at("operation_cache_retention_ms").get<std::int64_t>();
             }
             if (j.contains("max_ws_pending_messages")) {
                 max_ws_pending_messages = j.at("max_ws_pending_messages").get<std::size_t>();
@@ -195,6 +201,9 @@ namespace optionx::bridges::protocol_v1 {
             }
             if (max_operation_cache_bytes == 0) {
                 return {false, "Bridge Protocol v1 max_operation_cache_bytes must be positive."};
+            }
+            if (operation_cache_retention_ms <= 0) {
+                return {false, "Bridge Protocol v1 operation_cache_retention_ms must be positive."};
             }
             if (max_ws_pending_messages == 0) {
                 return {false, "Bridge Protocol v1 max_ws_pending_messages must be positive."};
