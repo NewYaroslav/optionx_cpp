@@ -131,6 +131,14 @@ must check both `active_transport_callbacks == 0` and closed admission while
 holding the same mutex; otherwise a new handler can enter between "saw zero"
 and the actual drain.
 
+Status and lifecycle callbacks are not always transport callbacks. If
+`shutdown()` is called from a non-transport callback while the runtime is already
+`Running`, recording `pending_shutdown` is not enough: there may be no transport
+scope destructor left to drain it. After recording the pending stop, immediately
+attempt the same generation-safe drain. If transport callbacks are still active,
+the drain should return and the last transport scope will retry it; if none are
+active, the async reaper can stop and join the transport threads.
+
 ## Starting Callbacks
 
 `SERVER_STARTED` is often emitted from the transport thread that runs

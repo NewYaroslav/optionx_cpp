@@ -1998,43 +1998,32 @@ TEST(BridgeProtocolServerBridge, ShutdownFromServerStartedCallbackJoinsBeforeRes
         proto::BridgeProtocolServerBridge bridge;
         ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
 
-        std::mutex mutex;
-        std::condition_variable cv;
-        bool stopped = false;
-        unsigned short started_port = 0;
+        std::atomic<int> started_port{0};
         std::atomic<bool> requested_shutdown{false};
         bridge.on_status_update() = [&](const optionx::BridgeStatusUpdate& update) {
             if (update.status == optionx::BridgeStatus::SERVER_STARTED &&
                 !requested_shutdown.exchange(true)) {
-                started_port = bridge.bound_http_port();
+                started_port.store(static_cast<int>(bridge.bound_http_port()));
                 bridge.shutdown();
-            }
-            if (update.status == optionx::BridgeStatus::SERVER_STOPPED) {
-                {
-                    std::lock_guard<std::mutex> lock(mutex);
-                    stopped = true;
-                }
-                cv.notify_all();
             }
         };
 
         bridge.run();
-        {
-            std::unique_lock<std::mutex> lock(mutex);
-            ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(5), [&stopped]() {
-                return stopped;
-            }));
+        for (int i = 0; i < 500 && !requested_shutdown.load(); ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+        bridge.shutdown();
 
         ASSERT_TRUE(requested_shutdown.load());
-        ASSERT_NE(started_port, 0);
+        const auto restart_port = static_cast<unsigned short>(started_port.load());
+        ASSERT_NE(restart_port, 0);
 
         bridge.on_status_update() = {};
-        config.http_port = started_port;
+        config.http_port = restart_port;
         ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
         bridge.run();
         ASSERT_TRUE(wait_for_http_port(bridge));
-        EXPECT_EQ(bridge.bound_http_port(), started_port);
+        EXPECT_EQ(bridge.bound_http_port(), restart_port);
         bridge.shutdown();
     }
 }

@@ -462,6 +462,7 @@ namespace optionx::bridges::protocol_v1 {
                 return;
             }
             if (async_finalizer) {
+                drain_pending_callback_shutdown(m_state);
                 return;
             }
 
