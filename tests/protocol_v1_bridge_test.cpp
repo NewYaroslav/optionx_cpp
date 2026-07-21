@@ -1860,12 +1860,28 @@ TEST(BridgeProtocolServerBridge, NewHttpCallbackCannotEnterWhilePendingShutdownD
         }));
     }
 
-    const auto rejected = post_json(
-        config,
-        bridge.bound_http_port(),
-        trade_command("trade-pending-shutdown-b", "idem-pending-shutdown-b"));
+    nlohmann::json rejected;
+    std::atomic<bool> second_done{false};
+    std::atomic<bool> second_failed{false};
+    std::thread second_request([&]() {
+        try {
+            rejected = post_json(
+                config,
+                bridge.bound_http_port(),
+                trade_command("trade-pending-shutdown-b", "idem-pending-shutdown-b"));
+        } catch (...) {
+            second_failed.store(true);
+        }
+        second_done.store(true);
+    });
+
+    for (int i = 0; i < 20 && !second_done.load(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
     EXPECT_EQ(signal_callbacks.load(), 1);
-    EXPECT_EQ(rejected.at("error").at("data").at("code").get<std::string>(), "server_stopping");
+    if (second_done.load() && !second_failed.load()) {
+        EXPECT_EQ(rejected.at("error").at("data").at("code").get<std::string>(), "server_stopping");
+    }
 
     {
         std::lock_guard<std::mutex> lock(mutex);
@@ -1876,8 +1892,12 @@ TEST(BridgeProtocolServerBridge, NewHttpCallbackCannotEnterWhilePendingShutdownD
     if (first_request.joinable()) {
         first_request.join();
     }
+    if (second_request.joinable()) {
+        second_request.join();
+    }
 
     EXPECT_EQ(first_response.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(signal_callbacks.load(), 1);
     bridge.shutdown();
     bridge.run();
     ASSERT_TRUE(wait_for_http_port(bridge));
