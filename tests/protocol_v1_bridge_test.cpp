@@ -1810,6 +1810,80 @@ TEST(BridgeProtocolServerBridge, ShutdownInitiatedByHttpWorkerDoesNotDeadlock) {
     bridge.shutdown();
 }
 
+TEST(BridgeProtocolServerBridge, NewHttpCallbackCannotEnterWhilePendingShutdownDrains) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool first_callback_entered = false;
+    bool release_first_callback = false;
+    std::atomic<int> signal_callbacks{0};
+    bridge.on_signal_id() = []() { return optionx::SignalId{94}; };
+    bridge.on_trade_signal() = [&](std::unique_ptr<optionx::TradeSignal>) {
+        const auto count = ++signal_callbacks;
+        if (count != 1) {
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            first_callback_entered = true;
+        }
+        cv.notify_all();
+        bridge.shutdown();
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait_for(lock, std::chrono::seconds(5), [&release_first_callback]() {
+            return release_first_callback;
+        });
+    };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    nlohmann::json first_response;
+    std::thread first_request([&]() {
+        first_response = post_json(
+            config,
+            bridge.bound_http_port(),
+            trade_command("trade-pending-shutdown-a", "idem-pending-shutdown-a"));
+    });
+
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(5), [&first_callback_entered]() {
+            return first_callback_entered;
+        }));
+    }
+
+    const auto rejected = post_json(
+        config,
+        bridge.bound_http_port(),
+        trade_command("trade-pending-shutdown-b", "idem-pending-shutdown-b"));
+    EXPECT_EQ(signal_callbacks.load(), 1);
+    EXPECT_EQ(rejected.at("error").at("data").at("code").get<std::string>(), "server_stopping");
+
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        release_first_callback = true;
+    }
+    cv.notify_all();
+
+    if (first_request.joinable()) {
+        first_request.join();
+    }
+
+    EXPECT_EQ(first_response.at("result").at("status").get<std::string>(), "accepted");
+    bridge.shutdown();
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+    bridge.shutdown();
+}
+
 TEST(BridgeProtocolServerBridge, ShutdownRacingStartupLeavesNoRunningTransport) {
     namespace proto = optionx::bridges::protocol_v1;
 

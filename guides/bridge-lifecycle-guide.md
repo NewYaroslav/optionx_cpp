@@ -116,14 +116,20 @@ The response can be lost if `server.stop()` wins the race.
 Preferred pattern:
 
 1. `shutdown()` inside a callback records a pending shutdown for the current
-   generation.
-2. The transport handler writes its response or enqueues its WebSocket reply.
-3. The outer callback scope drains the pending shutdown after all active
-   callback scopes for that runtime have unwound.
-4. Stop and join happen in a reaper thread or in the external shutdown caller.
+   generation and closes admission for new transport callbacks.
+2. New HTTP/WS handlers that arrive after admission closes must not invoke user
+   callbacks. They should return a documented stopping response or close.
+3. Already admitted transport handlers write their responses or enqueue their
+   WebSocket replies.
+4. The last admitted transport scope drains the pending shutdown after all
+   active transport scopes for that runtime have unwound.
+5. Stop and join happen in a reaper thread or in the external shutdown caller.
 
-Track active callback scopes in shared runtime state, not just in
-`thread_local`, because HTTP servers can run multiple worker threads.
+Track active transport callback scopes in shared runtime state, not just in
+`thread_local`, because HTTP servers can run multiple worker threads. The drain
+must check both `active_transport_callbacks == 0` and closed admission while
+holding the same mutex; otherwise a new handler can enter between "saw zero"
+and the actual drain.
 
 ## Starting Callbacks
 
@@ -230,6 +236,8 @@ Add tests for these scenarios when implementing a bridge transport:
 - Two concurrent external `shutdown()` calls do not publish `Stopped` early.
 - `shutdown()` from an HTTP request callback returns without deadlock and still
   lets the HTTP response reach the client.
+- New HTTP/WS command handlers cannot enter user callbacks after callback
+  shutdown has closed transport admission.
 - `run()` and `shutdown()` from a request callback do not deadlock.
 - `shutdown()` from `SERVER_STARTED` joins the old generation before immediate
   restart on the same fixed port.
@@ -257,4 +265,3 @@ When reviewing bridge code, ask:
 - Can an old callback affect a new generation?
 - Are in-flight operations completed or failed closed during shutdown?
 - Do tests prove the lifecycle behavior, or do they only prove that CI was lucky?
-

@@ -81,7 +81,7 @@ namespace optionx::bridges::protocol_v1 {
             std::deque<std::string> operation_order;
             std::string stream_id;
             std::size_t operation_cache_bytes = 0;
-            std::size_t active_callbacks = 0;
+            std::size_t active_transport_callbacks = 0;
             std::uint64_t event_seq = 0;
             std::uint64_t lifecycle_generation = 0;
             std::uint64_t stopping_generation = 0;
@@ -91,9 +91,10 @@ namespace optionx::bridges::protocol_v1 {
             bool async_shutdown_finalizer = false;
             bool stop_notified = false;
             // A callback may request shutdown while its transport handler still
-            // needs to write a response. Defer stop/join until all callback
-            // scopes for this runtime generation have unwound.
+            // needs to write a response. Close new transport callback admission
+            // and defer stop/join until admitted handlers have unwound.
             bool pending_callback_shutdown = false;
+            bool transport_callback_admission_closed = false;
             std::uint64_t pending_callback_shutdown_generation = 0;
         };
 
@@ -106,8 +107,6 @@ namespace optionx::bridges::protocol_v1 {
                   m_identity(m_state.get()) {
                 if (m_identity) {
                     s_callback_stack.push_back(m_identity);
-                    std::lock_guard<std::mutex> lock(m_state->mutex);
-                    ++m_state->active_callbacks;
                 }
             }
 
@@ -127,22 +126,73 @@ namespace optionx::bridges::protocol_v1 {
                         s_callback_stack.erase(std::next(it).base());
                     }
                 }
+            }
+
+        private:
+            std::shared_ptr<RuntimeState> m_state;
+            const RuntimeState* m_identity = nullptr;
+        };
+
+        class TransportCallbackScope final {
+        public:
+            explicit TransportCallbackScope(std::shared_ptr<RuntimeState> state)
+                : m_state(std::move(state)),
+                  m_identity(m_state.get()) {
+                if (!m_identity) {
+                    return;
+                }
+                {
+                    std::lock_guard<std::mutex> lock(m_state->mutex);
+                    if (m_state->transport_callback_admission_closed) {
+                        return;
+                    }
+                    ++m_state->active_transport_callbacks;
+                    m_admitted = true;
+                }
+                s_callback_stack.push_back(m_identity);
+            }
+
+            ~TransportCallbackScope() {
+                if (!m_admitted) {
+                    return;
+                }
+                if (!s_callback_stack.empty() &&
+                    s_callback_stack.back() == m_identity) {
+                    s_callback_stack.pop_back();
+                } else {
+                    const auto it = std::find(
+                        s_callback_stack.rbegin(),
+                        s_callback_stack.rend(),
+                        m_identity);
+                    if (it != s_callback_stack.rend()) {
+                        s_callback_stack.erase(std::next(it).base());
+                    }
+                }
+
                 bool should_drain = false;
                 {
                     std::lock_guard<std::mutex> lock(m_state->mutex);
-                    if (m_state->active_callbacks > 0) {
-                        --m_state->active_callbacks;
+                    if (m_state->active_transport_callbacks > 0) {
+                        --m_state->active_transport_callbacks;
                     }
-                    should_drain = m_state->active_callbacks == 0;
+                    should_drain =
+                        m_state->active_transport_callbacks == 0 &&
+                        m_state->transport_callback_admission_closed &&
+                        m_state->pending_callback_shutdown;
                 }
                 if (should_drain) {
                     BridgeProtocolServerBridge::drain_pending_callback_shutdown(m_state);
                 }
             }
 
+            bool admitted() const noexcept {
+                return m_admitted;
+            }
+
         private:
             std::shared_ptr<RuntimeState> m_state;
             const RuntimeState* m_identity = nullptr;
+            bool m_admitted = false;
         };
 
     public:
@@ -294,6 +344,7 @@ namespace optionx::bridges::protocol_v1 {
                 m_state->stream_id = make_stream_id();
                 m_state->stop_notified = false;
                 m_state->pending_callback_shutdown = false;
+                m_state->transport_callback_admission_closed = false;
                 m_state->pending_callback_shutdown_generation = 0;
             }
 
@@ -377,6 +428,7 @@ namespace optionx::bridges::protocol_v1 {
                 if (is_inside_callback() &&
                     m_state->phase == RuntimePhase::Starting) {
                     m_state->pending_callback_shutdown = true;
+                    m_state->transport_callback_admission_closed = true;
                     m_state->pending_callback_shutdown_generation =
                         m_state->lifecycle_generation;
                     m_state->lifecycle_cv.notify_all();
@@ -389,6 +441,7 @@ namespace optionx::bridges::protocol_v1 {
                 m_state->phase = RuntimePhase::Stopping;
                 m_state->stopping_generation = stopping_generation;
                 m_state->async_shutdown_finalizer = async_finalizer;
+                m_state->transport_callback_admission_closed = true;
                 if (async_finalizer) {
                     m_state->pending_callback_shutdown = true;
                     m_state->pending_callback_shutdown_generation = stopping_generation;
@@ -480,6 +533,8 @@ namespace optionx::bridges::protocol_v1 {
             {
                 std::lock_guard<std::mutex> lock(state->mutex);
                 if (!state->pending_callback_shutdown ||
+                    !state->transport_callback_admission_closed ||
+                    state->active_transport_callbacks != 0 ||
                     state->phase != RuntimePhase::Stopping ||
                     state->stopping_generation !=
                         state->pending_callback_shutdown_generation) {
@@ -565,6 +620,7 @@ namespace optionx::bridges::protocol_v1 {
                     state->stopping_ws_thread_id = std::thread::id{};
                     state->async_shutdown_finalizer = false;
                     state->pending_callback_shutdown = false;
+                    state->transport_callback_admission_closed = false;
                     state->pending_callback_shutdown_generation = 0;
                     state->lifecycle_cv.notify_all();
                 }
@@ -942,7 +998,15 @@ namespace optionx::bridges::protocol_v1 {
                 [this, config](
                     std::shared_ptr<HttpServer::Response> response,
                     std::shared_ptr<HttpServer::Request> request) {
-                    CallbackScope scope(m_state);
+                    TransportCallbackScope scope(m_state);
+                    if (!scope.admitted()) {
+                        write_http_json(
+                            response,
+                            SimpleWeb::StatusCode::server_error_service_unavailable,
+                            server_stopping_response(),
+                            *config);
+                        return;
+                    }
                     handle_http_command(config, response, request);
                 };
         }
@@ -967,7 +1031,11 @@ namespace optionx::bridges::protocol_v1 {
                 };
             endpoint.on_open =
                 [this, config](std::shared_ptr<WsServer::Connection> connection) {
-                    CallbackScope scope(m_state);
+                    TransportCallbackScope scope(m_state);
+                    if (!scope.admitted()) {
+                        connection->send_close(1001, "server_stopping");
+                        return;
+                    }
                     if (!detail::authorized(*config, connection->header)) {
                         connection->send_close(1008, "authorization_failed");
                         return;
@@ -1002,7 +1070,12 @@ namespace optionx::bridges::protocol_v1 {
                 [this, config](
                     std::shared_ptr<WsServer::Connection> connection,
                     std::shared_ptr<WsServer::InMessage> message) {
-                    CallbackScope scope(m_state);
+                    TransportCallbackScope scope(m_state);
+                    if (!scope.admitted()) {
+                        send_ws_text(config, connection, server_stopping_response().dump(-1));
+                        connection->send_close(1001, "server_stopping");
+                        return;
+                    }
                     try {
                         const auto body = message->string();
                         const auto response = handle_message_body(*config, body);
@@ -1766,6 +1839,14 @@ namespace optionx::bridges::protocol_v1 {
                     {"message", "Bridge Protocol v1 server stopped before dispatch completed."}
                 }}
             };
+        }
+
+        static nlohmann::json server_stopping_response() {
+            return detail::jsonrpc_error(
+                nullptr,
+                detail::jsonrpc_internal_error,
+                "Bridge Protocol v1 server is stopping.",
+                nlohmann::json{{"code", "server_stopping"}});
         }
 
         static std::size_t operation_byte_size(
