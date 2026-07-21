@@ -81,6 +81,7 @@ namespace optionx::bridges::protocol_v1 {
             std::deque<std::string> operation_order;
             std::string stream_id;
             std::size_t operation_cache_bytes = 0;
+            std::size_t active_callbacks = 0;
             std::uint64_t event_seq = 0;
             std::uint64_t lifecycle_generation = 0;
             std::uint64_t stopping_generation = 0;
@@ -89,34 +90,59 @@ namespace optionx::bridges::protocol_v1 {
             RuntimePhase phase = RuntimePhase::Stopped;
             bool async_shutdown_finalizer = false;
             bool stop_notified = false;
+            // A callback may request shutdown while its transport handler still
+            // needs to write a response. Defer stop/join until all callback
+            // scopes for this runtime generation have unwound.
+            bool pending_callback_shutdown = false;
+            std::uint64_t pending_callback_shutdown_generation = 0;
         };
 
-        inline static thread_local std::vector<const BridgeProtocolServerBridge*> s_callback_stack;
+        inline static thread_local std::vector<const RuntimeState*> s_callback_stack;
 
         class CallbackScope final {
         public:
-            explicit CallbackScope(const BridgeProtocolServerBridge* owner)
-                : m_owner(owner) {
-                s_callback_stack.push_back(owner);
+            explicit CallbackScope(std::shared_ptr<RuntimeState> state)
+                : m_state(std::move(state)),
+                  m_identity(m_state.get()) {
+                if (m_identity) {
+                    s_callback_stack.push_back(m_identity);
+                    std::lock_guard<std::mutex> lock(m_state->mutex);
+                    ++m_state->active_callbacks;
+                }
             }
 
             ~CallbackScope() {
-                if (!s_callback_stack.empty() &&
-                    s_callback_stack.back() == m_owner) {
-                    s_callback_stack.pop_back();
+                if (!m_identity) {
                     return;
                 }
-                const auto it = std::find(
-                    s_callback_stack.rbegin(),
-                    s_callback_stack.rend(),
-                    m_owner);
-                if (it != s_callback_stack.rend()) {
-                    s_callback_stack.erase(std::next(it).base());
+                if (!s_callback_stack.empty() &&
+                    s_callback_stack.back() == m_identity) {
+                    s_callback_stack.pop_back();
+                } else {
+                    const auto it = std::find(
+                        s_callback_stack.rbegin(),
+                        s_callback_stack.rend(),
+                        m_identity);
+                    if (it != s_callback_stack.rend()) {
+                        s_callback_stack.erase(std::next(it).base());
+                    }
+                }
+                bool should_drain = false;
+                {
+                    std::lock_guard<std::mutex> lock(m_state->mutex);
+                    if (m_state->active_callbacks > 0) {
+                        --m_state->active_callbacks;
+                    }
+                    should_drain = m_state->active_callbacks == 0;
+                }
+                if (should_drain) {
+                    BridgeProtocolServerBridge::drain_pending_callback_shutdown(m_state);
                 }
             }
 
         private:
-            const BridgeProtocolServerBridge* m_owner;
+            std::shared_ptr<RuntimeState> m_state;
+            const RuntimeState* m_identity = nullptr;
         };
 
     public:
@@ -267,6 +293,8 @@ namespace optionx::bridges::protocol_v1 {
                 m_state->event_seq = 0;
                 m_state->stream_id = make_stream_id();
                 m_state->stop_notified = false;
+                m_state->pending_callback_shutdown = false;
+                m_state->pending_callback_shutdown_generation = 0;
             }
 
             try {
@@ -344,37 +372,19 @@ namespace optionx::bridges::protocol_v1 {
                 m_state->phase = RuntimePhase::Stopping;
                 m_state->stopping_generation = stopping_generation;
                 m_state->async_shutdown_finalizer = async_finalizer;
-                m_state->stopping_http_thread_id = m_state->http_thread.joinable()
-                    ? m_state->http_thread.get_id()
-                    : std::thread::id{};
-                m_state->stopping_ws_thread_id = m_state->ws_thread.joinable()
-                    ? m_state->ws_thread.get_id()
-                    : std::thread::id{};
-                http_server = m_state->http_server;
-                ws_server = m_state->ws_server;
-                m_state->http_server.reset();
-                m_state->ws_server.reset();
-                m_state->ws_connections.clear();
-                if (m_state->config) {
-                    fail_dispatching_operations_locked(*m_state->config, server_stopped_result());
-                }
-                if (!m_state->stop_notified) {
-                    m_state->stop_notified = true;
-                    notify_stopped = true;
-                }
-                if (m_state->http_thread.joinable() &&
-                    m_state->http_thread.get_id() != current_id) {
-                    http_thread = std::move(m_state->http_thread);
-                } else if (m_state->http_thread.joinable() &&
-                           m_state->http_thread.get_id() == current_id) {
-                    m_state->http_thread.detach();
-                }
-                if (m_state->ws_thread.joinable() &&
-                    m_state->ws_thread.get_id() != current_id) {
-                    ws_thread = std::move(m_state->ws_thread);
-                } else if (m_state->ws_thread.joinable() &&
-                           m_state->ws_thread.get_id() == current_id) {
-                    m_state->ws_thread.detach();
+                if (async_finalizer) {
+                    m_state->pending_callback_shutdown = true;
+                    m_state->pending_callback_shutdown_generation = stopping_generation;
+                    m_state->lifecycle_cv.notify_all();
+                } else {
+                    collect_shutdown_handles_locked(
+                        m_state,
+                        current_id,
+                        http_server,
+                        ws_server,
+                        http_thread,
+                        ws_thread,
+                        notify_stopped);
                 }
             }
 
@@ -382,24 +392,6 @@ namespace optionx::bridges::protocol_v1 {
                 return;
             }
             if (async_finalizer) {
-                std::thread(
-                    [this,
-                     state = m_state,
-                     http_server = std::move(http_server),
-                     ws_server = std::move(ws_server),
-                     http_thread = std::move(http_thread),
-                     ws_thread = std::move(ws_thread),
-                     notify_stopped,
-                     stopping_generation]() mutable {
-                        finalize_shutdown(
-                            state,
-                            std::move(http_server),
-                            std::move(ws_server),
-                            std::move(http_thread),
-                            std::move(ws_thread),
-                            notify_stopped,
-                            stopping_generation);
-                    }).detach();
                 return;
             }
 
@@ -413,7 +405,102 @@ namespace optionx::bridges::protocol_v1 {
                 stopping_generation);
         }
 
-        void finalize_shutdown(
+        static void collect_shutdown_handles_locked(
+                const std::shared_ptr<RuntimeState>& state,
+                const std::thread::id current_id,
+                std::shared_ptr<HttpServer>& http_server,
+                std::shared_ptr<WsServer>& ws_server,
+                std::thread& http_thread,
+                std::thread& ws_thread,
+                bool& notify_stopped) {
+            state->stopping_http_thread_id = state->http_thread.joinable()
+                ? state->http_thread.get_id()
+                : std::thread::id{};
+            state->stopping_ws_thread_id = state->ws_thread.joinable()
+                ? state->ws_thread.get_id()
+                : std::thread::id{};
+            http_server = state->http_server;
+            ws_server = state->ws_server;
+            state->http_server.reset();
+            state->ws_server.reset();
+            state->ws_connections.clear();
+            if (state->config) {
+                fail_dispatching_operations_locked(
+                    state,
+                    *state->config,
+                    server_stopped_result());
+            }
+            if (!state->stop_notified) {
+                state->stop_notified = true;
+                notify_stopped = true;
+            }
+            if (state->http_thread.joinable() &&
+                state->http_thread.get_id() != current_id) {
+                http_thread = std::move(state->http_thread);
+            } else if (state->http_thread.joinable() &&
+                       state->http_thread.get_id() == current_id) {
+                state->http_thread.detach();
+            }
+            if (state->ws_thread.joinable() &&
+                state->ws_thread.get_id() != current_id) {
+                ws_thread = std::move(state->ws_thread);
+            } else if (state->ws_thread.joinable() &&
+                       state->ws_thread.get_id() == current_id) {
+                state->ws_thread.detach();
+            }
+        }
+
+        static void drain_pending_callback_shutdown(
+                const std::shared_ptr<RuntimeState>& state) {
+            std::shared_ptr<HttpServer> http_server;
+            std::shared_ptr<WsServer> ws_server;
+            std::thread http_thread;
+            std::thread ws_thread;
+            bool notify_stopped = false;
+            std::uint64_t stopping_generation = 0;
+            const auto current_id = std::this_thread::get_id();
+
+            {
+                std::lock_guard<std::mutex> lock(state->mutex);
+                if (!state->pending_callback_shutdown ||
+                    state->phase != RuntimePhase::Stopping ||
+                    state->stopping_generation !=
+                        state->pending_callback_shutdown_generation) {
+                    return;
+                }
+                stopping_generation = state->pending_callback_shutdown_generation;
+                state->pending_callback_shutdown = false;
+                state->pending_callback_shutdown_generation = 0;
+                collect_shutdown_handles_locked(
+                    state,
+                    current_id,
+                    http_server,
+                    ws_server,
+                    http_thread,
+                    ws_thread,
+                    notify_stopped);
+            }
+
+            std::thread(
+                [state,
+                 http_server = std::move(http_server),
+                 ws_server = std::move(ws_server),
+                 http_thread = std::move(http_thread),
+                 ws_thread = std::move(ws_thread),
+                 notify_stopped,
+                 stopping_generation]() mutable {
+                    finalize_shutdown(
+                        state,
+                        std::move(http_server),
+                        std::move(ws_server),
+                        std::move(http_thread),
+                        std::move(ws_thread),
+                        notify_stopped,
+                        stopping_generation);
+                }).detach();
+        }
+
+        static void finalize_shutdown(
                 const std::shared_ptr<RuntimeState>& state,
                 std::shared_ptr<HttpServer> http_server,
                 std::shared_ptr<WsServer> ws_server,
@@ -435,7 +522,7 @@ namespace optionx::bridges::protocol_v1 {
             }
 
             if (notify_stopped) {
-                notify_status(BridgeStatus::SERVER_STOPPED, {});
+                notify_status_from_state(state, BridgeStatus::SERVER_STOPPED, {});
             }
 
             {
@@ -447,6 +534,8 @@ namespace optionx::bridges::protocol_v1 {
                     state->stopping_http_thread_id = std::thread::id{};
                     state->stopping_ws_thread_id = std::thread::id{};
                     state->async_shutdown_finalizer = false;
+                    state->pending_callback_shutdown = false;
+                    state->pending_callback_shutdown_generation = 0;
                     state->lifecycle_cv.notify_all();
                 }
             }
@@ -460,7 +549,7 @@ namespace optionx::bridges::protocol_v1 {
             return std::find(
                 s_callback_stack.begin(),
                 s_callback_stack.end(),
-                this) != s_callback_stack.end();
+                m_state.get()) != s_callback_stack.end();
         }
 
         std::shared_ptr<BridgeProtocolServerConfig> get_config() const {
@@ -635,14 +724,26 @@ namespace optionx::bridges::protocol_v1 {
                 BridgeStatus status,
                 std::string connection_id,
                 std::string message = {}) const {
+            notify_status_from_state(
+                m_state,
+                status,
+                std::move(connection_id),
+                std::move(message));
+        }
+
+        static void notify_status_from_state(
+                const std::shared_ptr<RuntimeState>& state,
+                BridgeStatus status,
+                std::string connection_id,
+                std::string message = {}) {
             bridge_status_callback_t callback;
             {
-                std::lock_guard<std::mutex> lock(m_state->mutex);
-                callback = m_state->status_callback;
+                std::lock_guard<std::mutex> lock(state->mutex);
+                callback = state->status_callback;
             }
             if (callback) {
                 try {
-                    CallbackScope scope(this);
+                    CallbackScope scope(state);
                     callback(BridgeStatusUpdate{
                         status,
                         std::move(connection_id),
@@ -661,7 +762,7 @@ namespace optionx::bridges::protocol_v1 {
             }
             if (callback) {
                 try {
-                    CallbackScope scope(this);
+                    CallbackScope scope(m_state);
                     callback(report);
                 } catch (...) {
                 }
@@ -765,7 +866,7 @@ namespace optionx::bridges::protocol_v1 {
                 [this, config](
                     std::shared_ptr<HttpServer::Response> response,
                     std::shared_ptr<HttpServer::Request>) {
-                    CallbackScope scope(this);
+                    CallbackScope scope(m_state);
                     write_http_json(
                         response,
                         SimpleWeb::StatusCode::success_ok,
@@ -782,7 +883,6 @@ namespace optionx::bridges::protocol_v1 {
                 [config](
                     std::shared_ptr<HttpServer::Response> response,
                     std::shared_ptr<HttpServer::Request>) {
-                    CallbackScope scope(nullptr);
                     write_http_json(
                         response,
                         SimpleWeb::StatusCode::success_ok,
@@ -794,7 +894,7 @@ namespace optionx::bridges::protocol_v1 {
                 [this, config](
                     std::shared_ptr<HttpServer::Response> response,
                     std::shared_ptr<HttpServer::Request> request) {
-                    CallbackScope scope(this);
+                    CallbackScope scope(m_state);
                     handle_http_command(config, response, request);
                 };
         }
@@ -819,7 +919,7 @@ namespace optionx::bridges::protocol_v1 {
                 };
             endpoint.on_open =
                 [this, config](std::shared_ptr<WsServer::Connection> connection) {
-                    CallbackScope scope(this);
+                    CallbackScope scope(m_state);
                     if (!detail::authorized(*config, connection->header)) {
                         connection->send_close(1008, "authorization_failed");
                         return;
@@ -834,7 +934,7 @@ namespace optionx::bridges::protocol_v1 {
                 };
             endpoint.on_close =
                 [this](std::shared_ptr<WsServer::Connection> connection, int, const std::string&) {
-                    CallbackScope scope(this);
+                    CallbackScope scope(m_state);
                     {
                         std::lock_guard<std::mutex> lock(m_state->mutex);
                         m_state->ws_connections.erase(connection.get());
@@ -843,7 +943,7 @@ namespace optionx::bridges::protocol_v1 {
                 };
             endpoint.on_error =
                 [this](std::shared_ptr<WsServer::Connection> connection, const SimpleWeb::error_code& ec) {
-                    CallbackScope scope(this);
+                    CallbackScope scope(m_state);
                     {
                         std::lock_guard<std::mutex> lock(m_state->mutex);
                         m_state->ws_connections.erase(connection.get());
@@ -854,7 +954,7 @@ namespace optionx::bridges::protocol_v1 {
                 [this, config](
                     std::shared_ptr<WsServer::Connection> connection,
                     std::shared_ptr<WsServer::InMessage> message) {
-                    CallbackScope scope(this);
+                    CallbackScope scope(m_state);
                     try {
                         const auto body = message->string();
                         const auto response = handle_message_body(*config, body);
@@ -1422,7 +1522,7 @@ namespace optionx::bridges::protocol_v1 {
                 }
 
                 const auto byte_size = operation_byte_size(operation_key, fingerprint, result);
-                prune_completed_operations_locked(config, byte_size, 1);
+                prune_completed_operations_locked(m_state, config, byte_size, 1);
                 if (m_state->operations.size() >= config.dedupe_cache_size) {
                     return detail::jsonrpc_result(id, idempotency_cache_full_result());
                 }
@@ -1627,18 +1727,20 @@ namespace optionx::bridges::protocol_v1 {
             return operation_key.size() + fingerprint.size() + result.dump(-1).size();
         }
 
-        void touch_operation_locked(const std::string& operation_key) {
+        static void touch_operation_locked(
+                const std::shared_ptr<RuntimeState>& state,
+                const std::string& operation_key) {
             const auto it = std::find(
-                m_state->operation_order.begin(),
-                m_state->operation_order.end(),
+                state->operation_order.begin(),
+                state->operation_order.end(),
                 operation_key);
-            if (it == m_state->operation_order.end()) {
-                m_state->operation_order.push_back(operation_key);
+            if (it == state->operation_order.end()) {
+                state->operation_order.push_back(operation_key);
                 return;
             }
             auto key = std::move(*it);
-            m_state->operation_order.erase(it);
-            m_state->operation_order.push_back(std::move(key));
+            state->operation_order.erase(it);
+            state->operation_order.push_back(std::move(key));
         }
 
         bool try_cached_operation_response_locked(
@@ -1648,7 +1750,7 @@ namespace optionx::bridges::protocol_v1 {
                 const std::string& fingerprint,
                 const std::string& idempotency_key,
                 nlohmann::json& response) {
-            prune_completed_operations_locked(config);
+            prune_completed_operations_locked(m_state, config);
             const auto existing = m_state->operations.find(operation_key);
             if (existing == m_state->operations.end()) {
                 return false;
@@ -1664,7 +1766,7 @@ namespace optionx::bridges::protocol_v1 {
                     operation_in_progress_result(config, idempotency_key));
                 return true;
             }
-            touch_operation_locked(operation_key);
+            touch_operation_locked(m_state, operation_key);
             response = detail::jsonrpc_result(id, existing->second.result);
             return true;
         }
@@ -1678,6 +1780,7 @@ namespace optionx::bridges::protocol_v1 {
             const auto byte_size = operation_byte_size(operation_key, fingerprint, result);
             auto existing = m_state->operations.find(operation_key);
             prune_completed_operations_locked(
+                m_state,
                 config,
                 byte_size,
                 existing == m_state->operations.end() ? 1 : 0);
@@ -1722,7 +1825,7 @@ namespace optionx::bridges::protocol_v1 {
                 existing->second.byte_size = byte_size;
                 existing->second.completed_at_ms = metatrader_file::detail::unix_time_ms();
                 existing->second.dispatching = false;
-                touch_operation_locked(operation_key);
+                touch_operation_locked(m_state, operation_key);
                 if (byte_size > config.max_operation_cache_bytes) {
                     m_state->operation_cache_bytes -= existing->second.byte_size;
                     m_state->operations.erase(existing);
@@ -1735,14 +1838,15 @@ namespace optionx::bridges::protocol_v1 {
                     }
                     return;
                 }
-                prune_completed_operations_locked(config);
+                prune_completed_operations_locked(m_state, config);
             }
         }
 
-        void fail_dispatching_operations_locked(
+        static void fail_dispatching_operations_locked(
+                const std::shared_ptr<RuntimeState>& state,
                 const BridgeProtocolServerConfig& config,
                 const nlohmann::json& result) {
-            for (auto& item : m_state->operations) {
+            for (auto& item : state->operations) {
                 auto& operation = item.second;
                 if (!operation.dispatching) {
                     continue;
@@ -1751,70 +1855,72 @@ namespace optionx::bridges::protocol_v1 {
                     item.first,
                     operation.fingerprint,
                     result);
-                m_state->operation_cache_bytes =
-                    m_state->operation_cache_bytes - operation.byte_size + byte_size;
+                state->operation_cache_bytes =
+                    state->operation_cache_bytes - operation.byte_size + byte_size;
                 operation.result = result;
                 operation.byte_size = byte_size;
                 operation.completed_at_ms = metatrader_file::detail::unix_time_ms();
                 operation.dispatching = false;
             }
-            prune_completed_operations_locked(config);
+            prune_completed_operations_locked(state, config);
         }
 
-        bool evict_oldest_completed_operation_locked() {
-            for (auto it = m_state->operation_order.begin();
-                 it != m_state->operation_order.end();) {
+        static bool evict_oldest_completed_operation_locked(
+                const std::shared_ptr<RuntimeState>& state) {
+            for (auto it = state->operation_order.begin();
+                 it != state->operation_order.end();) {
                 const auto& key = *it;
-                auto existing = m_state->operations.find(key);
-                if (existing == m_state->operations.end()) {
-                    it = m_state->operation_order.erase(it);
+                auto existing = state->operations.find(key);
+                if (existing == state->operations.end()) {
+                    it = state->operation_order.erase(it);
                     continue;
                 }
                 if (existing->second.dispatching) {
                     ++it;
                     continue;
                 }
-                m_state->operation_cache_bytes -= existing->second.byte_size;
-                m_state->operations.erase(existing);
-                m_state->operation_order.erase(it);
+                state->operation_cache_bytes -= existing->second.byte_size;
+                state->operations.erase(existing);
+                state->operation_order.erase(it);
                 return true;
             }
             return false;
         }
 
-        void prune_completed_operations_locked(
+        static void prune_completed_operations_locked(
+                const std::shared_ptr<RuntimeState>& state,
                 const BridgeProtocolServerConfig& config,
                 const std::size_t required_bytes = 0,
                 const std::size_t required_records = 0) {
             const auto now = metatrader_file::detail::unix_time_ms();
-            for (auto it = m_state->operation_order.begin(); it != m_state->operation_order.end();) {
-                auto existing = m_state->operations.find(*it);
-                if (existing == m_state->operations.end()) {
-                    it = m_state->operation_order.erase(it);
+            for (auto it = state->operation_order.begin(); it != state->operation_order.end();) {
+                auto existing = state->operations.find(*it);
+                if (existing == state->operations.end()) {
+                    it = state->operation_order.erase(it);
                     continue;
                 }
                 const auto& operation = existing->second;
                 if (!operation.dispatching &&
                     operation.completed_at_ms > 0 &&
                     now - operation.completed_at_ms >= config.operation_cache_retention_ms) {
-                    m_state->operation_cache_bytes -= operation.byte_size;
-                    m_state->operations.erase(existing);
-                    it = m_state->operation_order.erase(it);
+                    state->operation_cache_bytes -= operation.byte_size;
+                    state->operations.erase(existing);
+                    it = state->operation_order.erase(it);
                     continue;
                 }
                 ++it;
             }
 
-            while (m_state->operations.size() + required_records >
+            while (state->operations.size() + required_records >
                    config.dedupe_cache_size) {
-                if (!evict_oldest_completed_operation_locked()) {
+                if (!evict_oldest_completed_operation_locked(state)) {
                     break;
                 }
             }
             while (required_bytes <= config.max_operation_cache_bytes &&
-                   m_state->operation_cache_bytes >
+                   state->operation_cache_bytes >
                        config.max_operation_cache_bytes - required_bytes) {
-                if (!evict_oldest_completed_operation_locked()) {
+                if (!evict_oldest_completed_operation_locked(state)) {
                     break;
                 }
             }
