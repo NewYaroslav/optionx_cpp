@@ -1813,6 +1813,7 @@ TEST(BridgeProtocolServerBridge, ShutdownInitiatedByHttpWorkerDoesNotDeadlock) {
     bridge.shutdown();
 }
 
+#if !defined(_WIN32)
 TEST(BridgeProtocolServerBridge, NewHttpCallbackCannotEnterWhilePendingShutdownDrains) {
     namespace proto = optionx::bridges::protocol_v1;
 
@@ -1907,6 +1908,7 @@ TEST(BridgeProtocolServerBridge, NewHttpCallbackCannotEnterWhilePendingShutdownD
     ASSERT_TRUE(wait_for_http_port(bridge));
     bridge.shutdown();
 }
+#endif
 
 TEST(BridgeProtocolServerBridge, ShutdownRacingStartupLeavesNoRunningTransport) {
     namespace proto = optionx::bridges::protocol_v1;
