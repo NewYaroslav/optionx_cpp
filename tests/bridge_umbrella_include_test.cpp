@@ -46,6 +46,9 @@ TEST(BridgeUmbrellaIncludeTest, ExposesBotBinaryAdapterHelpers) {
             "umbrella-idem"));
 
     EXPECT_EQ(prepared.request_query_value, "R_25=CALL=1.00=duration=1=m=");
+    EXPECT_EQ(
+        prepared.http_url,
+        "http://127.0.0.2/?request=R_25%3DCALL%3D1.00%3Dduration%3D1%3Dm%3D");
 
     const auto parsed = optionx::bridges::bot_binary::parse_bot_binary_request_value(
         prepared.request_query_value);

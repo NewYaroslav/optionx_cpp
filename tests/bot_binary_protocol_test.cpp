@@ -26,7 +26,7 @@ TEST(BotBinaryProtocol, FormatsDurationCommandForHttpAndFileSignals) {
         "frxEURAUD=CALL=1.00=duration=5=m=");
     EXPECT_EQ(
         prepared.http_url,
-        "http://127.0.0.2/?request=frxEURAUD=CALL=1.00=duration=5=m=");
+        "http://127.0.0.2/?request=frxEURAUD%3DCALL%3D1.00%3Dduration%3D5%3Dm%3D");
     EXPECT_EQ(
         prepared.file_name,
         "frxEURAUD=CALL=1.00=duration=5=m=2018.09.29=1538190215.txt");
@@ -113,8 +113,77 @@ TEST(BotBinaryProtocol, CanIncludeSuffixInHttpRequestWhenConfigured) {
         prepared.request_query_value,
         "R_25=PUT=1=duration=30=s=custom_suffix");
     EXPECT_EQ(
+        prepared.http_url,
+        "http://127.0.0.2/?request=R_25%3DPUT%3D1%3Dduration%3D30%3Ds%3Dcustom_suffix");
+    EXPECT_EQ(
         prepared.file_name,
         "R_25=PUT=1=duration=30=s=custom_suffix.txt");
+}
+
+TEST(BotBinaryProtocol, EncodesPercentSuffixForHttpWithoutChangingRawValues) {
+    namespace bot = optionx::bridges::bot_binary;
+
+    bot::BotBinaryAdapterConfig config;
+    config.include_suffix_in_http_request = true;
+
+    auto command = bot::bot_binary_duration_command(
+        "R_25",
+        optionx::OrderType::BUY,
+        "1",
+        60,
+        "idem-percent");
+    command.transport_suffix = "legacy%2Bsignal";
+
+    const auto prepared = bot::prepare_bot_binary_command(command, config);
+
+    EXPECT_EQ(
+        prepared.request_query_value,
+        "R_25=CALL=1=duration=1=m=legacy%2Bsignal");
+    EXPECT_EQ(
+        prepared.http_url,
+        "http://127.0.0.2/?request=R_25%3DCALL%3D1%3Dduration%3D1%3Dm%3Dlegacy%252Bsignal");
+    EXPECT_EQ(
+        prepared.file_name,
+        "R_25=CALL=1=duration=1=m=legacy%2Bsignal.txt");
+
+    const auto http = bot::parse_bot_binary_http_request(prepared.http_url);
+    const auto file = bot::parse_bot_binary_file_signal_name(prepared.file_name);
+
+    EXPECT_EQ(http.transport_suffix, "legacy%2Bsignal");
+    EXPECT_EQ(file.transport_suffix, "legacy%2Bsignal");
+}
+
+TEST(BotBinaryProtocol, EncodesPlusSuffixForHttpWithoutChangingRawValues) {
+    namespace bot = optionx::bridges::bot_binary;
+
+    bot::BotBinaryAdapterConfig config;
+    config.include_suffix_in_http_request = true;
+
+    auto command = bot::bot_binary_duration_command(
+        "R_25",
+        optionx::OrderType::BUY,
+        "1",
+        60,
+        "idem-plus");
+    command.transport_suffix = "legacy+signal";
+
+    const auto prepared = bot::prepare_bot_binary_command(command, config);
+
+    EXPECT_EQ(
+        prepared.request_query_value,
+        "R_25=CALL=1=duration=1=m=legacy+signal");
+    EXPECT_EQ(
+        prepared.http_url,
+        "http://127.0.0.2/?request=R_25%3DCALL%3D1%3Dduration%3D1%3Dm%3Dlegacy%2Bsignal");
+    EXPECT_EQ(
+        prepared.file_name,
+        "R_25=CALL=1=duration=1=m=legacy+signal.txt");
+
+    const auto http = bot::parse_bot_binary_http_request(prepared.http_url);
+    const auto file = bot::parse_bot_binary_file_signal_name(prepared.file_name);
+
+    EXPECT_EQ(http.transport_suffix, "legacy+signal");
+    EXPECT_EQ(file.transport_suffix, "legacy+signal");
 }
 
 TEST(BotBinaryProtocol, ConvertsTradeRequestSnapshot) {

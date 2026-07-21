@@ -512,9 +512,10 @@ Notes:
 
 - `duration` uses seconds, minutes or hours depending on the time unit.
 - `endtime` uses Unix time in seconds.
-- The default file signal directory is under the MetaQuotes common files
-  sandbox, typically `Common\Files\Signal\`, but BotBinary can configure a
-  custom `SignalPath`.
+- If `Configuration.ini` omits `SignalPath` or leaves it empty, BotBinary reads
+  file signals from the MetaQuotes common files sandbox, typically
+  `%APPDATA%\MetaQuotes\Terminal\Common\Files\Signal\` on Windows. A custom
+  `SignalPath` changes that watched directory.
 - BotBinary can be modeled as one bridge family with two delivery strategies:
   `http` and `file`. The domain mapping is the same; only the transport writer
   differs.
@@ -564,6 +565,10 @@ back into a neutral command snapshot that a future inbound bridge can convert to
 an OptionX trade signal. The parser preserves the trailing BotBinary suffix as
 transport identity; it does not treat that suffix as an OptionX idempotency key
 or `identity.unique_hash` unless a higher-level bridge explicitly maps it.
+The prepared `request_query_value` remains the exact raw BotBinary value, while
+the convenience `http_url` percent-encodes that value as an HTTP query
+parameter. This keeps suffixes containing `%` or `+` byte-stable across
+formatter/parser round-trips.
 
 If no explicit BotBinary transport suffix is supplied, the formatter derives a
 deterministic file-safe suffix from the OptionX `idempotency_key`. A runtime
