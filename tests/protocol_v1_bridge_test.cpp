@@ -1656,6 +1656,98 @@ TEST(BridgeProtocolServerBridge, CanonicalizesEquivalentDecimalRepresentations) 
     EXPECT_EQ(signal_count.load(), 2);
 }
 
+TEST(BridgeProtocolServerBridge, CanonicalizesBusinessAliasesAndIdentifiersInFingerprint) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+    bridge.on_signal_id() = []() { return optionx::SignalId{59}; };
+    std::atomic<int> signal_count{0};
+    bridge.on_trade_signal() = [&signal_count](std::unique_ptr<optionx::TradeSignal>) {
+        ++signal_count;
+    };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    auto first_command = trade_command("alias-a", "idem-alias");
+    first_command["params"]["identity"]["unique_id"] = 123;
+    first_command["params"]["trade"].erase("order_type");
+    first_command["params"]["trade"]["direction"] = "buy";
+    first_command["params"]["trade"]["option_type"] = "sprint";
+    first_command["params"]["trade"]["amount"] = "1.00";
+    first_command["params"]["trade"]["currency"] = "usd";
+    first_command["params"]["trade"].erase("expiry");
+    first_command["params"]["trade"]["duration_sec"] = 60;
+
+    auto second_command = trade_command("alias-b", "idem-alias");
+    second_command["params"]["identity"]["unique_id"] = "123";
+    second_command["params"]["trade"]["order_type"] = "BUY";
+    second_command["params"]["trade"]["option_type"] = "SPRINT";
+    second_command["params"]["trade"]["amount"] = {
+        {"value", 1},
+        {"currency", "USD"}
+    };
+    second_command["params"]["trade"]["expiry"] = {
+        {"kind", "duration"},
+        {"duration_ms", "60000"}
+    };
+
+    const auto first = post_json(config, bridge.bound_http_port(), first_command);
+    const auto second = post_json(config, bridge.bound_http_port(), second_command);
+    bridge.shutdown();
+
+    EXPECT_EQ(first.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(second.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(
+        second.at("result").at("operation_id").get<std::string>(),
+        first.at("result").at("operation_id").get<std::string>());
+    EXPECT_EQ(signal_count.load(), 1);
+}
+
+TEST(BridgeProtocolServerBridge, KeepsDurationAndAbsoluteExpiryDistinctInFingerprint) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+    bridge.on_signal_id() = []() { return optionx::SignalId{60}; };
+    std::atomic<int> signal_count{0};
+    bridge.on_trade_signal() = [&signal_count](std::unique_ptr<optionx::TradeSignal>) {
+        ++signal_count;
+    };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    auto duration_command = trade_command("expiry-kind-a", "idem-expiry-kind");
+    duration_command["params"]["trade"]["expiry"] = {
+        {"kind", "duration"},
+        {"duration_ms", 60000}
+    };
+    auto absolute_command = trade_command("expiry-kind-b", "idem-expiry-kind");
+    absolute_command["params"]["trade"]["expiry"] = {
+        {"kind", "absolute"},
+        {"expires_at_ms", optionx::bridges::metatrader_file::detail::unix_time_ms() + 60000}
+    };
+
+    const auto first = post_json(config, bridge.bound_http_port(), duration_command);
+    const auto second = post_json(config, bridge.bound_http_port(), absolute_command);
+    bridge.shutdown();
+
+    EXPECT_EQ(first.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(second.at("result").at("status").get<std::string>(), "rejected");
+    EXPECT_EQ(
+        second.at("result").at("reason").at("code").get<std::string>(),
+        "idempotency_conflict");
+    EXPECT_EQ(signal_count.load(), 1);
+}
+
 TEST(BridgeProtocolServerBridge, CanonicalizesRoutingPlatformTypeInFingerprint) {
     namespace proto = optionx::bridges::protocol_v1;
 
