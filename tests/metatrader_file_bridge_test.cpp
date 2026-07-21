@@ -1545,6 +1545,7 @@ TEST(MetaTraderFileBridge, DeduplicatesRetryWithCanonicalBusinessPayload) {
         "PUT",
         protocol::unix_time_ms() + 60000);
     first_params["identity"]["unique_id"] = 42;
+    first_params["routing"]["platform_type"] = "intrade.bar";
     first_params["routing"]["selector"]["kind"] = "DEFAULT";
     first_params["routing"]["selector"]["account_id"] = 7;
     first_params["signal"]["option_type"] = "sprint";
@@ -1559,6 +1560,7 @@ TEST(MetaTraderFileBridge, DeduplicatesRetryWithCanonicalBusinessPayload) {
         "BUY",
         protocol::unix_time_ms() + 120000);
     retry_params["identity"]["unique_id"] = "42";
+    retry_params["routing"]["platform_type"] = "INTRADE_BAR";
     retry_params["routing"]["selector"]["kind"] = "default";
     retry_params["routing"]["selector"]["account_id"] = "7";
     retry_params["signal"]["option_type"] = "SPRINT";

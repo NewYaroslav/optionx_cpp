@@ -1091,6 +1091,47 @@ TEST(BridgeProtocolServerBridge, CanonicalizesEquivalentDecimalRepresentations) 
     EXPECT_EQ(signal_count.load(), 2);
 }
 
+TEST(BridgeProtocolServerBridge, CanonicalizesRoutingPlatformTypeInFingerprint) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+    bridge.on_signal_id() = []() { return optionx::SignalId{58}; };
+    std::atomic<int> signal_count{0};
+    bridge.on_trade_signal() = [&signal_count](std::unique_ptr<optionx::TradeSignal>) {
+        ++signal_count;
+    };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    auto first_command = trade_command("platform-a", "idem-platform");
+    first_command["params"]["routing"]["platform_type"] = "intrade.bar";
+    auto second_command = trade_command("platform-b", "idem-platform");
+    second_command["params"]["routing"]["platform_type"] = "INTRADE_BAR";
+    auto third_command = trade_command("platform-c", "idem-platform");
+    third_command["params"]["routing"]["platform_type"] = "TRADEUP";
+
+    const auto first = post_json(config, bridge.bound_http_port(), first_command);
+    const auto second = post_json(config, bridge.bound_http_port(), second_command);
+    const auto third = post_json(config, bridge.bound_http_port(), third_command);
+    bridge.shutdown();
+
+    EXPECT_EQ(first.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(second.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(
+        second.at("result").at("operation_id").get<std::string>(),
+        first.at("result").at("operation_id").get<std::string>());
+    EXPECT_EQ(third.at("result").at("status").get<std::string>(), "rejected");
+    EXPECT_EQ(
+        third.at("result").at("reason").at("code").get<std::string>(),
+        "idempotency_conflict");
+    EXPECT_EQ(signal_count.load(), 1);
+}
+
 TEST(BridgeProtocolServerBridge, RegeneratesStreamIdOnRestart) {
     namespace proto = optionx::bridges::protocol_v1;
 

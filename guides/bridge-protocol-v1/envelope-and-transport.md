@@ -192,7 +192,10 @@ Payload identity for idempotency is computed after protocol normalization:
 - decimal input scale is not part of the idempotency fingerprint; output scale
   is determined by the field, currency, symbol precision or schema;
 - JSON object field order is ignored;
-- `context.idempotency_key` is excluded from the fingerprint;
+- `context.idempotency_key`, `context.valid_until_ms` and
+  `context.client_created_at_ms` are excluded from the fingerprint;
+- routing/account identifiers and supported routing enum aliases, including
+  `routing.platform_type`, are normalized;
 - transport metadata, authentication data and headers are excluded.
 
 `unique_hash` is not a transport retry mechanism. Two different transports may

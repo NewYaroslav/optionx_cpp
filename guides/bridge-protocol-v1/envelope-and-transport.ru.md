@@ -194,7 +194,10 @@ Payload identity для idempotency вычисляется после protocol n
 - decimal input scale не входит в idempotency fingerprint; output scale
   определяется field, currency, symbol precision или schema;
 - порядок JSON object fields не учитывается;
-- `context.idempotency_key` исключается из fingerprint;
+- `context.idempotency_key`, `context.valid_until_ms` и
+  `context.client_created_at_ms` исключаются из fingerprint;
+- routing/account identifiers и supported routing enum aliases, including
+  `routing.platform_type`, нормализуются;
 - transport metadata, authentication data и headers не входят в fingerprint.
 
 `unique_hash` не является механизмом transport retry. Два разных транспорта
