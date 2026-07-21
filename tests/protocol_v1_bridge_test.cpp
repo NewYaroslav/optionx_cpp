@@ -167,8 +167,11 @@ nlohmann::json signal_command(std::string id, std::string idempotency_key) {
 nlohmann::json post_json(
         const optionx::bridges::protocol_v1::BridgeProtocolServerConfig& config,
         const unsigned short port,
-        const nlohmann::json& request) {
+        const nlohmann::json& request,
+        const long timeout_seconds = 0) {
     HttpClient client(config.address + ":" + std::to_string(port));
+    client.config.timeout = timeout_seconds;
+    client.config.timeout_connect = timeout_seconds;
     SimpleWeb::CaseInsensitiveMultimap headers;
     headers.emplace("Content-Type", "application/json");
     headers.emplace("X-OptionX-Secret", config.secret);
@@ -1868,7 +1871,8 @@ TEST(BridgeProtocolServerBridge, NewHttpCallbackCannotEnterWhilePendingShutdownD
             rejected = post_json(
                 config,
                 bridge.bound_http_port(),
-                trade_command("trade-pending-shutdown-b", "idem-pending-shutdown-b"));
+                trade_command("trade-pending-shutdown-b", "idem-pending-shutdown-b"),
+                1);
         } catch (...) {
             second_failed.store(true);
         }
