@@ -20,6 +20,8 @@ Currently maintained examples:
 - `tradingview_extension_bridge_smoke.cpp` starts the local TradingView
   browser-extension HTTP bridge and can run `--self-test` to POST a sample
   indicator signal to itself.
+- `named_pipe_bridge_smoke.cpp` starts the legacy named-pipe JSON bridge and,
+  on Windows, can run `--self-test` with a local pipe client.
 - `bot_binary_command_builder_smoke.cpp` demonstrates the BotBinary/BinaryBot
   compatibility helper that turns an OptionX trade request into the observed
   `request=...` WebRequest value and file-signal name, then parses those legacy

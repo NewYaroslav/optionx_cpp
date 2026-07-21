@@ -96,6 +96,12 @@ jobs:
       - name: Run bot_binary_command_builder_smoke
         run: ./build-linux/bot_binary_command_builder_smoke --self-test
 
+      - name: Build named_pipe_bridge_smoke
+        run: cmake --build build-linux --target named_pipe_bridge_smoke -j
+
+      - name: Run named_pipe_bridge_smoke
+        run: ./build-linux/named_pipe_bridge_smoke --self-test
+
       - name: Build protocol_v1_bridge_smoke
         run: cmake --build build-linux --target protocol_v1_bridge_smoke -j
 
