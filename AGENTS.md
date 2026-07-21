@@ -31,6 +31,9 @@
 - [Bridge protocol v1 draft RU](guides/bridge-protocol-v1.ru.md) -
   русский перевод draft протокола; английская версия каноническая, RU
   синхронизируется с EN и не является источником обратных правок.
+- [Bridge taxonomy](guides/bridge-taxonomy.md) - как раскладывать bridge family
+  и transport ownership, включая protocol_v1, legacy named pipe, TradingView и
+  BotBinary.
 - [Coding style](guides/coding-style.md) - naming, namespace, Doxygen,
   обработка ошибок, ownership и header-only правила.
 - [Git workflow](guides/git-workflow.md) - branch policy, PR-only workflow,

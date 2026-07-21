@@ -45,7 +45,8 @@
   exposed through `bridges/bot_binary.hpp`, and the Bridge Protocol v1
   HTTP/WebSocket server is exposed through `bridges/protocol_v1.hpp`. Headers
   under `bridges/<family>/` and `bridges/<family>/detail/` are not standalone
-  public include entry points.
+  public include entry points. See `guides/bridge-taxonomy.md` before adding a
+  new bridge family or transport.
 - Domain aggregates, например `data/trading.hpp`, задают include context для
   связанных leaf headers.
 - Leaf DTO headers не должны вручную восстанавливать весь порядок зависимостей

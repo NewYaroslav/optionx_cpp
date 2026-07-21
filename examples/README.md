@@ -3,6 +3,12 @@
 The examples directory contains small programs that are intended to build
 against the current public aggregate headers.
 
+Bridge examples follow the family layout described in
+`guides/bridge-taxonomy.md`: native OptionX API examples use
+`protocol_v1`, while compatibility examples keep their platform or legacy wire
+contract (`metatrader_file`, `trading_view`, `bot_binary`, or legacy named
+pipe) even when they use the same underlying transport.
+
 Currently maintained examples:
 
 - `account_info_hub_example.cpp` demonstrates routing account information
