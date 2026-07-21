@@ -27,7 +27,7 @@ OptionX protocol together.
 | MetaTrader Common Files | `optionx_cpp/bridges/metatrader_file.hpp` | MT4/MT5 file-command bridge and command writer for `Common\Files`. | Files. |
 | TradingView extension | `optionx_cpp/bridges/trading_view.hpp` | Adapter for payloads emitted by `browser_extensions/tradingview-alert-extension`. | HTTP. |
 | BinaryBot/BotBinary | `optionx_cpp/bridges/bot_binary.hpp` | Formatter/parser helpers for observed BinaryBot-compatible command strings. | HTTP query value, file-signal name. |
-| Legacy trading pipe | `optionx_cpp/bridges/named_pipe.hpp` | Compatibility bridge for the older named-pipe JSON trading protocol. | Named pipe. |
+| Legacy trading pipe | `optionx_cpp/bridges/legacy_trading.hpp` | Compatibility bridge for the older named-pipe JSON trading protocol. | Named pipe. |
 
 All families converge internally on OptionX DTOs such as `TradeSignal`,
 `TradeRequest`, account snapshots and bridge callbacks. The public wire format
@@ -49,10 +49,9 @@ does not need to be the same for every family.
 
 ## Planned Cleanup
 
-The current legacy named-pipe family lives under `bridges/named_pipe` for
-historical reasons. Future refactoring should move it to
-`bridges/legacy_trading` while keeping `bridges/named_pipe.hpp` as a
-compatibility umbrella for existing users.
+The legacy named-pipe family lives under `bridges/legacy_trading`.
+`bridges/named_pipe.hpp` remains as a compatibility umbrella for existing
+users that included the old transport-named entry point.
 
 `BridgeProtocolServerBridge` currently exposes one runtime for HTTP and
 WebSocket because both endpoints share lifecycle, idempotency state, request

@@ -1,11 +1,11 @@
 #pragma once
-#ifndef OPTIONX_HEADER_BRIDGES_NAMED_PIPE_LEGACY_TRADING_BRIDGE_HPP_INCLUDED
-#define OPTIONX_HEADER_BRIDGES_NAMED_PIPE_LEGACY_TRADING_BRIDGE_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_BRIDGES_LEGACY_TRADING_LEGACY_TRADING_BRIDGE_HPP_INCLUDED
+#define OPTIONX_HEADER_BRIDGES_LEGACY_TRADING_LEGACY_TRADING_BRIDGE_HPP_INCLUDED
 
 /// \file LegacyTradingBridge.hpp
 /// \brief Defines the legacy named-pipe trading bridge.
 
-namespace optionx::bridges::named_pipe {
+namespace optionx::bridges::legacy_trading {
 
     /// \class LegacyTradingBridge
     /// \brief Adapter for the legacy named-pipe trading JSON protocol.
@@ -529,6 +529,6 @@ namespace optionx::bridges::named_pipe {
         }
     };
 
-} // namespace optionx::bridges::named_pipe
+} // namespace optionx::bridges::legacy_trading
 
-#endif // OPTIONX_HEADER_BRIDGES_NAMED_PIPE_LEGACY_TRADING_BRIDGE_HPP_INCLUDED
+#endif // OPTIONX_HEADER_BRIDGES_LEGACY_TRADING_LEGACY_TRADING_BRIDGE_HPP_INCLUDED

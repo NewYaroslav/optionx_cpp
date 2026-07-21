@@ -1,12 +1,21 @@
 #include <gtest/gtest.h>
 
 #include <optionx_cpp/bridges.hpp>
+#include <optionx_cpp/bridges/legacy_trading.hpp>
 #include <optionx_cpp/bridges/metatrader_file.hpp>
 #include <optionx_cpp/bridges/named_pipe.hpp>
 #include <optionx_cpp/bridges/protocol_v1.hpp>
 #include <optionx_cpp/bridges/trading_view.hpp>
 
-TEST(BridgeUmbrellaIncludeTest, ExposesNamedPipeBridgeFamily) {
+TEST(BridgeUmbrellaIncludeTest, ExposesLegacyTradingBridgeFamily) {
+    optionx::bridges::legacy_trading::LegacyTradingBridgeConfig config;
+
+    EXPECT_EQ(
+        config.bridge_type(),
+        optionx::BridgeType::LEGACY_TRADING_NAMED_PIPE);
+}
+
+TEST(BridgeUmbrellaIncludeTest, KeepsNamedPipeCompatibilityAliases) {
     optionx::bridges::named_pipe::LegacyTradingBridgeConfig config;
 
     EXPECT_EQ(
