@@ -5,6 +5,9 @@
 
 #include <client_http.hpp>
 #include <client_ws.hpp>
+#if defined(_WIN32)
+#include <SimpleNamedPipe/NamedPipeClient.hpp>
+#endif
 
 #include <atomic>
 #include <chrono>
@@ -85,6 +88,17 @@ optionx::bridges::protocol_v1::BridgeProtocolServerConfig test_config() {
     config.http_port = 0;
     config.websocket_port = 0;
     config.secret = "secret";
+    config.request_body_limit = 8192;
+    config.dedupe_cache_size = 32;
+    return config;
+}
+
+optionx::bridges::protocol_v1::BridgeProtocolNamedPipeConfig test_pipe_config() {
+    optionx::bridges::protocol_v1::BridgeProtocolNamedPipeConfig config;
+    const auto stamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    config.named_pipe = "OptionxBridgeProtocolV1PipeTest_" + std::to_string(stamp);
+    config.bridge_id = 4;
     config.request_body_limit = 8192;
     config.dedupe_cache_size = 32;
     return config;
@@ -193,6 +207,46 @@ nlohmann::json post_json_without_auth(
     return nlohmann::json::parse(response->content.string());
 }
 
+#if defined(_WIN32)
+nlohmann::json pipe_json(
+        SimpleNamedPipe::NamedPipeClient& client,
+        const nlohmann::json& request) {
+    std::error_code ec;
+    EXPECT_TRUE(client.write(request.dump(-1), &ec)) << ec.message();
+    const auto expected_id = request.at("id");
+
+    std::string buffered;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (std::chrono::steady_clock::now() < deadline) {
+        std::string chunk;
+        if (!client.read(chunk, 250, &ec)) {
+            continue;
+        }
+        buffered += chunk;
+        for (;;) {
+            const auto newline = buffered.find('\n');
+            if (newline == std::string::npos) {
+                break;
+            }
+            const auto response = buffered.substr(0, newline);
+            buffered.erase(0, newline + 1);
+            nlohmann::json parsed;
+            try {
+                parsed = nlohmann::json::parse(response);
+            } catch (...) {
+                ADD_FAILURE() << "Invalid named-pipe response: " << response;
+                throw;
+            }
+            if (parsed.contains("id") && parsed.at("id") == expected_id) {
+                return parsed;
+            }
+        }
+    }
+    ADD_FAILURE() << "Buffered named-pipe response without matching JSON-RPC id: " << buffered;
+    throw std::runtime_error("Named-pipe JSON-RPC response was not received.");
+}
+#endif
+
 } // namespace
 
 TEST(BridgeProtocolServerConfig, RoundTripsAndValidates) {
@@ -246,6 +300,32 @@ TEST(BridgeProtocolServerConfig, RoundTripsAndValidates) {
     unsafe.allow_cors = true;
     unsafe.allowed_origin = "*";
     EXPECT_FALSE(unsafe.validate().first);
+}
+
+TEST(BridgeProtocolNamedPipeConfig, RoundTripsAndValidates) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    proto::BridgeProtocolNamedPipeConfig config = test_pipe_config();
+    nlohmann::json json;
+    config.to_json(json);
+
+    proto::BridgeProtocolNamedPipeConfig restored;
+    restored.from_json(json);
+
+    EXPECT_TRUE(restored.validate().first);
+    EXPECT_EQ(restored.bridge_type(), optionx::BridgeType::BRIDGE_PROTOCOL_V1_NAMED_PIPE);
+    EXPECT_EQ(restored.named_pipe, config.named_pipe);
+    EXPECT_EQ(restored.bridge_id, 4u);
+    EXPECT_GT(restored.buffer_size, 0u);
+    EXPECT_GT(restored.pipe_timeout_ms, 0u);
+    EXPECT_GT(restored.max_jsonrpc_id_bytes, 0u);
+    EXPECT_GT(restored.max_idempotency_key_bytes, 0u);
+    EXPECT_GT(restored.max_operation_fingerprint_bytes, 0u);
+    EXPECT_GT(restored.max_operation_cache_bytes, 0u);
+    EXPECT_GT(restored.operation_cache_retention_ms, 0);
+
+    restored.named_pipe.clear();
+    EXPECT_FALSE(restored.validate().first);
 }
 
 TEST(BridgeProtocolServerBridge, AcceptsHttpJsonRpcCommands) {
@@ -324,6 +404,118 @@ TEST(BridgeProtocolServerBridge, AcceptsHttpJsonRpcCommands) {
         "idempotency_conflict");
 
     bridge.shutdown();
+}
+
+TEST(BridgeProtocolNamedPipeBridge, AcceptsJsonRpcCommands) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+#if defined(_WIN32)
+    auto config = test_pipe_config();
+    proto::BridgeProtocolNamedPipeBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolNamedPipeConfig>(config)));
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool server_started = false;
+    std::string status_error;
+    std::atomic<optionx::SignalId> next_signal_id{50};
+    std::atomic<int> signal_count{0};
+
+    bridge.on_status_update() = [&](const optionx::BridgeStatusUpdate& update) {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (update.status == optionx::BridgeStatus::SERVER_STARTED) {
+            server_started = true;
+        }
+        if (update.status == optionx::BridgeStatus::SERVER_START_FAILED ||
+            update.status == optionx::BridgeStatus::CONNECTION_ERROR) {
+            status_error = update.message;
+        }
+        cv.notify_all();
+    };
+    bridge.on_signal_id() = [&next_signal_id]() {
+        return next_signal_id.fetch_add(1);
+    };
+    bridge.on_trade_signal() = [&signal_count](std::unique_ptr<optionx::TradeSignal> signal) {
+        ASSERT_EQ(signal->symbol, "EURUSD");
+        ++signal_count;
+    };
+    bridge.update_account_info(optionx::AccountInfoUpdate(
+        std::make_shared<TestAccountInfo>(),
+        optionx::AccountUpdateStatus::BALANCE_UPDATED));
+
+    bridge.run();
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(3), [&] {
+            return server_started || !status_error.empty();
+        })) << "Named-pipe protocol bridge did not start.";
+        ASSERT_TRUE(status_error.empty()) << status_error;
+    }
+
+    SimpleNamedPipe::ClientConfig client_config(
+        config.named_pipe,
+        config.buffer_size,
+        3000);
+    SimpleNamedPipe::NamedPipeClient client(client_config);
+    std::error_code ec;
+    ASSERT_TRUE(client.connect(&ec)) << ec.message();
+
+    const auto hello = pipe_json(
+        client,
+        nlohmann::json{
+            {"jsonrpc", "2.0"},
+            {"id", "pipe-hello"},
+            {"method", "protocol.hello"},
+            {"params", nlohmann::json::object()}
+        });
+    EXPECT_EQ(hello.at("result").at("selected_protocol_version").get<std::string>(), "1");
+
+    const auto capabilities = pipe_json(
+        client,
+        nlohmann::json{
+            {"jsonrpc", "2.0"},
+            {"id", "pipe-capabilities"},
+            {"method", "protocol.capabilities.get"},
+            {"params", nlohmann::json::object()}
+        });
+    EXPECT_TRUE(capabilities.at("result").at("features").at("named_pipe").get<bool>());
+    EXPECT_FALSE(capabilities.at("result").at("features").at("http").get<bool>());
+    EXPECT_FALSE(capabilities.at("result").at("features").at("websocket").get<bool>());
+
+    const auto balance = pipe_json(
+        client,
+        nlohmann::json{
+            {"jsonrpc", "2.0"},
+            {"id", "pipe-balance"},
+            {"method", "account.balance.get"},
+            {"params", nlohmann::json::object()}
+        });
+    EXPECT_EQ(balance.at("result").at("status").get<std::string>(), "completed");
+    EXPECT_EQ(balance.at("result").at("account").at("account_id").get<std::string>(), "99");
+
+    const auto accepted = pipe_json(client, trade_command("pipe-trade", "pipe-idem"));
+    EXPECT_EQ(accepted.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(signal_count.load(), 1);
+
+    const auto retry = pipe_json(client, trade_command("pipe-trade-retry", "pipe-idem"));
+    EXPECT_EQ(
+        retry.at("result").at("operation_id").get<std::string>(),
+        accepted.at("result").at("operation_id").get<std::string>());
+    EXPECT_EQ(signal_count.load(), 1);
+
+    const auto conflict = pipe_json(
+        client,
+        trade_command("pipe-trade-conflict", "pipe-idem", "GBPUSD"));
+    EXPECT_EQ(conflict.at("result").at("status").get<std::string>(), "rejected");
+    EXPECT_EQ(
+        conflict.at("result").at("reason").at("code").get<std::string>(),
+        "idempotency_conflict");
+
+    client.close();
+    bridge.shutdown();
+#else
+    GTEST_SKIP() << "Bridge Protocol v1 named-pipe transport is Windows-only.";
+#endif
 }
 
 TEST(BridgeProtocolServerBridge, ReturnsMethodSpecificAcceptedShapes) {

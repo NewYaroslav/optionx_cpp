@@ -31,6 +31,9 @@
 #include <nlohmann/json.hpp>
 #include <server_http.hpp>
 #include <server_ws.hpp>
+#if defined(_WIN32)
+#include <SimpleNamedPipe/NamedPipeServer.hpp>
+#endif
 
 #include "data/bridge.hpp"
 #include "data/trading.hpp"
@@ -38,8 +41,10 @@
 
 #include "BaseBridge.hpp"
 #include "metatrader_file.hpp"
+#include "protocol_v1/BridgeProtocolNamedPipeConfig.hpp"
 #include "protocol_v1/BridgeProtocolServerConfig.hpp"
 #include "protocol_v1/detail/BridgeProtocolServerUtils.hpp"
+#include "protocol_v1/BridgeProtocolNamedPipeBridge.hpp"
 #include "protocol_v1/BridgeProtocolServerBridge.hpp"
 
 #endif // OPTIONX_HEADER_BRIDGES_PROTOCOL_V1_HPP_INCLUDED

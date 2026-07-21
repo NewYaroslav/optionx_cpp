@@ -23,7 +23,7 @@ OptionX protocol together.
 
 | Family | Public include | Role | Transports |
 |---|---|---|---|
-| Native OptionX API | `optionx_cpp/bridges/protocol_v1.hpp` | JSON-RPC Bridge Protocol v1 for clients that can speak OptionX directly. | HTTP, WebSocket; named pipe planned. |
+| Native OptionX API | `optionx_cpp/bridges/protocol_v1.hpp` | JSON-RPC Bridge Protocol v1 for clients that can speak OptionX directly. | HTTP, WebSocket, named pipe. |
 | MetaTrader Common Files | `optionx_cpp/bridges/metatrader_file.hpp` | MT4/MT5 file-command bridge and command writer for `Common\Files`. | Files. |
 | TradingView extension | `optionx_cpp/bridges/trading_view.hpp` | Adapter for payloads emitted by `browser_extensions/tradingview-alert-extension`. | HTTP. |
 | BinaryBot/BotBinary | `optionx_cpp/bridges/bot_binary.hpp` | Formatter/parser helpers for observed BinaryBot-compatible command strings. | HTTP query value, file-signal name. |
@@ -36,7 +36,7 @@ does not need to be the same for every family.
 ## Layout Rules
 
 - Add new native OptionX transports under `bridges/protocol_v1/`.
-  For example, a named-pipe transport for Bridge Protocol v1 should be
+  For example, the named-pipe transport for Bridge Protocol v1 is
   `bridges/protocol_v1/BridgeProtocolNamedPipeBridge.hpp`.
 - Keep legacy or platform-specific adapters under their adapter family even
   when their transport overlaps a native transport. For example, the legacy
