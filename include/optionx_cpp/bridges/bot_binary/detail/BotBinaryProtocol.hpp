@@ -49,8 +49,8 @@ namespace optionx::bridges::bot_binary {
     /// \brief Stable BotBinary wire command values prepared before delivery.
     struct BotBinaryPreparedCommand {
         std::string idempotency_key; ///< Logical operation key used to derive default suffixes.
-        std::string request_query_value; ///< Raw value for BotBinary `request=...`.
-        std::string http_url; ///< Convenience URL using `BotBinaryAdapterConfig::http_base_url`.
+        std::string request_query_value; ///< Raw BotBinary `request` value before URL encoding.
+        std::string http_url; ///< Convenience URL with percent-encoded `request` query value.
         std::string file_name; ///< BotBinary file-signal filename with `.txt` extension.
         std::string transport_suffix; ///< Effective stable suffix embedded in the file name.
     };
@@ -293,6 +293,32 @@ namespace optionx::bridges::bot_binary {
             return "ox_" + base36_uint64(fnv1a64(idempotency_key));
         }
 
+        inline bool is_unreserved_query_char(const unsigned char ch) noexcept {
+            return (ch >= 'A' && ch <= 'Z') ||
+                   (ch >= 'a' && ch <= 'z') ||
+                   (ch >= '0' && ch <= '9') ||
+                   ch == '-' ||
+                   ch == '.' ||
+                   ch == '_' ||
+                   ch == '~';
+        }
+
+        inline std::string percent_encode_query_value(const std::string& value) {
+            static constexpr char hex[] = "0123456789ABCDEF";
+            std::string result;
+            result.reserve(value.size());
+            for (const unsigned char ch : value) {
+                if (is_unreserved_query_char(ch)) {
+                    result.push_back(static_cast<char>(ch));
+                    continue;
+                }
+                result.push_back('%');
+                result.push_back(hex[(ch >> 4u) & 0x0fu]);
+                result.push_back(hex[ch & 0x0fu]);
+            }
+            return result;
+        }
+
         inline std::string append_bot_binary_request_query(
                 std::string base_url,
                 const std::string& request_query_value) {
@@ -306,7 +332,7 @@ namespace optionx::bridges::bot_binary {
                 base_url.push_back(separator);
             }
             base_url += "request=";
-            base_url += request_query_value;
+            base_url += percent_encode_query_value(request_query_value);
             return base_url;
         }
 
@@ -578,9 +604,10 @@ namespace optionx::bridges::bot_binary {
     }
 
     /// \brief Prepares stable BotBinary HTTP and file-signal command strings.
-    /// \details The returned `file_name` and `request_query_value` are the
+    /// \details The returned `file_name` and raw `request_query_value` are the
     /// exact transport values that a durable runtime bridge should persist for
-    /// retries of the same logical operation.
+    /// retries of the same logical operation. The convenience `http_url`
+    /// percent-encodes `request_query_value` for HTTP delivery.
     inline BotBinaryPreparedCommand prepare_bot_binary_command(
             BotBinaryTradeCommand command,
             BotBinaryAdapterConfig config = {}) {

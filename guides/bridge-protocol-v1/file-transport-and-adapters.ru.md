@@ -479,6 +479,10 @@ symbol=PUT/CALL=amount=duration/endtime=value=s/m/h=unique_suffix
 
 Notes:
 
+- If `Configuration.ini` omits `SignalPath` or leaves it empty, BotBinary uses
+  `%APPDATA%\MetaQuotes\Terminal\Common\Files\Signal\` on Windows. A custom
+  `SignalPath` changes that watched file-signal directory.
+
 - `duration` использует seconds, minutes или hours в зависимости от time unit.
 - `endtime` использует Unix time in seconds.
 - Default file signal directory находится в MetaQuotes common files sandbox,
@@ -526,6 +530,11 @@ deduplication.
 - raw BotBinary `request` query value;
 - convenience HTTP URL;
 - file-signal filename.
+
+Prepared `request_query_value` stays the exact raw BotBinary value. The
+convenience `http_url` percent-encodes it as the HTTP `request` query parameter,
+so suffixes containing `%` or `+` remain byte-stable across formatter/parser
+round-trips.
 
 Он также парсит legacy BotBinary HTTP `request` values и file-signal filenames
 обратно в neutral command snapshot, который будущий inbound bridge сможет

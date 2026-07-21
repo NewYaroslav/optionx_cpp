@@ -78,8 +78,9 @@ int main(int argc, char** argv) {
             const bool ok =
                 prepared.request_query_value ==
                     "frxEURAUD=CALL=1.00=duration=5=m=" &&
-                prepared.http_url.find("?request=frxEURAUD=CALL=1.00=duration=5=m=") !=
-                    std::string::npos &&
+                prepared.http_url.find(
+                    "?request=frxEURAUD%3DCALL%3D1.00%3Dduration%3D5%3Dm%3D") !=
+                        std::string::npos &&
                 prepared.file_name.rfind(
                     "frxEURAUD=CALL=1.00=duration=5=m=ox_",
                     0) == 0u &&
