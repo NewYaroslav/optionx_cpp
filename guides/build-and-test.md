@@ -182,6 +182,11 @@ or a direct `MQL4`/`MQL5` root. Omitting `-TargetPath` scans
 `%APPDATA%\MetaQuotes\Terminal`, which covers default installations but not
 portable terminals outside the MetaQuotes profile tree.
 
+The installer copies only source files (`.mqh`, `.mq4`, `.mq5`) from the
+repository MQL tree, preserving relative subdirectories. It overwrites matching
+OptionX files but does not remove unknown or stale files already present in the
+destination `OptionX` folders.
+
 При изменении публичных aggregate headers или include policy добавляй или
 обновляй тест, который подключает intended public entry point:
 

@@ -82,9 +82,7 @@ function Add-ExplicitTarget {
 
     $resolved = (Resolve-Path -LiteralPath $Path).Path
     $leaf = Split-Path -Leaf $resolved
-    if (($leaf -eq "MQL4" -or $leaf -eq "MQL5") -and
-        (Test-Path -LiteralPath (Join-Path $resolved "Include") -PathType Container) -and
-        (Test-Path -LiteralPath (Join-Path $resolved "Indicators") -PathType Container)) {
+    if ($leaf -eq "MQL4" -or $leaf -eq "MQL5") {
         if (!(Test-RequestedPlatform $leaf $Selection)) {
             return
         }
@@ -131,6 +129,39 @@ function Discover-Targets {
     return $targets
 }
 
+function Copy-OptionXSourceFiles {
+    param(
+        [string]$Runtime,
+        [string]$Source,
+        [string]$Destination,
+        [switch]$DryRun
+    )
+
+    if ($DryRun) {
+        Write-Host "[dry-run] $Runtime copy source files $Source -> $Destination"
+        return
+    }
+
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+
+    $sourceRoot = (Resolve-Path -LiteralPath $Source).Path.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $allowedExtensions = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    [void]$allowedExtensions.Add(".mqh")
+    [void]$allowedExtensions.Add(".mq4")
+    [void]$allowedExtensions.Add(".mq5")
+
+    foreach ($file in Get-ChildItem -LiteralPath $Source -Recurse -File) {
+        if (!$allowedExtensions.Contains($file.Extension)) {
+            continue
+        }
+
+        $relativePath = $file.FullName.Substring($sourceRoot.Length).TrimStart([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+        $destinationPath = Join-Path $Destination $relativePath
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destinationPath) | Out-Null
+        Copy-Item -LiteralPath $file.FullName -Destination $destinationPath -Force
+    }
+}
+
 function Copy-OptionXTree {
     param(
         [string]$Runtime,
@@ -157,11 +188,17 @@ function Copy-OptionXTree {
         [pscustomobject]@{ Source = $sourceIndicators; Destination = $destinationIndicators }
     )) {
         if ($DryRun) {
-            Write-Host "[dry-run] $Runtime copy $($copy.Source) -> $($copy.Destination)"
+            Copy-OptionXSourceFiles `
+                -Runtime $Runtime `
+                -Source $copy.Source `
+                -Destination $copy.Destination `
+                -DryRun
             continue
         }
-        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $copy.Destination) | Out-Null
-        Copy-Item -LiteralPath $copy.Source -Destination (Split-Path -Parent $copy.Destination) -Recurse -Force
+        Copy-OptionXSourceFiles `
+            -Runtime $Runtime `
+            -Source $copy.Source `
+            -Destination $copy.Destination
         Write-Host "$Runtime installed: $($copy.Destination)"
     }
 }
