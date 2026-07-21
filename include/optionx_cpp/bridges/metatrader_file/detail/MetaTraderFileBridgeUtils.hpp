@@ -218,6 +218,7 @@ namespace optionx::bridges::metatrader_file::detail {
             std::int64_t fallback);
     inline CurrencyType currency_value(const std::string& value);
     inline AccountType account_type_value(const std::string& value);
+    inline PlatformType platform_type_value(const std::string& value);
     inline OptionType option_type_value(const std::string& value);
     inline OrderType order_type_value(const std::string& value);
 
@@ -537,6 +538,24 @@ namespace optionx::bridges::metatrader_file::detail {
         }
     }
 
+    /// \brief Converts supported platform aliases to the canonical protocol spelling.
+    inline void normalize_platform_type_member(nlohmann::json& object, const char* key) {
+        if (!object.is_object() || !object.contains(key) || !object.at(key).is_string()) {
+            return;
+        }
+
+        auto normalized = upper_ascii_copy(trim_ascii_copy(object.at(key).get<std::string>()));
+        std::replace(normalized.begin(), normalized.end(), '.', '_');
+        std::replace(normalized.begin(), normalized.end(), '-', '_');
+        std::replace(normalized.begin(), normalized.end(), ' ', '_');
+        try {
+            const auto value = platform_type_value(normalized);
+            object[key] = to_str(value);
+        } catch (...) {
+            object[key] = std::move(normalized);
+        }
+    }
+
     /// \brief Normalizes an amount object/scalar without depending on input scale.
     inline void normalize_amount_member(nlohmann::json& trade) {
         if (!trade.is_object() || !trade.contains("amount")) {
@@ -698,6 +717,8 @@ namespace optionx::bridges::metatrader_file::detail {
             selector["account_id"] = canonical_identifier_value(trade.at("account_id"));
         }
         trade.erase("account_id");
+
+        normalize_platform_type_member(routing, "platform_type");
 
         if (selector.empty()) {
             routing.erase("selector");
