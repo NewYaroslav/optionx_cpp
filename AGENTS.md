@@ -20,6 +20,9 @@
   локальные проверки, примеры и generated output.
 - [Implementation notes](guides/implementation-notes.md) - lifecycle, pub-sub,
   task scheduling, HTTP/WebSocket, trade queue, session DB и ограничения.
+- [Bridge lifecycle guide](guides/bridge-lifecycle-guide.md) - reusable
+  lifecycle, callback, shutdown, thread-joining and transport-race patterns for
+  bridge implementations and reviews.
 - [TradingView bridge research](guides/tradingview-bridge-research.md) -
   найденные пути TradingView -> bridge, webhook constraints, browser-extension
   MVP и риски.

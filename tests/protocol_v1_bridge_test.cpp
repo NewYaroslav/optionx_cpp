@@ -1888,6 +1888,57 @@ TEST(BridgeProtocolServerBridge, ShutdownCanBeRequestedFromStatusCallback) {
     EXPECT_TRUE(requested_shutdown.load());
 }
 
+TEST(BridgeProtocolServerBridge, ShutdownFromServerStartedCallbackJoinsBeforeRestart) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    for (int attempt = 0; attempt < 25; ++attempt) {
+        auto config = test_config();
+        config.enable_websocket = false;
+
+        proto::BridgeProtocolServerBridge bridge;
+        ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool stopped = false;
+        unsigned short started_port = 0;
+        std::atomic<bool> requested_shutdown{false};
+        bridge.on_status_update() = [&](const optionx::BridgeStatusUpdate& update) {
+            if (update.status == optionx::BridgeStatus::SERVER_STARTED &&
+                !requested_shutdown.exchange(true)) {
+                started_port = bridge.bound_http_port();
+                bridge.shutdown();
+            }
+            if (update.status == optionx::BridgeStatus::SERVER_STOPPED) {
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    stopped = true;
+                }
+                cv.notify_all();
+            }
+        };
+
+        bridge.run();
+        {
+            std::unique_lock<std::mutex> lock(mutex);
+            ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(5), [&stopped]() {
+                return stopped;
+            }));
+        }
+
+        ASSERT_TRUE(requested_shutdown.load());
+        ASSERT_NE(started_port, 0);
+
+        bridge.on_status_update() = {};
+        config.http_port = started_port;
+        ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+        bridge.run();
+        ASSERT_TRUE(wait_for_http_port(bridge));
+        EXPECT_EQ(bridge.bound_http_port(), started_port);
+        bridge.shutdown();
+    }
+}
+
 TEST(BridgeProtocolServerBridge, LifecycleCallsFromStoppedCallbackAreSafeNoOps) {
     namespace proto = optionx::bridges::protocol_v1;
 

@@ -303,9 +303,17 @@ namespace optionx::bridges::protocol_v1 {
                         shutdown_for_generation(generation, true);
                         return;
                     }
+                    if (has_pending_callback_shutdown(generation)) {
+                        shutdown_for_generation(generation, true);
+                        return;
+                    }
                 }
                 if (is_runtime_running() && config->enable_websocket) {
                     if (!start_ws_server(config, generation)) {
+                        shutdown_for_generation(generation, true);
+                        return;
+                    }
+                    if (has_pending_callback_shutdown(generation)) {
                         shutdown_for_generation(generation, true);
                         return;
                     }
@@ -363,6 +371,15 @@ namespace optionx::bridges::protocol_v1 {
                 }
                 if (require_generation &&
                     m_state->lifecycle_generation != expected_generation) {
+                    return;
+                }
+
+                if (is_inside_callback() &&
+                    m_state->phase == RuntimePhase::Starting) {
+                    m_state->pending_callback_shutdown = true;
+                    m_state->pending_callback_shutdown_generation =
+                        m_state->lifecycle_generation;
+                    m_state->lifecycle_cv.notify_all();
                     return;
                 }
 
@@ -468,12 +485,25 @@ namespace optionx::bridges::protocol_v1 {
                         state->pending_callback_shutdown_generation) {
                     return;
                 }
+                if ((state->http_thread.joinable() &&
+                     state->http_thread.get_id() == current_id) ||
+                    (state->ws_thread.joinable() &&
+                     state->ws_thread.get_id() == current_id)) {
+                    std::thread([state]() {
+                        drain_pending_callback_shutdown(state);
+                    }).detach();
+                    return;
+                }
                 stopping_generation = state->pending_callback_shutdown_generation;
                 state->pending_callback_shutdown = false;
                 state->pending_callback_shutdown_generation = 0;
+                // The async drain always hands finalization to a separate
+                // reaper thread, so even the server thread that requested
+                // shutdown must be moved and joined there before Stopped is
+                // published.
                 collect_shutdown_handles_locked(
                     state,
-                    current_id,
+                    std::thread::id{},
                     http_server,
                     ws_server,
                     http_thread,
@@ -543,6 +573,14 @@ namespace optionx::bridges::protocol_v1 {
 
         void shutdown_failed_start(const std::uint64_t generation) {
             shutdown_for_generation(generation, true);
+        }
+
+        bool has_pending_callback_shutdown(const std::uint64_t generation) const {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            return m_state->pending_callback_shutdown &&
+                   m_state->pending_callback_shutdown_generation == generation &&
+                   m_state->phase == RuntimePhase::Starting &&
+                   m_state->lifecycle_generation == generation;
         }
 
         bool is_inside_callback() const noexcept {
@@ -796,6 +834,7 @@ namespace optionx::bridges::protocol_v1 {
                 m_state->http_thread = std::thread([this, server, generation, ready, ready_set]() {
                     try {
                         server->start([this, ready, ready_set](unsigned short port) {
+                            CallbackScope scope(m_state);
                             bool expected = false;
                             if (ready_set->compare_exchange_strong(expected, true)) {
                                 ready->set_value(true);
@@ -806,11 +845,15 @@ namespace optionx::bridges::protocol_v1 {
                         });
                     } catch (const std::exception& ex) {
                         bool expected = false;
-                        if (ready_set->compare_exchange_strong(expected, true)) {
+                        const bool failed_before_ready =
+                            ready_set->compare_exchange_strong(expected, true);
+                        if (failed_before_ready) {
                             ready->set_value(false);
                         }
                         notify_status(BridgeStatus::SERVER_START_FAILED, "http", ex.what());
-                        shutdown_failed_start(generation);
+                        if (!failed_before_ready) {
+                            shutdown_failed_start(generation);
+                        }
                     }
                 });
             }
@@ -840,6 +883,7 @@ namespace optionx::bridges::protocol_v1 {
                 m_state->ws_thread = std::thread([this, server, generation, ready, ready_set]() {
                     try {
                         server->start([this, ready, ready_set](unsigned short port) {
+                            CallbackScope scope(m_state);
                             bool expected = false;
                             if (ready_set->compare_exchange_strong(expected, true)) {
                                 ready->set_value(true);
@@ -848,11 +892,15 @@ namespace optionx::bridges::protocol_v1 {
                         });
                     } catch (const std::exception& ex) {
                         bool expected = false;
-                        if (ready_set->compare_exchange_strong(expected, true)) {
+                        const bool failed_before_ready =
+                            ready_set->compare_exchange_strong(expected, true);
+                        if (failed_before_ready) {
                             ready->set_value(false);
                         }
                         notify_status(BridgeStatus::SERVER_START_FAILED, "ws", ex.what());
-                        shutdown_failed_start(generation);
+                        if (!failed_before_ready) {
+                            shutdown_failed_start(generation);
+                        }
                     }
                 });
             }
