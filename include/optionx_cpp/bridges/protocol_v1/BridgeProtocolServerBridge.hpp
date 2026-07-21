@@ -96,6 +96,10 @@ namespace optionx::bridges::protocol_v1 {
             bool pending_callback_shutdown = false;
             bool transport_callback_admission_closed = false;
             std::uint64_t pending_callback_shutdown_generation = 0;
+#ifdef OPTIONX_ENABLE_BRIDGE_PROTOCOL_TEST_HOOKS
+            std::function<void()> after_http_ready_test_hook;
+            std::function<void()> after_http_post_ready_failure_rollback_test_hook;
+#endif
         };
 
         inline static thread_local std::vector<const RuntimeState*> s_callback_stack;
@@ -267,6 +271,41 @@ namespace optionx::bridges::protocol_v1 {
             return m_state->ws_server ? m_state->ws_server->bound_port() : 0;
         }
 
+#ifdef OPTIONX_ENABLE_BRIDGE_PROTOCOL_TEST_HOOKS
+        struct TestHooks {
+            std::function<void()> after_http_ready;
+            std::function<void()> after_http_post_ready_failure_rollback;
+        };
+
+        void set_test_hooks(TestHooks hooks) {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            m_state->after_http_ready_test_hook =
+                std::move(hooks.after_http_ready);
+            m_state->after_http_post_ready_failure_rollback_test_hook =
+                std::move(hooks.after_http_post_ready_failure_rollback);
+        }
+
+        void simulate_http_post_ready_start_failure_for_test(std::string message) {
+            std::uint64_t generation = 0;
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                generation = m_state->lifecycle_generation;
+            }
+            notify_status(BridgeStatus::SERVER_START_FAILED, "http", std::move(message));
+            shutdown_failed_start(generation);
+            invoke_after_http_post_ready_failure_rollback_test_hook();
+        }
+
+        std::uint64_t lifecycle_generation_for_test() const {
+            std::lock_guard<std::mutex> lock(m_state->mutex);
+            return m_state->lifecycle_generation;
+        }
+
+        void simulate_failed_start_rollback_for_test(const std::uint64_t generation) {
+            shutdown_failed_start(generation);
+        }
+#endif
+
         /// \brief Updates the account snapshot used by `account.balance.get`.
         void update_account_info(const AccountInfoUpdate& info) override {
             if (!info.account_info) return;
@@ -393,7 +432,8 @@ namespace optionx::bridges::protocol_v1 {
 
         void shutdown_for_generation(
                 const std::uint64_t expected_generation,
-                const bool require_generation) {
+                const bool require_generation,
+                const bool force_async_finalizer = false) {
             std::shared_ptr<HttpServer> http_server;
             std::shared_ptr<WsServer> ws_server;
             std::thread http_thread;
@@ -436,7 +476,7 @@ namespace optionx::bridges::protocol_v1 {
                 }
 
                 owns_shutdown = true;
-                async_finalizer = is_inside_callback();
+                async_finalizer = is_inside_callback() || force_async_finalizer;
                 stopping_generation = m_state->lifecycle_generation;
                 m_state->phase = RuntimePhase::Stopping;
                 m_state->stopping_generation = stopping_generation;
@@ -629,8 +669,36 @@ namespace optionx::bridges::protocol_v1 {
         }
 
         void shutdown_failed_start(const std::uint64_t generation) {
-            shutdown_for_generation(generation, true);
+            // Post-ready server->start() failures are reported from the
+            // transport thread itself. Use the async finalizer path so a
+            // reaper thread owns join and Stopped is not published through the
+            // self-detach fallback before that transport thread has exited.
+            shutdown_for_generation(generation, true, true);
         }
+
+#ifdef OPTIONX_ENABLE_BRIDGE_PROTOCOL_TEST_HOOKS
+        void invoke_after_http_ready_test_hook() const {
+            std::function<void()> hook;
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                hook = m_state->after_http_ready_test_hook;
+            }
+            if (hook) {
+                hook();
+            }
+        }
+
+        void invoke_after_http_post_ready_failure_rollback_test_hook() const {
+            std::function<void()> hook;
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                hook = m_state->after_http_post_ready_failure_rollback_test_hook;
+            }
+            if (hook) {
+                hook();
+            }
+        }
+#endif
 
         bool has_pending_callback_shutdown(const std::uint64_t generation) const {
             std::lock_guard<std::mutex> lock(m_state->mutex);
@@ -891,14 +959,19 @@ namespace optionx::bridges::protocol_v1 {
                 m_state->http_thread = std::thread([this, server, generation, ready, ready_set]() {
                     try {
                         server->start([this, ready, ready_set](unsigned short port) {
-                            CallbackScope scope(m_state);
-                            bool expected = false;
-                            if (ready_set->compare_exchange_strong(expected, true)) {
-                                ready->set_value(true);
+                            {
+                                CallbackScope scope(m_state);
+                                bool expected = false;
+                                if (ready_set->compare_exchange_strong(expected, true)) {
+                                    ready->set_value(true);
+                                }
+                                notify_status(
+                                    BridgeStatus::SERVER_STARTED,
+                                    "http:" + std::to_string(port));
                             }
-                            notify_status(
-                                BridgeStatus::SERVER_STARTED,
-                                "http:" + std::to_string(port));
+#ifdef OPTIONX_ENABLE_BRIDGE_PROTOCOL_TEST_HOOKS
+                            invoke_after_http_ready_test_hook();
+#endif
                         });
                     } catch (const std::exception& ex) {
                         bool expected = false;
@@ -910,6 +983,9 @@ namespace optionx::bridges::protocol_v1 {
                         notify_status(BridgeStatus::SERVER_START_FAILED, "http", ex.what());
                         if (!failed_before_ready) {
                             shutdown_failed_start(generation);
+#ifdef OPTIONX_ENABLE_BRIDGE_PROTOCOL_TEST_HOOKS
+                            invoke_after_http_post_ready_failure_rollback_test_hook();
+#endif
                         }
                     }
                 });

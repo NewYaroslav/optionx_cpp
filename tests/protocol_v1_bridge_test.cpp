@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#define OPTIONX_ENABLE_BRIDGE_PROTOCOL_TEST_HOOKS
 #include <optionx_cpp/bridges.hpp>
 
 #include <client_http.hpp>
@@ -1558,6 +1559,122 @@ TEST(BridgeProtocolServerBridge, StartFailureDoesNotLeaveRuntimeMarkedRunning) {
     ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
     bridge.run();
     ASSERT_TRUE(wait_for_http_port(bridge));
+    bridge.shutdown();
+}
+
+TEST(BridgeProtocolServerBridge, PostReadyStartExceptionWaitsForTransportThreadExit) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool rollback_hook_entered = false;
+    bool release_transport_thread = false;
+    std::atomic<bool> failed{false};
+    std::atomic<int> started_port{0};
+
+    proto::BridgeProtocolServerBridge::TestHooks hooks;
+    hooks.after_http_ready = [&] {
+        bridge.simulate_http_post_ready_start_failure_for_test(
+            "post-ready start failure");
+    };
+    hooks.after_http_post_ready_failure_rollback = [&] {
+        std::unique_lock<std::mutex> lock(mutex);
+        rollback_hook_entered = true;
+        cv.notify_all();
+        cv.wait(lock, [&release_transport_thread]() {
+            return release_transport_thread;
+        });
+    };
+    bridge.set_test_hooks(std::move(hooks));
+
+    bridge.on_status_update() = [&](const optionx::BridgeStatusUpdate& update) {
+        if (update.status == optionx::BridgeStatus::SERVER_STARTED) {
+            started_port.store(static_cast<int>(bridge.bound_http_port()));
+        }
+        if (update.status == optionx::BridgeStatus::SERVER_START_FAILED) {
+            failed.store(true);
+        }
+    };
+
+    bridge.run();
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(5), [&rollback_hook_entered]() {
+            return rollback_hook_entered;
+        }));
+    }
+
+    std::atomic<bool> shutdown_returned{false};
+    std::thread shutdown_thread([&] {
+        bridge.shutdown();
+        shutdown_returned.store(true);
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    EXPECT_FALSE(shutdown_returned.load());
+
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        release_transport_thread = true;
+    }
+    cv.notify_all();
+    shutdown_thread.join();
+
+    ASSERT_TRUE(failed.load());
+    const auto restart_port = static_cast<unsigned short>(started_port.load());
+    ASSERT_NE(restart_port, 0);
+
+    bridge.on_status_update() = {};
+    bridge.set_test_hooks({});
+    config.http_port = restart_port;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+    EXPECT_EQ(bridge.bound_http_port(), restart_port);
+    bridge.shutdown();
+}
+
+TEST(BridgeProtocolServerBridge, DelayedFailedStartRollbackCannotStopNewGeneration) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+    const auto old_generation = bridge.lifecycle_generation_for_test();
+    bridge.shutdown();
+
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+    ASSERT_NE(bridge.lifecycle_generation_for_test(), old_generation);
+
+    bridge.simulate_failed_start_rollback_for_test(old_generation);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    const auto response = post_json(
+        config,
+        bridge.bound_http_port(),
+        {
+            {"jsonrpc", "2.0"},
+            {"id", "hello-after-stale-rollback"},
+            {"method", "protocol.hello"},
+            {"params", {{"version", "1.0"}}}
+        });
+    EXPECT_EQ(
+        response.at("result").at("selected_protocol_version").get<std::string>(),
+        "1");
+
     bridge.shutdown();
 }
 

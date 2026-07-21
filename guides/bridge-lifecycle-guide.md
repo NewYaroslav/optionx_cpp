@@ -155,6 +155,12 @@ Regression tests should restart immediately on the same fixed port after
 shutdown from `SERVER_STARTED`. This catches old-generation threads that were
 detached instead of joined.
 
+If `server->start()` reports ready and later throws from its transport thread,
+handle rollback like a generation-specific async shutdown. The failing
+transport thread must not publish `Stopped` through a self-detach fallback.
+Move the thread handle to a separate reaper and let that reaper stop/join before
+publishing final state.
+
 ## Thread Joining
 
 Never self-join. But also do not detach a live transport thread just because the
