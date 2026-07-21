@@ -218,6 +218,48 @@ Identifier compatibility rules:
 - Do not accept floating-point, fractional or scientific-notation IDs.
 - Numeric input loses leading zeros by definition; clients that need leading
   zeros must send a string.
+
+## Current C++ Server Support
+
+The header `<optionx_cpp/bridges/protocol_v1.hpp>` exposes the current
+header-only Bridge Protocol v1 HTTP/WebSocket server bridge. It is an application
+adapter over `BaseBridge`, not a broker platform implementation.
+
+The first implementation supports:
+
+- HTTP `POST /api/v1/bridge/command` for JSON-RPC commands;
+- HTTP `GET /api/v1/bridge/health`;
+- WebSocket `/api/v1/bridge/ws` for JSON-RPC request/response messages and
+  best-effort live notifications;
+- WebSocket handshake subprotocol `Sec-WebSocket-Protocol:
+  optionx.bridge.v1`, selected by the server when the client offers it;
+- `protocol.hello`, `protocol.capabilities.get`, `account.balance.get`,
+  `signal.submit` and `trade.open`;
+- bearer-token or `X-OptionX-Secret` transport authentication. Empty-secret
+  mode is rejected unless `allow_unauthenticated_local` is explicitly enabled
+  on a loopback address. Plain HTTP/WebSocket binds on non-loopback addresses
+  also require explicit `allow_insecure_remote=true` because the shared secret
+  is otherwise sent over an unencrypted transport;
+- strict JSON-RPC envelope validation. Request IDs must be strings, integers or
+  `null`; `params` must be an object; `protocol.hello` rejects requests that do
+  not include v1 in `requested_protocol_versions`;
+- bounded in-memory idempotency dedupe for trade-affecting commands. Completed
+  operations are retained for a bounded horizon and may be evicted by TTL/LRU
+  pressure; operations currently in dispatch are never evicted. If only
+  in-flight operations remain or a single result exceeds configured limits, new
+  unique trade-affecting commands are rejected fail-closed. Concurrent retries
+  of an operation already in dispatch return `processing` with
+  `reason.code = "operation_in_progress"` without blocking the transport
+  handler;
+- transport resource limits are applied before full buffering when the
+  underlying server supports it. WebSocket outbound notifications are bounded
+  per connection by `max_ws_pending_messages` and `max_ws_pending_bytes`; slow
+  clients are closed fail-closed instead of accumulating an unbounded send
+  queue.
+
+The current implementation does not yet provide durable operation storage,
+subscription management, fan-out routing or event replay for the HTTP/WebSocket
+transports.
 - Unknown external/broker identifiers should be treated as opaque strings and
   compared lexically, not numerically.
 
@@ -264,8 +306,8 @@ WebSocket:
 - Commands and responses use JSON-RPC on one socket.
 - Events are pushed to subscribed clients as JSON-RPC notifications.
 - A response must repeat the command `id`.
-- WebSocket bridges should use the subprotocol
-  `Sec-WebSocket-Protocol: optionx.bridge.v1` once the wire contract is stable.
+- WebSocket bridges use the subprotocol
+  `Sec-WebSocket-Protocol: optionx.bridge.v1`.
 
 Named Pipe:
 

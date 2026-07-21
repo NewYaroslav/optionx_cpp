@@ -221,6 +221,11 @@ management, routing и filters позже могут породить ноль, 
 - `routing.policy` разрешен и может выбирать best payout, fan-out,
   risk-manager routing или другую application-defined policy.
 
+Текущий C++ HTTP/WebSocket server bridge выпускает один `TradeSignal` на команду
+и поэтому принимает только routing shapes, которые может сохранить сейчас:
+`default` и один numeric `account`. `accounts`, `all` и `routing.policy`
+отклоняются до реализации fan-out routing.
+
 ```json
 {
   "context": {

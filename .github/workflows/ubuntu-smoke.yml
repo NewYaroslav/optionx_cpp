@@ -48,6 +48,12 @@ jobs:
       - name: Run bot_binary_protocol_test
         run: ./build-linux/bot_binary_protocol_test --gtest_brief=1
 
+      - name: Build protocol_v1_bridge_test
+        run: cmake --build build-linux --target protocol_v1_bridge_test -j
+
+      - name: Run protocol_v1_bridge_test
+        run: ./build-linux/protocol_v1_bridge_test --gtest_brief=1
+
       - name: Build metatrader_file_config_include_test
         run: cmake --build build-linux --target metatrader_file_config_include_test -j
 
@@ -89,6 +95,12 @@ jobs:
 
       - name: Run bot_binary_command_builder_smoke
         run: ./build-linux/bot_binary_command_builder_smoke --self-test
+
+      - name: Build protocol_v1_bridge_smoke
+        run: cmake --build build-linux --target protocol_v1_bridge_smoke -j
+
+      - name: Run protocol_v1_bridge_smoke
+        run: ./build-linux/protocol_v1_bridge_smoke --self-test
 
       - name: Build market_data_subscription_contract_test
         run: cmake --build build-linux --target market_data_subscription_contract_test -j

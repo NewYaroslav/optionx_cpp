@@ -1681,7 +1681,7 @@ TEST(MetaTraderFileBridge, KeepsDurationAndAbsoluteExpiryDistinctForIdempotency)
     auto absolute_params = make_signal_submit_params("expiry-key", "expiry-hash");
     absolute_params["signal"]["expiry"] = {
         {"kind", "absolute"},
-        {"expires_at_ms", 60000}
+        {"expires_at_ms", ((protocol::unix_time_ms() / 1000) + 60) * 1000}
     };
 
     const auto layout = protocol::make_layout(config);

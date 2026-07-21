@@ -97,7 +97,8 @@ namespace optionx {
         UNKNOWN = 0,                    ///< Unknown bridge type.
         LEGACY_TRADING_NAMED_PIPE,      ///< Legacy named-pipe trading bridge.
         TRADING_VIEW_EXTENSION_HTTP,    ///< TradingView browser extension HTTP bridge.
-        METATRADER_FILE_TRANSPORT       ///< MetaTrader common-files JSON-RPC bridge transport.
+        METATRADER_FILE_TRANSPORT,      ///< MetaTrader common-files JSON-RPC bridge transport.
+        BRIDGE_PROTOCOL_V1_HTTP_WEBSOCKET ///< Bridge Protocol v1 HTTP/WebSocket server.
     };
 
     /// \brief Converts BridgeType to its string representation.
@@ -109,7 +110,8 @@ namespace optionx {
             "UNKNOWN",
             "LEGACY_TRADING_NAMED_PIPE",
             "TRADING_VIEW_EXTENSION_HTTP",
-            "METATRADER_FILE_TRANSPORT"
+            "METATRADER_FILE_TRANSPORT",
+            "BRIDGE_PROTOCOL_V1_HTTP_WEBSOCKET"
         };
         return utils::enum_string_or_unknown(str_data, static_cast<size_t>(value));
     }
@@ -123,7 +125,8 @@ namespace optionx {
             {"UNKNOWN",                    BridgeType::UNKNOWN},
             {"LEGACY_TRADING_NAMED_PIPE",  BridgeType::LEGACY_TRADING_NAMED_PIPE},
             {"TRADING_VIEW_EXTENSION_HTTP", BridgeType::TRADING_VIEW_EXTENSION_HTTP},
-            {"METATRADER_FILE_TRANSPORT",  BridgeType::METATRADER_FILE_TRANSPORT}
+            {"METATRADER_FILE_TRANSPORT",  BridgeType::METATRADER_FILE_TRANSPORT},
+            {"BRIDGE_PROTOCOL_V1_HTTP_WEBSOCKET", BridgeType::BRIDGE_PROTOCOL_V1_HTTP_WEBSOCKET}
         };
         auto it = str_data.find(utils::to_upper_case(str));
         if (it != str_data.end()) {

@@ -19,6 +19,7 @@
 #include <optionx_cpp/platforms.hpp>
 #include <optionx_cpp/platforms/IntradeBarPlatform.hpp>
 #include <optionx_cpp/bridges/bot_binary.hpp>
+#include <optionx_cpp/bridges/protocol_v1.hpp>
 #include <optionx_cpp/bridges/trading_view.hpp>
 ```
 
@@ -41,8 +42,10 @@
 - Bridge families are public only through `bridges.hpp` or the family umbrella
   headers: `bridges/metatrader_file.hpp`, `bridges/named_pipe.hpp` and
   `bridges/trading_view.hpp`. The BotBinary/BinaryBot adapter helpers are
-  exposed through `bridges/bot_binary.hpp`. Headers under `bridges/<family>/` and
-  `bridges/<family>/detail/` are not standalone public include entry points.
+  exposed through `bridges/bot_binary.hpp`, and the Bridge Protocol v1
+  HTTP/WebSocket server is exposed through `bridges/protocol_v1.hpp`. Headers
+  under `bridges/<family>/` and `bridges/<family>/detail/` are not standalone
+  public include entry points.
 - Domain aggregates, например `data/trading.hpp`, задают include context для
   связанных leaf headers.
 - Leaf DTO headers не должны вручную восстанавливать весь порядок зависимостей

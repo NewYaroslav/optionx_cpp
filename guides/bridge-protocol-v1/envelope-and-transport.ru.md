@@ -267,9 +267,8 @@ WebSocket:
 - Commands и responses используют JSON-RPC на одном socket.
 - Events пушатся subscribed clients как JSON-RPC notifications.
 - Response должен повторять command `id`.
-- WebSocket bridges должны использовать subprotocol
-  `Sec-WebSocket-Protocol: optionx.bridge.v1`, когда wire contract станет
-  стабильным.
+- WebSocket bridges используют subprotocol
+  `Sec-WebSocket-Protocol: optionx.bridge.v1`.
 
 Named Pipe:
 
@@ -448,3 +447,41 @@ REST status mapping:
 - `422 Unprocessable Content`: valid syntax, но invalid trading parameters.
 - `429 Too Many Requests`: rate limit.
 - `503 Service Unavailable`: bridge/platform temporarily unavailable.
+
+## Текущая C++-поддержка server
+
+Header `<optionx_cpp/bridges/protocol_v1.hpp>` открывает текущий header-only
+Bridge Protocol v1 HTTP/WebSocket server bridge. Это application adapter над
+`BaseBridge`, а не broker platform implementation.
+
+Первая реализация поддерживает:
+
+- HTTP `POST /api/v1/bridge/command` для JSON-RPC commands;
+- HTTP `GET /api/v1/bridge/health`;
+- WebSocket `/api/v1/bridge/ws` для JSON-RPC request/response messages и
+  best-effort live notifications;
+- WebSocket handshake subprotocol `Sec-WebSocket-Protocol:
+  optionx.bridge.v1`, selected by the server when the client offers it;
+- `protocol.hello`, `protocol.capabilities.get`, `account.balance.get`,
+  `signal.submit` и `trade.open`;
+- bearer-token или `X-OptionX-Secret` transport authentication. Режим с пустым
+  secret отклоняется, если `allow_unauthenticated_local` не включен явно на
+  loopback-адресе. Plain HTTP/WebSocket bind на non-loopback-адреса также
+  требует явного `allow_insecure_remote=true`, потому что shared secret иначе
+  передается по незашифрованному transport;
+- strict JSON-RPC envelope validation. Request IDs должны быть strings,
+  integers или `null`; `params` должен быть object; `protocol.hello`
+  отклоняет requests, где v1 не указан в `requested_protocol_versions`;
+- bounded in-memory idempotency dedupe для trade-affecting commands. Completed
+  operations удерживаются в ограниченном окне и могут вытесняться по TTL/LRU;
+  in-flight operations никогда не вытесняются. Если остались только in-flight
+  operations или один result превышает лимиты, новые уникальные commands
+  отклоняются fail-closed. Concurrent retries return `processing` with
+  `reason.code = "operation_in_progress"` without blocking the transport handler;
+- transport resource limits применяются до полного buffering, когда underlying
+  server это поддерживает. WebSocket outbound notifications ограничены на
+  connection через `max_ws_pending_messages` и `max_ws_pending_bytes`; slow
+  clients закрываются fail-closed вместо накопления unbounded send queue.
+
+Текущая реализация пока не даёт durable operation storage, fan-out routing,
+subscription management и event replay для HTTP/WebSocket transports.

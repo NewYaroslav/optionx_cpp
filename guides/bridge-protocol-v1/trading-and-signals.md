@@ -219,6 +219,11 @@ Method-specific routing validation:
 - `routing.policy` is allowed and may select best payout, fan-out, risk-manager
   routing or another application-defined policy.
 
+The current C++ HTTP/WebSocket server bridge emits one `TradeSignal` per command
+and therefore accepts only routing shapes it can preserve today:
+`default` and single numeric `account`. It rejects `accounts`, `all` and
+`routing.policy` until fan-out routing is implemented.
+
 ```json
 {
   "context": {

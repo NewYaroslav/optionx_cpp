@@ -24,6 +24,9 @@ Currently maintained examples:
   compatibility helper that turns an OptionX trade request into the observed
   `request=...` WebRequest value and file-signal name, then parses those legacy
   values back into an OptionX trade signal snapshot.
+- `protocol_v1_bridge_smoke.cpp` starts the Bridge Protocol v1 HTTP/WebSocket
+  server bridge and can run `--self-test` to POST a `trade.open` JSON-RPC
+  command to itself.
 - `metatrader_file_bridge_smoke.cpp` runs the C++ side of the MetaTrader
   Common\Files bridge against a temporary command/event layout.
 - `metatrader_file_command_writer_smoke.cpp` demonstrates the C++ command-writer

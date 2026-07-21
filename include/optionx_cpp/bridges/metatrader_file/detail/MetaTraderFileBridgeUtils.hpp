@@ -238,6 +238,48 @@ namespace optionx::bridges::metatrader_file::detail {
         return std::string(first, last);
     }
 
+    inline double strict_decimal_text_to_double(
+            const std::string& value,
+            const char* field_name) {
+        const auto trimmed = trim_ascii_copy(value);
+        if (trimmed.empty()) {
+            throw std::invalid_argument(std::string(field_name) + " must not be empty.");
+        }
+        std::size_t consumed = 0;
+        const auto parsed = std::stod(trimmed, &consumed);
+        if (consumed != trimmed.size() || !std::isfinite(parsed)) {
+            throw std::invalid_argument(std::string(field_name) + " must be a finite decimal value.");
+        }
+        return parsed;
+    }
+
+    inline std::int64_t strict_text_to_int64(
+            const std::string& value,
+            const char* field_name) {
+        const auto trimmed = trim_ascii_copy(value);
+        if (trimmed.empty()) {
+            throw std::invalid_argument(std::string(field_name) + " must not be empty.");
+        }
+        std::size_t consumed = 0;
+        const auto parsed = std::stoll(trimmed, &consumed);
+        if (consumed != trimmed.size()) {
+            throw std::invalid_argument(std::string(field_name) + " must be an integer value.");
+        }
+        return parsed;
+    }
+
+    inline std::uint32_t checked_positive_duration_seconds(
+            const std::int64_t seconds,
+            const char* field_name) {
+        if (seconds <= 0) {
+            return 0;
+        }
+        if (seconds > static_cast<std::int64_t>(std::numeric_limits<std::uint32_t>::max())) {
+            throw std::out_of_range(std::string(field_name) + " exceeds uint32 seconds.");
+        }
+        return static_cast<std::uint32_t>(seconds);
+    }
+
     /// \brief Uppercases ASCII protocol tokens.
     inline std::string upper_ascii_copy(std::string value) {
         std::transform(
@@ -283,51 +325,98 @@ namespace optionx::bridges::metatrader_file::detail {
             return text;
         }
 
-        if (text.find_first_of("eE") != std::string::npos) {
-            try {
-                std::ostringstream out;
-                out.imbue(std::locale::classic());
-                out << std::fixed << std::setprecision(12) << std::stold(text);
-                return canonical_decimal_text(out.str());
-            } catch (...) {
-                return text;
-            }
-        }
-
+        const auto original = text;
         bool negative = false;
-        if (text.front() == '+' || text.front() == '-') {
-            negative = text.front() == '-';
-            text.erase(text.begin());
+        std::size_t pos = 0;
+        if (text[pos] == '+' || text[pos] == '-') {
+            negative = text[pos] == '-';
+            ++pos;
         }
 
-        const auto dot = text.find('.');
-        auto integer = dot == std::string::npos ? text : text.substr(0, dot);
-        auto fraction = dot == std::string::npos ? std::string() : text.substr(dot + 1);
-
-        const auto is_digits = [](const std::string& part) {
-            return std::all_of(part.begin(), part.end(), [](const unsigned char ch) {
-                return std::isdigit(ch) != 0;
-            });
-        };
-        if ((!integer.empty() && !is_digits(integer)) ||
-            (!fraction.empty() && !is_digits(fraction)) ||
-            (integer.empty() && fraction.empty())) {
-            return (negative ? "-" : "") + text;
+        std::string digits;
+        std::int64_t scale = 0;
+        bool saw_digit = false;
+        bool saw_dot = false;
+        for (; pos < text.size(); ++pos) {
+            const auto ch = static_cast<unsigned char>(text[pos]);
+            if (std::isdigit(ch) != 0) {
+                digits.push_back(static_cast<char>(ch));
+                saw_digit = true;
+                if (saw_dot) {
+                    ++scale;
+                }
+                continue;
+            }
+            if (text[pos] == '.' && !saw_dot) {
+                saw_dot = true;
+                continue;
+            }
+            break;
+        }
+        if (!saw_digit) {
+            return original;
         }
 
-        const auto non_zero = integer.find_first_not_of('0');
-        integer = non_zero == std::string::npos ? "0" : integer.substr(non_zero);
-        while (!fraction.empty() && fraction.back() == '0') {
-            fraction.pop_back();
+        if (pos < text.size() && (text[pos] == 'e' || text[pos] == 'E')) {
+            ++pos;
+            bool exponent_negative = false;
+            if (pos < text.size() && (text[pos] == '+' || text[pos] == '-')) {
+                exponent_negative = text[pos] == '-';
+                ++pos;
+            }
+            if (pos == text.size()) {
+                return original;
+            }
+            std::int64_t exponent = 0;
+            for (; pos < text.size(); ++pos) {
+                const auto ch = static_cast<unsigned char>(text[pos]);
+                if (std::isdigit(ch) == 0) {
+                    return original;
+                }
+                if (exponent < 10000) {
+                    exponent = exponent * 10 + (text[pos] - '0');
+                } else {
+                    return original;
+                }
+            }
+            scale += exponent_negative ? exponent : -exponent;
+        }
+        if (pos != text.size()) {
+            return original;
         }
 
-        if (integer == "0" && fraction.empty()) {
-            negative = false;
+        const auto first_non_zero = digits.find_first_not_of('0');
+        if (first_non_zero == std::string::npos) {
+            return "0";
+        }
+        digits.erase(0, first_non_zero);
+
+        while (scale > 0 && !digits.empty() && digits.back() == '0') {
+            digits.pop_back();
+            --scale;
+        }
+        if (digits.empty()) {
+            return "0";
         }
 
-        auto normalized = (negative ? "-" : "") + integer;
-        if (!fraction.empty()) {
-            normalized += "." + fraction;
+        std::string normalized;
+        if (negative) {
+            normalized.push_back('-');
+        }
+        if (scale <= 0) {
+            normalized += digits;
+            normalized.append(static_cast<std::size_t>(-scale), '0');
+        } else if (static_cast<std::uint64_t>(scale) >= digits.size()) {
+            normalized += "0.";
+            normalized.append(
+                static_cast<std::size_t>(scale) - digits.size(),
+                '0');
+            normalized += digits;
+        } else {
+            const auto split = digits.size() - static_cast<std::size_t>(scale);
+            normalized += digits.substr(0, split);
+            normalized.push_back('.');
+            normalized += digits.substr(split);
         }
         return normalized;
     }
@@ -348,10 +437,16 @@ namespace optionx::bridges::metatrader_file::detail {
             if (!std::isfinite(numeric)) {
                 return value;
             }
-            std::ostringstream out;
-            out.imbue(std::locale::classic());
-            out << std::fixed << std::setprecision(12) << numeric;
-            return canonical_decimal_text(out.str());
+            std::array<char, 64> buffer{};
+            const auto converted = std::to_chars(
+                buffer.data(),
+                buffer.data() + buffer.size(),
+                numeric,
+                std::chars_format::general);
+            if (converted.ec != std::errc{}) {
+                return value;
+            }
+            return canonical_decimal_text(std::string(buffer.data(), converted.ptr));
         }
         return value;
     }
@@ -385,7 +480,7 @@ namespace optionx::bridges::metatrader_file::detail {
                 }
                 return std::to_string(unsigned_seconds * 1000);
             } else if (value.is_string()) {
-                seconds = std::stoll(trim_ascii_copy(value.get<std::string>()));
+                seconds = strict_text_to_int64(value.get<std::string>(), "expiry seconds");
             } else {
                 return value;
             }
@@ -700,12 +795,16 @@ namespace optionx::bridges::metatrader_file::detail {
         }
         const auto& value = object.at(key);
         if (value.is_number()) {
-            return value.get<double>();
+            const auto parsed = value.get<double>();
+            if (!std::isfinite(parsed)) {
+                throw std::invalid_argument(std::string(key) + " must be a finite decimal value.");
+            }
+            return parsed;
         }
         if (value.is_string()) {
-            return std::stod(value.get<std::string>());
+            return strict_decimal_text_to_double(value.get<std::string>(), key);
         }
-        return fallback;
+        throw std::invalid_argument(std::string(key) + " must be a decimal value.");
     }
 
     /// \brief Reads a signed integer-like JSON member.
@@ -721,12 +820,16 @@ namespace optionx::bridges::metatrader_file::detail {
             return value.get<std::int64_t>();
         }
         if (value.is_number_unsigned()) {
-            return static_cast<std::int64_t>(value.get<std::uint64_t>());
+            const auto parsed = value.get<std::uint64_t>();
+            if (parsed > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+                throw std::out_of_range(std::string(key) + " exceeds int64.");
+            }
+            return static_cast<std::int64_t>(parsed);
         }
         if (value.is_string()) {
-            return std::stoll(value.get<std::string>());
+            return strict_text_to_int64(value.get<std::string>(), key);
         }
-        return fallback;
+        throw std::invalid_argument(std::string(key) + " must be an integer value.");
     }
 
     /// \brief Reads an unsigned integer-like JSON member.
@@ -743,13 +846,19 @@ namespace optionx::bridges::metatrader_file::detail {
         }
         if (value.is_number_integer()) {
             const auto signed_value = value.get<std::int64_t>();
-            return signed_value >= 0 ? static_cast<std::uint64_t>(signed_value) : fallback;
+            if (signed_value < 0) {
+                throw std::invalid_argument(std::string(key) + " must be non-negative.");
+            }
+            return static_cast<std::uint64_t>(signed_value);
         }
         if (value.is_string()) {
-            const auto parsed = std::stoll(value.get<std::string>());
-            return parsed >= 0 ? static_cast<std::uint64_t>(parsed) : fallback;
+            const auto parsed = strict_text_to_int64(value.get<std::string>(), key);
+            if (parsed < 0) {
+                throw std::invalid_argument(std::string(key) + " must be non-negative.");
+            }
+            return static_cast<std::uint64_t>(parsed);
         }
-        return fallback;
+        throw std::invalid_argument(std::string(key) + " must be an unsigned integer value.");
     }
 
     /// \brief Converts optional protocol text to a currency enum.
@@ -766,6 +875,26 @@ namespace optionx::bridges::metatrader_file::detail {
             return AccountType::UNKNOWN;
         }
         return to_enum<AccountType>(value);
+    }
+
+    /// \brief Converts optional protocol text to a platform enum.
+    inline PlatformType platform_type_value(const std::string& value) {
+        if (value.empty()) {
+            return PlatformType::UNKNOWN;
+        }
+        auto normalized = upper_ascii_copy(trim_ascii_copy(value));
+        std::replace(normalized.begin(), normalized.end(), '.', '_');
+        std::replace(normalized.begin(), normalized.end(), '-', '_');
+        std::replace(normalized.begin(), normalized.end(), ' ', '_');
+        return to_enum<PlatformType>(normalized);
+    }
+
+    /// \brief Converts optional protocol text to a money-management enum.
+    inline MmSystemType mm_system_type_value(const std::string& value) {
+        if (value.empty()) {
+            return MmSystemType::NONE;
+        }
+        return to_enum<MmSystemType>(value);
     }
 
     /// \brief Converts optional protocol text to an option type enum.
@@ -798,46 +927,125 @@ namespace optionx::bridges::metatrader_file::detail {
             }
         } else if (amount.is_number()) {
             signal.amount = amount.get<double>();
+            if (!std::isfinite(signal.amount)) {
+                throw std::invalid_argument("amount must be a finite decimal value.");
+            }
         } else if (amount.is_string()) {
-            signal.amount = std::stod(amount.get<std::string>());
+            signal.amount = strict_decimal_text_to_double(amount.get<std::string>(), "amount");
+        } else {
+            throw std::invalid_argument("amount must be a decimal value or object.");
         }
     }
 
     /// \brief Applies duration or absolute expiration fields to a signal.
     inline void apply_expiry(TradeSignal& signal, const nlohmann::json& trade) {
+        int expiry_forms = 0;
+        const auto mark_expiry_form = [&expiry_forms]() {
+            ++expiry_forms;
+            if (expiry_forms > 1) {
+                throw std::invalid_argument("Exactly one expiry form must be provided.");
+            }
+        };
+        const auto validate_absolute_seconds = [](const std::int64_t seconds, const char* field) {
+            if (seconds <= 0) {
+                throw std::invalid_argument(std::string(field) + " must be positive.");
+            }
+            if (seconds <= unix_time_ms() / 1000) {
+                throw std::invalid_argument(std::string(field) + " must be in the future.");
+            }
+        };
+
         if (trade.is_object() && trade.contains("expiry") && trade.at("expiry").is_object()) {
             const auto& expiry = trade.at("expiry");
             const auto kind = string_value(expiry, "kind");
-            if (kind == "duration" || expiry.contains("duration_ms")) {
+            const bool has_duration = expiry.contains("duration_ms");
+            const bool has_absolute = expiry.contains("expires_at_ms");
+            if (has_duration && has_absolute) {
+                throw std::invalid_argument("expiry must not mix duration and absolute fields.");
+            }
+            if (!kind.empty() && kind != "duration" && kind != "absolute") {
+                throw std::invalid_argument("expiry.kind is unsupported.");
+            }
+            if (kind == "duration" && has_absolute) {
+                throw std::invalid_argument("expiry.kind does not match expires_at_ms.");
+            }
+            if (kind == "absolute" && has_duration) {
+                throw std::invalid_argument("expiry.kind does not match duration_ms.");
+            }
+            if (kind == "duration" || has_duration) {
+                mark_expiry_form();
+                if (!has_duration) {
+                    throw std::invalid_argument("expiry.duration_ms is required.");
+                }
                 const auto duration_ms = int64_value(expiry, "duration_ms", 0);
-                if (duration_ms > 0) {
-                    signal.duration = static_cast<std::uint32_t>(duration_ms / 1000);
+                if (duration_ms <= 0) {
+                    throw std::invalid_argument("expiry.duration_ms must be positive.");
                 }
-            } else if (kind == "absolute" || expiry.contains("expires_at_ms")) {
+                if (duration_ms < 1000 || duration_ms % 1000 != 0) {
+                    throw std::invalid_argument("expiry.duration_ms must be whole seconds.");
+                }
+                signal.duration = checked_positive_duration_seconds(
+                    duration_ms / 1000,
+                    "expiry.duration_ms");
+            } else if (kind == "absolute" || has_absolute) {
+                mark_expiry_form();
+                if (!has_absolute) {
+                    throw std::invalid_argument("expiry.expires_at_ms is required.");
+                }
                 const auto expires_at_ms = int64_value(expiry, "expires_at_ms", 0);
-                if (expires_at_ms > 0) {
-                    signal.expiry_time = expires_at_ms / 1000;
+                if (expires_at_ms <= 0) {
+                    throw std::invalid_argument("expiry.expires_at_ms must be positive.");
                 }
+                if (expires_at_ms < 1000 || expires_at_ms % 1000 != 0) {
+                    throw std::invalid_argument("expiry.expires_at_ms must be whole seconds.");
+                }
+                signal.expiry_time = expires_at_ms / 1000;
+                validate_absolute_seconds(signal.expiry_time, "expiry.expires_at_ms");
             }
         }
-        const auto duration_ms = int64_value(trade, "duration_ms", 0);
-        if (duration_ms > 0) {
-            signal.duration = static_cast<std::uint32_t>(duration_ms / 1000);
+        if (trade.contains("duration_ms")) {
+            mark_expiry_form();
+            const auto duration_ms = int64_value(trade, "duration_ms", 0);
+            if (duration_ms <= 0) {
+                throw std::invalid_argument("duration_ms must be positive.");
+            }
+            if (duration_ms < 1000 || duration_ms % 1000 != 0) {
+                throw std::invalid_argument("duration_ms must be whole seconds.");
+            }
+            signal.duration = checked_positive_duration_seconds(duration_ms / 1000, "duration_ms");
         }
-        const auto duration = int64_value(trade, "duration", 0);
-        if (duration > 0) {
-            signal.duration = static_cast<std::uint32_t>(duration);
+        if (trade.contains("duration")) {
+            mark_expiry_form();
+            const auto duration = int64_value(trade, "duration", 0);
+            if (duration <= 0) {
+                throw std::invalid_argument("duration must be positive.");
+            }
+            signal.duration = checked_positive_duration_seconds(duration, "duration");
         }
-        const auto duration_sec = int64_value(trade, "duration_sec", 0);
-        if (duration_sec > 0) {
-            signal.duration = static_cast<std::uint32_t>(duration_sec);
+        if (trade.contains("duration_sec")) {
+            mark_expiry_form();
+            const auto duration_sec = int64_value(trade, "duration_sec", 0);
+            if (duration_sec <= 0) {
+                throw std::invalid_argument("duration_sec must be positive.");
+            }
+            signal.duration = checked_positive_duration_seconds(duration_sec, "duration_sec");
         }
-        const auto expires_at_ms = int64_value(trade, "expires_at_ms", 0);
-        if (expires_at_ms > 0) {
+        if (trade.contains("expires_at_ms")) {
+            mark_expiry_form();
+            const auto expires_at_ms = int64_value(trade, "expires_at_ms", 0);
+            if (expires_at_ms <= 0) {
+                throw std::invalid_argument("expires_at_ms must be positive.");
+            }
+            if (expires_at_ms < 1000 || expires_at_ms % 1000 != 0) {
+                throw std::invalid_argument("expires_at_ms must be whole seconds.");
+            }
             signal.expiry_time = expires_at_ms / 1000;
+            validate_absolute_seconds(signal.expiry_time, "expires_at_ms");
         }
-        const auto expiry_time = int64_value(trade, "expiry_time", 0);
-        if (expiry_time > 0) {
+        if (trade.contains("expiry_time")) {
+            mark_expiry_form();
+            const auto expiry_time = int64_value(trade, "expiry_time", 0);
+            validate_absolute_seconds(expiry_time, "expiry_time");
             signal.expiry_time = expiry_time;
         }
     }
@@ -845,11 +1053,52 @@ namespace optionx::bridges::metatrader_file::detail {
     /// \brief Applies routing selector fields to a signal.
     inline void apply_routing(TradeSignal& signal, const nlohmann::json& params) {
         const auto& routing = object_member_or_empty(params, "routing");
+        const auto platform_type = string_value(routing, "platform_type");
+        if (!platform_type.empty()) {
+            signal.platform_type = platform_type_value(platform_type);
+        }
         const auto& selector = object_member_or_empty(routing, "selector");
         const auto account_id = int64_value(selector, "account_id", 0);
         if (account_id != 0) {
             signal.account_id = account_id;
         }
+    }
+
+    /// \brief Applies optional protocol sizing fields to a signal.
+    inline void apply_sizing(TradeSignal& signal, const nlohmann::json& params) {
+        const auto& sizing = object_member_or_empty(params, "sizing");
+        if (!sizing.is_object() || sizing.empty()) {
+            return;
+        }
+
+        const auto mode = string_value(sizing, "mode", string_value(sizing, "type"));
+        if (!mode.empty()) {
+            signal.mm_type = mm_system_type_value(mode);
+        }
+        const auto& trade_payload = params.contains("trade")
+            ? object_member_or_empty(params, "trade")
+            : object_member_or_empty(params, "signal");
+        if (sizing.contains("amount") && !trade_payload.contains("amount")) {
+            nlohmann::json trade = nlohmann::json::object();
+            trade["amount"] = sizing.at("amount");
+            if (sizing.contains("currency")) {
+                trade["currency"] = sizing.at("currency");
+            }
+            apply_amount(signal, trade);
+        }
+        const auto currency = string_value(sizing, "currency");
+        if (!currency.empty() && signal.currency == CurrencyType::UNKNOWN) {
+            signal.currency = currency_value(currency);
+        }
+        const auto step = int64_value(sizing, "step", signal.mm_step);
+        if (step < std::numeric_limits<std::int32_t>::min() ||
+            step > std::numeric_limits<std::int32_t>::max()) {
+            throw std::invalid_argument("sizing.step is out of range.");
+        }
+        signal.mm_step = static_cast<std::int32_t>(step);
+        signal.mm_group_id = int64_value(sizing, "group_id", signal.mm_group_id);
+        signal.mm_group_hash = string_value(sizing, "group_hash", signal.mm_group_hash);
+        signal.mm_group_name = string_value(sizing, "group_name", signal.mm_group_name);
     }
 
     /// \brief Reads the optional command deadline from context.
@@ -887,7 +1136,7 @@ namespace optionx::bridges::metatrader_file::detail {
         signal->unique_hash = string_value(
             identity,
             "unique_hash",
-            string_value(trade, "unique_hash", string_value(context, "idempotency_key")));
+            string_value(trade, "unique_hash"));
         signal->unique_id = int64_value(identity, "unique_id", int64_value(trade, "unique_id", 0));
         signal->user_data = string_value(identity, "user_data", string_value(trade, "user_data"));
         signal->comment = string_value(trade, "comment");
@@ -906,6 +1155,7 @@ namespace optionx::bridges::metatrader_file::detail {
         apply_amount(*signal, trade);
         apply_expiry(*signal, trade);
         apply_routing(*signal, params);
+        apply_sizing(*signal, params);
 
         if (signal->symbol.empty()) {
             throw std::invalid_argument("Command trade symbol is required.");
@@ -913,8 +1163,17 @@ namespace optionx::bridges::metatrader_file::detail {
         if (signal->order_type == OrderType::UNKNOWN) {
             throw std::invalid_argument("Command order_type is required.");
         }
+        if (!std::isfinite(signal->amount)) {
+            throw std::invalid_argument("Command amount must be finite.");
+        }
         if (direct_trade_open && signal->amount <= 0.0) {
             throw std::invalid_argument("trade.open amount must be positive.");
+        }
+        if (direct_trade_open && signal->option_type == OptionType::UNKNOWN) {
+            throw std::invalid_argument("trade.open option_type is required.");
+        }
+        if (direct_trade_open && signal->duration == 0 && signal->expiry_time <= 0) {
+            throw std::invalid_argument("trade.open expiry is required.");
         }
         return signal;
     }
