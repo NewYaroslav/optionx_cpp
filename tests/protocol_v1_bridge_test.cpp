@@ -370,7 +370,8 @@ TEST(BridgeProtocolServerBridge, AcceptsHttpJsonRpcCommands) {
     };
     bridge.update_account_info(optionx::AccountInfoUpdate(
         std::make_shared<TestAccountInfo>(),
-        optionx::AccountUpdateStatus::BALANCE_UPDATED));
+        optionx::AccountUpdateStatus::BALANCE_UPDATED,
+        123));
 
     bridge.run();
     ASSERT_TRUE(wait_for_http_port(bridge));
@@ -396,7 +397,8 @@ TEST(BridgeProtocolServerBridge, AcceptsHttpJsonRpcCommands) {
             {"params", nlohmann::json::object()}
         });
     EXPECT_EQ(balance.at("result").at("status").get<std::string>(), "completed");
-    EXPECT_EQ(balance.at("result").at("account").at("account_id").get<std::string>(), "99");
+    EXPECT_EQ(balance.at("result").at("account").at("account_id").get<std::string>(), "123");
+    EXPECT_EQ(balance.at("result").at("account").at("user_id").get<std::string>(), "99");
 
     const auto accepted = post_json(
         config,
@@ -463,7 +465,8 @@ TEST(BridgeProtocolNamedPipeBridge, AcceptsJsonRpcCommands) {
     };
     bridge.update_account_info(optionx::AccountInfoUpdate(
         std::make_shared<TestAccountInfo>(),
-        optionx::AccountUpdateStatus::BALANCE_UPDATED));
+        optionx::AccountUpdateStatus::BALANCE_UPDATED,
+        123));
 
     bridge.run();
     {
@@ -513,7 +516,8 @@ TEST(BridgeProtocolNamedPipeBridge, AcceptsJsonRpcCommands) {
             {"params", nlohmann::json::object()}
         });
     EXPECT_EQ(balance.at("result").at("status").get<std::string>(), "completed");
-    EXPECT_EQ(balance.at("result").at("account").at("account_id").get<std::string>(), "99");
+    EXPECT_EQ(balance.at("result").at("account").at("account_id").get<std::string>(), "123");
+    EXPECT_EQ(balance.at("result").at("account").at("user_id").get<std::string>(), "99");
 
     const auto accepted = pipe_json(client, trade_command("pipe-trade", "pipe-idem"));
     EXPECT_EQ(accepted.at("result").at("status").get<std::string>(), "accepted");
@@ -600,10 +604,17 @@ TEST(BridgeProtocolNamedPipeBridge, HandlesFramesLargerThanTransportBuffer) {
 
     bridge.update_account_info(optionx::AccountInfoUpdate(
         std::make_shared<TestAccountInfo>(),
-        optionx::AccountUpdateStatus::BALANCE_UPDATED));
+        optionx::AccountUpdateStatus::BALANCE_UPDATED,
+        321));
     const auto notification = read_pipe_json(client);
     ASSERT_TRUE(notification.contains("method")) << notification.dump(-1);
     EXPECT_EQ(notification.at("method").get<std::string>(), "balance.updated");
+    EXPECT_EQ(
+        notification.at("params").at("payload").at("account_id").get<std::string>(),
+        "321");
+    EXPECT_EQ(
+        notification.at("params").at("payload").at("user_id").get<std::string>(),
+        "99");
     EXPECT_GT(notification.dump(-1).size(), config.buffer_size);
 
     client.close();

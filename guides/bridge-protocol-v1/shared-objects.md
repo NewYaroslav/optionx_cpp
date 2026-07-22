@@ -44,6 +44,12 @@ Known selector kinds:
 - `accounts`: use a specified candidate list.
 - `all`: duplicate to all matching accounts.
 
+`account_id` is the stable account identity assigned by the OptionX host
+application or account registry. It is used for routing, filtering and
+correlating events. Do not overload broker/platform user identifiers into
+`account_id`; expose those separately as `user_id` in account snapshots and
+account events when they are known.
+
 Known policies:
 
 - `best_payout`: choose the account/platform with the best payout.

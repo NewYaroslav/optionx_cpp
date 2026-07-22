@@ -226,7 +226,7 @@ Bridge может отвечать событиями в `events.ndjson`, без
 Domain event notifications могут использовать обычный bridge event envelope:
 
 ```json
-{"file_seq":102,"jsonrpc":"2.0","method":"balance.updated","params":{"event_id":"evt-019c...","source":"optionx://installation-019c/bridge/file","stream_id":"file-bridge-instance-019c...","seq":42,"occurred_at_ms":1783476725000,"emitted_at_ms":1783476725010,"subject":{"account_id":"1"},"revision":3,"payload":{"account_id":"1","balance":{"value":"1024.50","currency":"USD"}}}}
+{"file_seq":102,"jsonrpc":"2.0","method":"balance.updated","params":{"event_id":"evt-019c...","source":"optionx://installation-019c/bridge/file","stream_id":"file-bridge-instance-019c...","seq":42,"occurred_at_ms":1783476725000,"emitted_at_ms":1783476725010,"subject":{"account_id":"1"},"revision":3,"payload":{"account_id":"1","user_id":"broker-user-123","balance":{"value":"1024.50","currency":"USD"}}}}
 ```
 
 `state.json` это atomically replaced snapshot, а не append-log:
@@ -239,6 +239,7 @@ Domain event notifications могут использовать обычный br
   "accounts": [
     {
       "account_id": "1",
+      "user_id": "broker-user-123",
       "balance": {
         "value": "1018.50",
         "currency": "USD"

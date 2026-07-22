@@ -44,6 +44,12 @@
 - `accounts`: использовать указанный список candidates.
 - `all`: дублировать на все подходящие accounts.
 
+`account_id` - стабильная идентичность account, назначенная host application
+или account registry на стороне OptionX. Она используется для routing,
+filtering и корреляции events. Broker/platform user identifiers не должны
+попадать в `account_id`; когда они известны, их нужно отдавать отдельно как
+`user_id` в account snapshots и account events.
+
 Известные policies:
 
 - `best_payout`: выбрать account/platform с лучшим payout.

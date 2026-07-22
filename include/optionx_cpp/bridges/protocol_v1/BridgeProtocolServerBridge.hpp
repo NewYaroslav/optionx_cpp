@@ -71,6 +71,7 @@ namespace optionx::bridges::protocol_v1 {
             BaseBridge::signal_report_callback_t signal_report_callback;
             BaseBridge::signal_id_allocator_t signal_id_allocator;
             std::shared_ptr<BaseAccountInfoData> account_info;
+            std::int64_t account_id = 0;
             std::shared_ptr<HttpServer> http_server;
             std::shared_ptr<WsServer> ws_server;
             std::thread http_thread;
@@ -314,13 +315,15 @@ namespace optionx::bridges::protocol_v1 {
             {
                 std::lock_guard<std::mutex> lock(m_state->mutex);
                 m_state->account_info = info.account_info;
+                m_state->account_id = info.account_id;
                 config = m_state->config;
             }
             if (!config) {
                 return;
             }
 
-            broadcast_ws_notification(make_balance_updated_notification(*config, *info.account_info));
+            broadcast_ws_notification(
+                make_balance_updated_notification(*config, *info.account_info, info.account_id));
         }
 
         /// \brief Broadcasts `trade.updated` notifications to connected WebSocket clients.
@@ -869,10 +872,11 @@ namespace optionx::bridges::protocol_v1 {
 
         nlohmann::json make_balance_updated_notification(
                 const BridgeProtocolServerConfig& config,
-                const BaseAccountInfoData& account) {
+                const BaseAccountInfoData& account,
+                const std::int64_t account_id) {
             const auto now = metatrader_file::detail::unix_time_ms();
-            const auto account_id = metatrader_file::detail::account_id_string(account);
-            const auto coord = next_event_coordinate("account:" + account_id);
+            const auto account_id_text = metatrader_file::detail::account_id_string(account_id);
+            const auto coord = next_event_coordinate("account:" + account_id_text);
             return metatrader_file::detail::make_balance_updated_notification(
                 make_event_id("balance", coord.stream_id, coord.seq),
                 source_uri(config),
@@ -880,9 +884,10 @@ namespace optionx::bridges::protocol_v1 {
                 coord.seq,
                 now,
                 now,
-                account_id,
+                account_id_text,
                 metatrader_file::detail::safe_account_balance(account),
                 metatrader_file::detail::safe_account_currency(account),
+                metatrader_file::detail::user_id_string(account),
                 coord.revision);
         }
 
@@ -1393,9 +1398,11 @@ namespace optionx::bridges::protocol_v1 {
 
         nlohmann::json handle_account_balance_get(const nlohmann::json& id) {
             std::shared_ptr<BaseAccountInfoData> account;
+            std::int64_t account_id = 0;
             {
                 std::lock_guard<std::mutex> lock(m_state->mutex);
                 account = m_state->account_info;
+                account_id = m_state->account_id;
             }
             if (!account) {
                 return detail::jsonrpc_result(
@@ -1414,7 +1421,7 @@ namespace optionx::bridges::protocol_v1 {
                 nlohmann::json{
                     {"status", "completed"},
                     {"final", true},
-                    {"account", metatrader_file::detail::account_snapshot_json(*account)}
+                    {"account", metatrader_file::detail::account_snapshot_json(*account, account_id)}
                 });
         }
 

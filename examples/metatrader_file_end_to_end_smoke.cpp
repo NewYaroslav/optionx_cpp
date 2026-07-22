@@ -322,7 +322,8 @@ int main(int argc, char** argv) {
         auto account = std::make_shared<DemoAccountInfo>();
         bridge.update_account_info(optionx::AccountInfoUpdate(
             account,
-            optionx::AccountUpdateStatus::BALANCE_UPDATED));
+            optionx::AccountUpdateStatus::BALANCE_UPDATED,
+            77));
 
         MetaTraderFileCommandWriter writer(config);
         const auto balance = writer.account_balance_get("77", "e2e-balance");

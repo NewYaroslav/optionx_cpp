@@ -640,11 +640,13 @@ TEST(MetaTraderFileProtocol, BuildsBalanceAndTradeUpdateNotifications) {
         1001,
         "1",
         1024.5,
-        optionx::CurrencyType::USD);
+        optionx::CurrencyType::USD,
+        "broker-user-1");
 
     EXPECT_EQ(balance_event.at("method").get<std::string>(), "balance.updated");
     const auto& balance_payload = balance_event.at("params").at("payload");
     EXPECT_EQ(balance_payload.at("account_id").get<std::string>(), "1");
+    EXPECT_EQ(balance_payload.at("user_id").get<std::string>(), "broker-user-1");
     EXPECT_EQ(balance_payload.at("balance").at("value").get<std::string>(), "1024.50");
     EXPECT_EQ(balance_payload.at("balance").at("currency").get<std::string>(), "USD");
 
@@ -2146,7 +2148,8 @@ TEST(MetaTraderFileBridge, PublishesAccountQueriesAndTradeUpdates) {
     account->currency = optionx::CurrencyType::EUR;
     bridge.update_account_info(optionx::AccountInfoUpdate(
         account,
-        optionx::AccountUpdateStatus::BALANCE_UPDATED));
+        optionx::AccountUpdateStatus::BALANCE_UPDATED,
+        303));
 
     protocol::append_json_line(
         layout.commands_log(),
@@ -2161,7 +2164,7 @@ TEST(MetaTraderFileBridge, PublishesAccountQueriesAndTradeUpdates) {
     request.trade_id = 7;
     request.signal_id = 12;
     request.bridge_id = 32;
-    request.account_id = 77;
+    request.account_id = 303;
     request.symbol = "BTCUSD";
     request.order_type = optionx::OrderType::SELL;
     request.option_type = optionx::OptionType::SPRINT;
@@ -2182,7 +2185,8 @@ TEST(MetaTraderFileBridge, PublishesAccountQueriesAndTradeUpdates) {
         layout.state_snapshot(),
         config.max_line_bytes);
     ASSERT_EQ(state.at("accounts").size(), 1u);
-    EXPECT_EQ(state.at("accounts")[0].at("account_id").get<std::string>(), "77");
+    EXPECT_EQ(state.at("accounts")[0].at("account_id").get<std::string>(), "303");
+    EXPECT_EQ(state.at("accounts")[0].at("user_id").get<std::string>(), "77");
     EXPECT_EQ(state.at("accounts")[0].at("balance").at("value").get<std::string>(), "2048.25");
     EXPECT_EQ(state.at("accounts")[0].at("balance").at("currency").get<std::string>(), "EUR");
 
@@ -2192,15 +2196,27 @@ TEST(MetaTraderFileBridge, PublishesAccountQueriesAndTradeUpdates) {
         config.max_line_bytes);
     ASSERT_EQ(events.size(), 3u);
     EXPECT_EQ(events[0].document.at("method").get<std::string>(), "balance.updated");
+    EXPECT_EQ(
+        events[0].document.at("params").at("payload").at("account_id").get<std::string>(),
+        "303");
+    EXPECT_EQ(
+        events[0].document.at("params").at("payload").at("user_id").get<std::string>(),
+        "77");
     EXPECT_EQ(events[1].document.at("id").get<std::string>(), "balance-1");
     EXPECT_EQ(events[1].document.at("result").at("status").get<std::string>(), "completed");
+    EXPECT_EQ(
+        events[1].document.at("result").at("account").at("account_id").get<std::string>(),
+        "303");
+    EXPECT_EQ(
+        events[1].document.at("result").at("account").at("user_id").get<std::string>(),
+        "77");
     EXPECT_EQ(
         events[1].document.at("result").at("account").at("balance").at("value").get<std::string>(),
         "2048.25");
     EXPECT_EQ(events[2].document.at("method").get<std::string>(), "trade.updated");
     const auto& trade = events[2].document.at("params").at("payload").at("trade");
     EXPECT_EQ(trade.at("trade_id").get<std::string>(), "7");
-    EXPECT_EQ(trade.at("account_id").get<std::string>(), "77");
+    EXPECT_EQ(trade.at("account_id").get<std::string>(), "303");
     EXPECT_EQ(trade.at("state").get<std::string>(), "opened");
     EXPECT_FALSE(trade.at("final").get<bool>());
 }

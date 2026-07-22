@@ -122,6 +122,9 @@ Rules:
 - `AccountInfoUpdate::status` identifies the account aspect that changed.
   `AccountInfoUpdate::account_info` carries the current account snapshot, where
   subscribers can query the new value. The update is not an old/new diff object.
+- `AccountInfoUpdate::account_id` is the internal OptionX account ID assigned
+  by the host application or account registry. Broker/platform user IDs remain
+  account snapshot data exposed through `AccountInfoType::USER_ID`.
 - Broker-specific trading-condition streams, payout changes and symbol session
   changes should use their own DTO/subscriber contract instead of overloading
   `AccountInfoUpdate`.

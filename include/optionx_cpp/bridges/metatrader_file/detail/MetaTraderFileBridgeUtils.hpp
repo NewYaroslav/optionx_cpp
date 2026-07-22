@@ -37,8 +37,13 @@ namespace optionx::bridges::metatrader_file::detail {
                config.client_id;
     }
 
-    /// \brief Reads the best available account ID as an opaque protocol string.
-    inline std::string account_id_string(const BaseAccountInfoData& account) {
+    /// \brief Converts an internal OptionX account ID into protocol text.
+    inline std::string account_id_string(const std::int64_t account_id) {
+        return account_id != 0 ? std::to_string(account_id) : std::string("0");
+    }
+
+    /// \brief Reads the best available broker/platform user ID as protocol text.
+    inline std::string user_id_string(const BaseAccountInfoData& account) {
         try {
             auto id = account.get_info<std::string>(AccountInfoType::USER_ID);
             if (!id.empty()) {
@@ -53,7 +58,7 @@ namespace optionx::bridges::metatrader_file::detail {
             }
         } catch (...) {
         }
-        return "0";
+        return {};
     }
 
     /// \brief Reads the account balance or returns the transport default.
@@ -95,15 +100,23 @@ namespace optionx::bridges::metatrader_file::detail {
     }
 
     /// \brief Converts an account snapshot into the bridge protocol shape.
-    inline nlohmann::json account_snapshot_json(const BaseAccountInfoData& account) {
+    inline nlohmann::json account_snapshot_json(
+            const BaseAccountInfoData& account,
+            const std::int64_t account_id = 0) {
         nlohmann::json snapshot = {
-            {"account_id", account_id_string(account)},
             {"connection", connection_string(account)},
             {"balance", make_money_value(
                 safe_account_balance(account),
                 safe_account_currency(account),
                 2)}
         };
+        if (account_id != 0) {
+            snapshot["account_id"] = account_id_string(account_id);
+        }
+        const auto user_id = user_id_string(account);
+        if (!user_id.empty()) {
+            snapshot["user_id"] = user_id;
+        }
         const auto account_type = safe_account_type(account);
         if (account_type != AccountType::UNKNOWN) {
             snapshot["account_type"] = to_str(account_type);

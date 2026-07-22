@@ -860,6 +860,7 @@ Account response item:
 ```json
 {
   "account_id": "1",
+  "user_id": "broker-user-123",
   "platform_type": "INTRADE_BAR",
   "account_type": "DEMO",
   "currency": "USD",
@@ -874,6 +875,10 @@ Account response item:
   "metadata": {}
 }
 ```
+
+`account_id` - внутренняя OptionX account identity для routing и events.
+`user_id` - broker/platform account или trader identity, если platform её
+отдаёт.
 
 ### Trading Control
 
