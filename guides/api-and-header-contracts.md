@@ -43,9 +43,9 @@
   headers: `bridges/metatrader_file.hpp`, `bridges/legacy_trading.hpp`,
   `bridges/named_pipe.hpp` and `bridges/trading_view.hpp`.
   `bridges/named_pipe.hpp` is a compatibility umbrella for the legacy trading
-  named-pipe bridge. The BotBinary/BinaryBot adapter helpers are exposed
-  through `bridges/bot_binary.hpp`, and the Bridge Protocol v1 HTTP/WebSocket
-  server is exposed through `bridges/protocol_v1.hpp`. Headers under
+  named-pipe bridge. The BotBinary/BinaryBot compatibility bridge and adapter
+  helpers are exposed through `bridges/bot_binary.hpp`, and the Bridge Protocol
+  v1 HTTP/WebSocket server is exposed through `bridges/protocol_v1.hpp`. Headers under
   `bridges/<family>/` and `bridges/<family>/detail/` are not standalone public
   include entry points. See `guides/bridge-taxonomy.md` before adding a new
   bridge family or transport.

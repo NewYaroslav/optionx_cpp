@@ -33,6 +33,7 @@ jobs:
           metatrader_file_config_include_test
           metatrader_file_bridge_test
           metatrader_file_command_writer_test
+          bot_binary_bridge_test
           bot_binary_protocol_test
           protocol_v1_bridge_test
           bridge_umbrella_include_test
@@ -48,6 +49,9 @@ jobs:
 
       - name: Build BotBinary command builder smoke example
         run: cmake --build build-windows --config Debug --target bot_binary_command_builder_smoke
+
+      - name: Build BotBinary bridge smoke example
+        run: cmake --build build-windows --config Debug --target bot_binary_bridge_smoke
 
       - name: Build named-pipe bridge smoke example
         run: cmake --build build-windows --config Debug --target named_pipe_bridge_smoke
@@ -66,6 +70,7 @@ jobs:
           .\build-windows\Debug\metatrader_file_config_include_test.exe --gtest_brief=1
           .\build-windows\Debug\metatrader_file_bridge_test.exe --gtest_brief=1
           .\build-windows\Debug\metatrader_file_command_writer_test.exe --gtest_brief=1
+          .\build-windows\Debug\bot_binary_bridge_test.exe --gtest_brief=1
           .\build-windows\Debug\bot_binary_protocol_test.exe --gtest_brief=1
           .\build-windows\Debug\protocol_v1_bridge_test.exe --gtest_brief=1
           .\build-windows\Debug\bridge_umbrella_include_test.exe --gtest_brief=1
@@ -73,6 +78,7 @@ jobs:
           .\build-windows\Debug\metatrader_file_command_writer_smoke.exe --self-test
           .\build-windows\Debug\metatrader_file_end_to_end_smoke.exe --self-test
           .\build-windows\Debug\bot_binary_command_builder_smoke.exe --self-test
+          .\build-windows\Debug\bot_binary_bridge_smoke.exe --self-test
           .\build-windows\Debug\named_pipe_bridge_smoke.exe --self-test
           .\build-windows\Debug\protocol_v1_bridge_smoke.exe --self-test
           .\build-windows\Debug\protocol_v1_named_pipe_bridge_smoke.exe --self-test

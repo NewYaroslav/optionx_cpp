@@ -524,8 +524,20 @@ BotBinary filename suffix можно копировать в `identity.unique_ha
 который просто делает один файл уникальным, это transport identity, а не domain
 deduplication.
 
-Текущий C++ surface для этого profile - stateless compatibility helper из
-`<optionx_cpp/bridges/bot_binary.hpp>`. Он готовит:
+Текущий C++ surface для этого profile доступен из
+`<optionx_cpp/bridges/bot_binary.hpp>`. Он включает runtime
+`BotBinaryBridge` facade и stateless formatter/parser helpers. Bridge принимает:
+
+- BotBinary HTTP/WebRequest команды `request=...` на настроенном local
+  endpoint;
+- BotBinary file-signal filenames из настроенного каталога `SignalPath`.
+
+`BotBinaryBridge` публикует нормализованные `TradeSignal` callbacks и сообщает
+о invalid, duplicate или intake-error signals через `BridgeSignalReport`.
+Поскольку HTTP surface не аутентифицирован, non-loopback bind addresses требуют
+явного insecure opt-in в `BotBinaryBridgeConfig`.
+
+Formatter helper готовит:
 
 - raw BotBinary `request` query value;
 - convenience HTTP URL;
@@ -536,12 +548,11 @@ convenience `http_url` percent-encodes it as the HTTP `request` query parameter,
 so suffixes containing `%` or `+` remain byte-stable across formatter/parser
 round-trips.
 
-Он также парсит legacy BotBinary HTTP `request` values и file-signal filenames
-обратно в neutral command snapshot, который будущий inbound bridge сможет
-превратить в OptionX trade signal. Parser сохраняет trailing BotBinary suffix
-как transport identity; он не считает этот suffix OptionX idempotency key или
-`identity.unique_hash`, пока higher-level bridge явно не задаст такое
-отображение.
+Parser helper также парсит legacy BotBinary HTTP `request` values и
+file-signal filenames обратно в neutral command snapshot. Bridge преобразует
+этот snapshot в OptionX trade signal. Parser сохраняет trailing BotBinary
+suffix как transport identity; он не считает этот suffix OptionX
+idempotency key или `identity.unique_hash`.
 
 Если explicit BotBinary transport suffix не задан, formatter выводит
 deterministic file-safe suffix из OptionX `idempotency_key`. Runtime delivery
