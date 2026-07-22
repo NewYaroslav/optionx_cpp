@@ -21,6 +21,7 @@ namespace optionx::bridges::protocol_v1 {
 
         enum class RuntimePhase {
             Stopped,
+            Starting,
             Running,
             Stopping
         };
@@ -259,7 +260,8 @@ namespace optionx::bridges::protocol_v1 {
 #           if defined(_WIN32)
             {
                 std::unique_lock<std::mutex> lock(m_state->mutex);
-                while (m_state->phase == RuntimePhase::Stopping) {
+                while (m_state->phase == RuntimePhase::Starting ||
+                       m_state->phase == RuntimePhase::Stopping) {
                     m_state->lifecycle_cv.wait(lock);
                 }
                 if (m_state->phase == RuntimePhase::Running) {
@@ -271,6 +273,7 @@ namespace optionx::bridges::protocol_v1 {
                 config->named_pipe,
                 config->buffer_size,
                 config->pipe_timeout_ms);
+            server_config.write_limits.max_message_size = max_pipe_frame_bytes(*config);
             auto server = std::make_shared<SimpleNamedPipe::NamedPipeServer>(server_config);
             configure_server_callbacks(server);
 
@@ -279,7 +282,7 @@ namespace optionx::bridges::protocol_v1 {
                 if (m_state->phase != RuntimePhase::Stopped) {
                     return;
                 }
-                m_state->phase = RuntimePhase::Running;
+                m_state->phase = RuntimePhase::Starting;
                 m_state->server = server;
                 m_state->client_ids.clear();
                 m_state->operation_order.clear();
@@ -297,7 +300,7 @@ namespace optionx::bridges::protocol_v1 {
             try {
                 server->start(true);
             } catch (const std::exception& ex) {
-                clear_runtime_after_start_failure();
+                clear_runtime_after_start_failure(server.get());
                 notify_status(BridgeStatus::SERVER_START_FAILED, {}, ex.what());
             }
 #           else
@@ -498,6 +501,14 @@ namespace optionx::bridges::protocol_v1 {
 
         static std::string frame_message(nlohmann::json message) {
             return message.dump(-1) + "\n";
+        }
+
+        static std::size_t max_pipe_frame_bytes(
+                const BridgeProtocolNamedPipeConfig& config) {
+            if (config.request_body_limit == (std::numeric_limits<std::size_t>::max)()) {
+                return config.request_body_limit;
+            }
+            return config.request_body_limit + 1;
         }
 
         static bool is_valid_jsonrpc_id(const nlohmann::json& id) {
@@ -1406,6 +1417,7 @@ namespace optionx::bridges::protocol_v1 {
 #       if defined(_WIN32)
         void configure_server_callbacks(
                 const std::shared_ptr<SimpleNamedPipe::NamedPipeServer>& server) {
+            auto* const server_identity = server.get();
             server->on_connected = [state = m_state](int client_id) {
                 TransportCallbackScope scope(state);
                 if (!scope.admitted()) {
@@ -1431,8 +1443,17 @@ namespace optionx::bridges::protocol_v1 {
                     connection_id(client_id));
             };
 
-            server->on_start = [state = m_state](const SimpleNamedPipe::ServerConfig&) {
-                CallbackScope scope(state);
+            server->on_start = [state = m_state, server_identity](
+                    const SimpleNamedPipe::ServerConfig&) {
+                {
+                    std::lock_guard<std::mutex> lock(state->mutex);
+                    if (state->server.get() != server_identity ||
+                        state->phase != RuntimePhase::Starting) {
+                        return;
+                    }
+                    state->phase = RuntimePhase::Running;
+                    state->lifecycle_cv.notify_all();
+                }
                 notify_status_from_state(state, BridgeStatus::SERVER_STARTED, "pipe");
             };
 
@@ -1455,13 +1476,59 @@ namespace optionx::bridges::protocol_v1 {
                     handle_message(client_id, message);
                 };
 
-            server->on_error = [state = m_state](const std::error_code& ec) {
-                CallbackScope scope(state);
+            server->on_error = [state = m_state, server_identity](const std::error_code& ec) {
+                bool start_failed = false;
+                std::shared_ptr<SimpleNamedPipe::NamedPipeServer> server_to_finalize;
+                {
+                    std::lock_guard<std::mutex> lock(state->mutex);
+                    if (state->server.get() != server_identity) {
+                        return;
+                    }
+                    if (state->phase == RuntimePhase::Starting) {
+                        start_failed = true;
+                        state->phase = RuntimePhase::Stopping;
+                        state->transport_callback_admission_closed = true;
+                        server_to_finalize = state->server;
+                        state->server.reset();
+                        state->client_ids.clear();
+                        state->pending_callback_shutdown = false;
+                    }
+                }
                 notify_status_from_state(
                     state,
-                    BridgeStatus::CONNECTION_ERROR,
+                    start_failed ? BridgeStatus::SERVER_START_FAILED
+                                 : BridgeStatus::CONNECTION_ERROR,
                     {},
                     ec.message());
+                if (server_to_finalize) {
+                    std::thread([state, server = std::move(server_to_finalize)]() mutable {
+                        finalize_shutdown(state, std::move(server));
+                    }).detach();
+                }
+            };
+
+            server->on_stop = [state = m_state, server_identity](
+                    const SimpleNamedPipe::ServerConfig&) {
+                bool should_notify = false;
+                {
+                    std::lock_guard<std::mutex> lock(state->mutex);
+                    if (state->server.get() != server_identity) {
+                        return;
+                    }
+                    state->server.reset();
+                    state->client_ids.clear();
+                    state->transport_callback_admission_closed = false;
+                    state->pending_callback_shutdown = false;
+                    if (state->phase != RuntimePhase::Stopped) {
+                        state->phase = RuntimePhase::Stopped;
+                        should_notify = !state->stop_notified;
+                        state->stop_notified = true;
+                    }
+                    state->lifecycle_cv.notify_all();
+                }
+                if (should_notify) {
+                    notify_status_from_state(state, BridgeStatus::SERVER_STOPPED, {});
+                }
             };
         }
 
@@ -1480,41 +1547,79 @@ namespace optionx::bridges::protocol_v1 {
                 return;
             }
             if (!scope.admitted()) {
-                send_pipe_text(server, client_id, frame_message(server_stopping_response()));
+                auto config = get_config();
+                if (config) {
+                    send_pipe_text(
+                        m_state,
+                        *config,
+                        server,
+                        client_id,
+                        frame_message(server_stopping_response()));
+                }
                 return;
             }
 
             auto config = get_config_or_throw();
             const auto response = frame_message(handle_message_body(*config, message));
-            send_pipe_text(server, client_id, response);
+            send_pipe_text(m_state, *config, server, client_id, response);
         }
 
         void broadcast_notification(nlohmann::json notification) {
             std::shared_ptr<SimpleNamedPipe::NamedPipeServer> server;
             std::vector<int> clients;
+            std::shared_ptr<BridgeProtocolNamedPipeConfig> config;
             {
                 std::lock_guard<std::mutex> lock(m_state->mutex);
                 server = m_state->server;
+                config = m_state->config;
                 clients.assign(m_state->client_ids.begin(), m_state->client_ids.end());
             }
-            if (!server) {
+            if (!server || !config) {
                 return;
             }
             const auto text = frame_message(std::move(notification));
             for (const int client_id : clients) {
-                send_pipe_text(server, client_id, text);
+                send_pipe_text(m_state, *config, server, client_id, text);
             }
         }
 
         static void send_pipe_text(
+                const std::shared_ptr<RuntimeState>& state,
+                const BridgeProtocolNamedPipeConfig& config,
                 const std::shared_ptr<SimpleNamedPipe::NamedPipeServer>& server,
                 const int client_id,
                 const std::string& text) {
-            server->send_to(client_id, text);
+            if (text.size() > max_pipe_frame_bytes(config)) {
+                notify_status_from_state(
+                    state,
+                    BridgeStatus::CONNECTION_ERROR,
+                    connection_id(client_id),
+                    "Named-pipe message exceeds configured protocol frame limit.");
+                return;
+            }
+
+            server->send_to(
+                client_id,
+                text,
+                [state, client_id](const std::error_code& ec) {
+                    if (!ec) {
+                        return;
+                    }
+                    notify_status_from_state(
+                        state,
+                        BridgeStatus::CONNECTION_ERROR,
+                        connection_id(client_id),
+                        ec.message());
+                });
         }
 
-        void clear_runtime_after_start_failure() {
+        void clear_runtime_after_start_failure(
+                const SimpleNamedPipe::NamedPipeServer* server_identity) {
             std::lock_guard<std::mutex> lock(m_state->mutex);
+            if (m_state->server.get() != server_identity ||
+                m_state->phase != RuntimePhase::Starting) {
+                return;
+            }
             m_state->server.reset();
             m_state->client_ids.clear();
             m_state->phase = RuntimePhase::Stopped;

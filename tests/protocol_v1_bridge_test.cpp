@@ -208,6 +208,28 @@ nlohmann::json post_json_without_auth(
 }
 
 #if defined(_WIN32)
+nlohmann::json read_pipe_json(
+        SimpleNamedPipe::NamedPipeClient& client,
+        const std::chrono::seconds timeout = std::chrono::seconds(3)) {
+    std::error_code ec;
+    std::string buffered;
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        std::string chunk;
+        if (!client.read(chunk, 250, &ec)) {
+            continue;
+        }
+        buffered += chunk;
+        const auto newline = buffered.find('\n');
+        if (newline == std::string::npos) {
+            continue;
+        }
+        return nlohmann::json::parse(buffered.substr(0, newline));
+    }
+    ADD_FAILURE() << "Named-pipe JSON frame was not received. buffered=" << buffered;
+    throw std::runtime_error("Named-pipe JSON frame was not received.");
+}
+
 nlohmann::json pipe_json(
         SimpleNamedPipe::NamedPipeClient& client,
         const nlohmann::json& request) {
@@ -510,6 +532,218 @@ TEST(BridgeProtocolNamedPipeBridge, AcceptsJsonRpcCommands) {
     EXPECT_EQ(
         conflict.at("result").at("reason").at("code").get<std::string>(),
         "idempotency_conflict");
+
+    client.close();
+    bridge.shutdown();
+#else
+    GTEST_SKIP() << "Bridge Protocol v1 named-pipe transport is Windows-only.";
+#endif
+}
+
+TEST(BridgeProtocolNamedPipeBridge, HandlesFramesLargerThanTransportBuffer) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+#if defined(_WIN32)
+    auto config = test_pipe_config();
+    config.buffer_size = 64;
+    config.request_body_limit = 64 * 1024;
+
+    proto::BridgeProtocolNamedPipeBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolNamedPipeConfig>(config)));
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool server_started = false;
+    std::string status_error;
+
+    bridge.on_status_update() = [&](const optionx::BridgeStatusUpdate& update) {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (update.status == optionx::BridgeStatus::SERVER_STARTED) {
+            server_started = true;
+        }
+        if (update.status == optionx::BridgeStatus::SERVER_START_FAILED ||
+            update.status == optionx::BridgeStatus::CONNECTION_ERROR) {
+            status_error = update.message;
+        }
+        cv.notify_all();
+    };
+    bridge.on_signal_id() = []() { return optionx::SignalId{75}; };
+    bridge.on_trade_signal() = [](std::unique_ptr<optionx::TradeSignal>) {};
+
+    bridge.run();
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(3), [&] {
+            return server_started || !status_error.empty();
+        }));
+        ASSERT_TRUE(status_error.empty()) << status_error;
+    }
+
+    SimpleNamedPipe::NamedPipeClient client(
+        SimpleNamedPipe::ClientConfig(config.named_pipe, 37, 3000));
+    std::error_code ec;
+    ASSERT_TRUE(client.connect(&ec)) << ec.message();
+
+    auto large_hello = nlohmann::json{
+        {"jsonrpc", "2.0"},
+        {"id", "pipe-large-hello"},
+        {"method", "protocol.hello"},
+        {"params", {
+            {"requested_protocol_versions", nlohmann::json::array({"1"})},
+            {"padding", std::string(2048, 'p')}
+        }}
+    };
+    ASSERT_GT(large_hello.dump(-1).size(), config.buffer_size);
+    const auto hello = pipe_json(client, large_hello);
+    EXPECT_EQ(hello.at("result").at("selected_protocol_version").get<std::string>(), "1");
+    EXPECT_GT(hello.dump(-1).size(), config.buffer_size);
+
+    bridge.update_account_info(optionx::AccountInfoUpdate(
+        std::make_shared<TestAccountInfo>(),
+        optionx::AccountUpdateStatus::BALANCE_UPDATED));
+    const auto notification = read_pipe_json(client);
+    ASSERT_TRUE(notification.contains("method")) << notification.dump(-1);
+    EXPECT_EQ(notification.at("method").get<std::string>(), "balance.updated");
+    EXPECT_GT(notification.dump(-1).size(), config.buffer_size);
+
+    client.close();
+    bridge.shutdown();
+#else
+    GTEST_SKIP() << "Bridge Protocol v1 named-pipe transport is Windows-only.";
+#endif
+}
+
+TEST(BridgeProtocolNamedPipeBridge, AsyncStartupFailureReturnsToStoppedAndAllowsRestart) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+#if defined(_WIN32)
+    auto bad_config = test_pipe_config();
+    bad_config.named_pipe = std::string(300, 'x');
+
+    proto::BridgeProtocolNamedPipeBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolNamedPipeConfig>(bad_config)));
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool start_failed = false;
+    bool server_started = false;
+    std::string status_error;
+
+    bridge.on_status_update() = [&](const optionx::BridgeStatusUpdate& update) {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (update.status == optionx::BridgeStatus::SERVER_START_FAILED) {
+            start_failed = true;
+            status_error = update.message;
+        }
+        if (update.status == optionx::BridgeStatus::SERVER_STARTED) {
+            server_started = true;
+        }
+        cv.notify_all();
+    };
+
+    bridge.run();
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(5), [&] {
+            return start_failed;
+        })) << "Expected async named-pipe startup failure.";
+    }
+    EXPECT_FALSE(status_error.empty());
+
+    auto good_config = test_pipe_config();
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolNamedPipeConfig>(good_config)));
+    bridge.run();
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(3), [&] {
+            return server_started;
+        })) << "Bridge did not restart after async startup failure.";
+    }
+
+    SimpleNamedPipe::NamedPipeClient client(
+        SimpleNamedPipe::ClientConfig(good_config.named_pipe, good_config.buffer_size, 3000));
+    std::error_code ec;
+    ASSERT_TRUE(client.connect(&ec)) << ec.message();
+    const auto hello = pipe_json(
+        client,
+        nlohmann::json{
+            {"jsonrpc", "2.0"},
+            {"id", "pipe-restart-hello"},
+            {"method", "protocol.hello"},
+            {"params", nlohmann::json::object()}
+        });
+    EXPECT_EQ(hello.at("result").at("selected_protocol_version").get<std::string>(), "1");
+
+    client.close();
+    bridge.shutdown();
+#else
+    GTEST_SKIP() << "Bridge Protocol v1 named-pipe transport is Windows-only.";
+#endif
+}
+
+TEST(BridgeProtocolNamedPipeBridge, ShutdownFromServerStartedAllowsRestart) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+#if defined(_WIN32)
+    auto config = test_pipe_config();
+    proto::BridgeProtocolNamedPipeBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolNamedPipeConfig>(config)));
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    int started_count = 0;
+    bool stopped = false;
+
+    bridge.on_status_update() = [&](const optionx::BridgeStatusUpdate& update) {
+        if (update.status == optionx::BridgeStatus::SERVER_STARTED) {
+            bool request_shutdown = false;
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                ++started_count;
+                request_shutdown = started_count == 1;
+            }
+            cv.notify_all();
+            if (request_shutdown) {
+                bridge.shutdown();
+            }
+            return;
+        }
+        if (update.status == optionx::BridgeStatus::SERVER_STOPPED) {
+            std::lock_guard<std::mutex> lock(mutex);
+            stopped = true;
+            cv.notify_all();
+        }
+    };
+
+    bridge.run();
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(5), [&] {
+            return stopped;
+        }));
+    }
+
+    bridge.run();
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(3), [&] {
+            return started_count >= 2;
+        }));
+    }
+
+    SimpleNamedPipe::NamedPipeClient client(
+        SimpleNamedPipe::ClientConfig(config.named_pipe, config.buffer_size, 3000));
+    std::error_code ec;
+    ASSERT_TRUE(client.connect(&ec)) << ec.message();
+    const auto hello = pipe_json(
+        client,
+        nlohmann::json{
+            {"jsonrpc", "2.0"},
+            {"id", "pipe-restarted-after-status-shutdown"},
+            {"method", "protocol.hello"},
+            {"params", nlohmann::json::object()}
+        });
+    EXPECT_EQ(hello.at("result").at("selected_protocol_version").get<std::string>(), "1");
 
     client.close();
     bridge.shutdown();
