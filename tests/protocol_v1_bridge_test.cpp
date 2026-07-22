@@ -1355,7 +1355,7 @@ TEST(BridgeProtocolServerBridge, AcceptsDocumentedSizingAndRoutingPlatformType) 
     auto command = trade_command("sizing-routing", "idem-sizing-routing");
     command["params"]["routing"]["platform_type"] = "INTRADE_BAR";
     command["params"]["sizing"] = {
-        {"mode", "PERCENT"},
+        {"mode", "FIXED"},
         {"step", 2},
         {"group_id", 77},
         {"group_hash", "mm-hash"},
@@ -1366,11 +1366,160 @@ TEST(BridgeProtocolServerBridge, AcceptsDocumentedSizingAndRoutingPlatformType) 
 
     EXPECT_EQ(response.at("result").at("status").get<std::string>(), "accepted");
     EXPECT_EQ(platform_type, optionx::PlatformType::INTRADE_BAR);
-    EXPECT_EQ(mm_type, optionx::MmSystemType::PERCENT);
+    EXPECT_EQ(mm_type, optionx::MmSystemType::FIXED);
     EXPECT_EQ(mm_step, 2);
     EXPECT_EQ(mm_group_id, 77);
     EXPECT_EQ(mm_group_hash, "mm-hash");
     EXPECT_EQ(mm_group_name, "group-a");
+}
+
+TEST(BridgeProtocolServerBridge, RejectsInvalidBusinessDtoValues) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+    bridge.on_signal_id() = []() { return optionx::SignalId{39}; };
+    bridge.on_trade_signal() = [](std::unique_ptr<optionx::TradeSignal>) {};
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    auto negative_signal_amount =
+        signal_command("negative-signal-amount", "idem-negative-signal-amount");
+    negative_signal_amount["params"]["signal"]["amount"]["value"] = "-1.00";
+    const auto negative_signal_amount_response =
+        post_json(config, bridge.bound_http_port(), negative_signal_amount);
+
+    auto invalid_min_payout = trade_command("invalid-min-payout", "idem-invalid-min-payout");
+    invalid_min_payout["params"]["trade"]["min_payout"] = "1.50";
+    const auto invalid_min_payout_response =
+        post_json(config, bridge.bound_http_port(), invalid_min_payout);
+
+    auto invalid_refund = trade_command("invalid-refund", "idem-invalid-refund");
+    invalid_refund["params"]["trade"]["refund"] = "-0.10";
+    const auto invalid_refund_response =
+        post_json(config, bridge.bound_http_port(), invalid_refund);
+
+    auto unsupported_balance_percent =
+        signal_command("unsupported-balance-percent", "idem-unsupported-balance-percent");
+    unsupported_balance_percent["params"]["signal"].erase("amount");
+    unsupported_balance_percent["params"]["sizing"] = {
+        {"mode", "balance_percent"},
+        {"balance_percent", "0.10"}
+    };
+    const auto unsupported_balance_percent_response =
+        post_json(config, bridge.bound_http_port(), unsupported_balance_percent);
+
+    auto unsupported_balance_percent_mode =
+        signal_command("unsupported-balance-percent-mode", "idem-unsupported-balance-percent-mode");
+    unsupported_balance_percent_mode["params"]["signal"].erase("amount");
+    unsupported_balance_percent_mode["params"]["sizing"] = {
+        {"mode", "balance_percent"}
+    };
+    const auto unsupported_balance_percent_mode_response =
+        post_json(config, bridge.bound_http_port(), unsupported_balance_percent_mode);
+
+    auto unsupported_percent_mode =
+        signal_command("unsupported-percent-mode", "idem-unsupported-percent-mode");
+    unsupported_percent_mode["params"]["signal"].erase("amount");
+    unsupported_percent_mode["params"]["sizing"] = {
+        {"mode", "percent"}
+    };
+    const auto unsupported_percent_mode_response =
+        post_json(config, bridge.bound_http_port(), unsupported_percent_mode);
+
+    auto unsupported_ignore_signal_amount =
+        signal_command("unsupported-ignore-signal-amount", "idem-unsupported-ignore-signal-amount");
+    unsupported_ignore_signal_amount["params"]["sizing"] = {
+        {"mode", "ignore_signal_amount"}
+    };
+    const auto unsupported_ignore_signal_amount_response =
+        post_json(config, bridge.bound_http_port(), unsupported_ignore_signal_amount);
+
+    auto unsupported_sizing_params =
+        signal_command("unsupported-sizing-params", "idem-unsupported-sizing-params");
+    unsupported_sizing_params["params"]["sizing"] = {
+        {"mode", "risk_manager"},
+        {"system", "kelly"},
+        {"params", {{"fraction", "0.25"}}}
+    };
+    const auto unsupported_sizing_params_response =
+        post_json(config, bridge.bound_http_port(), unsupported_sizing_params);
+
+    auto fixed_amount_without_amount =
+        signal_command("fixed-without-amount", "idem-fixed-without-amount");
+    fixed_amount_without_amount["params"]["signal"].erase("amount");
+    fixed_amount_without_amount["params"]["sizing"] = {
+        {"mode", "fixed_amount"}
+    };
+    const auto fixed_amount_without_amount_response =
+        post_json(config, bridge.bound_http_port(), fixed_amount_without_amount);
+
+    auto duplicate_amount =
+        signal_command("duplicate-amount", "idem-duplicate-amount");
+    duplicate_amount["params"]["sizing"] = {
+        {"mode", "fixed_amount"},
+        {"amount", {
+            {"value", "2.00"},
+            {"currency", "USD"}
+        }}
+    };
+    const auto duplicate_amount_response =
+        post_json(config, bridge.bound_http_port(), duplicate_amount);
+    bridge.shutdown();
+
+    EXPECT_EQ(negative_signal_amount_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(invalid_min_payout_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(invalid_refund_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(unsupported_balance_percent_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(unsupported_balance_percent_mode_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(unsupported_percent_mode_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(unsupported_ignore_signal_amount_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(unsupported_sizing_params_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(fixed_amount_without_amount_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(duplicate_amount_response.at("error").at("code").get<int>(), -32602);
+}
+
+TEST(BridgeProtocolServerBridge, AcceptsProtocolSizingModeAliasesThatDtoCanRepresent) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    optionx::MmSystemType mm_type = optionx::MmSystemType::NONE;
+    double amount = 0.0;
+
+    bridge.on_signal_id() = []() { return optionx::SignalId{40}; };
+    bridge.on_trade_signal() =
+        [&](std::unique_ptr<optionx::TradeSignal> signal) {
+            mm_type = signal->mm_type;
+            amount = signal->amount;
+        };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    auto command = signal_command("fixed-amount-alias", "idem-fixed-amount-alias");
+    command["params"]["signal"].erase("amount");
+    command["params"]["sizing"] = {
+        {"mode", "fixed_amount"},
+        {"amount", {
+            {"value", "2.50"},
+            {"currency", "USD"}
+        }}
+    };
+    const auto response = post_json(config, bridge.bound_http_port(), command);
+    bridge.shutdown();
+
+    EXPECT_EQ(response.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(mm_type, optionx::MmSystemType::FIXED);
+    EXPECT_DOUBLE_EQ(amount, 2.50);
 }
 
 TEST(BridgeProtocolServerBridge, EvictsCompletedOperationsWhenIdempotencyCacheIsFull) {

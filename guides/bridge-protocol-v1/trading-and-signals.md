@@ -224,6 +224,11 @@ and therefore accepts only routing shapes it can preserve today:
 `default` and single numeric `account`. It rejects `accounts`, `all` and
 `routing.policy` until fan-out routing is implemented.
 
+The example below shows the fuller protocol-level shape. The current C++
+HTTP/WebSocket and named-pipe bridges also reject `risk_manager`,
+`balance_percent`, `system` and `params` sizing fields with `invalid_params`
+until those concepts have typed DTO support.
+
 ```json
 {
   "context": {
