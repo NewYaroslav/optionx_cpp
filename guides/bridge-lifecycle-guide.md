@@ -204,14 +204,31 @@ lock, and callback guards should use the stable runtime identity.
 
 `SERVER_STOPPED` is part of lifecycle finalization.
 
-Rules:
+Preferred rule:
 
-- Do not publish `Stopped` before `SERVER_STOPPED` if callbacks from
-  `SERVER_STOPPED` are expected to be no-ops for the old generation.
-- Do not allow an old generation's `SERVER_STOPPED` callback to stop a new
-  generation.
-- If lifecycle calls from `SERVER_STOPPED` are supported, they should see a
-  callback reentrancy guard and return quickly.
+- Stop and join transport objects first.
+- Under the lifecycle mutex, publish `Stopped`, clear generation-owned stop
+  flags, and wake `lifecycle_cv`.
+- Release the mutex.
+- Then invoke external `SERVER_STOPPED` callbacks.
+
+This ordering lets a `SERVER_STOPPED` callback call `run()` without waiting on
+the finalizer that is currently invoking the callback. The callback must still
+be associated with the runtime generation that emitted it. Do not let a stale
+old-generation callback stop or corrupt a newer generation.
+
+Avoid this pattern:
+
+```text
+finalizer publishes SERVER_STOPPED
+  -> callback calls run()
+    -> run() waits for phase Stopped
+finalizer cannot publish Stopped until callback returns
+```
+
+If a bridge chooses a different ordering, tests must prove that
+`SERVER_STOPPED -> run()` and `SERVER_STOPPED -> shutdown()` cannot deadlock and
+cannot affect the wrong generation.
 
 ## Dispatch And Idempotency During Shutdown
 
@@ -255,8 +272,10 @@ Add tests for these scenarios when implementing a bridge transport:
 - `run()` and `shutdown()` from a request callback do not deadlock.
 - `shutdown()` from `SERVER_STARTED` joins the old generation before immediate
   restart on the same fixed port.
-- `shutdown()` and `run()` from `SERVER_STOPPED` callback are safe no-ops for
-  the old generation.
+- `shutdown()` from a `SERVER_STOPPED` callback is a safe no-op for the
+  completed generation.
+- `run()` from a `SERVER_STOPPED` callback can start a new generation without
+  deadlock or interference from the completed generation.
 - A delayed startup failure callback cannot stop a newer generation.
 - WebSocket broadcast handles disconnect, slow clients, and queue overflow.
 - Oversized, malformed, partial, and unauthorized requests return documented
@@ -264,6 +283,13 @@ Add tests for these scenarios when implementing a bridge transport:
 
 Run the lifecycle tests on both Windows and Linux. Thread scheduling differences
 regularly expose transport races on only one platform.
+
+Prefer deterministic synchronization over sleep-based assertions. A short
+`sleep_for(100ms)` can be useful as a smoke guard, but it should not be the only
+proof that a callback, stop notification, or lifecycle transition did not happen
+too early. Use latches, condition variables, atomic status flags, unique
+per-test endpoints, and real restart/connect attempts to prove the state
+machine invariant.
 
 ## Review Checklist For Agents
 
@@ -279,3 +305,24 @@ When reviewing bridge code, ask:
 - Can an old callback affect a new generation?
 - Are in-flight operations completed or failed closed during shutdown?
 - Do tests prove the lifecycle behavior, or do they only prove that CI was lucky?
+
+## Reviewing Stacked Or Stale PRs
+
+Bridge fixes often arrive as a stack: dependency PR, bridge PR, and follow-up
+tests. Review reports must be bound to exact commits.
+
+Before accepting or acting on review feedback:
+
+- Record the expected PR number, head SHA and base SHA.
+- Re-fetch PR metadata before reviewing. If the head changed, do not review the
+  old diff silently.
+- For submodules, record both the parent gitlink SHA and the dependency PR head.
+- Distinguish production defects from CI or test-stub defects. A missing
+  Windows stub constant can break dependency CI without changing production
+  semantics, but it still blocks merge when the required check is red.
+- After a lower/base PR is merged, rebase or retarget each remaining upper PR
+  onto the updated base, verify its new base/head SHAs, and re-run its checks
+  before merging the next layer.
+- If an old report names stale heads, map each finding to the current code
+  before reopening work. Many lifecycle findings are valid for one generation
+  of the patch and already closed in the next.
