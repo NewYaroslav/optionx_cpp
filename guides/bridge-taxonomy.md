@@ -26,7 +26,7 @@ OptionX protocol together.
 | Native OptionX API | `optionx_cpp/bridges/protocol_v1.hpp` | JSON-RPC Bridge Protocol v1 for clients that can speak OptionX directly. | HTTP, WebSocket, named pipe. |
 | MetaTrader Common Files | `optionx_cpp/bridges/metatrader_file.hpp` | MT4/MT5 file-command bridge and command writer for `Common\Files`. | Files. |
 | TradingView extension | `optionx_cpp/bridges/trading_view.hpp` | Adapter for payloads emitted by `browser_extensions/tradingview-alert-extension`. | HTTP. |
-| BinaryBot/BotBinary | `optionx_cpp/bridges/bot_binary.hpp` | Formatter/parser helpers for observed BinaryBot-compatible command strings. | HTTP query value, file-signal name. |
+| BinaryBot/BotBinary | `optionx_cpp/bridges/bot_binary.hpp` | Compatibility bridge and formatter/parser helpers for observed BinaryBot-compatible command strings. | HTTP `request=...`, file-signal name. |
 | Legacy trading pipe | `optionx_cpp/bridges/legacy_trading.hpp` | Compatibility bridge for the older named-pipe JSON trading protocol. | Named pipe. |
 
 All families converge internally on OptionX DTOs such as `TradeSignal`,

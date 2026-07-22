@@ -553,18 +553,31 @@ it is confirmed to be a stable domain identity of the signal or trade. A suffix
 that merely makes one file unique is transport identity, not domain
 deduplication.
 
-The current C++ surface for this profile is a stateless compatibility helper
-exposed from `<optionx_cpp/bridges/bot_binary.hpp>`. It prepares:
+The current C++ surface for this profile is exposed from
+`<optionx_cpp/bridges/bot_binary.hpp>`. It includes a runtime
+`BotBinaryBridge` facade plus stateless formatter/parser helpers. The bridge
+receives:
+
+- BotBinary HTTP/WebRequest `request=...` commands on a configured local
+  endpoint;
+- BotBinary file-signal filenames from a configured `SignalPath` directory.
+
+`BotBinaryBridge` publishes normalized `TradeSignal` callbacks and reports
+invalid, duplicate or intake-error signals through `BridgeSignalReport`. Because
+the HTTP surface is unauthenticated, non-loopback bind addresses require an
+explicit insecure opt-in in `BotBinaryBridgeConfig`.
+
+The formatter helper prepares:
 
 - the raw BotBinary `request` query value;
 - a convenience HTTP URL;
 - the file-signal filename.
 
-It also parses legacy BotBinary HTTP `request` values and file-signal filenames
-back into a neutral command snapshot that a future inbound bridge can convert to
-an OptionX trade signal. The parser preserves the trailing BotBinary suffix as
-transport identity; it does not treat that suffix as an OptionX idempotency key
-or `identity.unique_hash` unless a higher-level bridge explicitly maps it.
+The parser helper also parses legacy BotBinary HTTP `request` values and
+file-signal filenames back into a neutral command snapshot. The bridge converts
+that snapshot to an OptionX trade signal. The parser preserves the trailing
+BotBinary suffix as transport identity; it does not treat that suffix as an
+OptionX idempotency key or `identity.unique_hash`.
 The prepared `request_query_value` remains the exact raw BotBinary value, while
 the convenience `http_url` percent-encodes that value as an HTTP query
 parameter. This keeps suffixes containing `%` or `+` byte-stable across

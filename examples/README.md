@@ -32,6 +32,9 @@ Currently maintained examples:
   compatibility helper that turns an OptionX trade request into the observed
   `request=...` WebRequest value and file-signal name, then parses those legacy
   values back into an OptionX trade signal snapshot.
+- `bot_binary_bridge_smoke.cpp` starts the BotBinary/BinaryBot compatibility
+  bridge and can run `--self-test` through both the HTTP `request=...` surface
+  and the file-signal filename surface.
 - `protocol_v1_bridge_smoke.cpp` starts the Bridge Protocol v1 HTTP/WebSocket
   server bridge and can run `--self-test` to POST a `trade.open` command over
   HTTP and send an `account.balance.get` command over WebSocket.

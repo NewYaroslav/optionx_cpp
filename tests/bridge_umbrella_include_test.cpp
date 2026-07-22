@@ -46,6 +46,14 @@ TEST(BridgeUmbrellaIncludeTest, ExposesMetaTraderFileBridgeFamily) {
 }
 
 TEST(BridgeUmbrellaIncludeTest, ExposesBotBinaryAdapterHelpers) {
+    optionx::bridges::bot_binary::BotBinaryBridgeConfig config;
+    config.bridge_id = 6;
+    config.enable_file_signal = false;
+    optionx::bridges::bot_binary::BotBinaryBridge bridge;
+
+    EXPECT_EQ(config.bridge_type(), optionx::BridgeType::BOT_BINARY);
+    EXPECT_EQ(bridge.bound_http_port(), 0);
+
     const auto prepared = optionx::bridges::bot_binary::prepare_bot_binary_command(
         optionx::bridges::bot_binary::bot_binary_duration_command(
             "R_25",

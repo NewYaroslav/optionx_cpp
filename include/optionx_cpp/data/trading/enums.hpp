@@ -99,7 +99,8 @@ namespace optionx {
         TRADING_VIEW_EXTENSION_HTTP,    ///< TradingView browser extension HTTP bridge.
         METATRADER_FILE_TRANSPORT,      ///< MetaTrader common-files JSON-RPC bridge transport.
         BRIDGE_PROTOCOL_V1_HTTP_WEBSOCKET, ///< Bridge Protocol v1 HTTP/WebSocket server.
-        BRIDGE_PROTOCOL_V1_NAMED_PIPE    ///< Bridge Protocol v1 named-pipe server.
+        BRIDGE_PROTOCOL_V1_NAMED_PIPE,  ///< Bridge Protocol v1 named-pipe server.
+        BOT_BINARY                       ///< BotBinary/BinaryBot compatibility bridge.
     };
 
     /// \brief Converts BridgeType to its string representation.
@@ -113,7 +114,8 @@ namespace optionx {
             "TRADING_VIEW_EXTENSION_HTTP",
             "METATRADER_FILE_TRANSPORT",
             "BRIDGE_PROTOCOL_V1_HTTP_WEBSOCKET",
-            "BRIDGE_PROTOCOL_V1_NAMED_PIPE"
+            "BRIDGE_PROTOCOL_V1_NAMED_PIPE",
+            "BOT_BINARY"
         };
         return utils::enum_string_or_unknown(str_data, static_cast<size_t>(value));
     }
@@ -129,7 +131,10 @@ namespace optionx {
             {"TRADING_VIEW_EXTENSION_HTTP", BridgeType::TRADING_VIEW_EXTENSION_HTTP},
             {"METATRADER_FILE_TRANSPORT",  BridgeType::METATRADER_FILE_TRANSPORT},
             {"BRIDGE_PROTOCOL_V1_HTTP_WEBSOCKET", BridgeType::BRIDGE_PROTOCOL_V1_HTTP_WEBSOCKET},
-            {"BRIDGE_PROTOCOL_V1_NAMED_PIPE", BridgeType::BRIDGE_PROTOCOL_V1_NAMED_PIPE}
+            {"BRIDGE_PROTOCOL_V1_NAMED_PIPE", BridgeType::BRIDGE_PROTOCOL_V1_NAMED_PIPE},
+            {"BOT_BINARY", BridgeType::BOT_BINARY},
+            {"BINARYBOT", BridgeType::BOT_BINARY},
+            {"BOTBINARY", BridgeType::BOT_BINARY}
         };
         auto it = str_data.find(utils::to_upper_case(str));
         if (it != str_data.end()) {
