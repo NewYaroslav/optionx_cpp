@@ -159,6 +159,24 @@ namespace optionx::bridges::protocol_v1 {
             shutdown();
         }
 
+#ifdef OPTIONX_ENABLE_BRIDGE_PROTOCOL_TEST_HOOKS
+#       if defined(_WIN32)
+        /// \brief Stops the underlying server without going through bridge shutdown.
+        void simulate_unexpected_server_stop_for_test() {
+            std::shared_ptr<SimpleNamedPipe::NamedPipeServer> server;
+            {
+                std::lock_guard<std::mutex> lock(m_state->mutex);
+                server = m_state->server;
+            }
+            if (server) {
+                std::thread([server = std::move(server)]() mutable {
+                    server->stop();
+                }).detach();
+            }
+        }
+#       endif
+#endif
+
         /// \brief Configures the bridge with Bridge Protocol v1 named-pipe settings.
         bool configure(std::unique_ptr<IBridgeConfig> config) override {
             if (!config) return false;
@@ -1509,25 +1527,23 @@ namespace optionx::bridges::protocol_v1 {
 
             server->on_stop = [state = m_state, server_identity](
                     const SimpleNamedPipe::ServerConfig&) {
-                bool should_notify = false;
+                std::shared_ptr<SimpleNamedPipe::NamedPipeServer> server_to_finalize;
                 {
                     std::lock_guard<std::mutex> lock(state->mutex);
                     if (state->server.get() != server_identity) {
                         return;
                     }
+                    state->phase = RuntimePhase::Stopping;
+                    state->transport_callback_admission_closed = true;
+                    server_to_finalize = state->server;
                     state->server.reset();
                     state->client_ids.clear();
-                    state->transport_callback_admission_closed = false;
                     state->pending_callback_shutdown = false;
-                    if (state->phase != RuntimePhase::Stopped) {
-                        state->phase = RuntimePhase::Stopped;
-                        should_notify = !state->stop_notified;
-                        state->stop_notified = true;
-                    }
-                    state->lifecycle_cv.notify_all();
                 }
-                if (should_notify) {
-                    notify_status_from_state(state, BridgeStatus::SERVER_STOPPED, {});
+                if (server_to_finalize) {
+                    std::thread([state, server = std::move(server_to_finalize)]() mutable {
+                        finalize_shutdown(state, std::move(server));
+                    }).detach();
                 }
             };
         }
@@ -1633,9 +1649,6 @@ namespace optionx::bridges::protocol_v1 {
             auto server = state->server;
             state->server.reset();
             state->client_ids.clear();
-            if (!state->stop_notified) {
-                state->stop_notified = true;
-            }
             return server;
         }
 
@@ -1663,13 +1676,18 @@ namespace optionx::bridges::protocol_v1 {
             if (server) {
                 server->stop();
             }
-            notify_status_from_state(state, BridgeStatus::SERVER_STOPPED, {});
+            bool should_notify = false;
             {
                 std::lock_guard<std::mutex> lock(state->mutex);
+                should_notify = !state->stop_notified;
+                state->stop_notified = true;
                 state->phase = RuntimePhase::Stopped;
                 state->transport_callback_admission_closed = false;
                 state->pending_callback_shutdown = false;
                 state->lifecycle_cv.notify_all();
+            }
+            if (should_notify) {
+                notify_status_from_state(state, BridgeStatus::SERVER_STOPPED, {});
             }
         }
 #       else
