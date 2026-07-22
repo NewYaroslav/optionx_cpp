@@ -900,7 +900,7 @@ namespace optionx::bridges::protocol_v1 {
 
             const auto operation_key = method + "\n" + idempotency_key;
             const auto fingerprint =
-                metatrader_file::detail::canonical_trade_command_payload(
+                detail::canonical_trade_command_payload(
                     params,
                     direct_trade_open).dump(-1);
             if (fingerprint.size() > config.max_operation_fingerprint_bytes) {

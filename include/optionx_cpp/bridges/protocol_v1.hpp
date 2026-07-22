@@ -43,6 +43,7 @@
 #include "metatrader_file.hpp"
 #include "protocol_v1/BridgeProtocolNamedPipeConfig.hpp"
 #include "protocol_v1/BridgeProtocolServerConfig.hpp"
+#include "protocol_v1/detail/BridgeProtocolCanonicalization.hpp"
 #include "protocol_v1/detail/BridgeProtocolServerUtils.hpp"
 #include "protocol_v1/BridgeProtocolNamedPipeBridge.hpp"
 #include "protocol_v1/BridgeProtocolServerBridge.hpp"
