@@ -637,65 +637,10 @@ namespace optionx::bridges::metatrader_file::detail {
     inline std::unique_ptr<TradeSignal> parse_signal_params(
             const nlohmann::json& params,
             const bool direct_trade_open) {
-        if (!params.is_object()) {
-            throw std::invalid_argument("Command params must be an object.");
-        }
-
-        const auto& trade = direct_trade_open
-            ? object_member_or_self(params, "trade")
-            : object_member_or_self(params, "signal");
-        const auto& identity = object_member_or_empty(params, "identity");
-        const auto& context = object_member_or_empty(params, "context");
-
-        auto signal = std::make_unique<TradeSignal>();
-        signal->symbol = string_value(trade, "symbol");
-        signal->signal_name = string_value(
-            identity,
-            "signal_name",
-            string_value(trade, "signal_name", direct_trade_open ? "direct_trade_open" : ""));
-        signal->unique_hash = string_value(
-            identity,
-            "unique_hash",
-            string_value(trade, "unique_hash"));
-        signal->unique_id = int64_value(identity, "unique_id", int64_value(trade, "unique_id", 0));
-        signal->user_data = string_value(identity, "user_data", string_value(trade, "user_data"));
-        signal->comment = string_value(trade, "comment");
-        signal->account_id = int64_value(trade, "account_id", 0);
-        signal->account_type = account_type_value(string_value(trade, "account_type"));
-        signal->currency = currency_value(string_value(trade, "currency"));
-        signal->option_type = option_type_value(string_value(trade, "option_type"));
-        signal->order_type = order_type_value(
-            string_value(
-                trade,
-                "order_type",
-                string_value(trade, "direction", string_value(trade, "action"))));
-        signal->refund = double_value(trade, "refund", 0.0);
-        signal->min_payout = double_value(trade, "min_payout", 0.0);
-
-        apply_amount(*signal, trade);
-        apply_expiry(*signal, trade);
-        apply_routing(*signal, params);
-        apply_sizing(*signal, params);
-
-        if (signal->symbol.empty()) {
-            throw std::invalid_argument("Command trade symbol is required.");
-        }
-        if (signal->order_type == OrderType::UNKNOWN) {
-            throw std::invalid_argument("Command order_type is required.");
-        }
-        if (!std::isfinite(signal->amount)) {
-            throw std::invalid_argument("Command amount must be finite.");
-        }
-        if (direct_trade_open && signal->amount <= 0.0) {
-            throw std::invalid_argument("trade.open amount must be positive.");
-        }
-        if (direct_trade_open && signal->option_type == OptionType::UNKNOWN) {
-            throw std::invalid_argument("trade.open option_type is required.");
-        }
-        if (direct_trade_open && signal->duration == 0 && signal->expiry_time <= 0) {
-            throw std::invalid_argument("trade.open expiry is required.");
-        }
-        return signal;
+        auto command = protocol_v1::detail::parse_canonical_trade_command(
+            params,
+            direct_trade_open);
+        return std::move(command.signal);
     }
 
 } // namespace optionx::bridges::metatrader_file::detail

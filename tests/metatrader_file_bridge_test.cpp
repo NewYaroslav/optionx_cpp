@@ -1512,6 +1512,10 @@ TEST(MetaTraderFileBridge, RejectsSameIdempotencyKeyWithDifferentBusinessPayload
     bridge.on_trade_signal() = [&](std::unique_ptr<optionx::TradeSignal>) {
         ++signal_count;
     };
+    std::vector<optionx::BridgeSignalReport> reports;
+    bridge.on_signal_report() = [&](const optionx::BridgeSignalReport& report) {
+        reports.push_back(report);
+    };
     bridge.process();
     EXPECT_EQ(signal_count, 1);
 
@@ -1523,6 +1527,17 @@ TEST(MetaTraderFileBridge, RejectsSameIdempotencyKeyWithDifferentBusinessPayload
     EXPECT_EQ(events[0].document.at("result").at("signal_ref").at("signal_id").get<std::string>(), "52");
     EXPECT_EQ(events[1].document.at("result").at("status").get<std::string>(), "rejected");
     EXPECT_EQ(events[1].document.at("result").at("reason").at("code").get<std::string>(), "idempotency_conflict");
+    ASSERT_FALSE(reports.empty());
+    const auto conflict_report = std::find_if(
+        reports.begin(),
+        reports.end(),
+        [](const optionx::BridgeSignalReport& report) {
+            return report.reason_code == "idempotency_conflict";
+        });
+    ASSERT_NE(conflict_report, reports.end());
+    ASSERT_TRUE(conflict_report->candidate_signal);
+    EXPECT_EQ(conflict_report->candidate_signal->symbol, "GBPUSD");
+    EXPECT_EQ(conflict_report->candidate_signal->unique_hash, "retry-hash");
 }
 
 TEST(MetaTraderFileBridge, DeduplicatesRetryWithCanonicalBusinessPayload) {

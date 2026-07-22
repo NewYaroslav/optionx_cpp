@@ -1601,11 +1601,9 @@ namespace optionx::bridges::protocol_v1 {
                     nlohmann::json{{"code", "idempotency_key_too_large"}});
             }
 
+            auto command = detail::canonical_trade_command(params, direct_trade_open);
             const auto operation_key = method + "\n" + idempotency_key;
-            const auto fingerprint =
-                detail::canonical_trade_command_payload(
-                    params,
-                    direct_trade_open).dump(-1);
+            const auto& fingerprint = command.fingerprint;
             if (fingerprint.size() > config.max_operation_fingerprint_bytes) {
                 return detail::jsonrpc_error(
                     id,
@@ -1628,9 +1626,8 @@ namespace optionx::bridges::protocol_v1 {
                 }
             }
 
-            std::unique_ptr<TradeSignal> signal;
             try {
-                signal = metatrader_file::detail::parse_signal_params(params, direct_trade_open);
+                detail::attach_trade_signal(command, direct_trade_open);
             } catch (const std::exception& ex) {
                 return detail::jsonrpc_error(id, detail::jsonrpc_invalid_params, ex.what());
             }
@@ -1686,8 +1683,8 @@ namespace optionx::bridges::protocol_v1 {
                     "Signal ID allocator returned zero.");
             }
 
-            signal->bridge_id = config.bridge_id;
-            signal->signal_id = signal_id;
+            command.signal->bridge_id = config.bridge_id;
+            command.signal->signal_id = signal_id;
             auto result = nlohmann::json{
                 {"status", "accepted"},
                 {"final", false},
@@ -1703,8 +1700,8 @@ namespace optionx::bridges::protocol_v1 {
             } else {
                 result["signal_ref"] = nlohmann::json{
                     {"signal_id", std::to_string(signal_id)},
-                    {"unique_hash", signal->unique_hash},
-                    {"signal_name", signal->signal_name}
+                    {"unique_hash", command.signal->unique_hash},
+                    {"signal_name", command.signal->signal_name}
                 };
                 result["trade_refs"] = nlohmann::json::array();
             }
@@ -1758,7 +1755,7 @@ namespace optionx::bridges::protocol_v1 {
             }
 
             try {
-                callback(std::move(signal));
+                callback(std::move(command.signal));
             } catch (const std::exception& ex) {
                 const auto failed = dispatch_failed_result(ex.what());
                 complete_reserved_operation(config, operation_key, failed);
