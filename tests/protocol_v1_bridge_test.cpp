@@ -2843,41 +2843,51 @@ TEST(BridgeProtocolServerBridge, ShutdownFromServerStartedCallbackJoinsBeforeRes
     }
 }
 
-TEST(BridgeProtocolServerBridge, LifecycleCallsFromStoppedCallbackAreSafeNoOps) {
+TEST(BridgeProtocolServerBridge, StoppedCallbackShutdownIsNoopAndRunStartsNewGeneration) {
     namespace proto = optionx::bridges::protocol_v1;
 
     auto config = test_config();
+    config.enable_websocket = false;
 
     proto::BridgeProtocolServerBridge bridge;
     ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
 
     std::atomic<int> started_callbacks{0};
     std::atomic<int> stopped_callbacks{0};
+    std::atomic<bool> restarted_from_stopped{false};
     bridge.on_status_update() = [&](const optionx::BridgeStatusUpdate& update) {
         if (update.status == optionx::BridgeStatus::SERVER_STARTED) {
-            ++started_callbacks;
-            bridge.shutdown();
+            const auto started = ++started_callbacks;
+            if (started == 1) {
+                bridge.shutdown();
+            }
         }
         if (update.status == optionx::BridgeStatus::SERVER_STOPPED) {
-            ++stopped_callbacks;
-            bridge.shutdown();
-            bridge.run();
+            const auto stopped = ++stopped_callbacks;
+            if (stopped == 1) {
+                bridge.shutdown();
+                bridge.run();
+                restarted_from_stopped = true;
+            }
         }
     };
 
     EXPECT_NO_THROW(bridge.run());
-    for (int i = 0; i < 200 && stopped_callbacks.load() == 0; ++i) {
+    for (int i = 0;
+         i < 500 &&
+         (!restarted_from_stopped.load() || started_callbacks.load() < 2);
+         ++i) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+    ASSERT_TRUE(restarted_from_stopped.load());
+    ASSERT_GE(started_callbacks.load(), 2);
+    ASSERT_TRUE(wait_for_http_port(bridge));
     EXPECT_NO_THROW(bridge.shutdown());
 
-    EXPECT_EQ(started_callbacks.load(), 1);
-    EXPECT_EQ(stopped_callbacks.load(), 1);
+    EXPECT_EQ(started_callbacks.load(), 2);
+    EXPECT_GE(stopped_callbacks.load(), 1);
 
     bridge.on_status_update() = {};
-    bridge.run();
-    ASSERT_TRUE(wait_for_http_port(bridge));
-    bridge.shutdown();
 }
 
 int main(int argc, char** argv) {
