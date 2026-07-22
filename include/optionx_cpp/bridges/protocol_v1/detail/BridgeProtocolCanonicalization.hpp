@@ -374,6 +374,12 @@ namespace optionx::bridges::protocol_v1::detail {
             return;
         }
 
+        const bool has_top_level_expiry_alias =
+            trade.contains("duration_ms") ||
+            trade.contains("duration") ||
+            trade.contains("duration_sec") ||
+            trade.contains("expires_at_ms") ||
+            trade.contains("expiry_time");
         nlohmann::json expiry = trade.contains("expiry") && trade.at("expiry").is_object()
             ? trade.at("expiry")
             : nlohmann::json::object();
@@ -381,6 +387,10 @@ namespace optionx::bridges::protocol_v1::detail {
         const auto kind = expiry.contains("kind") && expiry.at("kind").is_string()
             ? lower_ascii_copy(trim_ascii_copy(expiry.at("kind").get<std::string>()))
             : std::string();
+        const bool nested_expiry_has_semantics =
+            expiry.contains("duration_ms") ||
+            expiry.contains("expires_at_ms") ||
+            !kind.empty();
 
         const bool has_duration =
             expiry.contains("duration_ms") ||
@@ -394,7 +404,85 @@ namespace optionx::bridges::protocol_v1::detail {
             trade.contains("expiry_time") ||
             kind == "absolute";
 
-        if (has_duration && !has_absolute) {
+        int expiry_source_count = 0;
+        expiry_source_count += expiry.contains("duration_ms") ? 1 : 0;
+        expiry_source_count += expiry.contains("expires_at_ms") ? 1 : 0;
+        expiry_source_count += trade.contains("duration_ms") ? 1 : 0;
+        expiry_source_count += trade.contains("duration") ? 1 : 0;
+        expiry_source_count += trade.contains("duration_sec") ? 1 : 0;
+        expiry_source_count += trade.contains("expires_at_ms") ? 1 : 0;
+        expiry_source_count += trade.contains("expiry_time") ? 1 : 0;
+        if (expiry_source_count > 1) {
+            if (expiry.contains("kind") && expiry.at("kind").is_string()) {
+                expiry["kind"] = kind;
+            }
+            if (expiry.contains("duration_ms")) {
+                expiry["duration_ms"] =
+                    canonical_integer_text_value(expiry.at("duration_ms"));
+            }
+            if (expiry.contains("expires_at_ms")) {
+                expiry["expires_at_ms"] =
+                    canonical_integer_text_value(expiry.at("expires_at_ms"));
+            }
+            if (!expiry.empty()) {
+                trade["expiry"] = std::move(expiry);
+            }
+            if (trade.contains("duration_ms")) {
+                trade["duration_ms"] =
+                    canonical_integer_text_value(trade.at("duration_ms"));
+            }
+            if (trade.contains("duration")) {
+                trade["duration"] =
+                    canonical_integer_text_value(trade.at("duration"));
+            }
+            if (trade.contains("duration_sec")) {
+                trade["duration_sec"] =
+                    canonical_integer_text_value(trade.at("duration_sec"));
+            }
+            if (trade.contains("expires_at_ms")) {
+                trade["expires_at_ms"] =
+                    canonical_integer_text_value(trade.at("expires_at_ms"));
+            }
+            if (trade.contains("expiry_time")) {
+                trade["expiry_time"] =
+                    canonical_integer_text_value(trade.at("expiry_time"));
+            }
+            return;
+        }
+
+        if (has_duration && has_absolute) {
+            nlohmann::json duration_ms;
+            if (expiry.contains("duration_ms")) {
+                duration_ms = expiry.at("duration_ms");
+            } else if (trade.contains("duration_ms")) {
+                duration_ms = trade.at("duration_ms");
+            } else if (trade.contains("duration")) {
+                duration_ms = canonical_milliseconds_from_seconds_value(trade.at("duration"));
+            } else if (trade.contains("duration_sec")) {
+                duration_ms = canonical_milliseconds_from_seconds_value(trade.at("duration_sec"));
+            }
+
+            nlohmann::json expires_at_ms;
+            if (expiry.contains("expires_at_ms")) {
+                expires_at_ms = expiry.at("expires_at_ms");
+            } else if (trade.contains("expires_at_ms")) {
+                expires_at_ms = trade.at("expires_at_ms");
+            } else if (trade.contains("expiry_time")) {
+                expires_at_ms = canonical_milliseconds_from_seconds_value(trade.at("expiry_time"));
+            }
+
+            expiry = nlohmann::json::object();
+            if (!kind.empty()) {
+                expiry["kind"] = kind;
+            }
+            if (!duration_ms.is_null()) {
+                expiry["duration_ms"] = canonical_integer_text_value(duration_ms);
+            }
+            if (!expires_at_ms.is_null()) {
+                expiry["expires_at_ms"] = canonical_integer_text_value(expires_at_ms);
+            }
+            trade["expiry"] = std::move(expiry);
+        } else if (has_duration) {
             nlohmann::json duration_ms;
             if (expiry.contains("duration_ms")) {
                 duration_ms = expiry.at("duration_ms");
@@ -436,11 +524,13 @@ namespace optionx::bridges::protocol_v1::detail {
             }
         }
 
-        trade.erase("duration_ms");
-        trade.erase("duration");
-        trade.erase("duration_sec");
-        trade.erase("expires_at_ms");
-        trade.erase("expiry_time");
+        if (!(nested_expiry_has_semantics && has_top_level_expiry_alias)) {
+            trade.erase("duration_ms");
+            trade.erase("duration");
+            trade.erase("duration_sec");
+            trade.erase("expires_at_ms");
+            trade.erase("expiry_time");
+        }
     }
 
     inline void normalize_identity_aliases(nlohmann::json& canonical, nlohmann::json& trade) {

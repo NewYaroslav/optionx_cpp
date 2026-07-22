@@ -1010,7 +1010,22 @@ namespace optionx::bridges::metatrader_file {
             }
 
             const auto storage_key = idempotency_storage_key(method, idempotency_key);
-            const auto fingerprint = payload_fingerprint(method, params);
+            auto command = protocol_v1::detail::canonical_trade_command(
+                params,
+                method == "trade.open");
+            const auto& fingerprint = command.fingerprint;
+            const auto conflict_candidate_signal =
+                [&command, direct_trade_open = method == "trade.open"]() {
+                    try {
+                        auto candidate =
+                            protocol_v1::detail::parse_trade_signal_from_canonical_payload(
+                                command.payload,
+                                direct_trade_open);
+                        return detail::clone_candidate_signal(candidate);
+                    } catch (...) {
+                        return std::shared_ptr<const TradeSignal>{};
+                    }
+                };
             if (!rpc_request_key.empty()) {
                 const auto request_it = m_request_id_index.find(rpc_request_key);
                 if (request_it != m_request_id_index.end()) {
@@ -1046,25 +1061,6 @@ namespace optionx::bridges::metatrader_file {
                 }
             }
 
-            std::unique_ptr<TradeSignal> signal;
-            try {
-                signal = detail::parse_signal_params(params, method == "trade.open");
-            } catch (const std::exception& ex) {
-                append_rpc_error_locked(
-                    id,
-                    jsonrpc_invalid_params,
-                    ex.what());
-                reports.push_back(detail::make_signal_report(
-                    config,
-                    BridgeSignalReportStatus::INVALID,
-                    "invalid_params",
-                    ex.what(),
-                    record.document,
-                    params,
-                    detail::json_id_to_string(id)));
-                return;
-            }
-
             const auto existing = m_idempotency_records.find(storage_key);
             if (existing != m_idempotency_records.end()) {
                 if (existing->second.payload_fingerprint == fingerprint) {
@@ -1093,7 +1089,7 @@ namespace optionx::bridges::metatrader_file {
                     params,
                     detail::json_id_to_string(id),
                     idempotency_key,
-                    detail::clone_candidate_signal(signal)));
+                    conflict_candidate_signal()));
                 return;
             }
 
@@ -1125,11 +1121,29 @@ namespace optionx::bridges::metatrader_file {
                     params,
                     detail::json_id_to_string(id),
                     idempotency_key,
-                    detail::clone_candidate_signal(signal)));
+                    conflict_candidate_signal()));
                 return;
             }
 
-            signal->bridge_id = config.bridge_id;
+            try {
+                protocol_v1::detail::attach_trade_signal(command, method == "trade.open");
+            } catch (const std::exception& ex) {
+                append_rpc_error_locked(
+                    id,
+                    jsonrpc_invalid_params,
+                    ex.what());
+                reports.push_back(detail::make_signal_report(
+                    config,
+                    BridgeSignalReportStatus::INVALID,
+                    "invalid_params",
+                    ex.what(),
+                    record.document,
+                    params,
+                    detail::json_id_to_string(id)));
+                return;
+            }
+
+            command.signal->bridge_id = config.bridge_id;
             const auto& context = detail::object_member_or_empty(params, "context");
             if (!context.contains("valid_until_ms")) {
                 append_rpc_error_locked(
@@ -1145,7 +1159,7 @@ namespace optionx::bridges::metatrader_file {
                     params,
                     detail::json_id_to_string(id),
                     idempotency_key,
-                    detail::clone_candidate_signal(signal)));
+                    detail::clone_candidate_signal(command.signal)));
                 return;
             }
 
@@ -1166,7 +1180,7 @@ namespace optionx::bridges::metatrader_file {
                     params,
                     detail::json_id_to_string(id),
                     idempotency_key,
-                    detail::clone_candidate_signal(signal)));
+                    detail::clone_candidate_signal(command.signal)));
                 return;
             }
             if (valid_until_ms <= 0) {
@@ -1183,7 +1197,7 @@ namespace optionx::bridges::metatrader_file {
                     params,
                     detail::json_id_to_string(id),
                     idempotency_key,
-                    detail::clone_candidate_signal(signal)));
+                    detail::clone_candidate_signal(command.signal)));
                 return;
             }
             if (valid_until_ms > 0 && detail::unix_time_ms() > valid_until_ms) {
@@ -1210,8 +1224,8 @@ namespace optionx::bridges::metatrader_file {
                     record.document,
                     params,
                     detail::json_id_to_string(id),
-                    signal->unique_hash,
-                    detail::clone_candidate_signal(signal)));
+                    command.signal->unique_hash,
+                    detail::clone_candidate_signal(command.signal)));
                 return;
             }
 
@@ -1228,8 +1242,8 @@ namespace optionx::bridges::metatrader_file {
                     record.document,
                     params,
                     detail::json_id_to_string(id),
-                    signal->unique_hash,
-                    detail::clone_candidate_signal(signal)));
+                    command.signal->unique_hash,
+                    detail::clone_candidate_signal(command.signal)));
                 return;
             }
 
@@ -1257,8 +1271,8 @@ namespace optionx::bridges::metatrader_file {
                     record.document,
                     params,
                     detail::json_id_to_string(id),
-                    signal->unique_hash,
-                    detail::clone_candidate_signal(signal)));
+                    command.signal->unique_hash,
+                    detail::clone_candidate_signal(command.signal)));
                 return;
             }
 
@@ -1266,7 +1280,7 @@ namespace optionx::bridges::metatrader_file {
                 record,
                 id,
                 params,
-                std::move(signal),
+                std::move(command.signal),
                 idempotency_key,
                 storage_key,
                 rpc_request_key,

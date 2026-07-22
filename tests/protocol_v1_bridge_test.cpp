@@ -1180,6 +1180,72 @@ TEST(BridgeProtocolServerBridge, RejectsInvalidDirectTradeExpiry) {
     ignored_top_level_alias["params"]["trade"]["duration_ms"] = 0;
     const auto ignored_top_level_alias_response =
         post_json(config, bridge.bound_http_port(), ignored_top_level_alias);
+
+    auto duration_and_duration_sec =
+        trade_command("duration-and-duration-sec", "idem-duration-and-duration-sec");
+    duration_and_duration_sec["params"]["trade"].erase("expiry");
+    duration_and_duration_sec["params"]["trade"]["duration"] = 60;
+    duration_and_duration_sec["params"]["trade"]["duration_sec"] = 120;
+    const auto duration_and_duration_sec_response =
+        post_json(config, bridge.bound_http_port(), duration_and_duration_sec);
+
+    auto duration_ms_and_duration =
+        trade_command("duration-ms-and-duration", "idem-duration-ms-and-duration");
+    duration_ms_and_duration["params"]["trade"].erase("expiry");
+    duration_ms_and_duration["params"]["trade"]["duration_ms"] = 60000;
+    duration_ms_and_duration["params"]["trade"]["duration"] = 60;
+    const auto duration_ms_and_duration_response =
+        post_json(config, bridge.bound_http_port(), duration_ms_and_duration);
+
+    auto expires_at_ms_and_expiry_time =
+        trade_command("expires-at-ms-and-expiry-time", "idem-expires-at-ms-and-expiry-time");
+    expires_at_ms_and_expiry_time["params"]["trade"].erase("expiry");
+    expires_at_ms_and_expiry_time["params"]["trade"]["expires_at_ms"] =
+        optionx::bridges::metatrader_file::detail::unix_time_ms() + 60000;
+    expires_at_ms_and_expiry_time["params"]["trade"]["expiry_time"] =
+        optionx::bridges::metatrader_file::detail::unix_time_ms() / 1000 + 120;
+    const auto expires_at_ms_and_expiry_time_response =
+        post_json(config, bridge.bound_http_port(), expires_at_ms_and_expiry_time);
+
+    auto expiry_duration_ms_and_duration_sec =
+        trade_command("expiry-duration-ms-and-duration-sec",
+                      "idem-expiry-duration-ms-and-duration-sec");
+    expiry_duration_ms_and_duration_sec["params"]["trade"]["duration_sec"] = 120;
+    const auto expiry_duration_ms_and_duration_sec_response =
+        post_json(config, bridge.bound_http_port(), expiry_duration_ms_and_duration_sec);
+
+    auto expiry_expires_at_ms_and_expiry_time =
+        trade_command("expiry-expires-at-ms-and-expiry-time",
+                      "idem-expiry-expires-at-ms-and-expiry-time");
+    expiry_expires_at_ms_and_expiry_time["params"]["trade"]["expiry"] = {
+        {"kind", "absolute"},
+        {"expires_at_ms", optionx::bridges::metatrader_file::detail::unix_time_ms() + 60000}
+    };
+    expiry_expires_at_ms_and_expiry_time["params"]["trade"]["expiry_time"] =
+        optionx::bridges::metatrader_file::detail::unix_time_ms() / 1000 + 120;
+    const auto expiry_expires_at_ms_and_expiry_time_response =
+        post_json(config, bridge.bound_http_port(), expiry_expires_at_ms_and_expiry_time);
+
+    auto unsupported_kind_and_duration_sec =
+        trade_command("unsupported-kind-and-duration-sec",
+                      "idem-unsupported-kind-and-duration-sec");
+    unsupported_kind_and_duration_sec["params"]["trade"]["expiry"] = {
+        {"kind", "weekly"}
+    };
+    unsupported_kind_and_duration_sec["params"]["trade"]["duration_sec"] = 60;
+    const auto unsupported_kind_and_duration_sec_response =
+        post_json(config, bridge.bound_http_port(), unsupported_kind_and_duration_sec);
+
+    auto unsupported_kind_and_expiry_time =
+        trade_command("unsupported-kind-and-expiry-time",
+                      "idem-unsupported-kind-and-expiry-time");
+    unsupported_kind_and_expiry_time["params"]["trade"]["expiry"] = {
+        {"kind", "weekly"}
+    };
+    unsupported_kind_and_expiry_time["params"]["trade"]["expiry_time"] =
+        optionx::bridges::metatrader_file::detail::unix_time_ms() / 1000 + 120;
+    const auto unsupported_kind_and_expiry_time_response =
+        post_json(config, bridge.bound_http_port(), unsupported_kind_and_expiry_time);
     bridge.shutdown();
 
     EXPECT_EQ(missing_option_response.at("error").at("code").get<int>(), -32602);
@@ -1190,6 +1256,70 @@ TEST(BridgeProtocolServerBridge, RejectsInvalidDirectTradeExpiry) {
     EXPECT_EQ(conflicting_expiry_response.at("error").at("code").get<int>(), -32602);
     EXPECT_EQ(mismatched_kind_response.at("error").at("code").get<int>(), -32602);
     EXPECT_EQ(ignored_top_level_alias_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(duration_and_duration_sec_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(duration_ms_and_duration_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(expires_at_ms_and_expiry_time_response.at("error").at("code").get<int>(), -32602);
+    EXPECT_EQ(
+        expiry_duration_ms_and_duration_sec_response.at("error").at("code").get<int>(),
+        -32602);
+    EXPECT_EQ(
+        expiry_expires_at_ms_and_expiry_time_response.at("error").at("code").get<int>(),
+        -32602);
+    EXPECT_EQ(
+        unsupported_kind_and_duration_sec_response.at("error").at("code").get<int>(),
+        -32602);
+    EXPECT_EQ(
+        unsupported_kind_and_expiry_time_response.at("error").at("code").get<int>(),
+        -32602);
+}
+
+TEST(BridgeProtocolServerBridge, AcceptsEmptyExpiryObjectWithSingleTopLevelAlias) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    std::vector<std::uint32_t> durations;
+    std::vector<std::int64_t> expiry_times;
+
+    bridge.on_signal_id() = []() { return optionx::SignalId{38}; };
+    bridge.on_trade_signal() =
+        [&](std::unique_ptr<optionx::TradeSignal> signal) {
+            durations.push_back(signal->duration);
+            expiry_times.push_back(signal->expiry_time);
+        };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    auto duration_alias =
+        trade_command("empty-expiry-duration", "idem-empty-expiry-duration");
+    duration_alias["params"]["trade"]["expiry"] = nlohmann::json::object();
+    duration_alias["params"]["trade"]["duration_sec"] = 60;
+    const auto duration_response =
+        post_json(config, bridge.bound_http_port(), duration_alias);
+
+    const auto expiry_seconds =
+        optionx::bridges::metatrader_file::detail::unix_time_ms() / 1000 + 120;
+    auto absolute_alias =
+        trade_command("empty-expiry-absolute", "idem-empty-expiry-absolute");
+    absolute_alias["params"]["trade"]["expiry"] = nlohmann::json::object();
+    absolute_alias["params"]["trade"]["expiry_time"] = expiry_seconds;
+    const auto absolute_response =
+        post_json(config, bridge.bound_http_port(), absolute_alias);
+    bridge.shutdown();
+
+    EXPECT_EQ(duration_response.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(absolute_response.at("result").at("status").get<std::string>(), "accepted");
+
+    ASSERT_EQ(durations.size(), 2u);
+    ASSERT_EQ(expiry_times.size(), 2u);
+    EXPECT_EQ(durations[0], 60u);
+    EXPECT_EQ(expiry_times[0], 0);
+    EXPECT_EQ(expiry_times[1], expiry_seconds);
 }
 
 TEST(BridgeProtocolServerBridge, AcceptsDocumentedSizingAndRoutingPlatformType) {
@@ -1666,9 +1796,22 @@ TEST(BridgeProtocolServerBridge, CanonicalizesBusinessAliasesAndIdentifiersInFin
     ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
     bridge.on_signal_id() = []() { return optionx::SignalId{59}; };
     std::atomic<int> signal_count{0};
-    bridge.on_trade_signal() = [&signal_count](std::unique_ptr<optionx::TradeSignal>) {
-        ++signal_count;
-    };
+    double dispatched_amount = 0.0;
+    optionx::CurrencyType dispatched_currency = optionx::CurrencyType::UNKNOWN;
+    optionx::OrderType dispatched_order_type = optionx::OrderType::UNKNOWN;
+    optionx::OptionType dispatched_option_type = optionx::OptionType::UNKNOWN;
+    std::uint32_t dispatched_duration = 0;
+    std::int64_t dispatched_unique_id = 0;
+    bridge.on_trade_signal() =
+        [&](std::unique_ptr<optionx::TradeSignal> signal) {
+            dispatched_amount = signal->amount;
+            dispatched_currency = signal->currency;
+            dispatched_order_type = signal->order_type;
+            dispatched_option_type = signal->option_type;
+            dispatched_duration = signal->duration;
+            dispatched_unique_id = signal->unique_id;
+            ++signal_count;
+        };
 
     bridge.run();
     ASSERT_TRUE(wait_for_http_port(bridge));
@@ -1706,6 +1849,12 @@ TEST(BridgeProtocolServerBridge, CanonicalizesBusinessAliasesAndIdentifiersInFin
         second.at("result").at("operation_id").get<std::string>(),
         first.at("result").at("operation_id").get<std::string>());
     EXPECT_EQ(signal_count.load(), 1);
+    EXPECT_DOUBLE_EQ(dispatched_amount, 1.0);
+    EXPECT_EQ(dispatched_currency, optionx::CurrencyType::USD);
+    EXPECT_EQ(dispatched_order_type, optionx::OrderType::BUY);
+    EXPECT_EQ(dispatched_option_type, optionx::OptionType::SPRINT);
+    EXPECT_EQ(dispatched_duration, 60u);
+    EXPECT_EQ(dispatched_unique_id, 123);
 }
 
 TEST(BridgeProtocolServerBridge, KeepsDurationAndAbsoluteExpiryDistinctInFingerprint) {
