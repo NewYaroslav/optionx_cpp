@@ -33,6 +33,10 @@ All families converge internally on OptionX DTOs such as `TradeSignal`,
 `TradeRequest`, account snapshots and bridge callbacks. The public wire format
 does not need to be the same for every family.
 
+For practical embedding of the native HTTP/WebSocket server bridge, see
+`guides/protocol-v1-bridge-runtime.md`. For runnable bridge entry points, see
+`examples/README.md`.
+
 ## Layout Rules
 
 - Add new native OptionX transports under `bridges/protocol_v1/`.

@@ -744,6 +744,7 @@ if(OPTIONX_BUILD_EXAMPLES)
     target_include_directories(protocol_v1_bridge_smoke PRIVATE
         ${EXAMPLE_INCLUDE_DIRS}
         ${EXAMPLE_DEPS_INCLUDE_DIRS}
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/SimpleNamedPipe/include
         ${CMAKE_CURRENT_SOURCE_DIR}/external/Simple-Web-Server
     )
 
