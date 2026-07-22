@@ -355,24 +355,42 @@ int main(int argc, char** argv) {
         return 2;
     }
 
+    std::atomic<optionx::SignalId> next_signal_id{1};
+    std::atomic<int> received_signals{0};
+    std::mutex output_mutex;
     BridgeProtocolServerBridge bridge;
+
+    struct BridgeCleanup {
+        BridgeProtocolServerBridge& bridge;
+
+        ~BridgeCleanup() noexcept {
+            try {
+                bridge.shutdown();
+                bridge.on_trade_signal() = {};
+                bridge.on_status_update() = {};
+                bridge.on_signal_id() = {};
+            } catch (...) {
+            }
+        }
+    } cleanup{bridge};
+
     if (!bridge.configure(std::make_unique<BridgeProtocolServerConfig>(config))) {
         std::cerr << "Bridge configuration failed\n";
         return 2;
     }
 
-    std::atomic<optionx::SignalId> next_signal_id{1};
-    std::atomic<int> received_signals{0};
-
     bridge.on_signal_id() = [&next_signal_id]() {
         return next_signal_id.fetch_add(1);
     };
-    bridge.on_trade_signal() = [&received_signals](std::unique_ptr<optionx::TradeSignal> signal) {
+    bridge.on_trade_signal() =
+        [&received_signals, &output_mutex](std::unique_ptr<optionx::TradeSignal> signal) {
         ++received_signals;
+        std::lock_guard<std::mutex> lock(output_mutex);
         nlohmann::json json = *signal;
         std::cout << "signal:\n" << json.dump(2) << '\n';
     };
-    bridge.on_status_update() = [](const optionx::BridgeStatusUpdate& update) {
+    bridge.on_status_update() = [&output_mutex](const optionx::BridgeStatusUpdate& update) {
+        std::lock_guard<std::mutex> lock(output_mutex);
         std::cout << "status=" << optionx::to_str(update.status);
         if (!update.connection_id.empty()) {
             std::cout << " connection=" << update.connection_id;
@@ -445,20 +463,11 @@ int main(int argc, char** argv) {
         return received_signals.load() > 0 ? 0 : 5;
     }
 
-    std::cout << "Press Enter or Ctrl+C to stop...\n";
-    std::thread input_thread([]() {
-        std::string line;
-        std::getline(std::cin, line);
-        g_stop_requested.store(true);
-    });
-
+    std::cout << "Press Ctrl+C to stop...\n";
     while (!g_stop_requested.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    if (input_thread.joinable()) {
-        input_thread.detach();
-    }
     bridge.shutdown();
     return 0;
 }

@@ -37,7 +37,10 @@ Currently maintained examples:
   and the file-signal filename surface.
 - `protocol_v1_bridge_smoke.cpp` starts the Bridge Protocol v1 HTTP/WebSocket
   server bridge and can run `--self-test` to POST a `trade.open` command over
-  HTTP and send an `account.balance.get` command over WebSocket.
+  HTTP and send an `account.balance.get` command over WebSocket. The companion
+  config is `protocol_v1_bridge_smoke.config.json`; see
+  `guides/protocol-v1-bridge-runtime.md` for embedding notes and local endpoint
+  examples.
 - `protocol_v1_named_pipe_bridge_smoke.cpp` starts Bridge Protocol v1 over a
   local named pipe and, on Windows, can run `--self-test` with a local pipe
   client.
@@ -79,6 +82,15 @@ with ephemeral ports, prints both endpoints, then sends:
 Both transports use the same bridge instance, static local secret and protocol
 callbacks. Pass `--config path` to override `BridgeProtocolServerConfig` fields
 such as bind address, ports, paths, secret and local unauthenticated mode.
+
+For a stable local endpoint layout, start:
+
+```powershell
+.\build\protocol_v1_bridge_smoke.exe --config examples\protocol_v1_bridge_smoke.config.json
+```
+
+The sample config binds HTTP to `127.0.0.1:6562` and WebSocket to
+`127.0.0.1:6563`, both with `X-OptionX-Secret: local-dev-secret`.
 
 Old exploratory broker and component probes were removed because they referenced
 pre-refactor include paths and contained local credentials. Broker smoke flows
