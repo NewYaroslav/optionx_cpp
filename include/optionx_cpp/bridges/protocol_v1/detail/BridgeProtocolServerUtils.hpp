@@ -98,6 +98,7 @@ namespace optionx::bridges::protocol_v1::detail {
             {"features", {
                 {"http", true},
                 {"websocket", true},
+                {"named_pipe", false},
                 {"subscriptions", false},
                 {"event_replay", false},
                 {"trade_open_batch", false}

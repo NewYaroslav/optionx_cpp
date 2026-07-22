@@ -1,11 +1,11 @@
 #pragma once
-#ifndef OPTIONX_HEADER_BRIDGES_NAMED_PIPE_DETAIL_LEGACY_TRADING_PROTOCOL_HPP_INCLUDED
-#define OPTIONX_HEADER_BRIDGES_NAMED_PIPE_DETAIL_LEGACY_TRADING_PROTOCOL_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_BRIDGES_LEGACY_TRADING_DETAIL_LEGACY_TRADING_PROTOCOL_HPP_INCLUDED
+#define OPTIONX_HEADER_BRIDGES_LEGACY_TRADING_DETAIL_LEGACY_TRADING_PROTOCOL_HPP_INCLUDED
 
 /// \file LegacyTradingProtocol.hpp
 /// \brief Defines helpers for the legacy named-pipe trading JSON protocol.
 
-namespace optionx::bridges::named_pipe::detail {
+namespace optionx::bridges::legacy_trading::detail {
 
     inline std::string parse_symbol(const std::string& symbol) {
         static const std::vector<std::string> symbols = {
@@ -205,6 +205,6 @@ namespace optionx::bridges::named_pipe::detail {
         return message.dump();
     }
 
-} // namespace optionx::bridges::named_pipe::detail
+} // namespace optionx::bridges::legacy_trading::detail
 
-#endif // OPTIONX_HEADER_BRIDGES_NAMED_PIPE_DETAIL_LEGACY_TRADING_PROTOCOL_HPP_INCLUDED
+#endif // OPTIONX_HEADER_BRIDGES_LEGACY_TRADING_DETAIL_LEGACY_TRADING_PROTOCOL_HPP_INCLUDED

@@ -115,6 +115,9 @@ server error.
 - Named-pipe и другие session transports могут использовать `protocol.hello`
   как initial protocol-version handshake и затем сохранять выбранную версию на
   всю session.
+- C++ named-pipe transport frames JSON-RPC responses and notifications as UTF-8
+  newline-delimited JSON. Clients must read until `\n` instead of assuming one
+  pipe read equals one JSON message.
 - Если session transport уже выбрал v1, но `protocol.hello` запрашивает только
   неподдерживаемые версии, bridge должен вернуть `unsupported_protocol_version`.
 - Business command `params` не должны содержать отдельный `protocol_version`,

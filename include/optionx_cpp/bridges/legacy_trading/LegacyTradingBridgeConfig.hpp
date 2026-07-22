@@ -1,11 +1,11 @@
 #pragma once
-#ifndef OPTIONX_HEADER_BRIDGES_NAMED_PIPE_LEGACY_TRADING_BRIDGE_CONFIG_HPP_INCLUDED
-#define OPTIONX_HEADER_BRIDGES_NAMED_PIPE_LEGACY_TRADING_BRIDGE_CONFIG_HPP_INCLUDED
+#ifndef OPTIONX_HEADER_BRIDGES_LEGACY_TRADING_LEGACY_TRADING_BRIDGE_CONFIG_HPP_INCLUDED
+#define OPTIONX_HEADER_BRIDGES_LEGACY_TRADING_LEGACY_TRADING_BRIDGE_CONFIG_HPP_INCLUDED
 
 /// \file LegacyTradingBridgeConfig.hpp
 /// \brief Defines configuration for the legacy named-pipe trading bridge.
 
-namespace optionx::bridges::named_pipe {
+namespace optionx::bridges::legacy_trading {
 
     /// \class LegacyTradingBridgeConfig
     /// \brief Configuration for the legacy named-pipe trading bridge protocol.
@@ -97,6 +97,6 @@ namespace optionx::bridges::named_pipe {
         std::int64_t ping_period_ms = time_shield::MS_PER_15_SEC; ///< Periodic legacy ping interval.
     };
 
-} // namespace optionx::bridges::named_pipe
+} // namespace optionx::bridges::legacy_trading
 
-#endif // OPTIONX_HEADER_BRIDGES_NAMED_PIPE_LEGACY_TRADING_BRIDGE_CONFIG_HPP_INCLUDED
+#endif // OPTIONX_HEADER_BRIDGES_LEGACY_TRADING_LEGACY_TRADING_BRIDGE_CONFIG_HPP_INCLUDED

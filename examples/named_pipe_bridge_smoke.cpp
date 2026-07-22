@@ -20,8 +20,8 @@
 
 namespace {
 
-using optionx::bridges::named_pipe::LegacyTradingBridge;
-using optionx::bridges::named_pipe::LegacyTradingBridgeConfig;
+using optionx::bridges::legacy_trading::LegacyTradingBridge;
+using optionx::bridges::legacy_trading::LegacyTradingBridgeConfig;
 
 std::atomic_bool g_stop_requested{false};
 std::atomic_int g_interrupt_count{0};

@@ -77,9 +77,9 @@ private:
     }
 };
 
-using optionx::bridges::named_pipe::LegacyTradingBridge;
-using optionx::bridges::named_pipe::LegacyTradingBridgeConfig;
-namespace legacy_protocol = optionx::bridges::named_pipe::detail;
+using optionx::bridges::legacy_trading::LegacyTradingBridge;
+using optionx::bridges::legacy_trading::LegacyTradingBridgeConfig;
+namespace legacy_protocol = optionx::bridges::legacy_trading::detail;
 
 std::string make_test_pipe_name() {
     const auto stamp = std::chrono::duration_cast<std::chrono::nanoseconds>(

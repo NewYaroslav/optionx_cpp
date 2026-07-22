@@ -108,6 +108,12 @@ jobs:
       - name: Run protocol_v1_bridge_smoke
         run: ./build-linux/protocol_v1_bridge_smoke --self-test
 
+      - name: Build protocol_v1_named_pipe_bridge_smoke
+        run: cmake --build build-linux --target protocol_v1_named_pipe_bridge_smoke -j
+
+      - name: Run protocol_v1_named_pipe_bridge_smoke
+        run: ./build-linux/protocol_v1_named_pipe_bridge_smoke --self-test
+
       - name: Build market_data_subscription_contract_test
         run: cmake --build build-linux --target market_data_subscription_contract_test -j
 
