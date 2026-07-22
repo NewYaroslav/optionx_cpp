@@ -266,6 +266,14 @@ The first implementation supports:
 The current implementation does not yet provide durable operation storage,
 subscription management, fan-out routing or event replay for the HTTP/WebSocket
 transports.
+
+The runnable example `examples/protocol_v1_bridge_smoke.cpp` shows how an
+application embeds this bridge. It configures loopback HTTP and WebSocket
+transports, installs account/trade callbacks, prints the bound endpoints, and
+in `--self-test` mode sends one JSON-RPC command through each transport. The
+WebSocket client offers the `optionx.bridge.v1` subprotocol and passes the same
+`X-OptionX-Secret` header as the HTTP request.
+
 - Unknown external/broker identifiers should be treated as opaque strings and
   compared lexically, not numerically.
 
