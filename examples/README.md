@@ -3,6 +3,11 @@
 The examples directory contains small programs that are intended to build
 against the current public aggregate headers.
 
+Bridge smoke examples share small local helpers in
+`bridge_example_utils.hpp` for CLI parsing, Ctrl+C handling, config loading and
+demo account snapshots. The bridge-specific `.cpp` files keep the actual
+configuration, callbacks and self-test flow close to `main()`.
+
 Bridge examples follow the family layout described in
 `guides/bridge-taxonomy.md`: native OptionX API examples use
 `protocol_v1`, while compatibility examples keep their platform or legacy wire
