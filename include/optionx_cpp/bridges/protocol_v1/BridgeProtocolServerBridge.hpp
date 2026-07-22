@@ -646,11 +646,10 @@ namespace optionx::bridges::protocol_v1 {
             if (ws_thread.joinable()) {
                 ws_thread.join();
             }
+            http_server.reset();
+            ws_server.reset();
 
-            if (notify_stopped) {
-                notify_status_from_state(state, BridgeStatus::SERVER_STOPPED, {});
-            }
-
+            bool should_notify = false;
             {
                 std::lock_guard<std::mutex> lock(state->mutex);
                 if (state->phase == RuntimePhase::Stopping &&
@@ -664,7 +663,11 @@ namespace optionx::bridges::protocol_v1 {
                     state->transport_callback_admission_closed = false;
                     state->pending_callback_shutdown_generation = 0;
                     state->lifecycle_cv.notify_all();
+                    should_notify = notify_stopped;
                 }
+            }
+            if (should_notify) {
+                notify_status_from_state(state, BridgeStatus::SERVER_STOPPED, {});
             }
         }
 
