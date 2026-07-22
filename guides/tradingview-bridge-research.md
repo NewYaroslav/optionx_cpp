@@ -1048,7 +1048,7 @@ Current bridge contract already matches this direction:
 - `bridges::BaseBridge::on_trade_signal()` publishes `std::unique_ptr<TradeSignal>`.
 - `TradeSignal::to_trade_request()` converts signal intent into executable
   `TradeRequest`.
-- `bridges::named_pipe::detail::parse_contract()` is a close parser precedent:
+- `bridges::legacy_trading::detail::parse_contract()` is a close parser precedent:
   external JSON in, normalized `TradeSignal` out.
 
 Possible implementation split:

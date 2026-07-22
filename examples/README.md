@@ -3,6 +3,12 @@
 The examples directory contains small programs that are intended to build
 against the current public aggregate headers.
 
+Bridge examples follow the family layout described in
+`guides/bridge-taxonomy.md`: native OptionX API examples use
+`protocol_v1`, while compatibility examples keep their platform or legacy wire
+contract (`metatrader_file`, `trading_view`, `bot_binary`, or legacy named
+pipe) even when they use the same underlying transport.
+
 Currently maintained examples:
 
 - `account_info_hub_example.cpp` demonstrates routing account information
@@ -29,6 +35,9 @@ Currently maintained examples:
 - `protocol_v1_bridge_smoke.cpp` starts the Bridge Protocol v1 HTTP/WebSocket
   server bridge and can run `--self-test` to POST a `trade.open` JSON-RPC
   command to itself.
+- `protocol_v1_named_pipe_bridge_smoke.cpp` starts Bridge Protocol v1 over a
+  local named pipe and, on Windows, can run `--self-test` with a local pipe
+  client.
 - `metatrader_file_bridge_smoke.cpp` runs the C++ side of the MetaTrader
   Common\Files bridge against a temporary command/event layout.
 - `metatrader_file_command_writer_smoke.cpp` demonstrates the C++ command-writer

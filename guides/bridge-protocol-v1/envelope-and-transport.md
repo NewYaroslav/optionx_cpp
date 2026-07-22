@@ -114,6 +114,9 @@ Rules:
 - Named-pipe and other session transports may use `protocol.hello` as the
   initial protocol-version handshake, then keep the selected version for the
   session.
+- The C++ named-pipe transport frames JSON-RPC responses and notifications as
+  UTF-8 newline-delimited JSON. Clients must read until `\n` instead of
+  assuming one pipe read equals one JSON message.
 - If a session transport already selected v1 but `protocol.hello` requests only
   unsupported versions, the bridge must return `unsupported_protocol_version`.
 - Business command `params` must not contain a separate `protocol_version`,
