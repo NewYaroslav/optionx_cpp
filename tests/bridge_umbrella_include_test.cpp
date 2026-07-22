@@ -76,6 +76,15 @@ TEST(BridgeUmbrellaIncludeTest, ExposesBridgeProtocolV1ServerFamily) {
     EXPECT_EQ(bridge.bound_websocket_port(), 0);
 }
 
+TEST(BridgeUmbrellaIncludeTest, ExposesBridgeProtocolV1NamedPipeFamily) {
+    optionx::bridges::protocol_v1::BridgeProtocolNamedPipeConfig config;
+    optionx::bridges::protocol_v1::BridgeProtocolNamedPipeBridge bridge;
+
+    EXPECT_EQ(
+        config.bridge_type(),
+        optionx::BridgeType::BRIDGE_PROTOCOL_V1_NAMED_PIPE);
+}
+
 TEST(BridgeUmbrellaIncludeTest, ExposesSignalReportApi) {
     optionx::BridgeSignalReport report;
     report.status = optionx::BridgeSignalReportStatus::REJECTED;
