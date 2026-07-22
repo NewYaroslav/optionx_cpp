@@ -52,6 +52,7 @@
 #include "metatrader_file/MetaTraderFileBridgeConfig.hpp"
 #include "metatrader_file/detail/MetaTraderFileProtocol.hpp"
 #include "metatrader_file/detail/MetaTraderFileIdempotencyStore.hpp"
+#include "protocol_v1/detail/BridgeProtocolCanonicalization.hpp"
 #include "metatrader_file/detail/MetaTraderFileBridgeUtils.hpp"
 #include "metatrader_file/MetaTraderFileCommandWriter.hpp"
 #include "metatrader_file/MetaTraderFileBridge.hpp"
