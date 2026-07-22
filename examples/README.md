@@ -9,6 +9,9 @@ Bridge examples follow the family layout described in
 contract (`metatrader_file`, `trading_view`, `bot_binary`, or legacy named
 pipe) even when they use the same underlying transport.
 
+For a compact family/include/config/example matrix, see
+`guides/bridge-examples.md`.
+
 Currently maintained examples:
 
 - `account_info_hub_example.cpp` demonstrates routing account information

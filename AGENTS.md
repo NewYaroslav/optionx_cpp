@@ -30,6 +30,8 @@
   общий draft протокола для HTTP/WebSocket/named-pipe мостов.
 - [Bridge Protocol v1 runtime quickstart](guides/protocol-v1-bridge-runtime.md) -
   практическое подключение HTTP/WebSocket и named-pipe runtime-мостов.
+- [Bridge examples map](guides/bridge-examples.md) - карта runnable examples,
+  public includes и config types для каждого bridge family.
 - [Bridge protocol v1 draft RU](guides/bridge-protocol-v1.ru.md) -
   русский перевод draft протокола; английская версия каноническая, RU
   синхронизируется с EN и не является источником обратных правок.
