@@ -33,8 +33,8 @@ Currently maintained examples:
   `request=...` WebRequest value and file-signal name, then parses those legacy
   values back into an OptionX trade signal snapshot.
 - `protocol_v1_bridge_smoke.cpp` starts the Bridge Protocol v1 HTTP/WebSocket
-  server bridge and can run `--self-test` to POST a `trade.open` JSON-RPC
-  command to itself.
+  server bridge and can run `--self-test` to POST a `trade.open` command over
+  HTTP and send an `account.balance.get` command over WebSocket.
 - `protocol_v1_named_pipe_bridge_smoke.cpp` starts Bridge Protocol v1 over a
   local named pipe and, on Windows, can run `--self-test` with a local pipe
   client.
@@ -64,6 +64,18 @@ by passing the path from MetaTrader's `File -> Open Data Folder` via
 
 Use `scripts/compile-metatrader-mql.ps1` to compile those MQL examples with a
 local MetaEditor installation.
+
+## Bridge Protocol V1 HTTP/WebSocket Smoke
+
+`protocol_v1_bridge_smoke --self-test` binds HTTP and WebSocket on loopback
+with ephemeral ports, prints both endpoints, then sends:
+
+- HTTP `POST /api/v1/bridge/command` with a `trade.open` JSON-RPC command;
+- WebSocket `/api/v1/bridge/ws` with an `account.balance.get` JSON-RPC command.
+
+Both transports use the same bridge instance, static local secret and protocol
+callbacks. Pass `--config path` to override `BridgeProtocolServerConfig` fields
+such as bind address, ports, paths, secret and local unauthenticated mode.
 
 Old exploratory broker and component probes were removed because they referenced
 pre-refactor include paths and contained local credentials. Broker smoke flows

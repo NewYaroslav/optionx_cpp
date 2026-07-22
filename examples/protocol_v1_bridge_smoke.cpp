@@ -2,13 +2,16 @@
 #include <optionx_cpp/utils/json_comments.hpp>
 
 #include <client_http.hpp>
+#include <client_ws.hpp>
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <csignal>
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -23,6 +26,7 @@
 namespace {
 
 using HttpClient = SimpleWeb::Client<SimpleWeb::HTTP>;
+using WsClient = SimpleWeb::SocketClient<SimpleWeb::WS>;
 using optionx::bridges::protocol_v1::BridgeProtocolServerBridge;
 using optionx::bridges::protocol_v1::BridgeProtocolServerConfig;
 
@@ -185,6 +189,104 @@ nlohmann::json make_self_test_command() {
     };
 }
 
+nlohmann::json make_ws_self_test_command() {
+    return nlohmann::json{
+        {"jsonrpc", "2.0"},
+        {"id", "protocol-v1-smoke-balance"},
+        {"method", "account.balance.get"},
+        {"params", nlohmann::json::object()}
+    };
+}
+
+nlohmann::json run_http_self_test(
+        const BridgeProtocolServerConfig& config,
+        const unsigned short port) {
+    HttpClient client(config.address + ":" + std::to_string(port));
+    SimpleWeb::CaseInsensitiveMultimap headers;
+    headers.emplace("Content-Type", "application/json");
+    headers.emplace("X-OptionX-Secret", config.secret);
+    const auto response =
+        client.request(
+            "POST",
+            config.command_path,
+            make_self_test_command().dump(-1),
+            headers);
+    return nlohmann::json::parse(response->content.string());
+}
+
+nlohmann::json run_websocket_self_test(
+        const BridgeProtocolServerConfig& config,
+        const unsigned short port) {
+    WsClient client(
+        config.address + ":" +
+        std::to_string(port) +
+        config.websocket_path);
+    client.config.header.emplace("Sec-WebSocket-Protocol", config.websocket_subprotocol);
+    client.config.header.emplace("X-OptionX-Secret", config.secret);
+
+    std::mutex mutex;
+    std::condition_variable cv;
+    nlohmann::json response;
+    std::string error_message;
+    bool done = false;
+
+    client.on_open = [&](std::shared_ptr<WsClient::Connection> connection) {
+        connection->send(make_ws_self_test_command().dump(-1));
+    };
+    client.on_message = [&](std::shared_ptr<WsClient::Connection> connection,
+                            std::shared_ptr<WsClient::InMessage> message) {
+        (void)connection;
+        try {
+            const auto parsed = nlohmann::json::parse(message->string());
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                response = parsed;
+                done = true;
+            }
+        } catch (const std::exception& ex) {
+            std::lock_guard<std::mutex> lock(mutex);
+            error_message = ex.what();
+            done = true;
+        }
+        cv.notify_all();
+    };
+    client.on_error = [&](std::shared_ptr<WsClient::Connection>,
+                          const SimpleWeb::error_code& ec) {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (done) {
+                return;
+            }
+            error_message = ec.message();
+            done = true;
+        }
+        cv.notify_all();
+    };
+
+    std::thread client_thread([&client]() {
+        client.start();
+    });
+
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        if (!cv.wait_for(lock, std::chrono::seconds(5), [&done]() {
+                return done;
+            })) {
+            error_message = "timed out waiting for WebSocket response";
+        }
+    }
+
+    client.stop();
+    if (client_thread.joinable()) {
+        client_thread.join();
+    }
+
+    if (!error_message.empty()) {
+        throw std::runtime_error(error_message);
+    }
+    return response;
+}
+
 void request_stop_from_interrupt() {
     const auto count = g_interrupt_count.fetch_add(1) + 1;
     if (count == 1) {
@@ -301,19 +403,32 @@ int main(int argc, char** argv) {
 
     if (self_test) {
         try {
-            HttpClient client(config.address + ":" + std::to_string(bridge.bound_http_port()));
-            SimpleWeb::CaseInsensitiveMultimap headers;
-            headers.emplace("Content-Type", "application/json");
-            headers.emplace("X-OptionX-Secret", config.secret);
-            const auto response =
-                client.request(
-                    "POST",
-                    config.command_path,
-                    make_self_test_command().dump(-1),
-                    headers);
-            const auto response_json = nlohmann::json::parse(response->content.string());
-            std::cout << "self-test response: " << response_json.dump(-1) << '\n';
-            if (response_json.at("result").at("status").get<std::string>() != "accepted") {
+            const auto http_response =
+                run_http_self_test(config, bridge.bound_http_port());
+            std::cout << "HTTP self-test response: "
+                      << http_response.dump(-1) << '\n';
+            if (http_response.at("result").at("status").get<std::string>() != "accepted") {
+                bridge.shutdown();
+                return 4;
+            }
+
+            const auto ws_response =
+                run_websocket_self_test(config, bridge.bound_websocket_port());
+            std::cout << "WebSocket self-test response: "
+                      << ws_response.dump(-1) << '\n';
+            if (ws_response.at("id").get<std::string>() !=
+                "protocol-v1-smoke-balance") {
+                bridge.shutdown();
+                return 4;
+            }
+            if (ws_response.at("result").at("status").get<std::string>() != "completed") {
+                bridge.shutdown();
+                return 4;
+            }
+            if (ws_response.at("result")
+                    .at("account")
+                    .at("account_id")
+                    .get<std::string>() != "7") {
                 bridge.shutdown();
                 return 4;
             }

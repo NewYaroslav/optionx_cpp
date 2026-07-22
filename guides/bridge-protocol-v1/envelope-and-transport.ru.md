@@ -491,3 +491,10 @@ Bridge Protocol v1 HTTP/WebSocket server bridge. Это application adapter на
 
 Текущая реализация пока не даёт durable operation storage, fan-out routing,
 subscription management и event replay для HTTP/WebSocket transports.
+
+Запускаемый пример `examples/protocol_v1_bridge_smoke.cpp` показывает, как
+application встраивает этот bridge. Он настраивает loopback HTTP и WebSocket
+transports, задает account/trade callbacks, печатает bound endpoints, а в режиме
+`--self-test` отправляет по одной JSON-RPC команде через каждый transport.
+WebSocket client предлагает subprotocol `optionx.bridge.v1` и передает тот же
+header `X-OptionX-Secret`, что и HTTP request.
