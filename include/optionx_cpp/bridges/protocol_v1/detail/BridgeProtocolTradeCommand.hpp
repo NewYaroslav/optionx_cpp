@@ -148,7 +148,34 @@ namespace optionx::bridges::protocol_v1::detail {
         if (value.empty()) {
             return MmSystemType::NONE;
         }
-        return to_enum<MmSystemType>(value);
+        auto normalized = lower_ascii_copy(trim_ascii_copy(value));
+        std::replace(normalized.begin(), normalized.end(), '.', '_');
+        std::replace(normalized.begin(), normalized.end(), '-', '_');
+        std::replace(normalized.begin(), normalized.end(), ' ', '_');
+        if (normalized == "none" || normalized == "ignore_signal_amount") {
+            return MmSystemType::NONE;
+        }
+        if (normalized == "fixed_amount" || normalized == "fixed") {
+            return MmSystemType::FIXED;
+        }
+        if (normalized == "balance_percent" || normalized == "percent") {
+            return MmSystemType::PERCENT;
+        }
+        if (normalized == "kelly" || normalized == "kelly_criterion") {
+            return MmSystemType::KELLY_CRITERION;
+        }
+        return to_enum<MmSystemType>(upper_ascii_copy(trim_ascii_copy(value)));
+    }
+
+    inline void validate_ratio(
+            const double value,
+            const char* field_name) {
+        if (!std::isfinite(value)) {
+            throw std::invalid_argument(std::string(field_name) + " must be finite.");
+        }
+        if (value < 0.0 || value > 1.0) {
+            throw std::invalid_argument(std::string(field_name) + " must be in the 0..1 range.");
+        }
     }
 
     inline std::int64_t unix_time_ms() {
@@ -311,13 +338,50 @@ namespace optionx::bridges::protocol_v1::detail {
         }
 
         const auto mode = string_value(sizing, "mode", string_value(sizing, "type"));
+        auto normalized_mode = lower_ascii_copy(trim_ascii_copy(mode));
+        std::replace(normalized_mode.begin(), normalized_mode.end(), '.', '_');
+        std::replace(normalized_mode.begin(), normalized_mode.end(), '-', '_');
+        std::replace(normalized_mode.begin(), normalized_mode.end(), ' ', '_');
+        if (normalized_mode == "balance_percent" || normalized_mode == "percent") {
+            throw std::invalid_argument(
+                "sizing.mode balance_percent is not supported by the current C++ TradeSignal DTO.");
+        }
+        if (normalized_mode == "risk_manager") {
+            throw std::invalid_argument(
+                "sizing.mode risk_manager is not supported by the current C++ TradeSignal DTO.");
+        }
+        if (normalized_mode == "ignore_signal_amount") {
+            throw std::invalid_argument(
+                "sizing.mode ignore_signal_amount is not supported by the current C++ TradeSignal DTO.");
+        }
         if (!mode.empty()) {
             signal.mm_type = mm_system_type_value(mode);
+        }
+        if (sizing.contains("balance_percent")) {
+            throw std::invalid_argument(
+                "sizing.balance_percent is not supported by the current C++ TradeSignal DTO.");
+        }
+        if (sizing.contains("system")) {
+            throw std::invalid_argument(
+                "sizing.system is not supported by the current C++ TradeSignal DTO.");
+        }
+        if (sizing.contains("params")) {
+            throw std::invalid_argument(
+                "sizing.params is not supported by the current C++ TradeSignal DTO.");
         }
         const auto& trade_payload = params.contains("trade")
             ? object_member_or_empty(params, "trade")
             : object_member_or_empty(params, "signal");
-        if (sizing.contains("amount") && !trade_payload.contains("amount")) {
+        if (sizing.contains("amount") && trade_payload.contains("amount")) {
+            throw std::invalid_argument(
+                "Command must not specify both business amount and sizing.amount.");
+        }
+        if ((normalized_mode == "fixed_amount" || normalized_mode == "fixed") &&
+            !sizing.contains("amount") &&
+            !trade_payload.contains("amount")) {
+            throw std::invalid_argument("sizing.amount is required for fixed_amount mode.");
+        }
+        if (sizing.contains("amount")) {
             nlohmann::json trade = nlohmann::json::object();
             trade["amount"] = sizing.at("amount");
             if (sizing.contains("currency")) {
@@ -387,6 +451,14 @@ namespace optionx::bridges::protocol_v1::detail {
         if (!std::isfinite(signal->amount)) {
             throw std::invalid_argument("Command amount must be finite.");
         }
+        const auto& sizing = object_member_or_empty(payload, "sizing");
+        const bool amount_provided =
+            trade.contains("amount") || sizing.contains("amount");
+        if (amount_provided && signal->amount <= 0.0) {
+            throw std::invalid_argument("Command amount must be positive when provided.");
+        }
+        validate_ratio(signal->refund, "refund");
+        validate_ratio(signal->min_payout, "min_payout");
         if (direct_trade_open && signal->amount <= 0.0) {
             throw std::invalid_argument("trade.open amount must be positive.");
         }

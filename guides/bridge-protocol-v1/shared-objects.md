@@ -203,6 +203,12 @@ Mode-specific field rules:
   forbidden.
 - `none`: `amount`, `balance_percent`, `system` and `params` are forbidden.
 
+Current C++ bridge DTOs preserve `fixed_amount` sizing and common grouping
+fields. `balance_percent`, `risk_manager`, `ignore_signal_amount`, `system` and
+`params` are protocol shapes for future typed DTO support; current C++ bridge
+implementations reject them with `invalid_params` instead of silently dropping
+their meaning.
+
 ### Origin Signal
 
 Trades produced by signals should carry an origin block so clients can query

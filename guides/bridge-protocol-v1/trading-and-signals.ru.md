@@ -226,6 +226,11 @@ management, routing и filters позже могут породить ноль, 
 `default` и один numeric `account`. `accounts`, `all` и `routing.policy`
 отклоняются до реализации fan-out routing.
 
+Пример ниже показывает более полную protocol-level shape. Текущие C++
+HTTP/WebSocket и named-pipe bridges также отклоняют `risk_manager`,
+`balance_percent`, `system` и `params` sizing fields с `invalid_params`, пока
+для этих понятий нет typed DTO support.
+
 ```json
 {
   "context": {
