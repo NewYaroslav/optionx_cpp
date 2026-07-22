@@ -1,27 +1,18 @@
+#include "bridge_example_utils.hpp"
+
 #include <optionx_cpp/bridges.hpp>
-#include <optionx_cpp/utils/json_comments.hpp>
 
 #include <client_http.hpp>
 #include <client_ws.hpp>
 
 #include <atomic>
-#include <chrono>
 #include <condition_variable>
-#include <csignal>
-#include <fstream>
 #include <iostream>
 #include <memory>
 #include <mutex>
-#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
-
-#ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
-#endif
 
 namespace {
 
@@ -30,82 +21,114 @@ using WsClient = SimpleWeb::SocketClient<SimpleWeb::WS>;
 using optionx::bridges::protocol_v1::BridgeProtocolServerBridge;
 using optionx::bridges::protocol_v1::BridgeProtocolServerConfig;
 
-std::atomic_bool g_stop_requested{false};
-std::atomic_int g_interrupt_count{0};
+BridgeProtocolServerConfig default_config();
+bool wait_for_transport_bind(const BridgeProtocolServerBridge& bridge);
+nlohmann::json make_http_trade_open_command();
+nlohmann::json make_ws_balance_command();
+nlohmann::json run_http_self_test(const BridgeProtocolServerConfig& config,
+                                  unsigned short port);
+nlohmann::json run_websocket_self_test(const BridgeProtocolServerConfig& config,
+                                       unsigned short port);
+int run_self_test(const BridgeProtocolServerConfig& config,
+                  BridgeProtocolServerBridge& bridge,
+                  std::atomic<int>& received_signals);
+void print_usage();
 
-class DemoAccountInfo final : public optionx::BaseAccountInfoData {
-public:
-    std::int64_t user_id = 7;
-    double balance = 1000.0;
-    optionx::CurrencyType currency = optionx::CurrencyType::USD;
-    optionx::AccountType account_type = optionx::AccountType::DEMO;
+} // namespace
 
-    std::unique_ptr<optionx::BaseAccountInfoData> clone_unique() const override {
-        return std::make_unique<DemoAccountInfo>(*this);
+int main(int argc, char** argv) {
+    if (optionx::examples::has_arg(argc, argv, "--help")) {
+        print_usage();
+        return 0;
     }
 
-    std::shared_ptr<optionx::BaseAccountInfoData> clone_shared() const override {
-        return std::make_shared<DemoAccountInfo>(*this);
+    const bool self_test = optionx::examples::has_arg(argc, argv, "--self-test");
+    optionx::examples::install_stop_handlers();
+
+    auto config = default_config();
+    if (!optionx::examples::load_json_config(
+            optionx::examples::option_value(argc, argv, "--config"), config)) {
+        return 2;
     }
 
-private:
-    bool get_info_bool(const optionx::AccountInfoRequest& request) const override {
-        return request.type == optionx::AccountInfoType::CONNECTION_STATUS;
+    const auto validation = config.validate();
+    if (!validation.first) {
+        std::cerr << "Invalid config: " << validation.second << '\n';
+        return 2;
     }
 
-    std::int64_t get_info_int64(const optionx::AccountInfoRequest& request) const override {
-        switch (request.type) {
-        case optionx::AccountInfoType::USER_ID:
-            return user_id;
-        case optionx::AccountInfoType::CONNECTION_STATUS:
-            return 1;
-        case optionx::AccountInfoType::ACCOUNT_TYPE:
-            return static_cast<std::int64_t>(account_type);
-        case optionx::AccountInfoType::CURRENCY:
-            return static_cast<std::int64_t>(currency);
-        default:
-            return 0;
+    BridgeProtocolServerBridge bridge;
+    std::atomic<optionx::SignalId> next_signal_id{1};
+    std::atomic<int> received_signals{0};
+    std::mutex output_mutex;
+
+    struct BridgeCleanup {
+        BridgeProtocolServerBridge& bridge;
+
+        ~BridgeCleanup() noexcept {
+            try {
+                bridge.shutdown();
+                bridge.on_trade_signal() = {};
+                bridge.on_status_update() = {};
+                bridge.on_signal_id() = {};
+            } catch (...) {
+            }
         }
+    } cleanup{bridge};
+
+    if (!bridge.configure(std::make_unique<BridgeProtocolServerConfig>(config))) {
+        std::cerr << "Bridge configuration failed\n";
+        return 2;
     }
 
-    double get_info_f64(const optionx::AccountInfoRequest& request) const override {
-        return request.type == optionx::AccountInfoType::BALANCE ? balance : 0.0;
+    // The protocol bridge is transport-neutral at the callback boundary:
+    // HTTP and WebSocket requests both become OptionX callbacks and DTOs.
+    bridge.on_signal_id() = [&next_signal_id]() {
+        return next_signal_id.fetch_add(1);
+    };
+    bridge.on_trade_signal() =
+        [&received_signals, &output_mutex](std::unique_ptr<optionx::TradeSignal> signal) {
+        ++received_signals;
+        std::lock_guard<std::mutex> lock(output_mutex);
+        nlohmann::json json = *signal;
+        std::cout << "signal:\n" << json.dump(2) << '\n';
+    };
+    bridge.on_status_update() = [&output_mutex](const optionx::BridgeStatusUpdate& update) {
+        std::lock_guard<std::mutex> lock(output_mutex);
+        optionx::examples::print_status_update(update);
+    };
+
+    // Account snapshots feed account.balance.get and account.balance.updated.
+    bridge.update_account_info(optionx::AccountInfoUpdate(
+        std::make_shared<optionx::examples::DemoAccountInfo>(),
+        optionx::AccountUpdateStatus::BALANCE_UPDATED));
+
+    bridge.run();
+    if (!wait_for_transport_bind(bridge)) {
+        std::cerr << "Bridge did not bind HTTP and WebSocket ports\n";
+        return 3;
     }
 
-    std::string get_info_str(const optionx::AccountInfoRequest& request) const override {
-        return request.type == optionx::AccountInfoType::USER_ID
-            ? std::to_string(user_id)
-            : std::string();
+    std::cout << "Bridge Protocol v1 HTTP: http://"
+              << config.address << ':' << bridge.bound_http_port()
+              << config.command_path << '\n';
+    std::cout << "Bridge Protocol v1 WebSocket: ws://"
+              << config.address << ':' << bridge.bound_websocket_port()
+              << config.websocket_path << '\n';
+
+    if (self_test) {
+        return run_self_test(config, bridge, received_signals);
     }
 
-    optionx::AccountType get_info_account_type(
-            const optionx::AccountInfoRequest&) const override {
-        return account_type;
+    std::cout << "Press Ctrl+C to stop...\n";
+    while (!optionx::examples::stop_requested()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    optionx::CurrencyType get_info_currency(
-            const optionx::AccountInfoRequest&) const override {
-        return currency;
-    }
-};
-
-bool has_arg(int argc, char** argv, const std::string& value) {
-    for (int i = 1; i < argc; ++i) {
-        if (argv[i] == value) {
-            return true;
-        }
-    }
-    return false;
+    return 0;
 }
 
-std::string option_value(int argc, char** argv, const std::string& name) {
-    for (int i = 1; i + 1 < argc; ++i) {
-        if (argv[i] == name) {
-            return argv[i + 1];
-        }
-    }
-    return {};
-}
+namespace {
 
 BridgeProtocolServerConfig default_config() {
     BridgeProtocolServerConfig config;
@@ -118,40 +141,14 @@ BridgeProtocolServerConfig default_config() {
     return config;
 }
 
-bool load_config(const std::string& path, BridgeProtocolServerConfig& config) {
-    if (path.empty()) {
-        return true;
-    }
-
-    std::ifstream input(path);
-    if (!input) {
-        std::cerr << "Could not open config: " << path << '\n';
-        return false;
-    }
-
-    try {
-        std::ostringstream buffer;
-        buffer << input.rdbuf();
-        config.from_json(optionx::utils::parse_json_with_comments(buffer.str()));
-    } catch (const std::exception& ex) {
-        std::cerr << "Could not parse config: " << ex.what() << '\n';
-        return false;
-    }
-    return true;
+bool wait_for_transport_bind(const BridgeProtocolServerBridge& bridge) {
+    return optionx::examples::wait_until([&bridge]() {
+        return bridge.bound_http_port() != 0 &&
+               bridge.bound_websocket_port() != 0;
+    }, std::chrono::seconds(3));
 }
 
-bool wait_for_port(const BridgeProtocolServerBridge& bridge) {
-    for (int i = 0; i < 200; ++i) {
-        if (bridge.bound_http_port() != 0 &&
-            bridge.bound_websocket_port() != 0) {
-            return true;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    return false;
-}
-
-nlohmann::json make_self_test_command() {
+nlohmann::json make_http_trade_open_command() {
     return nlohmann::json{
         {"jsonrpc", "2.0"},
         {"id", "protocol-v1-smoke-trade"},
@@ -189,7 +186,7 @@ nlohmann::json make_self_test_command() {
     };
 }
 
-nlohmann::json make_ws_self_test_command() {
+nlohmann::json make_ws_balance_command() {
     return nlohmann::json{
         {"jsonrpc", "2.0"},
         {"id", "protocol-v1-smoke-balance"},
@@ -209,7 +206,7 @@ nlohmann::json run_http_self_test(
         client.request(
             "POST",
             config.command_path,
-            make_self_test_command().dump(-1),
+            make_http_trade_open_command().dump(-1),
             headers);
     return nlohmann::json::parse(response->content.string());
 }
@@ -231,7 +228,7 @@ nlohmann::json run_websocket_self_test(
     bool done = false;
 
     client.on_open = [&](std::shared_ptr<WsClient::Connection> connection) {
-        connection->send(make_ws_self_test_command().dump(-1));
+        connection->send(make_ws_balance_command().dump(-1));
     };
     client.on_message = [&](std::shared_ptr<WsClient::Connection> connection,
                             std::shared_ptr<WsClient::InMessage> message) {
@@ -287,44 +284,45 @@ nlohmann::json run_websocket_self_test(
     return response;
 }
 
-void request_stop_from_interrupt() {
-    const auto count = g_interrupt_count.fetch_add(1) + 1;
-    if (count == 1) {
-        g_stop_requested.store(true);
-        return;
-    }
-    std::_Exit(130);
-}
+int run_self_test(
+        const BridgeProtocolServerConfig& config,
+        BridgeProtocolServerBridge& bridge,
+        std::atomic<int>& received_signals) {
+    try {
+        const auto http_response =
+            run_http_self_test(config, bridge.bound_http_port());
+        std::cout << "HTTP self-test response: "
+                  << http_response.dump(-1) << '\n';
+        if (http_response.at("result").at("status").get<std::string>() != "accepted") {
+            return 4;
+        }
 
-#ifdef _WIN32
-BOOL WINAPI console_ctrl_handler(DWORD event_type) {
-    switch (event_type) {
-    case CTRL_C_EVENT:
-    case CTRL_BREAK_EVENT:
-    case CTRL_CLOSE_EVENT:
-    case CTRL_LOGOFF_EVENT:
-    case CTRL_SHUTDOWN_EVENT:
-        request_stop_from_interrupt();
-        return TRUE;
-    default:
-        return FALSE;
+        const auto ws_response =
+            run_websocket_self_test(config, bridge.bound_websocket_port());
+        std::cout << "WebSocket self-test response: "
+                  << ws_response.dump(-1) << '\n';
+        if (ws_response.at("id").get<std::string>() !=
+            "protocol-v1-smoke-balance") {
+            return 4;
+        }
+        if (ws_response.at("result").at("status").get<std::string>() != "completed") {
+            return 4;
+        }
+        if (ws_response.at("result")
+                .at("account")
+                .at("account_id")
+                .get<std::string>() != "7") {
+            return 4;
+        }
+    } catch (const std::exception& ex) {
+        std::cerr << "Self-test request failed: " << ex.what() << '\n';
+        return 4;
     }
-}
-#else
-void signal_handler(int) {
-    request_stop_from_interrupt();
-}
-#endif
 
-void install_stop_handlers() {
-    g_stop_requested.store(false);
-    g_interrupt_count.store(0);
-#ifdef _WIN32
-    SetConsoleCtrlHandler(console_ctrl_handler, TRUE);
-#else
-    std::signal(SIGINT, signal_handler);
-    std::signal(SIGTERM, signal_handler);
-#endif
+    return optionx::examples::wait_for_count(
+        received_signals,
+        1,
+        std::chrono::seconds(1)) ? 0 : 5;
 }
 
 void print_usage() {
@@ -334,140 +332,3 @@ void print_usage() {
 }
 
 } // namespace
-
-int main(int argc, char** argv) {
-    if (has_arg(argc, argv, "--help")) {
-        print_usage();
-        return 0;
-    }
-
-    const bool self_test = has_arg(argc, argv, "--self-test");
-    install_stop_handlers();
-
-    auto config = default_config();
-    if (!load_config(option_value(argc, argv, "--config"), config)) {
-        return 2;
-    }
-
-    const auto validation = config.validate();
-    if (!validation.first) {
-        std::cerr << "Invalid config: " << validation.second << '\n';
-        return 2;
-    }
-
-    std::atomic<optionx::SignalId> next_signal_id{1};
-    std::atomic<int> received_signals{0};
-    std::mutex output_mutex;
-    BridgeProtocolServerBridge bridge;
-
-    struct BridgeCleanup {
-        BridgeProtocolServerBridge& bridge;
-
-        ~BridgeCleanup() noexcept {
-            try {
-                bridge.shutdown();
-                bridge.on_trade_signal() = {};
-                bridge.on_status_update() = {};
-                bridge.on_signal_id() = {};
-            } catch (...) {
-            }
-        }
-    } cleanup{bridge};
-
-    if (!bridge.configure(std::make_unique<BridgeProtocolServerConfig>(config))) {
-        std::cerr << "Bridge configuration failed\n";
-        return 2;
-    }
-
-    bridge.on_signal_id() = [&next_signal_id]() {
-        return next_signal_id.fetch_add(1);
-    };
-    bridge.on_trade_signal() =
-        [&received_signals, &output_mutex](std::unique_ptr<optionx::TradeSignal> signal) {
-        ++received_signals;
-        std::lock_guard<std::mutex> lock(output_mutex);
-        nlohmann::json json = *signal;
-        std::cout << "signal:\n" << json.dump(2) << '\n';
-    };
-    bridge.on_status_update() = [&output_mutex](const optionx::BridgeStatusUpdate& update) {
-        std::lock_guard<std::mutex> lock(output_mutex);
-        std::cout << "status=" << optionx::to_str(update.status);
-        if (!update.connection_id.empty()) {
-            std::cout << " connection=" << update.connection_id;
-        }
-        if (!update.message.empty()) {
-            std::cout << " message=" << update.message;
-        }
-        std::cout << '\n';
-    };
-
-    bridge.update_account_info(optionx::AccountInfoUpdate(
-        std::make_shared<DemoAccountInfo>(),
-        optionx::AccountUpdateStatus::BALANCE_UPDATED));
-
-    bridge.run();
-    if (!wait_for_port(bridge)) {
-        std::cerr << "Bridge did not bind HTTP and WebSocket ports\n";
-        bridge.shutdown();
-        return 3;
-    }
-
-    std::cout << "Bridge Protocol v1 HTTP: http://"
-              << config.address << ':' << bridge.bound_http_port()
-              << config.command_path << '\n';
-    std::cout << "Bridge Protocol v1 WebSocket: ws://"
-              << config.address << ':' << bridge.bound_websocket_port()
-              << config.websocket_path << '\n';
-
-    if (self_test) {
-        try {
-            const auto http_response =
-                run_http_self_test(config, bridge.bound_http_port());
-            std::cout << "HTTP self-test response: "
-                      << http_response.dump(-1) << '\n';
-            if (http_response.at("result").at("status").get<std::string>() != "accepted") {
-                bridge.shutdown();
-                return 4;
-            }
-
-            const auto ws_response =
-                run_websocket_self_test(config, bridge.bound_websocket_port());
-            std::cout << "WebSocket self-test response: "
-                      << ws_response.dump(-1) << '\n';
-            if (ws_response.at("id").get<std::string>() !=
-                "protocol-v1-smoke-balance") {
-                bridge.shutdown();
-                return 4;
-            }
-            if (ws_response.at("result").at("status").get<std::string>() != "completed") {
-                bridge.shutdown();
-                return 4;
-            }
-            if (ws_response.at("result")
-                    .at("account")
-                    .at("account_id")
-                    .get<std::string>() != "7") {
-                bridge.shutdown();
-                return 4;
-            }
-        } catch (const std::exception& ex) {
-            std::cerr << "Self-test request failed: " << ex.what() << '\n';
-            bridge.shutdown();
-            return 4;
-        }
-
-        for (int i = 0; i < 100 && received_signals.load() == 0; ++i) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        }
-        bridge.shutdown();
-        return received_signals.load() > 0 ? 0 : 5;
-    }
-
-    std::cout << "Press Ctrl+C to stop...\n";
-    while (!g_stop_requested.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-
-    bridge.shutdown();
-    return 0;
-}
