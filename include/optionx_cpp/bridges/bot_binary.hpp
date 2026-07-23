@@ -32,6 +32,7 @@
 #include "utils/metatrader_paths.hpp"
 
 #include "BaseBridge.hpp"
+#include "detail/BridgeTradeSignalValidation.hpp"
 #include "bot_binary/BotBinaryBridgeConfig.hpp"
 #include "bot_binary/detail/BotBinaryProtocol.hpp"
 #include "bot_binary/BotBinaryBridge.hpp"

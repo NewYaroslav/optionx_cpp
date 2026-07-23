@@ -171,6 +171,18 @@ nlohmann::json ws_trade_command(std::string id, std::string idempotency_key) {
     return trade_command(std::move(id), std::move(idempotency_key));
 }
 
+nlohmann::json classic_duration_trade_command(
+        std::string id,
+        std::string idempotency_key) {
+    auto request = trade_command(std::move(id), std::move(idempotency_key));
+    request["params"]["trade"]["option_type"] = "CLASSIC";
+    request["params"]["trade"]["expiry"] = {
+        {"kind", "duration"},
+        {"duration_ms", 900000}
+    };
+    return request;
+}
+
 nlohmann::json signal_command(std::string id, std::string idempotency_key) {
     auto request = trade_command(std::move(id), std::move(idempotency_key));
     request["method"] = "signal.submit";
@@ -430,6 +442,46 @@ TEST(BridgeProtocolServerBridge, AcceptsHttpJsonRpcCommands) {
     bridge.shutdown();
 }
 
+TEST(BridgeProtocolServerBridge, AcceptsClassicTradeOpenWithDurationExpiry) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    optionx::OptionType option_type = optionx::OptionType::UNKNOWN;
+    std::uint32_t duration = 0;
+    std::int64_t expiry_time = -1;
+    std::atomic<int> signal_count{0};
+
+    bridge.on_signal_id() = []() { return optionx::SignalId{11}; };
+    bridge.on_trade_signal() =
+        [&](std::unique_ptr<optionx::TradeSignal> signal) {
+            ASSERT_TRUE(signal);
+            option_type = signal->option_type;
+            duration = signal->duration;
+            expiry_time = signal->expiry_time;
+            ++signal_count;
+        };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    const auto accepted = post_json(
+        config,
+        bridge.bound_http_port(),
+        classic_duration_trade_command("classic-duration", "idem-classic-duration"));
+    bridge.shutdown();
+
+    EXPECT_EQ(accepted.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(signal_count.load(), 1);
+    EXPECT_EQ(option_type, optionx::OptionType::CLASSIC);
+    EXPECT_EQ(duration, 900u);
+    EXPECT_EQ(expiry_time, 0);
+}
+
 TEST(BridgeProtocolServerBridge, OmitsUnspecifiedAccountAndUnknownUserIds) {
     namespace proto = optionx::bridges::protocol_v1;
 
@@ -557,11 +609,32 @@ TEST(BridgeProtocolNamedPipeBridge, AcceptsJsonRpcCommands) {
     EXPECT_EQ(accepted.at("result").at("status").get<std::string>(), "accepted");
     EXPECT_EQ(signal_count.load(), 1);
 
+    optionx::OptionType last_option_type = optionx::OptionType::UNKNOWN;
+    std::uint32_t last_duration = 0;
+    std::int64_t last_expiry_time = -1;
+    bridge.on_trade_signal() =
+        [&](std::unique_ptr<optionx::TradeSignal> signal) {
+            ASSERT_TRUE(signal);
+            last_option_type = signal->option_type;
+            last_duration = signal->duration;
+            last_expiry_time = signal->expiry_time;
+            ++signal_count;
+        };
+
+    const auto classic_duration = pipe_json(
+        client,
+        classic_duration_trade_command("pipe-classic-duration", "pipe-classic-duration"));
+    EXPECT_EQ(classic_duration.at("result").at("status").get<std::string>(), "accepted");
+    EXPECT_EQ(signal_count.load(), 2);
+    EXPECT_EQ(last_option_type, optionx::OptionType::CLASSIC);
+    EXPECT_EQ(last_duration, 900u);
+    EXPECT_EQ(last_expiry_time, 0);
+
     const auto retry = pipe_json(client, trade_command("pipe-trade-retry", "pipe-idem"));
     EXPECT_EQ(
         retry.at("result").at("operation_id").get<std::string>(),
         accepted.at("result").at("operation_id").get<std::string>());
-    EXPECT_EQ(signal_count.load(), 1);
+    EXPECT_EQ(signal_count.load(), 2);
 
     const auto conflict = pipe_json(
         client,

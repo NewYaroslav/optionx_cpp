@@ -5,6 +5,8 @@
 /// \file TradingViewExtensionBridgeConfig.hpp
 /// \brief Defines configuration for the TradingView browser-extension HTTP bridge.
 
+#include <cmath>
+
 namespace optionx::bridges::tradingview {
 
     /// \struct TradingViewLevelAlertRule
@@ -254,11 +256,24 @@ namespace optionx::bridges::tradingview {
             if (!is_valid_sizing_mode(sizing_mode)) {
                 return {false, "TradingView bridge sizing mode must be none, fixed_amount, or balance_percent."};
             }
+            const auto normalized_sizing_mode = normalize_token(sizing_mode);
+            if (!std::isfinite(fixed_amount)) {
+                return {false, "TradingView bridge fixed_amount must be finite."};
+            }
             if (fixed_amount < 0.0) {
                 return {false, "TradingView bridge fixed_amount must not be negative."};
             }
+            if (normalized_sizing_mode == "fixed_amount" && fixed_amount <= 0.0) {
+                return {false, "TradingView bridge fixed_amount must be positive when sizing mode is fixed_amount."};
+            }
+            if (!std::isfinite(balance_percent)) {
+                return {false, "TradingView bridge balance_percent must be finite."};
+            }
             if (balance_percent < 0.0) {
                 return {false, "TradingView bridge balance_percent must not be negative."};
+            }
+            if (!std::isfinite(min_amount) || !std::isfinite(max_amount)) {
+                return {false, "TradingView bridge amount bounds must be finite."};
             }
             if (min_amount < 0.0 || max_amount < 0.0) {
                 return {false, "TradingView bridge amount bounds must not be negative."};
@@ -266,8 +281,17 @@ namespace optionx::bridges::tradingview {
             if (max_amount > 0.0 && min_amount > max_amount) {
                 return {false, "TradingView bridge min_amount must not exceed max_amount."};
             }
-            if (min_payout < 0.0) {
-                return {false, "TradingView bridge minimum payout must not be negative."};
+            if (option_type == OptionType::UNKNOWN) {
+                return {false, "TradingView bridge option_type is required."};
+            }
+            if (duration == 0) {
+                return {false, "TradingView bridge duration must be positive."};
+            }
+            if (!std::isfinite(min_payout)) {
+                return {false, "TradingView bridge minimum payout must be finite."};
+            }
+            if (min_payout < 0.0 || min_payout > 1.0) {
+                return {false, "TradingView bridge minimum payout must be in the 0..1 range."};
             }
             if (dedupe_cache_size == 0) {
                 return {false, "TradingView bridge dedupe_cache_size must be positive."};
