@@ -370,7 +370,8 @@ TEST(BridgeProtocolServerBridge, AcceptsHttpJsonRpcCommands) {
     };
     bridge.update_account_info(optionx::AccountInfoUpdate(
         std::make_shared<TestAccountInfo>(),
-        optionx::AccountUpdateStatus::BALANCE_UPDATED));
+        optionx::AccountUpdateStatus::BALANCE_UPDATED,
+        123));
 
     bridge.run();
     ASSERT_TRUE(wait_for_http_port(bridge));
@@ -396,7 +397,8 @@ TEST(BridgeProtocolServerBridge, AcceptsHttpJsonRpcCommands) {
             {"params", nlohmann::json::object()}
         });
     EXPECT_EQ(balance.at("result").at("status").get<std::string>(), "completed");
-    EXPECT_EQ(balance.at("result").at("account").at("account_id").get<std::string>(), "99");
+    EXPECT_EQ(balance.at("result").at("account").at("account_id").get<std::string>(), "123");
+    EXPECT_EQ(balance.at("result").at("account").at("user_id").get<std::string>(), "99");
 
     const auto accepted = post_json(
         config,
@@ -426,6 +428,40 @@ TEST(BridgeProtocolServerBridge, AcceptsHttpJsonRpcCommands) {
         "idempotency_conflict");
 
     bridge.shutdown();
+}
+
+TEST(BridgeProtocolServerBridge, OmitsUnspecifiedAccountAndUnknownUserIds) {
+    namespace proto = optionx::bridges::protocol_v1;
+
+    auto config = test_config();
+    config.enable_websocket = false;
+
+    proto::BridgeProtocolServerBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<proto::BridgeProtocolServerConfig>(config)));
+
+    auto account = std::make_shared<TestAccountInfo>();
+    account->user_id = 0;
+    bridge.update_account_info(optionx::AccountInfoUpdate(
+        account,
+        optionx::AccountUpdateStatus::BALANCE_UPDATED));
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    const auto balance = post_json(
+        config,
+        bridge.bound_http_port(),
+        nlohmann::json{
+            {"jsonrpc", "2.0"},
+            {"id", "balance-no-ids"},
+            {"method", "account.balance.get"},
+            {"params", nlohmann::json::object()}
+        });
+    bridge.shutdown();
+
+    const auto& account_json = balance.at("result").at("account");
+    EXPECT_FALSE(account_json.contains("account_id")) << account_json.dump(-1);
+    EXPECT_FALSE(account_json.contains("user_id")) << account_json.dump(-1);
 }
 
 TEST(BridgeProtocolNamedPipeBridge, AcceptsJsonRpcCommands) {
@@ -463,7 +499,8 @@ TEST(BridgeProtocolNamedPipeBridge, AcceptsJsonRpcCommands) {
     };
     bridge.update_account_info(optionx::AccountInfoUpdate(
         std::make_shared<TestAccountInfo>(),
-        optionx::AccountUpdateStatus::BALANCE_UPDATED));
+        optionx::AccountUpdateStatus::BALANCE_UPDATED,
+        123));
 
     bridge.run();
     {
@@ -513,7 +550,8 @@ TEST(BridgeProtocolNamedPipeBridge, AcceptsJsonRpcCommands) {
             {"params", nlohmann::json::object()}
         });
     EXPECT_EQ(balance.at("result").at("status").get<std::string>(), "completed");
-    EXPECT_EQ(balance.at("result").at("account").at("account_id").get<std::string>(), "99");
+    EXPECT_EQ(balance.at("result").at("account").at("account_id").get<std::string>(), "123");
+    EXPECT_EQ(balance.at("result").at("account").at("user_id").get<std::string>(), "99");
 
     const auto accepted = pipe_json(client, trade_command("pipe-trade", "pipe-idem"));
     EXPECT_EQ(accepted.at("result").at("status").get<std::string>(), "accepted");
@@ -600,11 +638,31 @@ TEST(BridgeProtocolNamedPipeBridge, HandlesFramesLargerThanTransportBuffer) {
 
     bridge.update_account_info(optionx::AccountInfoUpdate(
         std::make_shared<TestAccountInfo>(),
-        optionx::AccountUpdateStatus::BALANCE_UPDATED));
+        optionx::AccountUpdateStatus::BALANCE_UPDATED,
+        321));
     const auto notification = read_pipe_json(client);
     ASSERT_TRUE(notification.contains("method")) << notification.dump(-1);
     EXPECT_EQ(notification.at("method").get<std::string>(), "balance.updated");
+    EXPECT_EQ(
+        notification.at("params").at("payload").at("account_id").get<std::string>(),
+        "321");
+    EXPECT_EQ(
+        notification.at("params").at("payload").at("user_id").get<std::string>(),
+        "99");
     EXPECT_GT(notification.dump(-1).size(), config.buffer_size);
+
+    auto account_without_ids = std::make_shared<TestAccountInfo>();
+    account_without_ids->user_id = 0;
+    bridge.update_account_info(optionx::AccountInfoUpdate(
+        account_without_ids,
+        optionx::AccountUpdateStatus::BALANCE_UPDATED));
+    const auto anonymous_notification = read_pipe_json(client);
+    ASSERT_TRUE(anonymous_notification.contains("method")) << anonymous_notification.dump(-1);
+    EXPECT_EQ(anonymous_notification.at("method").get<std::string>(), "balance.updated");
+    EXPECT_FALSE(anonymous_notification.at("params").at("subject").contains("account_id"));
+    EXPECT_FALSE(anonymous_notification.at("params").at("subject").contains("user_id"));
+    EXPECT_FALSE(anonymous_notification.at("params").at("payload").contains("account_id"));
+    EXPECT_FALSE(anonymous_notification.at("params").at("payload").contains("user_id"));
 
     client.close();
     bridge.shutdown();

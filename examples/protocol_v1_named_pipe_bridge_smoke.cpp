@@ -129,7 +129,8 @@ int main(int argc, char** argv) {
 
     bridge.update_account_info(optionx::AccountInfoUpdate(
         std::make_shared<optionx::examples::DemoAccountInfo>(),
-        optionx::AccountUpdateStatus::BALANCE_UPDATED));
+        optionx::AccountUpdateStatus::BALANCE_UPDATED,
+        1007));
     bridge.run();
     std::cout << "Bridge Protocol v1 named pipe: " << config.named_pipe << '\n';
 

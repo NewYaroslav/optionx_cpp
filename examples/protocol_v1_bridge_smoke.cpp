@@ -101,7 +101,8 @@ int main(int argc, char** argv) {
     // Account snapshots feed account.balance.get and account.balance.updated.
     bridge.update_account_info(optionx::AccountInfoUpdate(
         std::make_shared<optionx::examples::DemoAccountInfo>(),
-        optionx::AccountUpdateStatus::BALANCE_UPDATED));
+        optionx::AccountUpdateStatus::BALANCE_UPDATED,
+        1007));
 
     bridge.run();
     if (!wait_for_transport_bind(bridge)) {
@@ -311,6 +312,12 @@ int run_self_test(
         if (ws_response.at("result")
                 .at("account")
                 .at("account_id")
+                .get<std::string>() != "1007") {
+            return 4;
+        }
+        if (ws_response.at("result")
+                .at("account")
+                .at("user_id")
                 .get<std::string>() != "7") {
             return 4;
         }

@@ -35,6 +35,7 @@ namespace optionx::bridges::protocol_v1 {
             BaseBridge::signal_report_callback_t signal_report_callback;
             BaseBridge::signal_id_allocator_t signal_id_allocator;
             std::shared_ptr<BaseAccountInfoData> account_info;
+            std::int64_t account_id = 0;
             std::unordered_map<std::string, StoredOperation> operations;
             std::unordered_map<std::string, std::uint64_t> event_revisions;
             std::deque<std::string> operation_order;
@@ -240,13 +241,15 @@ namespace optionx::bridges::protocol_v1 {
             {
                 std::lock_guard<std::mutex> lock(m_state->mutex);
                 m_state->account_info = info.account_info;
+                m_state->account_id = info.account_id;
                 config = m_state->config;
             }
             if (!config) {
                 return;
             }
 
-            broadcast_notification(make_balance_updated_notification(*config, *info.account_info));
+            broadcast_notification(
+                make_balance_updated_notification(*config, *info.account_info, info.account_id));
         }
 
         /// \brief Broadcasts `trade.updated` notifications to connected named-pipe clients.
@@ -461,10 +464,15 @@ namespace optionx::bridges::protocol_v1 {
 
         nlohmann::json make_balance_updated_notification(
                 const BridgeProtocolNamedPipeConfig& config,
-                const BaseAccountInfoData& account) {
+                const BaseAccountInfoData& account,
+                const std::int64_t account_id) {
             const auto now = metatrader_file::detail::unix_time_ms();
-            const auto account_id = metatrader_file::detail::account_id_string(account);
-            const auto coord = next_event_coordinate("account:" + account_id);
+            const auto account_id_text = metatrader_file::detail::account_id_string(account_id);
+            const auto user_id = metatrader_file::detail::user_id_string(account);
+            const auto coord = next_event_coordinate(
+                !account_id_text.empty()
+                    ? "account:" + account_id_text
+                    : (!user_id.empty() ? "user:" + user_id : "account:unspecified"));
             return metatrader_file::detail::make_balance_updated_notification(
                 make_event_id("balance", coord.stream_id, coord.seq),
                 source_uri(config),
@@ -472,9 +480,10 @@ namespace optionx::bridges::protocol_v1 {
                 coord.seq,
                 now,
                 now,
-                account_id,
+                account_id_text,
                 metatrader_file::detail::safe_account_balance(account),
                 metatrader_file::detail::safe_account_currency(account),
+                user_id,
                 coord.revision);
         }
 
@@ -683,9 +692,11 @@ namespace optionx::bridges::protocol_v1 {
 
         nlohmann::json handle_account_balance_get(const nlohmann::json& id) {
             std::shared_ptr<BaseAccountInfoData> account;
+            std::int64_t account_id = 0;
             {
                 std::lock_guard<std::mutex> lock(m_state->mutex);
                 account = m_state->account_info;
+                account_id = m_state->account_id;
             }
             if (!account) {
                 return detail::jsonrpc_result(
@@ -704,7 +715,7 @@ namespace optionx::bridges::protocol_v1 {
                 nlohmann::json{
                     {"status", "completed"},
                     {"final", true},
-                    {"account", metatrader_file::detail::account_snapshot_json(*account)}
+                    {"account", metatrader_file::detail::account_snapshot_json(*account, account_id)}
                 });
         }
 

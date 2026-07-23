@@ -1305,15 +1305,27 @@ namespace optionx::bridges::metatrader_file::detail {
             std::string account_id,
             const double balance,
             const CurrencyType currency,
+            std::string user_id = {},
             const std::uint64_t revision = 1) {
-        nlohmann::json subject = {{"account_id", account_id}};
+        nlohmann::json subject = nlohmann::json::object();
+        if (!account_id.empty()) {
+            subject["account_id"] = account_id;
+        }
+        if (!user_id.empty()) {
+            subject["user_id"] = user_id;
+        }
         nlohmann::json payload = {
-            {"account_id", account_id},
             {"balance", {
                 {"value", decimal_to_string(balance, 2)},
                 {"currency", to_str(currency)}
             }}
         };
+        if (!account_id.empty()) {
+            payload["account_id"] = std::move(account_id);
+        }
+        if (!user_id.empty()) {
+            payload["user_id"] = std::move(user_id);
+        }
         return make_jsonrpc_notification(
             "balance.updated",
             make_event_params(

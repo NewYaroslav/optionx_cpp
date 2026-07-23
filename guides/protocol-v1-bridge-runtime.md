@@ -48,6 +48,14 @@ bridge.on_trade_signal() = [](std::unique_ptr<optionx::TradeSignal> signal) {
     (void)signal;
 };
 
+// Optional but recommended: publish the latest account snapshot before clients
+// can connect. The third argument is the internal OptionX account_id; broker
+// USER_ID remains inside the account snapshot as user_id in protocol results.
+bridge.update_account_info(optionx::AccountInfoUpdate(
+    current_account_snapshot,
+    optionx::AccountUpdateStatus::CONNECTED,
+    1));
+
 bridge.run();
 // Periodically publish account/trade updates with update_account_info() and
 // update_trade_result(), then call shutdown() during application teardown.

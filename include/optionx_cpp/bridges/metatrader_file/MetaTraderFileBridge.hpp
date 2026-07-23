@@ -19,6 +19,7 @@ namespace optionx::bridges::metatrader_file {
         struct RuntimeState {
             std::mutex mutex;
             std::shared_ptr<BaseAccountInfoData> account_info;
+            std::int64_t account_id = 0;
             bridge_status_callback_t status_callback;
             BaseBridge::trade_signal_callback_t trade_signal_callback;
             BaseBridge::signal_report_callback_t signal_report_callback;
@@ -112,6 +113,7 @@ namespace optionx::bridges::metatrader_file {
             {
                 std::lock_guard<std::mutex> lock(m_state->mutex);
                 m_state->account_info = info.account_info;
+                m_state->account_id = info.account_id;
             }
 
             try {
@@ -127,9 +129,10 @@ namespace optionx::bridges::metatrader_file {
                             next_event_stream_seq_locked(),
                             detail::unix_time_ms(),
                             detail::unix_time_ms(),
-                            detail::account_id_string(*info.account_info),
+                            detail::account_id_string(info.account_id),
                             detail::safe_account_balance(*info.account_info),
-                            detail::safe_account_currency(*info.account_info)));
+                            detail::safe_account_currency(*info.account_info),
+                            detail::user_id_string(*info.account_info)));
                 }
                 if (config->enable_state_snapshot) {
                     write_state_snapshot_locked(*config);
@@ -329,9 +332,10 @@ namespace optionx::bridges::metatrader_file {
             return m_state->trade_signal_callback;
         }
 
-        std::shared_ptr<BaseAccountInfoData> get_account_info_snapshot() const {
+        std::pair<std::shared_ptr<BaseAccountInfoData>, std::int64_t>
+        get_account_info_snapshot() const {
             std::lock_guard<std::mutex> lock(m_state->mutex);
-            return m_state->account_info;
+            return {m_state->account_info, m_state->account_id};
         }
 
         void process_impl() {
@@ -815,10 +819,12 @@ namespace optionx::bridges::metatrader_file {
         }
 
         void write_state_snapshot_locked(const MetaTraderFileBridgeConfig& config) {
-            auto account = get_account_info_snapshot();
+            const auto account_snapshot = get_account_info_snapshot();
+            const auto& account = account_snapshot.first;
+            const auto account_id = account_snapshot.second;
             nlohmann::json accounts = nlohmann::json::array();
             if (account) {
-                accounts.push_back(detail::account_snapshot_json(*account));
+                accounts.push_back(detail::account_snapshot_json(*account, account_id));
             }
 
             detail::write_json_file_atomic(
@@ -955,7 +961,9 @@ namespace optionx::bridges::metatrader_file {
         }
 
         void handle_balance_get_locked(const nlohmann::json& id) {
-            auto account = get_account_info_snapshot();
+            const auto account_snapshot = get_account_info_snapshot();
+            const auto& account = account_snapshot.first;
+            const auto account_id = account_snapshot.second;
             if (!account) {
                 append_rpc_result_locked(
                     id,
@@ -975,7 +983,7 @@ namespace optionx::bridges::metatrader_file {
                 nlohmann::json{
                     {"status", "completed"},
                     {"final", true},
-                    {"account", detail::account_snapshot_json(*account)}
+                    {"account", detail::account_snapshot_json(*account, account_id)}
                 });
         }
 
