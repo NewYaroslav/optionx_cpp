@@ -2051,6 +2051,66 @@ TEST(IntradeBarTradeExecution, NormalizesBtcAliasBeforeQueueProcessing) {
     EXPECT_EQ(callback_error, TradeErrorCode::NO_CONNECTION);
 }
 
+TEST(IntradeBarTradeExecution, ConvertsClassicDurationToAbsoluteExpiryBeforeQueueProcessing) {
+    IntradeBarPlatform platform;
+
+    bool callback_called = false;
+    OptionType callback_option_type = OptionType::UNKNOWN;
+    std::uint32_t callback_duration = 0;
+    std::int64_t callback_expiry_time = 0;
+    std::int64_t place_time_sec = 0;
+    TradeErrorCode callback_error = TradeErrorCode::INVALID_REQUEST;
+
+    platform.on_trade_result() = [&](
+            std::unique_ptr<TradeRequest> request,
+            std::unique_ptr<TradeResult> result) {
+        callback_called = true;
+        if (request) {
+            callback_option_type = request->option_type;
+            callback_duration = request->duration;
+            callback_expiry_time = request->expiry_time;
+        }
+        if (result) {
+            place_time_sec = time_shield::ms_to_sec(result->place_date);
+            callback_error = result->error_code;
+        }
+    };
+
+    auto request = std::make_unique<TradeRequest>();
+    request->symbol = "EURUSD";
+    request->option_type = OptionType::CLASSIC;
+    request->order_type = OrderType::BUY;
+    request->account_type = AccountType::DEMO;
+    request->currency = CurrencyType::USD;
+    request->amount = 1.0;
+    request->duration = 900;
+    request->expiry_time = 0;
+
+    platform.run(false);
+    ASSERT_TRUE(platform.place_trade(std::move(request)));
+
+    for (int i = 0; i < 200 && !callback_called; ++i) {
+        platform.process();
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+
+    platform.shutdown();
+
+    ASSERT_TRUE(callback_called);
+    ASSERT_GT(place_time_sec, 0);
+    const auto expected_future =
+        place_time_sec + (15 + 3) * time_shield::SEC_PER_MIN;
+    const auto expected_expiry_time =
+        expected_future - expected_future % time_shield::SEC_PER_5_MIN;
+
+    EXPECT_EQ(callback_option_type, OptionType::CLASSIC);
+    EXPECT_EQ(callback_duration, 900u);
+    EXPECT_EQ(callback_expiry_time, expected_expiry_time);
+    EXPECT_EQ(callback_expiry_time % time_shield::SEC_PER_5_MIN, 0);
+    EXPECT_GT(callback_expiry_time - place_time_sec, time_shield::SEC_PER_3_MIN);
+    EXPECT_EQ(callback_error, TradeErrorCode::NO_CONNECTION);
+}
+
 TEST(IntradeBarAuthData, KeepsDisconnectedDomainRetryPeriodInConfig) {
     AuthData auth_data;
     auth_data.set_email_password("user@example.test", "secret");
