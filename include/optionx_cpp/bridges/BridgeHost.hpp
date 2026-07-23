@@ -7,6 +7,7 @@
 
 #include "BaseBridge.hpp"
 
+#include <exception>
 #include <functional>
 #include <optional>
 #include <utility>
@@ -114,12 +115,22 @@ namespace optionx::bridges {
             invoke(m_hooks.after_run);
         }
 
-        /// \brief Runs `before_shutdown`, then the bridge, then `after_shutdown`.
+        /// \brief Runs teardown hooks around `BaseBridge::shutdown()`.
+        ///
+        /// Exceptions from hooks are rethrown after the real bridge shutdown
+        /// has been attempted. A throwing `before_shutdown` hook must not
+        /// leave the transport running.
         void shutdown() {
-            invoke(m_hooks.before_shutdown);
-            bridge().shutdown();
+            std::exception_ptr first_exception;
+            invoke_capture(m_hooks.before_shutdown, first_exception);
+            try {
+                bridge().shutdown();
+            } catch (...) {
+                capture_first_exception(first_exception);
+            }
             m_run_requested = false;
-            invoke(m_hooks.after_shutdown);
+            invoke_capture(m_hooks.after_shutdown, first_exception);
+            rethrow_if_needed(first_exception);
         }
 
         /// \brief Executes a host-level reset through the normal shutdown path.
@@ -128,9 +139,15 @@ namespace optionx::bridges {
         /// place to drain or clear their own state before and after the bridge
         /// transport is stopped.
         void reset() {
-            invoke(m_hooks.before_reset);
-            shutdown();
-            invoke(m_hooks.after_reset);
+            std::exception_ptr first_exception;
+            invoke_capture(m_hooks.before_reset, first_exception);
+            try {
+                shutdown();
+            } catch (...) {
+                capture_first_exception(first_exception);
+            }
+            invoke_capture(m_hooks.after_reset, first_exception);
+            rethrow_if_needed(first_exception);
         }
 
         /// \brief Returns whether this host has requested the bridge to run.
@@ -142,6 +159,28 @@ namespace optionx::bridges {
         void invoke(const BridgeHostHooks::hook_t& hook) {
             if (hook) {
                 hook(*this);
+            }
+        }
+
+        void invoke_capture(
+                const BridgeHostHooks::hook_t& hook,
+                std::exception_ptr& first_exception) {
+            try {
+                invoke(hook);
+            } catch (...) {
+                capture_first_exception(first_exception);
+            }
+        }
+
+        static void capture_first_exception(std::exception_ptr& first_exception) {
+            if (!first_exception) {
+                first_exception = std::current_exception();
+            }
+        }
+
+        static void rethrow_if_needed(const std::exception_ptr& first_exception) {
+            if (first_exception) {
+                std::rethrow_exception(first_exception);
             }
         }
 

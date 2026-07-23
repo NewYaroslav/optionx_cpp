@@ -78,7 +78,8 @@ host.run();
 `BridgeHost` is intentionally not a broker API. Its hooks are for host-side
 orchestration such as polling account state, wiring diagnostics, or clearing
 application caches before shutdown/reset. The bridge still owns its transport
-state machine.
+state machine. `BridgeHost` itself is not a concurrent state machine; serialize
+calls to its hooks, provider and lifecycle methods in application code.
 
 `examples/protocol_v1_bridge_smoke.cpp` is the executable version of this
 flow. It starts both transports, publishes a demo account snapshot, and in

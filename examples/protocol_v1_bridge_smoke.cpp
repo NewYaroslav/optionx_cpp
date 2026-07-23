@@ -71,6 +71,9 @@ int main(int argc, char** argv) {
         ~BridgeCleanup() noexcept {
             try {
                 host.shutdown();
+            } catch (...) {
+            }
+            try {
                 bridge.on_trade_signal() = {};
                 bridge.on_status_update() = {};
                 bridge.on_signal_id() = {};

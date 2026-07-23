@@ -1,10 +1,11 @@
 #include <gtest/gtest.h>
 
-#include <optionx_cpp/bridges.hpp>
+#include <optionx_cpp/bridges/BridgeHost.hpp>
 
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -190,6 +191,62 @@ TEST(BridgeHost, ResetUsesShutdownPathAndHooks) {
         "host.before_shutdown",
         "bridge.shutdown",
         "host.after_shutdown",
+        "host.after_reset"
+    };
+    EXPECT_EQ(calls, expected);
+    EXPECT_FALSE(host.run_requested());
+    EXPECT_EQ(bridge.shutdown_count, 1);
+}
+
+TEST(BridgeHost, ThrowingBeforeShutdownStillStopsBridge) {
+    std::vector<std::string> calls;
+    RecordingBridge bridge(calls);
+    optionx::bridges::BridgeHost host(bridge);
+
+    host.run();
+    calls.clear();
+
+    host.hooks().before_shutdown = [&calls](optionx::bridges::BridgeHost&) {
+        calls.push_back("host.before_shutdown");
+        throw std::runtime_error("before shutdown failed");
+    };
+    host.hooks().after_shutdown = [&calls](optionx::bridges::BridgeHost&) {
+        calls.push_back("host.after_shutdown");
+    };
+
+    EXPECT_THROW(host.shutdown(), std::runtime_error);
+
+    const std::vector<std::string> expected = {
+        "host.before_shutdown",
+        "bridge.shutdown",
+        "host.after_shutdown"
+    };
+    EXPECT_EQ(calls, expected);
+    EXPECT_FALSE(host.run_requested());
+    EXPECT_EQ(bridge.shutdown_count, 1);
+}
+
+TEST(BridgeHost, ThrowingBeforeResetStillUsesShutdownPath) {
+    std::vector<std::string> calls;
+    RecordingBridge bridge(calls);
+    optionx::bridges::BridgeHost host(bridge);
+
+    host.run();
+    calls.clear();
+
+    host.hooks().before_reset = [&calls](optionx::bridges::BridgeHost&) {
+        calls.push_back("host.before_reset");
+        throw std::runtime_error("before reset failed");
+    };
+    host.hooks().after_reset = [&calls](optionx::bridges::BridgeHost&) {
+        calls.push_back("host.after_reset");
+    };
+
+    EXPECT_THROW(host.reset(), std::runtime_error);
+
+    const std::vector<std::string> expected = {
+        "host.before_reset",
+        "bridge.shutdown",
         "host.after_reset"
     };
     EXPECT_EQ(calls, expected);
