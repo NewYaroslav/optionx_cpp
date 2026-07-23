@@ -3,10 +3,11 @@
 The examples directory contains small programs that are intended to build
 against the current public aggregate headers.
 
-Bridge smoke examples share small local helpers in
-`bridge_example_utils.hpp` for CLI parsing, Ctrl+C handling, config loading and
-demo account snapshots. The bridge-specific `.cpp` files keep the actual
-configuration, callbacks and self-test flow close to `main()`.
+Examples share small local helpers in `example_utils.hpp` for CLI parsing,
+config loading, temporary paths, file reads and short waits. Bridge smoke
+examples extend them with `bridge_example_utils.hpp` for Ctrl+C handling,
+status formatting and demo account snapshots. The bridge-specific `.cpp` files
+keep the actual configuration, callbacks and self-test flow close to `main()`.
 Examples that need an initial account snapshot use `bridges::BridgeHost` hooks
 to publish it before the bridge starts accepting clients.
 

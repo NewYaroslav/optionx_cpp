@@ -1,11 +1,9 @@
-#include <optionx_cpp/bridges/metatrader_file.hpp>
-#include <optionx_cpp/utils/json_comments.hpp>
+#include "example_utils.hpp"
 
-#include <cstdlib>
+#include <optionx_cpp/bridges/metatrader_file.hpp>
+
 #include <filesystem>
-#include <fstream>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <system_error>
 
@@ -15,85 +13,22 @@ using optionx::bridges::metatrader_file::MetaTraderFileBridgeConfig;
 using optionx::bridges::metatrader_file::MetaTraderFileCommandWriter;
 using optionx::bridges::metatrader_file::MetaTraderFileTradeCommand;
 
-bool has_arg(int argc, char** argv, const std::string& value) {
-    for (int i = 1; i < argc; ++i) {
-        if (argv[i] == value) {
-            return true;
-        }
-    }
-    return false;
-}
-
-std::string option_value(int argc, char** argv, const std::string& name) {
-    for (int i = 1; i + 1 < argc; ++i) {
-        if (argv[i] == name) {
-            return argv[i + 1];
-        }
-    }
-    return {};
-}
-
-std::filesystem::path smoke_root() {
-    return std::filesystem::temp_directory_path() /
-           "optionx-metatrader-file-command-writer-smoke";
-}
-
-MetaTraderFileBridgeConfig default_config(const bool self_test) {
-    MetaTraderFileBridgeConfig config;
-    config.bridge_id = 1;
-    config.client_id = "mql-smoke";
-    if (self_test || config.common_files_root.empty()) {
-        config.common_files_root = smoke_root().u8string();
-    }
-    return config;
-}
-
-bool load_config(const std::string& path, MetaTraderFileBridgeConfig& config) {
-    if (path.empty()) {
-        return true;
-    }
-
-    std::ifstream input(path);
-    if (!input) {
-        std::cerr << "Could not open config: " << path << '\n';
-        return false;
-    }
-
-    try {
-        std::ostringstream buffer;
-        buffer << input.rdbuf();
-        config.from_json(optionx::utils::parse_json_with_comments(buffer.str()));
-    } catch (const std::exception& ex) {
-        std::cerr << "Could not parse config: " << ex.what() << '\n';
-        return false;
-    }
-    return true;
-}
-
-std::string read_text_file(const std::filesystem::path& path) {
-    std::ifstream input(path, std::ios::binary);
-    std::ostringstream buffer;
-    buffer << input.rdbuf();
-    return buffer.str();
-}
-
-void print_usage() {
-    std::cout
-        << "Usage: metatrader_file_command_writer_smoke [--self-test] [--config path]\n"
-        << "Writes account.balance.get, signal.submit and trade.open commands to commands.ndjson.\n";
-}
+std::filesystem::path smoke_root();
+MetaTraderFileBridgeConfig default_config(bool self_test);
+void print_usage();
 
 } // namespace
 
 int main(int argc, char** argv) {
-    if (has_arg(argc, argv, "--help")) {
+    if (optionx::examples::has_arg(argc, argv, "--help")) {
         print_usage();
         return 0;
     }
 
-    const bool self_test = has_arg(argc, argv, "--self-test");
+    const bool self_test = optionx::examples::has_arg(argc, argv, "--self-test");
     auto config = default_config(self_test);
-    if (!load_config(option_value(argc, argv, "--config"), config)) {
+    if (!optionx::examples::load_json_config(
+            optionx::examples::option_value(argc, argv, "--config"), config)) {
         return 2;
     }
 
@@ -111,6 +46,8 @@ int main(int argc, char** argv) {
     try {
         MetaTraderFileCommandWriter writer(config);
 
+        // This companion writes the same JSON-RPC command format that MQL
+        // scripts append to Common\Files when a real terminal is connected.
         const auto balance = writer.account_balance_get("7", "smoke-balance");
 
         MetaTraderFileTradeCommand signal;
@@ -132,7 +69,7 @@ int main(int argc, char** argv) {
         trade.unique_hash = "smoke-trade-hash";
         const auto opened = writer.trade_open(trade);
 
-        const auto content = read_text_file(writer.layout().commands_log());
+        const auto content = optionx::examples::read_text_file(writer.layout().commands_log());
         std::cout << "MetaTrader command writer root: "
                   << writer.layout().root.u8string() << '\n';
         std::cout << "Commands log: "
@@ -163,3 +100,28 @@ int main(int argc, char** argv) {
 
     return 0;
 }
+
+namespace {
+
+std::filesystem::path smoke_root() {
+    return std::filesystem::temp_directory_path() /
+           "optionx-metatrader-file-command-writer-smoke";
+}
+
+MetaTraderFileBridgeConfig default_config(const bool self_test) {
+    MetaTraderFileBridgeConfig config;
+    config.bridge_id = 1;
+    config.client_id = "mql-smoke";
+    if (self_test || config.common_files_root.empty()) {
+        config.common_files_root = smoke_root().u8string();
+    }
+    return config;
+}
+
+void print_usage() {
+    std::cout
+        << "Usage: metatrader_file_command_writer_smoke [--self-test] [--config path]\n"
+        << "Writes account.balance.get, signal.submit and trade.open commands to commands.ndjson.\n";
+}
+
+} // namespace

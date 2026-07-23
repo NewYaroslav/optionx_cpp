@@ -1,8 +1,9 @@
+#include "example_utils.hpp"
+
 #include <optionx_cpp/platforms.hpp>
 
 #include <atomic>
 #include <chrono>
-#include <cstdlib>
 #include <ctime>
 #include <iostream>
 #include <memory>
@@ -11,35 +12,10 @@
 
 namespace {
 
-std::string env_or(const char* name, std::string fallback = {}) {
-    if (const char* value = std::getenv(name)) {
-        return value;
-    }
-    return fallback;
-}
-
-void pump(optionx::platforms::IntradeBarPlatform& platform, std::chrono::seconds duration) {
-    const auto deadline = std::chrono::steady_clock::now() + duration;
-    while (std::chrono::steady_clock::now() < deadline) {
-        platform.event_bus().drain();
-        platform.process();
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
-    platform.event_bus().drain();
-}
-
+void pump(optionx::platforms::IntradeBarPlatform& platform,
+          std::chrono::seconds duration);
 void print_subscription_result(
-        const optionx::market_data::MarketDataSubscriptionResult& result) {
-    std::cout << "  "
-              << optionx::market_data::to_str(result.status)
-              << " id=" << result.subscription.id
-              << " symbol=" << result.subscription.symbol
-              << " transport=" << optionx::market_data::to_str(result.subscription.transport);
-    if (!result.error_message.empty()) {
-        std::cout << " error=\"" << result.error_message << "\"";
-    }
-    std::cout << '\n';
-}
+    const optionx::market_data::MarketDataSubscriptionResult& result);
 
 } // namespace
 
@@ -49,6 +25,8 @@ int main() {
 
     IntradeBarPlatform platform;
 
+    // IntradeBarPlatform exposes market-data callbacks directly. A UI or bot
+    // can either attach here or route the same events through MarketDataHub.
     platform.on_market_data_status() =
         [](market_data::MarketDataStatusUpdate update) {
             std::cout << "[status] "
@@ -88,10 +66,10 @@ int main() {
         };
 
     auto auth = std::make_unique<intrade_bar::AuthData>();
-    auth->host = env_or("OPTIONX_INTRADE_HOST", "https://intrade.bar");
+    auth->host = optionx::examples::env_or("OPTIONX_INTRADE_HOST", "https://intrade.bar");
 
-    const auto email = env_or("OPTIONX_INTRADE_EMAIL");
-    const auto password = env_or("OPTIONX_INTRADE_PASSWORD");
+    const auto email = optionx::examples::env_or("OPTIONX_INTRADE_EMAIL");
+    const auto password = optionx::examples::env_or("OPTIONX_INTRADE_PASSWORD");
     const bool has_credentials = !email.empty() && !password.empty();
     if (has_credentials) {
         auth->set_email_password(email, password);
@@ -104,6 +82,8 @@ int main() {
     platform.configure_auth(std::move(auth));
     platform.event_bus().drain();
 
+    // The batch API makes subscription changes atomic: accepted items become
+    // active together, and rejected items are reported in one callback.
     market_data::MarketDataSubscriptionBatch subscriptions;
     subscriptions
         .subscribe_ticks(market_data::TickSubscriptionRequest(
@@ -141,6 +121,7 @@ int main() {
             }
         });
 
+    // Direct history requests return one completed sequence.
     const auto now = static_cast<std::int64_t>(std::time(nullptr));
     const BarHistoryRequest btc_history(
         "BTCUSDT",
@@ -162,6 +143,8 @@ int main() {
                       << '\n';
         });
 
+    // ContinuityService demonstrates a higher-level helper: it asks the
+    // platform for missing bars and returns a batch ready for chart storage.
     market_data::MarketDataContinuityService continuity(platform);
     continuity.request_bar_history_batch(
         BarHistoryRequest("EUR/USD", 60, now - 60 * 30, now, BarPriceSource::MID),
@@ -197,3 +180,31 @@ int main() {
     platform.shutdown();
     return 0;
 }
+
+namespace {
+
+void pump(optionx::platforms::IntradeBarPlatform& platform,
+          std::chrono::seconds duration) {
+    const auto deadline = std::chrono::steady_clock::now() + duration;
+    while (std::chrono::steady_clock::now() < deadline) {
+        platform.event_bus().drain();
+        platform.process();
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    platform.event_bus().drain();
+}
+
+void print_subscription_result(
+        const optionx::market_data::MarketDataSubscriptionResult& result) {
+    std::cout << "  "
+              << optionx::market_data::to_str(result.status)
+              << " id=" << result.subscription.id
+              << " symbol=" << result.subscription.symbol
+              << " transport=" << optionx::market_data::to_str(result.subscription.transport);
+    if (!result.error_message.empty()) {
+        std::cout << " error=\"" << result.error_message << "\"";
+    }
+    std::cout << '\n';
+}
+
+} // namespace

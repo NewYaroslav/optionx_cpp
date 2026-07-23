@@ -7,7 +7,6 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
-#include <sstream>
 #include <string>
 #include <thread>
 
@@ -20,7 +19,6 @@ MetaTraderFileBridgeConfig default_config(bool self_test);
 nlohmann::json make_self_test_command();
 bool append_command_line(const std::filesystem::path& commands_log,
                          const nlohmann::json& command);
-std::string read_text_file(const std::filesystem::path& path);
 int run_self_test(const MetaTraderFileBridgeConfig& config,
                   MetaTraderFileBridge& bridge,
                   std::atomic<int>& received_signals);
@@ -186,16 +184,6 @@ bool append_command_line(
     return true;
 }
 
-std::string read_text_file(const std::filesystem::path& path) {
-    std::ifstream input(path, std::ios::binary);
-    if (!input) {
-        return {};
-    }
-    std::ostringstream buffer;
-    buffer << input.rdbuf();
-    return buffer.str();
-}
-
 int run_self_test(
         const MetaTraderFileBridgeConfig& config,
         MetaTraderFileBridge& bridge,
@@ -215,7 +203,7 @@ int run_self_test(
         return 4;
     }
 
-    const auto events = read_text_file(events_log);
+    const auto events = optionx::examples::read_text_file(events_log);
     if (!events.empty()) {
         std::cout << "events.ndjson:\n" << events;
     }
