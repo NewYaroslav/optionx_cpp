@@ -639,14 +639,12 @@ std::int64_t misaligned_future_expiry_time() {
     return expiry_time;
 }
 
-std::int64_t aligned_too_close_expiry_time() {
+std::int64_t valid_future_aligned_expiry_time() {
     const auto now = time_shield::ms_to_sec(OPTIONX_TIMESTAMP_MS);
-    auto expiry_time =
-        ((now / time_shield::SEC_PER_5_MIN) + 1) * time_shield::SEC_PER_5_MIN;
-    if (expiry_time - now > time_shield::SEC_PER_3_MIN) {
-        expiry_time -= time_shield::SEC_PER_5_MIN;
-    }
-    return expiry_time;
+    const auto minimum = now + 20 * time_shield::SEC_PER_MIN;
+    return ((minimum + time_shield::SEC_PER_5_MIN - 1) /
+            time_shield::SEC_PER_5_MIN) *
+           time_shield::SEC_PER_5_MIN;
 }
 
 } // namespace
@@ -2173,6 +2171,52 @@ TEST(IntradeBarTradeExecution, ConvertsClassicDurationToAbsoluteExpiryBeforeQueu
     EXPECT_EQ(callback_error, TradeErrorCode::NO_CONNECTION);
 }
 
+TEST(IntradeBarTradeExecution, ConvertsClassicAbsoluteExpiryToDurationBeforeQueueProcessing) {
+    IntradeBarPlatform platform;
+
+    bool callback_called = false;
+    std::uint32_t callback_duration = 0;
+    std::int64_t callback_expiry_time = 0;
+    std::int64_t place_time_sec = 0;
+    TradeErrorCode callback_error = TradeErrorCode::INVALID_REQUEST;
+    const auto requested_expiry_time = valid_future_aligned_expiry_time();
+
+    platform.on_trade_result() = [&](
+            std::unique_ptr<TradeRequest> request,
+            std::unique_ptr<TradeResult> result) {
+        callback_called = true;
+        if (request) {
+            callback_duration = request->duration;
+            callback_expiry_time = request->expiry_time;
+        }
+        if (result) {
+            place_time_sec = time_shield::ms_to_sec(result->place_date);
+            callback_error = result->error_code;
+        }
+    };
+
+    platform.run(false);
+    ASSERT_TRUE(platform.place_trade(
+        make_classic_intrade_trade_request(0, requested_expiry_time)));
+
+    for (int i = 0; i < 200 && !callback_called; ++i) {
+        platform.process();
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+
+    platform.shutdown();
+
+    ASSERT_TRUE(callback_called);
+    ASSERT_GT(place_time_sec, 0);
+    const auto expected_duration =
+        detail::calc_classic_expiration(place_time_sec, requested_expiry_time);
+    ASSERT_GT(expected_duration, 0);
+
+    EXPECT_EQ(callback_expiry_time, requested_expiry_time);
+    EXPECT_EQ(callback_duration, static_cast<std::uint32_t>(expected_duration));
+    EXPECT_EQ(callback_error, TradeErrorCode::NO_CONNECTION);
+}
+
 TEST(IntradeBarTradeExecution, RejectsClassicDurationBelowMinimumBeforeQueueProcessing) {
     const auto probe = place_classic_intrade_trade_for_test(60, 0);
 
@@ -2198,12 +2242,30 @@ TEST(IntradeBarTradeExecution, RejectsMisalignedClassicAbsoluteExpiry) {
     EXPECT_EQ(probe.callback_count, 0);
 }
 
-TEST(IntradeBarTradeExecution, RejectsClassicAbsoluteExpiryTooClose) {
-    const auto probe =
-        place_classic_intrade_trade_for_test(0, aligned_too_close_expiry_time());
+TEST(IntradeBarTradeExecution, RejectsFutureClassicAbsoluteExpiryTooClose) {
+    constexpr std::int64_t expiry_time = 1800000300;
+    constexpr std::int64_t timestamp = expiry_time - 120;
+    auto request = make_classic_intrade_trade_request(0, expiry_time);
 
-    EXPECT_FALSE(probe.accepted);
-    EXPECT_EQ(probe.callback_count, 0);
+    ASSERT_GT(expiry_time, timestamp);
+    ASSERT_LE(expiry_time - timestamp, time_shield::SEC_PER_3_MIN);
+    EXPECT_FALSE(detail::normalize_classic_expiry(*request, timestamp));
+}
+
+TEST(IntradeBarTradeExecution, RejectsClassicAbsoluteExpiryWithUint32DurationOverflow) {
+    constexpr std::int64_t timestamp = 0;
+    const auto minimum_expiry =
+        static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)()) +
+        3600;
+    const auto expiry_time =
+        ((minimum_expiry + time_shield::SEC_PER_5_MIN - 1) /
+         time_shield::SEC_PER_5_MIN) *
+        time_shield::SEC_PER_5_MIN;
+    auto request = make_classic_intrade_trade_request(0, expiry_time);
+
+    ASSERT_GT(detail::calc_classic_expiration(timestamp, expiry_time),
+              static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)()));
+    EXPECT_FALSE(detail::normalize_classic_expiry(*request, timestamp));
 }
 
 TEST(IntradeBarAuthData, KeepsDisconnectedDomainRetryPeriodInConfig) {
