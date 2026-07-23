@@ -7,10 +7,16 @@ adapter.
 
 ## Public Headers
 
-Use the family umbrella:
+Use the family umbrella for the protocol bridge itself:
 
 ```cpp
 #include <optionx_cpp/bridges/protocol_v1.hpp>
+```
+
+If the application wants pre-run/post-run host hooks, use the bridge aggregate:
+
+```cpp
+#include <optionx_cpp/bridges.hpp>
 ```
 
 The runtime types live in `optionx::bridges::protocol_v1`:
@@ -37,6 +43,7 @@ config.secret = "local-dev-secret";
 
 BridgeProtocolServerBridge bridge;
 bridge.configure(std::make_unique<BridgeProtocolServerConfig>(config));
+optionx::bridges::BridgeHost host(bridge);
 
 bridge.on_signal_id() = [] {
     static std::atomic<optionx::SignalId> next{1};
@@ -49,17 +56,30 @@ bridge.on_trade_signal() = [](std::unique_ptr<optionx::TradeSignal> signal) {
 };
 
 // Optional but recommended: publish the latest account snapshot before clients
-// can connect. The third argument is the internal OptionX account_id; broker
-// USER_ID remains inside the account snapshot as user_id in protocol results.
-bridge.update_account_info(optionx::AccountInfoUpdate(
-    current_account_snapshot,
-    optionx::AccountUpdateStatus::CONNECTED,
-    1));
+// can connect. BridgeHost keeps this application orchestration outside the
+// transport bridge. The third AccountInfoUpdate argument is the internal
+// OptionX account_id; broker USER_ID remains inside the account snapshot as
+// user_id in protocol results.
+host.set_account_info_provider([&]() -> std::optional<optionx::AccountInfoUpdate> {
+    return optionx::AccountInfoUpdate(
+        current_account_snapshot,
+        optionx::AccountUpdateStatus::CONNECTED,
+        1);
+});
+host.hooks().before_run = [](optionx::bridges::BridgeHost& current_host) {
+    current_host.refresh_account_info();
+};
 
-bridge.run();
+host.run();
 // Periodically publish account/trade updates with update_account_info() and
 // update_trade_result(), then call shutdown() during application teardown.
 ```
+
+`BridgeHost` is intentionally not a broker API. Its hooks are for host-side
+orchestration such as polling account state, wiring diagnostics, or clearing
+application caches before shutdown/reset. The bridge still owns its transport
+state machine. `BridgeHost` itself is not a concurrent state machine; serialize
+calls to its hooks, provider and lifecycle methods in application code.
 
 `examples/protocol_v1_bridge_smoke.cpp` is the executable version of this
 flow. It starts both transports, publishes a demo account snapshot, and in

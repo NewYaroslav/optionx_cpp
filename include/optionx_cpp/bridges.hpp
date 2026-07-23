@@ -6,6 +6,7 @@
 /// \brief Includes bridge-related headers.
 
 #include "bridges/BaseBridge.hpp"
+#include "bridges/BridgeHost.hpp"
 #include "bridges/bot_binary.hpp"
 #include "bridges/legacy_trading.hpp"
 #include "bridges/metatrader_file.hpp"

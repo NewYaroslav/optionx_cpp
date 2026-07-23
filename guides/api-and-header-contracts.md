@@ -42,6 +42,8 @@
 - Bridge families are public only through `bridges.hpp` or the family umbrella
   headers: `bridges/metatrader_file.hpp`, `bridges/legacy_trading.hpp`,
   `bridges/named_pipe.hpp` and `bridges/trading_view.hpp`.
+  `bridges.hpp` also exposes `bridges::BridgeHost`, the application-side helper
+  for pre-run/post-run/shutdown/reset hooks around any `BaseBridge`.
   `bridges/named_pipe.hpp` is a compatibility umbrella for the legacy trading
   named-pipe bridge. The BotBinary/BinaryBot compatibility bridge and adapter
   helpers are exposed through `bridges/bot_binary.hpp`, and the Bridge Protocol
