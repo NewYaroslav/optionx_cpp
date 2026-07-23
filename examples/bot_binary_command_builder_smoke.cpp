@@ -1,39 +1,18 @@
+#include "example_utils.hpp"
+
 #include <optionx_cpp/bridges.hpp>
 
-#include <cstdlib>
 #include <iostream>
 #include <string>
 
 namespace {
 
-bool has_arg(int argc, char** argv, const std::string& value) {
-    for (int i = 1; i < argc; ++i) {
-        if (argv[i] == value) {
-            return true;
-        }
-    }
-    return false;
-}
-
-std::string option_value(int argc, char** argv, const std::string& name) {
-    for (int i = 1; i + 1 < argc; ++i) {
-        if (argv[i] == name) {
-            return argv[i + 1];
-        }
-    }
-    return {};
-}
-
-void print_usage() {
-    std::cout
-        << "Usage: bot_binary_command_builder_smoke [--self-test] [--base-url url]\n"
-        << "Prints BotBinary/BinaryBot HTTP request and file-signal command values.\n";
-}
+void print_usage();
 
 } // namespace
 
 int main(int argc, char** argv) {
-    if (has_arg(argc, argv, "--help")) {
+    if (optionx::examples::has_arg(argc, argv, "--help")) {
         print_usage();
         return 0;
     }
@@ -41,12 +20,14 @@ int main(int argc, char** argv) {
     namespace bot = optionx::bridges::bot_binary;
 
     bot::BotBinaryAdapterConfig config;
-    const auto base_url = option_value(argc, argv, "--base-url");
+    const auto base_url = optionx::examples::option_value(argc, argv, "--base-url");
     if (!base_url.empty()) {
         config.http_base_url = base_url;
     }
 
     try {
+        // Start from the normal OptionX DTO, then adapt it to BotBinary's
+        // observed legacy wire format.
         optionx::TradeRequest request;
         request.symbol = "frxEURAUD";
         request.order_type = optionx::OrderType::BUY;
@@ -67,7 +48,9 @@ int main(int argc, char** argv) {
         std::cout << "Stable transport suffix: "
                   << prepared.transport_suffix << '\n';
 
-        if (has_arg(argc, argv, "--self-test")) {
+        if (optionx::examples::has_arg(argc, argv, "--self-test")) {
+            // The smoke verifies both generated surfaces and the parser that
+            // turns legacy values back into an OptionX signal snapshot.
             const auto parsed_request =
                 bot::parse_bot_binary_request_value(prepared.request_query_value);
             const auto parsed_file =
@@ -105,3 +88,13 @@ int main(int argc, char** argv) {
 
     return 0;
 }
+
+namespace {
+
+void print_usage() {
+    std::cout
+        << "Usage: bot_binary_command_builder_smoke [--self-test] [--base-url url]\n"
+        << "Prints BotBinary/BinaryBot HTTP request and file-signal command values.\n";
+}
+
+} // namespace

@@ -1,4 +1,5 @@
-#include <chrono>
+#include "example_utils.hpp"
+
 #include <cstdint>
 #include <iostream>
 #include <string>
@@ -7,48 +8,17 @@
 
 namespace {
 
-std::int64_t now_ms() {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::system_clock::now().time_since_epoch()).count();
-}
-
-optionx::TradeRecord make_open_record(const optionx::TradeRequest& request, std::int64_t timestamp_ms) {
-    optionx::TradeRecord record = optionx::TradeRecord::from_trade(request);
-    record.place_date = timestamp_ms - 25;
-    record.send_date = timestamp_ms - 10;
-    record.open_date = timestamp_ms;
-    record.close_date = timestamp_ms + request.duration * 1000;
-    record.trade_state = optionx::TradeState::IN_PROGRESS;
-    record.live_state = optionx::TradeState::IN_PROGRESS;
-    record.option_id = 123456;
-    record.option_hash = "broker-order-123456";
-    record.open_price = 1.12345;
-    record.payout = 0.82;
-    record.set_open_balance(1000.00);
-    record.mm_type = optionx::MmSystemType::MARTINGALE_SIGNAL;
-    record.mm_step = 1;
-    record.mm_group_id = 1001;
-    record.mm_group_hash = "eurusd-demo-martingale";
-    record.mm_group_name = "EURUSD demo martingale";
-    record.mm_params_json = R"({"step":1,"multiplier":2.0})";
-    record.decision_params_json = R"({"signalScore":0.74})";
-    record.metadata_json = R"({"example":true})";
-    return record;
-}
-
-optionx::TradeRecord make_closed_record(optionx::TradeRecord record, std::int64_t close_timestamp_ms) {
-    record.close_date = close_timestamp_ms;
-    record.close_price = 1.12410;
-    record.trade_state = optionx::TradeState::WIN;
-    record.live_state = optionx::TradeState::WIN;
-    record.profit = record.amount * record.payout;
-    record.set_close_balance(1012.30);
-    return record;
-}
+std::int64_t now_ms();
+optionx::TradeRecord make_open_record(const optionx::TradeRequest& request,
+                                      std::int64_t timestamp_ms);
+optionx::TradeRecord make_closed_record(optionx::TradeRecord record,
+                                        std::int64_t close_timestamp_ms);
 
 } // namespace
 
 int main() {
+    // TradeRecordDB stores normalized trade lifecycle snapshots in an MDBX
+    // environment. relative_to_exe keeps the example data next to the binary.
     mdbxc::Config config = optionx::storage::TradeRecordDB::default_config();
     config.pathname = "data/examples/trade_record_db";
     config.max_dbs = 4;
@@ -61,6 +31,9 @@ int main() {
         return 1;
     }
 
+    // Production code usually receives this request from a platform bridge or
+    // trade manager. The DB can reserve a stable local trade_id before broker
+    // execution starts.
     optionx::TradeRequest request;
     request.symbol = "EURUSD";
     request.signal_name = "mean-reversion";
@@ -80,6 +53,8 @@ int main() {
         return 1;
     }
 
+    // Upsert the initial open snapshot, then update the same logical trade when
+    // the broker reports a terminal outcome.
     const auto open_timestamp = now_ms();
     auto open_record = make_open_record(request, open_timestamp);
 
@@ -106,6 +81,8 @@ int main() {
 
     std::cout << "Updated state to WIN, profit: " << close_write.record.profit << std::endl;
 
+    // Reads are available both synchronously and through the buffered callback
+    // path used by event-loop integrations.
     auto records_at_open_ms = db.find_by_timestamp(open_timestamp);
     std::cout << "Records at open millisecond: " << records_at_open_ms.records.size() << std::endl;
 
@@ -125,3 +102,49 @@ int main() {
     db.shutdown();
     return 0;
 }
+
+namespace {
+
+std::int64_t now_ms() {
+    return optionx::examples::wall_clock_ms();
+}
+
+optionx::TradeRecord make_open_record(
+        const optionx::TradeRequest& request,
+        std::int64_t timestamp_ms) {
+    optionx::TradeRecord record = optionx::TradeRecord::from_trade(request);
+    record.place_date = timestamp_ms - 25;
+    record.send_date = timestamp_ms - 10;
+    record.open_date = timestamp_ms;
+    record.close_date = timestamp_ms + request.duration * 1000;
+    record.trade_state = optionx::TradeState::IN_PROGRESS;
+    record.live_state = optionx::TradeState::IN_PROGRESS;
+    record.option_id = 123456;
+    record.option_hash = "broker-order-123456";
+    record.open_price = 1.12345;
+    record.payout = 0.82;
+    record.set_open_balance(1000.00);
+    record.mm_type = optionx::MmSystemType::MARTINGALE_SIGNAL;
+    record.mm_step = 1;
+    record.mm_group_id = 1001;
+    record.mm_group_hash = "eurusd-demo-martingale";
+    record.mm_group_name = "EURUSD demo martingale";
+    record.mm_params_json = R"({"step":1,"multiplier":2.0})";
+    record.decision_params_json = R"({"signalScore":0.74})";
+    record.metadata_json = R"({"example":true})";
+    return record;
+}
+
+optionx::TradeRecord make_closed_record(
+        optionx::TradeRecord record,
+        std::int64_t close_timestamp_ms) {
+    record.close_date = close_timestamp_ms;
+    record.close_price = 1.12410;
+    record.trade_state = optionx::TradeState::WIN;
+    record.live_state = optionx::TradeState::WIN;
+    record.profit = record.amount * record.payout;
+    record.set_close_balance(1012.30);
+    return record;
+}
+
+} // namespace

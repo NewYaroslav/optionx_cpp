@@ -2171,6 +2171,15 @@ TEST(IntradeBarTradeExecution, ConvertsClassicDurationToAbsoluteExpiryBeforeQueu
     EXPECT_EQ(callback_error, TradeErrorCode::NO_CONNECTION);
 }
 
+TEST(IntradeBarTradeExecution, CalculatesClassicDurationFromFixedAbsoluteExpiry) {
+    EXPECT_EQ(
+        detail::calc_classic_expiration(1800000100, 1800000900),
+        900);
+    EXPECT_EQ(
+        detail::calc_classic_expiration(1800000200, 1800000900),
+        600);
+}
+
 TEST(IntradeBarTradeExecution, ConvertsClassicAbsoluteExpiryToDurationBeforeQueueProcessing) {
     IntradeBarPlatform platform;
 
