@@ -593,6 +593,56 @@ TEST(BotBinaryBridge, ReportsInvalidHttpCommand) {
     EXPECT_EQ(reports.load(), 1);
 }
 
+TEST(BotBinaryBridge, InvalidMappedBusinessSignalDoesNotReserveDedupeKey) {
+    namespace bot = optionx::bridges::bot_binary;
+
+    auto config = test_config();
+    config.symbol_map["R_25"] = "";
+
+    bot::BotBinaryBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<bot::BotBinaryBridgeConfig>(config)));
+
+    std::atomic<int> signal_count{0};
+    std::atomic<int> invalid_reports{0};
+    bridge.on_signal_id() = []() { return optionx::SignalId{410}; };
+    bridge.on_trade_signal() = [&signal_count](std::unique_ptr<optionx::TradeSignal>) {
+        ++signal_count;
+    };
+    bridge.on_signal_report() = [&](const optionx::BridgeSignalReport& report) {
+        if (report.status == optionx::BridgeSignalReportStatus::INVALID) {
+            EXPECT_EQ(report.reason_code, "invalid_trade_signal");
+            ++invalid_reports;
+        }
+    };
+
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    HttpClient client(config.address + ":" + std::to_string(bridge.bound_http_port()));
+    constexpr const char* raw_request = "R_25=CALL=1=duration=1=m=bad-map";
+    const auto invalid_response = client.request("GET", request_path(config, raw_request));
+    const auto invalid_body = nlohmann::json::parse(invalid_response->content.string());
+    bridge.shutdown();
+
+    EXPECT_FALSE(invalid_body.at("accepted").get<bool>());
+    EXPECT_EQ(invalid_body.at("reason").get<std::string>(), "invalid_trade_signal");
+    EXPECT_EQ(signal_count.load(), 0);
+    EXPECT_EQ(invalid_reports.load(), 1);
+
+    config.symbol_map.clear();
+    ASSERT_TRUE(bridge.configure(std::make_unique<bot::BotBinaryBridgeConfig>(config)));
+    bridge.run();
+    ASSERT_TRUE(wait_for_http_port(bridge));
+
+    HttpClient retry_client(config.address + ":" + std::to_string(bridge.bound_http_port()));
+    const auto accepted_response = retry_client.request("GET", request_path(config, raw_request));
+    const auto accepted_body = nlohmann::json::parse(accepted_response->content.string());
+    bridge.shutdown();
+
+    EXPECT_TRUE(accepted_body.at("accepted").get<bool>());
+    EXPECT_EQ(signal_count.load(), 1);
+}
+
 TEST(BotBinaryBridge, ShutdownAndRunFromTradeCallbackDoNotDeadlock) {
     namespace bot = optionx::bridges::bot_binary;
 

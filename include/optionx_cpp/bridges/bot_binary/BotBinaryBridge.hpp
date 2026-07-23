@@ -5,6 +5,8 @@
 /// \file BotBinaryBridge.hpp
 /// \brief Defines the BotBinary/BinaryBot compatibility bridge.
 
+#include "bridges/detail/BridgeTradeSignalValidation.hpp"
+
 namespace optionx::bridges::bot_binary {
 
     /// \class BotBinaryBridge
@@ -580,6 +582,29 @@ namespace optionx::bridges::bot_binary {
 
             const auto parsed_payload = parsed_payload_json(parsed, source);
             const auto dedupe_key = dedupe_key_for_command(parsed, raw_value, source);
+            try {
+                optionx::bridges::detail::validate_executable_trade_signal(
+                    signal,
+                    "BotBinary signal");
+            } catch (const std::exception& ex) {
+                notify_signal_report(
+                    state,
+                    make_signal_report(
+                        config,
+                        BridgeSignalReportStatus::INVALID,
+                        "invalid_trade_signal",
+                        ex.what(),
+                        raw_value,
+                        parsed_payload,
+                        dedupe_key,
+                        clone_signal(signal)));
+                return nlohmann::json{
+                    {"ok", false},
+                    {"accepted", false},
+                    {"reason", "invalid_trade_signal"},
+                    {"message", ex.what()}
+                };
+            }
             if (!remember_key(state, dedupe_key, config.dedupe_cache_size)) {
                 notify_signal_report(
                     state,

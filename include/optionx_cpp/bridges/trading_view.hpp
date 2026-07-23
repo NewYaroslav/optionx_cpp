@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <ctime>
 #include <cstdint>
 #include <iomanip>
@@ -30,6 +31,7 @@
 
 #include <server_http.hpp>
 
+#include "detail/BridgeTradeSignalValidation.hpp"
 #include "trading_view/TradingViewExtensionBridgeConfig.hpp"
 #include "trading_view/detail/TradingViewExtensionProtocol.hpp"
 #include "trading_view/TradingViewExtensionBridge.hpp"

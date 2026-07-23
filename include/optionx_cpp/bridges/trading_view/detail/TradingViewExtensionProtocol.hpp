@@ -5,6 +5,8 @@
 /// \file TradingViewExtensionProtocol.hpp
 /// \brief Parses TradingView browser-extension messages into TradeSignal objects.
 
+#include "bridges/detail/BridgeTradeSignalValidation.hpp"
+
 namespace optionx::bridges::tradingview::detail {
 
     /// \struct TradingViewParseResult
@@ -1431,6 +1433,19 @@ namespace optionx::bridges::tradingview::detail {
         }
 
         result.signal = protocol::build_signal(config, event, order_type, std::move(signal_name));
+        try {
+            optionx::bridges::detail::validate_executable_trade_signal(
+                *result.signal,
+                "TradingView extension signal",
+                result.signal->mm_type == MmSystemType::FIXED);
+        } catch (const std::exception& ex) {
+            result.signal.reset();
+            result.reason = "invalid_trade_signal";
+            result.response =
+                protocol::make_response(false, result.reason, result.event_id, result.dedupe_key);
+            result.response["message"] = ex.what();
+            return result;
+        }
         result.accepted = true;
         result.reason = "accepted";
         result.response =
