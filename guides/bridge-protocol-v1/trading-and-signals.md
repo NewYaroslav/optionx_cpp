@@ -866,7 +866,8 @@ Account response item:
 
 `account_id` is the internal OptionX account identity used by routing and
 events. `user_id` is the broker/platform account or trader identity, if the
-platform exposes one.
+platform exposes one. If either identity is unknown, omit the field instead of
+serializing `"0"` or an empty string.
 
 ### Trading Control
 

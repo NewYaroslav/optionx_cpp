@@ -39,14 +39,14 @@ namespace optionx::bridges::metatrader_file::detail {
 
     /// \brief Converts an internal OptionX account ID into protocol text.
     inline std::string account_id_string(const std::int64_t account_id) {
-        return account_id != 0 ? std::to_string(account_id) : std::string("0");
+        return account_id != 0 ? std::to_string(account_id) : std::string();
     }
 
     /// \brief Reads the best available broker/platform user ID as protocol text.
     inline std::string user_id_string(const BaseAccountInfoData& account) {
         try {
             auto id = account.get_info<std::string>(AccountInfoType::USER_ID);
-            if (!id.empty()) {
+            if (!id.empty() && id != "0") {
                 return id;
             }
         } catch (...) {

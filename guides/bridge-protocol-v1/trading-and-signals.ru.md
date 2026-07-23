@@ -878,7 +878,8 @@ Account response item:
 
 `account_id` - внутренняя OptionX account identity для routing и events.
 `user_id` - broker/platform account или trader identity, если platform её
-отдаёт.
+отдаёт. Если какая-то из этих идентичностей неизвестна, поле нужно опускать,
+а не сериализовать `"0"` или пустую строку.
 
 ### Trading Control
 

@@ -48,7 +48,8 @@
 или account registry на стороне OptionX. Она используется для routing,
 filtering и корреляции events. Broker/platform user identifiers не должны
 попадать в `account_id`; когда они известны, их нужно отдавать отдельно как
-`user_id` в account snapshots и account events.
+`user_id` в account snapshots и account events. Неизвестные идентичности
+нужно опускать; не сериализуй `"0"` или пустую строку как placeholder.
 
 Известные policies:
 

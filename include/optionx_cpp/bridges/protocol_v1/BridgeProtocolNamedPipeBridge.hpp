@@ -468,7 +468,11 @@ namespace optionx::bridges::protocol_v1 {
                 const std::int64_t account_id) {
             const auto now = metatrader_file::detail::unix_time_ms();
             const auto account_id_text = metatrader_file::detail::account_id_string(account_id);
-            const auto coord = next_event_coordinate("account:" + account_id_text);
+            const auto user_id = metatrader_file::detail::user_id_string(account);
+            const auto coord = next_event_coordinate(
+                !account_id_text.empty()
+                    ? "account:" + account_id_text
+                    : (!user_id.empty() ? "user:" + user_id : "account:unspecified"));
             return metatrader_file::detail::make_balance_updated_notification(
                 make_event_id("balance", coord.stream_id, coord.seq),
                 source_uri(config),
@@ -479,7 +483,7 @@ namespace optionx::bridges::protocol_v1 {
                 account_id_text,
                 metatrader_file::detail::safe_account_balance(account),
                 metatrader_file::detail::safe_account_currency(account),
-                metatrader_file::detail::user_id_string(account),
+                user_id,
                 coord.revision);
         }
 

@@ -650,6 +650,28 @@ TEST(MetaTraderFileProtocol, BuildsBalanceAndTradeUpdateNotifications) {
     EXPECT_EQ(balance_payload.at("balance").at("value").get<std::string>(), "1024.50");
     EXPECT_EQ(balance_payload.at("balance").at("currency").get<std::string>(), "USD");
 
+    const auto anonymous_balance_event = protocol::make_balance_updated_notification(
+        "evt-balance-anonymous",
+        "optionx://test/bridge/file",
+        "stream-1",
+        8,
+        1002,
+        1003,
+        "",
+        512.0,
+        optionx::CurrencyType::EUR,
+        "");
+    const auto& anonymous_subject =
+        anonymous_balance_event.at("params").at("subject");
+    const auto& anonymous_payload =
+        anonymous_balance_event.at("params").at("payload");
+    EXPECT_FALSE(anonymous_subject.contains("account_id"));
+    EXPECT_FALSE(anonymous_subject.contains("user_id"));
+    EXPECT_FALSE(anonymous_payload.contains("account_id"));
+    EXPECT_FALSE(anonymous_payload.contains("user_id"));
+    EXPECT_EQ(anonymous_payload.at("balance").at("value").get<std::string>(), "512.00");
+    EXPECT_EQ(anonymous_payload.at("balance").at("currency").get<std::string>(), "EUR");
+
     const auto root = make_temp_root();
     ScopedPathCleanup cleanup(root);
     optionx::bridges::metatrader_file::MetaTraderFileBridgeConfig config;
@@ -2219,6 +2241,59 @@ TEST(MetaTraderFileBridge, PublishesAccountQueriesAndTradeUpdates) {
     EXPECT_EQ(trade.at("account_id").get<std::string>(), "303");
     EXPECT_EQ(trade.at("state").get<std::string>(), "opened");
     EXPECT_FALSE(trade.at("final").get<bool>());
+}
+
+TEST(MetaTraderFileBridge, OmitsUnspecifiedAccountAndUnknownUserIds) {
+    namespace mtfile = optionx::bridges::metatrader_file;
+    namespace protocol = optionx::bridges::metatrader_file::detail;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+
+    mtfile::MetaTraderFileBridgeConfig config;
+    config.common_files_root = root.u8string();
+    config.bridge_id = 33;
+    config.client_id = "terminal-anonymous";
+    config.max_line_bytes = 8192;
+
+    const auto layout = protocol::make_layout(config);
+    protocol::ensure_runtime_directories(layout);
+
+    mtfile::MetaTraderFileBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<mtfile::MetaTraderFileBridgeConfig>(config)));
+
+    auto account = std::make_shared<TestAccountInfo>();
+    account->user_id = 0;
+    account->balance = 4096.5;
+    account->currency = optionx::CurrencyType::USD;
+    bridge.update_account_info(optionx::AccountInfoUpdate(
+        account,
+        optionx::AccountUpdateStatus::BALANCE_UPDATED));
+
+    const auto state = protocol::read_json_file(
+        layout.state_snapshot(),
+        config.max_line_bytes);
+    ASSERT_EQ(state.at("accounts").size(), 1u);
+    const auto& account_json = state.at("accounts")[0];
+    EXPECT_FALSE(account_json.contains("account_id")) << account_json.dump(-1);
+    EXPECT_FALSE(account_json.contains("user_id")) << account_json.dump(-1);
+    EXPECT_EQ(account_json.at("balance").at("value").get<std::string>(), "4096.50");
+    EXPECT_EQ(account_json.at("balance").at("currency").get<std::string>(), "USD");
+
+    const auto events = protocol::read_ndjson_since_file_seq(
+        layout.events_log(),
+        0,
+        config.max_line_bytes);
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].document.at("method").get<std::string>(), "balance.updated");
+    const auto& subject = events[0].document.at("params").at("subject");
+    const auto& payload = events[0].document.at("params").at("payload");
+    EXPECT_FALSE(subject.contains("account_id")) << subject.dump(-1);
+    EXPECT_FALSE(subject.contains("user_id")) << subject.dump(-1);
+    EXPECT_FALSE(payload.contains("account_id")) << payload.dump(-1);
+    EXPECT_FALSE(payload.contains("user_id")) << payload.dump(-1);
+    EXPECT_EQ(payload.at("balance").at("value").get<std::string>(), "4096.50");
+    EXPECT_EQ(payload.at("balance").at("currency").get<std::string>(), "USD");
 }
 
 int main(int argc, char** argv) {

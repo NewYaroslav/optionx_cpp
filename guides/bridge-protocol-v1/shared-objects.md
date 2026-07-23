@@ -48,7 +48,8 @@ Known selector kinds:
 application or account registry. It is used for routing, filtering and
 correlating events. Do not overload broker/platform user identifiers into
 `account_id`; expose those separately as `user_id` in account snapshots and
-account events when they are known.
+account events when they are known. Unknown identities are omitted; do not
+serialize `"0"` or an empty string as a placeholder.
 
 Known policies:
 
