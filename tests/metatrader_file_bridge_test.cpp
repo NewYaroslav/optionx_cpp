@@ -876,6 +876,69 @@ TEST(MetaTraderFileBridge, ProcessesSignalSubmitAndWritesResponse) {
     EXPECT_EQ(result.at("signal_ref").at("signal_id").get<std::string>(), "100");
 }
 
+TEST(MetaTraderFileBridge, AcceptsClassicSignalWithDurationExpiry) {
+    namespace mtfile = optionx::bridges::metatrader_file;
+    namespace protocol = optionx::bridges::metatrader_file::detail;
+
+    const auto root = make_temp_root();
+    ScopedPathCleanup cleanup(root);
+
+    mtfile::MetaTraderFileBridgeConfig config;
+    config.common_files_root = root.u8string();
+    config.bridge_id = 32;
+    config.client_id = "terminal-classic-duration";
+    config.max_line_bytes = 8192;
+
+    const auto layout = protocol::make_layout(config);
+    protocol::ensure_runtime_directories(layout);
+
+    auto params = make_signal_submit_params(
+        "mql5:terminal-01:classic-duration",
+        "classic-duration-hash");
+    params["signal"]["option_type"] = "CLASSIC";
+    params["signal"]["expiry"] = {
+        {"kind", "duration"},
+        {"duration_ms", 900000}
+    };
+
+    protocol::append_json_line(
+        layout.commands_log(),
+        protocol::make_file_jsonrpc_request(
+            1,
+            "cmd-classic-duration",
+            "signal.submit",
+            params),
+        config.max_line_bytes);
+
+    mtfile::MetaTraderFileBridge bridge;
+    ASSERT_TRUE(bridge.configure(std::make_unique<mtfile::MetaTraderFileBridgeConfig>(config)));
+
+    bridge.on_signal_id() = []() { return optionx::SignalId{101}; };
+
+    std::vector<std::unique_ptr<optionx::TradeSignal>> signals;
+    bridge.on_trade_signal() = [&](std::unique_ptr<optionx::TradeSignal> signal) {
+        ASSERT_TRUE(signal);
+        signals.push_back(std::move(signal));
+    };
+
+    bridge.process();
+
+    ASSERT_EQ(signals.size(), 1u);
+    EXPECT_EQ(signals[0]->signal_id, 101u);
+    EXPECT_EQ(signals[0]->option_type, optionx::OptionType::CLASSIC);
+    EXPECT_EQ(signals[0]->duration, 900u);
+    EXPECT_EQ(signals[0]->expiry_time, 0);
+    EXPECT_EQ(signals[0]->unique_hash, "classic-duration-hash");
+
+    const auto events = protocol::read_ndjson_since_file_seq(
+        layout.events_log(),
+        0,
+        config.max_line_bytes);
+    ASSERT_EQ(events.size(), 1u);
+    EXPECT_EQ(events[0].document.at("id").get<std::string>(), "cmd-classic-duration");
+    EXPECT_EQ(events[0].document.at("result").at("status").get<std::string>(), "accepted");
+}
+
 TEST(MetaTraderFileBridge, ReadsCommandsAfterOwnerClearsAndRegrowsLog) {
     namespace mtfile = optionx::bridges::metatrader_file;
     namespace protocol = optionx::bridges::metatrader_file::detail;
