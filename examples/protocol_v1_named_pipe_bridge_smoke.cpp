@@ -7,6 +7,7 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -61,6 +62,7 @@ int main(int argc, char** argv) {
     }
 
     BridgeProtocolNamedPipeBridge bridge;
+    optionx::bridges::BridgeHost host(bridge);
     std::atomic<optionx::SignalId> next_signal_id{1};
     std::mutex mutex;
     std::condition_variable cv;
@@ -73,18 +75,22 @@ int main(int argc, char** argv) {
     }
 
     struct BridgeCleanup {
+        optionx::bridges::BridgeHost& host;
         BridgeProtocolNamedPipeBridge& bridge;
 
         ~BridgeCleanup() noexcept {
             try {
-                bridge.shutdown();
+                host.shutdown();
+            } catch (...) {
+            }
+            try {
                 bridge.on_status_update() = {};
                 bridge.on_trade_signal() = {};
                 bridge.on_signal_id() = {};
             } catch (...) {
             }
         }
-    } cleanup{bridge};
+    } cleanup{host, bridge};
 
     // Named pipe uses the same Bridge Protocol v1 JSON-RPC commands as HTTP/WS,
     // but frames responses as newline-delimited messages on the pipe.
@@ -127,11 +133,19 @@ int main(int argc, char** argv) {
         cv.notify_all();
     };
 
-    bridge.update_account_info(optionx::AccountInfoUpdate(
-        std::make_shared<optionx::examples::DemoAccountInfo>(),
-        optionx::AccountUpdateStatus::BALANCE_UPDATED,
-        1007));
-    bridge.run();
+    // The host layer publishes the first account snapshot before the named
+    // pipe starts accepting JSON-RPC clients.
+    host.set_account_info_provider([]() -> std::optional<optionx::AccountInfoUpdate> {
+        return optionx::AccountInfoUpdate(
+            std::make_shared<optionx::examples::DemoAccountInfo>(),
+            optionx::AccountUpdateStatus::BALANCE_UPDATED,
+            1007);
+    });
+    host.hooks().before_run = [](optionx::bridges::BridgeHost& current_host) {
+        current_host.refresh_account_info();
+    };
+
+    host.run();
     std::cout << "Bridge Protocol v1 named pipe: " << config.named_pipe << '\n';
 
 #if defined(_WIN32)
