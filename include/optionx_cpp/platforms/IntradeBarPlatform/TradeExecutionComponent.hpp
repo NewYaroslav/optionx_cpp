@@ -5,11 +5,76 @@
 /// \file TradeExecutionComponent.hpp
 /// \brief Implements trade execution functionality for the Intrade Bar platform.
 
+#include <cstdint>
 #include <limits>
 
 #include "symbol_utils.hpp"
 
 namespace optionx::platforms::intrade_bar {
+
+    namespace detail {
+
+        /// \brief Calculates relative CLASSIC duration from an absolute Intrade expiry.
+        /// \param timestamp Current timestamp in seconds.
+        /// \param expiry_time Intended closing timestamp in seconds.
+        /// \return Duration in seconds, or 0 if the expiry is invalid for Intrade.
+        inline std::int64_t calc_classic_expiration(
+                const std::int64_t timestamp,
+                const std::int64_t expiry_time) {
+            if ((expiry_time % time_shield::SEC_PER_5_MIN) != 0) return 0;
+            const std::int64_t diff = expiry_time - timestamp;
+            if (diff <= time_shield::SEC_PER_3_MIN) return 0;
+            return ((((diff - 1) / time_shield::SEC_PER_MIN - 3) / 5) * 5 + 5) *
+                   time_shield::SEC_PER_MIN;
+        }
+
+        /// \brief Calculates an absolute Intrade CLASSIC expiry from duration minutes.
+        /// \param timestamp Current timestamp in seconds.
+        /// \param expiration Expiration duration in minutes.
+        /// \return Closing timestamp in seconds, or 0 if the duration is invalid.
+        inline std::int64_t calc_classic_expiry_time(
+                const std::int64_t timestamp,
+                const std::int64_t expiration) {
+            if ((expiration % 5) != 0 || expiration < 5) return 0;
+            const std::int64_t timestamp_future =
+                timestamp + (expiration + 3) * time_shield::SEC_PER_MIN;
+            return timestamp_future - timestamp_future % time_shield::SEC_PER_5_MIN;
+        }
+
+        /// \brief Normalizes an Intrade CLASSIC request to carry both expiry forms.
+        /// \param trade_request Request to normalize.
+        /// \param timestamp Current timestamp in seconds.
+        /// \return True when the CLASSIC expiry is valid for Intrade.
+        inline bool normalize_classic_expiry(
+                TradeRequest& trade_request,
+                const std::int64_t timestamp) {
+            if (trade_request.expiry_time > 0) {
+                const auto duration =
+                    calc_classic_expiration(timestamp, trade_request.expiry_time);
+                if (duration <= 0 ||
+                    duration > static_cast<std::int64_t>(
+                        (std::numeric_limits<std::uint32_t>::max)())) {
+                    return false;
+                }
+                trade_request.duration = static_cast<std::uint32_t>(duration);
+                return true;
+            }
+
+            if (trade_request.expiry_time == 0 &&
+                trade_request.duration > 0) {
+                if ((trade_request.duration % time_shield::SEC_PER_5_MIN) != 0) {
+                    return false;
+                }
+                trade_request.expiry_time = calc_classic_expiry_time(
+                    timestamp,
+                    trade_request.duration / time_shield::SEC_PER_MIN);
+                return trade_request.expiry_time > 0;
+            }
+
+            return false;
+        }
+
+    } // namespace detail
 
     /// \class TradeExecutionComponent
     /// \brief Handles trade execution operations for the Intrade Bar platform.
@@ -54,45 +119,13 @@ namespace optionx::platforms::intrade_bar {
             }
             if (trade_request &&
                 trade_request->option_type == OptionType::CLASSIC) {
-                if (trade_request->expiry_time > 0) {
-                    const auto duration = calc_expiration(
-                        time_shield::ms_to_sec(trade_result->place_date),
-                        trade_request->expiry_time);
-                    trade_request->duration =
-                        duration > 0 &&
-                        duration <= static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)())
-                        ? static_cast<std::uint32_t>(duration)
-                        : 0;
-                } else
-                if (trade_request->expiry_time == 0 &&
-                    trade_request->duration > 0) {
-                    trade_request->expiry_time = calc_expiry_time(
-                        time_shield::ms_to_sec(trade_result->place_date),
-                        trade_request->duration / time_shield::SEC_PER_MIN);
+                if (!detail::normalize_classic_expiry(
+                        *trade_request,
+                        time_shield::ms_to_sec(trade_result->place_date))) {
+                    return false;
                 }
             }
             return true;
-        }
-
-        /// \brief Calculates the expiration time for a classic binary option.
-        /// \param timestamp The current timestamp in seconds.
-        /// \param expiry_time The intended closing timestamp.
-        /// \return Expiration time in seconds, or 0 if invalid.
-        int64_t calc_expiration(int64_t timestamp, int64_t expiry_time) const {
-            if ((expiry_time % time_shield::SEC_PER_5_MIN) != 0) return 0;
-            const int64_t diff = expiry_time - timestamp;
-            if (diff <= time_shield::SEC_PER_3_MIN) return 0;
-            return ((((diff - 1) / time_shield::SEC_PER_MIN - 3) / 5) * 5 + 5) * time_shield::SEC_PER_MIN;
-        }
-
-        /// \brief Calculates the closing timestamp for a classic binary option.
-        /// \param timestamp The initial timestamp in seconds.
-        /// \param expiration Expiration time in minutes.
-        /// \return Closing timestamp in seconds, or 0 if the expiration is invalid.
-        int64_t calc_expiry_time(int64_t timestamp, int64_t expiration) const {
-            if ((expiration % 5) != 0 || expiration < 5) return 0;
-            const int64_t timestamp_future = timestamp + (expiration + 3) * time_shield::SEC_PER_MIN;
-            return (timestamp_future - timestamp_future % (5 * time_shield::SEC_PER_MIN));
         }
     }; // class TradeExecutionComponent
 
