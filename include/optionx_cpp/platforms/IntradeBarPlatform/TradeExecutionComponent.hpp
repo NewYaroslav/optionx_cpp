@@ -58,17 +58,26 @@ namespace optionx::platforms::intrade_bar {
                     const auto duration = calc_expiration(
                         time_shield::ms_to_sec(trade_result->place_date),
                         trade_request->expiry_time);
-                    trade_request->duration =
-                        duration > 0 &&
-                        duration <= static_cast<std::int64_t>((std::numeric_limits<std::uint32_t>::max)())
-                        ? static_cast<std::uint32_t>(duration)
-                        : 0;
+                    if (duration <= 0 ||
+                        duration > static_cast<std::int64_t>(
+                            (std::numeric_limits<std::uint32_t>::max)())) {
+                        return false;
+                    }
+                    trade_request->duration = static_cast<std::uint32_t>(duration);
                 } else
                 if (trade_request->expiry_time == 0 &&
                     trade_request->duration > 0) {
+                    if ((trade_request->duration % time_shield::SEC_PER_5_MIN) != 0) {
+                        return false;
+                    }
                     trade_request->expiry_time = calc_expiry_time(
                         time_shield::ms_to_sec(trade_result->place_date),
                         trade_request->duration / time_shield::SEC_PER_MIN);
+                    if (trade_request->expiry_time <= 0) {
+                        return false;
+                    }
+                } else {
+                    return false;
                 }
             }
             return true;

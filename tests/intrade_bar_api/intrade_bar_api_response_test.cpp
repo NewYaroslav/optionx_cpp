@@ -587,6 +587,68 @@ CombinedHistoryTestResult request_trade_history_without_http(
     return call;
 }
 
+std::unique_ptr<TradeRequest> make_classic_intrade_trade_request(
+        std::uint32_t duration,
+        std::int64_t expiry_time) {
+    auto request = std::make_unique<TradeRequest>();
+    request->symbol = "EURUSD";
+    request->option_type = OptionType::CLASSIC;
+    request->order_type = OrderType::BUY;
+    request->account_type = AccountType::DEMO;
+    request->currency = CurrencyType::USD;
+    request->amount = 1.0;
+    request->duration = duration;
+    request->expiry_time = expiry_time;
+    return request;
+}
+
+struct IntradePlacementProbe {
+    bool accepted = false;
+    int callback_count = 0;
+};
+
+IntradePlacementProbe place_classic_intrade_trade_for_test(
+        std::uint32_t duration,
+        std::int64_t expiry_time) {
+    IntradeBarPlatform platform;
+    IntradePlacementProbe probe;
+
+    platform.on_trade_result() = [&probe](
+            std::unique_ptr<TradeRequest>,
+            std::unique_ptr<TradeResult>) {
+        ++probe.callback_count;
+    };
+
+    platform.run(false);
+    probe.accepted = platform.place_trade(
+        make_classic_intrade_trade_request(duration, expiry_time));
+    for (int i = 0; i < 20; ++i) {
+        platform.process();
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    platform.shutdown();
+    return probe;
+}
+
+std::int64_t misaligned_future_expiry_time() {
+    const auto now = time_shield::ms_to_sec(OPTIONX_TIMESTAMP_MS);
+    auto expiry_time = now + 20 * time_shield::SEC_PER_MIN;
+    if ((expiry_time % time_shield::SEC_PER_5_MIN) == 0) {
+        ++expiry_time;
+    }
+    return expiry_time;
+}
+
+std::int64_t aligned_too_close_expiry_time() {
+    const auto now = time_shield::ms_to_sec(OPTIONX_TIMESTAMP_MS);
+    auto expiry_time =
+        ((now / time_shield::SEC_PER_5_MIN) + 1) * time_shield::SEC_PER_5_MIN;
+    if (expiry_time - now > time_shield::SEC_PER_3_MIN) {
+        expiry_time -= time_shield::SEC_PER_5_MIN;
+    }
+    return expiry_time;
+}
+
 } // namespace
 
 TEST(BaseHttpClientComponent, ShutdownClearsRateLimitsAndIsRepeatable) {
@@ -2109,6 +2171,39 @@ TEST(IntradeBarTradeExecution, ConvertsClassicDurationToAbsoluteExpiryBeforeQueu
     EXPECT_EQ(callback_expiry_time % time_shield::SEC_PER_5_MIN, 0);
     EXPECT_GT(callback_expiry_time - place_time_sec, time_shield::SEC_PER_3_MIN);
     EXPECT_EQ(callback_error, TradeErrorCode::NO_CONNECTION);
+}
+
+TEST(IntradeBarTradeExecution, RejectsClassicDurationBelowMinimumBeforeQueueProcessing) {
+    const auto probe = place_classic_intrade_trade_for_test(60, 0);
+
+    EXPECT_FALSE(probe.accepted);
+    EXPECT_EQ(probe.callback_count, 0);
+}
+
+TEST(IntradeBarTradeExecution, RejectsClassicDurationOutsideFiveMinuteGrid) {
+    const auto non_multiple_grid = place_classic_intrade_trade_for_test(301, 0);
+    const auto rounded_down_grid = place_classic_intrade_trade_for_test(899, 0);
+
+    EXPECT_FALSE(non_multiple_grid.accepted);
+    EXPECT_EQ(non_multiple_grid.callback_count, 0);
+    EXPECT_FALSE(rounded_down_grid.accepted);
+    EXPECT_EQ(rounded_down_grid.callback_count, 0);
+}
+
+TEST(IntradeBarTradeExecution, RejectsMisalignedClassicAbsoluteExpiry) {
+    const auto probe =
+        place_classic_intrade_trade_for_test(0, misaligned_future_expiry_time());
+
+    EXPECT_FALSE(probe.accepted);
+    EXPECT_EQ(probe.callback_count, 0);
+}
+
+TEST(IntradeBarTradeExecution, RejectsClassicAbsoluteExpiryTooClose) {
+    const auto probe =
+        place_classic_intrade_trade_for_test(0, aligned_too_close_expiry_time());
+
+    EXPECT_FALSE(probe.accepted);
+    EXPECT_EQ(probe.callback_count, 0);
 }
 
 TEST(IntradeBarAuthData, KeepsDisconnectedDomainRetryPeriodInConfig) {
