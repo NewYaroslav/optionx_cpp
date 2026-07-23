@@ -207,6 +207,95 @@ TEST(TradingViewExtensionProtocol, RejectsInvalidConfiguredTradeSignalBeforeAcce
         std::string::npos);
 }
 
+TEST(TradingViewExtensionProtocol, AcceptsClassicConfiguredWithRelativeDuration) {
+    auto config = base_config();
+    config.option_type = optionx::OptionType::CLASSIC;
+    config.duration = 900;
+
+    const nlohmann::json payload = {
+        {"source", "tradingview"},
+        {"action", "sell"},
+        {"symbol", "FX:EURUSD"},
+        {"event_id", "indicator:eurusd:classic-duration:sell"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    ASSERT_TRUE(result.accepted);
+    ASSERT_TRUE(result.signal);
+    EXPECT_EQ(result.signal->option_type, optionx::OptionType::CLASSIC);
+    EXPECT_EQ(result.signal->duration, 900u);
+    EXPECT_EQ(result.signal->expiry_time, 0);
+}
+
+TEST(TradingViewExtensionProtocol, RejectsWhitespaceOnlyMappedSymbol) {
+    auto config = base_config();
+    config.symbol_map["FX:EURUSD"] = " \r\n ";
+
+    const nlohmann::json payload = {
+        {"source", "tradingview"},
+        {"action", "buy"},
+        {"symbol", "FX:EURUSD"},
+        {"event_id", "indicator:eurusd:blank-map:buy"}
+    };
+
+    auto result =
+        tv_protocol::parse_extension_payload(payload, "test-secret", config);
+
+    EXPECT_FALSE(result.accepted);
+    EXPECT_FALSE(result.signal);
+    EXPECT_EQ(result.reason, "missing_symbol");
+}
+
+TEST(BridgeTradeSignalValidation, EnforcesExecutableSignalBoundary) {
+    optionx::TradeSignal signal;
+    signal.symbol = "EURUSD";
+    signal.order_type = optionx::OrderType::BUY;
+    signal.option_type = optionx::OptionType::SPRINT;
+    signal.amount = 1.0;
+    signal.duration = 60;
+
+    EXPECT_NO_THROW(optionx::bridges::detail::validate_executable_trade_signal(signal));
+
+    signal.symbol = " \t ";
+    EXPECT_THROW(
+        optionx::bridges::detail::validate_executable_trade_signal(signal),
+        std::invalid_argument);
+    signal.symbol = "EURUSD";
+
+    signal.amount = -1.0;
+    EXPECT_THROW(
+        optionx::bridges::detail::validate_executable_trade_signal(signal, "test", false),
+        std::invalid_argument);
+    signal.amount = 0.0;
+    EXPECT_NO_THROW(optionx::bridges::detail::validate_executable_trade_signal(signal, "test", false));
+    EXPECT_THROW(
+        optionx::bridges::detail::validate_executable_trade_signal(signal, "test", true),
+        std::invalid_argument);
+    signal.amount = 1.0;
+
+    signal.option_type = optionx::OptionType::CLASSIC;
+    signal.duration = 900;
+    signal.expiry_time = 0;
+    EXPECT_NO_THROW(optionx::bridges::detail::validate_executable_trade_signal(signal));
+
+    signal.duration = 0;
+    signal.expiry_time = 1900000000;
+    EXPECT_NO_THROW(optionx::bridges::detail::validate_executable_trade_signal(signal));
+
+    signal.duration = 900;
+    EXPECT_THROW(
+        optionx::bridges::detail::validate_executable_trade_signal(signal),
+        std::invalid_argument);
+
+    signal.duration = 0;
+    signal.expiry_time = 0;
+    EXPECT_THROW(
+        optionx::bridges::detail::validate_executable_trade_signal(signal),
+        std::invalid_argument);
+}
+
 TEST(TradingViewExtensionProtocol, ParsesIndicatorBuySignal) {
     auto config = base_config();
 

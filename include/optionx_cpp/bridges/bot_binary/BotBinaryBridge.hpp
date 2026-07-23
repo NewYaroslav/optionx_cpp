@@ -552,7 +552,7 @@ namespace optionx::bridges::bot_binary {
                 const BotBinaryBridgeConfig& config) {
             const auto it = config.symbol_map.find(signal.symbol);
             if (it != config.symbol_map.end()) {
-                signal.symbol = it->second;
+                signal.symbol = optionx::bridges::detail::trim_ascii_copy(it->second);
             }
         }
 

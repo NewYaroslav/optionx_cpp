@@ -597,7 +597,7 @@ TEST(BotBinaryBridge, InvalidMappedBusinessSignalDoesNotReserveDedupeKey) {
     namespace bot = optionx::bridges::bot_binary;
 
     auto config = test_config();
-    config.symbol_map["R_25"] = "";
+    config.symbol_map["R_25"] = " \t ";
 
     bot::BotBinaryBridge bridge;
     ASSERT_TRUE(bridge.configure(std::make_unique<bot::BotBinaryBridgeConfig>(config)));
@@ -619,28 +619,19 @@ TEST(BotBinaryBridge, InvalidMappedBusinessSignalDoesNotReserveDedupeKey) {
     ASSERT_TRUE(wait_for_http_port(bridge));
 
     HttpClient client(config.address + ":" + std::to_string(bridge.bound_http_port()));
-    constexpr const char* raw_request = "R_25=CALL=1=duration=1=m=bad-map";
-    const auto invalid_response = client.request("GET", request_path(config, raw_request));
+    constexpr const char* invalid_request = "R_25=CALL=1=duration=1=m=same-key";
+    constexpr const char* valid_request = "R_50=CALL=1=duration=1=m=same-key";
+    const auto invalid_response = client.request("GET", request_path(config, invalid_request));
     const auto invalid_body = nlohmann::json::parse(invalid_response->content.string());
+    const auto accepted_response = client.request("GET", request_path(config, valid_request));
+    const auto accepted_body = nlohmann::json::parse(accepted_response->content.string());
     bridge.shutdown();
 
     EXPECT_FALSE(invalid_body.at("accepted").get<bool>());
     EXPECT_EQ(invalid_body.at("reason").get<std::string>(), "invalid_trade_signal");
-    EXPECT_EQ(signal_count.load(), 0);
-    EXPECT_EQ(invalid_reports.load(), 1);
-
-    config.symbol_map.clear();
-    ASSERT_TRUE(bridge.configure(std::make_unique<bot::BotBinaryBridgeConfig>(config)));
-    bridge.run();
-    ASSERT_TRUE(wait_for_http_port(bridge));
-
-    HttpClient retry_client(config.address + ":" + std::to_string(bridge.bound_http_port()));
-    const auto accepted_response = retry_client.request("GET", request_path(config, raw_request));
-    const auto accepted_body = nlohmann::json::parse(accepted_response->content.string());
-    bridge.shutdown();
-
     EXPECT_TRUE(accepted_body.at("accepted").get<bool>());
     EXPECT_EQ(signal_count.load(), 1);
+    EXPECT_EQ(invalid_reports.load(), 1);
 }
 
 TEST(BotBinaryBridge, ShutdownAndRunFromTradeCallbackDoNotDeadlock) {

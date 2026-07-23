@@ -707,7 +707,7 @@ namespace optionx::bridges::tradingview::detail {
             const auto normalized = normalize_symbol_value(symbol);
             auto it = config.symbol_map.find(normalized);
             if (it != config.symbol_map.end()) {
-                return it->second;
+                return trim_copy(it->second);
             }
 
             const auto colon = normalized.find(':');
@@ -715,7 +715,7 @@ namespace optionx::bridges::tradingview::detail {
                 const auto suffix = normalized.substr(colon + 1);
                 it = config.symbol_map.find(suffix);
                 if (it != config.symbol_map.end()) {
-                    return it->second;
+                    return trim_copy(it->second);
                 }
             }
             return normalized;

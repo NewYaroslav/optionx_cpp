@@ -13,6 +13,16 @@
 
 namespace optionx::bridges::detail {
 
+    /// \brief Returns a copy without leading/trailing ASCII whitespace.
+    inline std::string trim_ascii_copy(const std::string& value) {
+        const auto first = value.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) {
+            return {};
+        }
+        const auto last = value.find_last_not_of(" \t\r\n");
+        return value.substr(first, last - first + 1);
+    }
+
     /// \brief Validates a ratio-style trade signal field.
     /// \param value Field value.
     /// \param field_name Field name used in diagnostics.
@@ -36,28 +46,38 @@ namespace optionx::bridges::detail {
             const char* context = "Bridge signal",
             const bool require_positive_amount = true) {
         const std::string prefix = context ? context : "Bridge signal";
-        if (signal.symbol.empty()) {
+        if (trim_ascii_copy(signal.symbol).empty()) {
             throw std::invalid_argument(prefix + " symbol is required.");
         }
-        if (signal.order_type == OrderType::UNKNOWN) {
-            throw std::invalid_argument(prefix + " order_type is required.");
+        switch (signal.order_type) {
+        case OrderType::BUY:
+        case OrderType::SELL:
+            break;
+        default:
+            throw std::invalid_argument(prefix + " order_type must be BUY or SELL.");
         }
-        if (signal.option_type == OptionType::UNKNOWN) {
-            throw std::invalid_argument(prefix + " option_type is required.");
+        switch (signal.option_type) {
+        case OptionType::SPRINT:
+        case OptionType::CLASSIC:
+            break;
+        default:
+            throw std::invalid_argument(prefix + " option_type must be SPRINT or CLASSIC.");
         }
-        if (!std::isfinite(signal.amount)) {
-            throw std::invalid_argument(prefix + " amount must be finite.");
+        if (!std::isfinite(signal.amount) || signal.amount < 0.0) {
+            throw std::invalid_argument(prefix + " amount must be finite and non-negative.");
         }
-        if (require_positive_amount && signal.amount <= 0.0) {
+        if (require_positive_amount && signal.amount == 0.0) {
             throw std::invalid_argument(prefix + " amount must be positive.");
         }
         validate_trade_signal_ratio(signal.refund, "refund");
         validate_trade_signal_ratio(signal.min_payout, "min_payout");
-        if (signal.duration != 0 && signal.expiry_time > 0) {
-            throw std::invalid_argument(prefix + " must not mix duration and expiry_time.");
+        if (signal.expiry_time < 0) {
+            throw std::invalid_argument(prefix + " expiry_time must not be negative.");
         }
-        if (signal.duration == 0 && signal.expiry_time <= 0) {
-            throw std::invalid_argument(prefix + " expiry is required.");
+        const bool has_duration = signal.duration != 0;
+        const bool has_expiry_time = signal.expiry_time > 0;
+        if (has_duration == has_expiry_time) {
+            throw std::invalid_argument(prefix + " requires exactly one expiry representation.");
         }
     }
 
