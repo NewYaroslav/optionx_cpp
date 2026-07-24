@@ -38,6 +38,8 @@
 - [Bridge taxonomy](guides/bridge-taxonomy.md) - как раскладывать bridge family
   и transport ownership, включая protocol_v1, legacy named pipe, TradingView и
   BotBinary.
+- [Telegram bridge design](guides/telegram-bridge-design.md) - план будущего
+  Telegram sidecar/stdio bridge, history export, parser и auth/proxy boundary.
 - [Coding style](guides/coding-style.md) - naming, namespace, Doxygen,
   обработка ошибок, ownership и header-only правила.
 - [Git workflow](guides/git-workflow.md) - branch policy, PR-only workflow,
